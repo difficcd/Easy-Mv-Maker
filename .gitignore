@@ -1,0 +1,27 @@
+# Node / Vite
+node_modules/
+dist/
+.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Android / Gradle
+android/.gradle/
+android/**/build/
+android/**/.cxx/
+android/.idea/
+android/local.properties
+android/captures/
+
+# Signing keys
+*.jks
+*.keystore
+
