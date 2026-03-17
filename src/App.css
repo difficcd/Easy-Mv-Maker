@@ -738,6 +738,33 @@ canvas {
     transition: border-color .15s;
 }
 
+.cut-collapsed {
+    padding-bottom: 6px;
+}
+
+.cut-track-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.cut-track-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    background: rgba(17, 17, 32, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: #bbb;
+    cursor: pointer;
+    user-select: none;
+}
+
+.cut-track-header:hover {
+    border-color: rgba(99, 102, 241, 0.35);
+}
+
 .cut-item:hover {
     border-color: #3a3a5c;
 }

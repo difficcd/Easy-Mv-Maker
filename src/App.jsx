@@ -281,15 +281,16 @@ function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null) {
             ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
             ctx.globalAlpha = 1.0; return;
         }
-        if (s.tool === 'dot') {
+        if (s.tool === 'dot' || s.tool === 'dotEraser') {
             if (!s.points?.length) return;
+            const isErase = s.tool === 'dotEraser';
             const baseColor = s.color;
             const baseOpacity = s.opacity ?? 1;
             const hasPressure = s.points.some(p => p.pressure !== undefined && p.pressure !== 0.5);
 
             // Draw opaque stamps then apply opacity once to avoid dark "blotches" from alpha accumulation.
             const dst = ctx;
-            const needsUniformAlpha = baseOpacity < 0.999;
+            const needsUniformAlpha = !isErase && baseOpacity < 0.999;
             const tctx = needsUniformAlpha ? (() => {
                 const tmp = document.createElement('canvas');
                 tmp.width = ctx.canvas.width;
@@ -297,9 +298,9 @@ function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null) {
                 return tmp.getContext('2d');
             })() : dst;
 
-            tctx.globalCompositeOperation = 'source-over';
+            tctx.globalCompositeOperation = isErase ? 'destination-out' : 'source-over';
             tctx.globalAlpha = 1.0;
-            tctx.fillStyle = baseColor;
+            tctx.fillStyle = isErase ? 'rgba(0,0,0,1)' : baseColor;
             tctx.imageSmoothingEnabled = false;
 
             const stamp = (x, y, pr) => {
@@ -510,6 +511,7 @@ export default function App() {
     const audioDestRef = useRef(null);
     const exportEndRef = useRef(0);
     const [tool, setTool] = useState('pen');
+    const lastInkToolRef = useRef('pen'); // pen|dot|marker|calligraphy (used for contextual behaviors like dot-eraser)
     const [palette, setPalette] = useState([null, null, null]);
     const [activePaletteIndex, setActivePaletteIndex] = useState(0);
     const [color, setColor] = useState('#111111');
@@ -523,6 +525,9 @@ export default function App() {
     const svCanvasRef = useRef(null);
     const svDragPointerIdRef = useRef(null);
     const [expandedCuts, setExpandedCuts] = useState(new Set());
+    const [cutListGroupByTrack, setCutListGroupByTrack] = useState(true);
+    const [collapsedTrackIds, setCollapsedTrackIds] = useState(new Set());
+    const [collapsedCutIds, setCollapsedCutIds] = useState(new Set());
     const [showFileMenu, setShowFileMenu] = useState(false);
     const fileHandleRef = useRef(null);
     const [dragLayerInfo, setDragLayerInfo] = useState(null);
@@ -579,6 +584,10 @@ export default function App() {
         if (!sameSel) setSelectedCutIds(next);
         if (nextCurrent != null && nextCurrent !== currentCutId) setCurrentCutId(nextCurrent);
         if (cuts.length === 0) setCopiedCuts(null);
+        setCollapsedCutIds(prev => {
+            const kept = new Set(Array.from(prev).filter(id => existing.has(id)));
+            return kept.size === prev.size ? prev : kept;
+        });
     }, [cuts, currentCutId]);
 
     useEffect(() => { canvasScaleRef.current = canvasScale; }, [canvasScale]);
@@ -820,6 +829,9 @@ export default function App() {
     const handleSetTool = (newTool) => {
         if (selection) return;
         if (textEdit) return;
+        if (newTool === 'pen' || newTool === 'dot' || newTool === 'marker' || newTool === 'calligraphy') {
+            lastInkToolRef.current = newTool;
+        }
         setTool(newTool);
     };
 
@@ -1504,6 +1516,12 @@ export default function App() {
     const setSingleCutSelection = (id) => {
         setSelectedCutIds(new Set([id]));
         setCurrentCutId(id);
+        setCollapsedCutIds(prev => {
+            if (!prev.has(id)) return prev;
+            const next = new Set(prev);
+            next.delete(id);
+            return next;
+        });
     };
 
     const toggleCutSelection = (id) => {
@@ -1514,6 +1532,12 @@ export default function App() {
             return s;
         });
         setCurrentCutId(id);
+        setCollapsedCutIds(prev => {
+            if (!prev.has(id)) return prev;
+            const next = new Set(prev);
+            next.delete(id);
+            return next;
+        });
     };
 
     const handleDeleteSelectedCuts = () => {
@@ -2035,7 +2059,8 @@ export default function App() {
             case 'calligraphy':
             case 'eraser':
                 {
-                    const newStroke = { id: Date.now(), tool, color, opacity, size: brushSize, points: [pos] };
+                    const effectiveTool = (tool === 'eraser' && lastInkToolRef.current === 'dot') ? 'dotEraser' : tool;
+                    const newStroke = { id: Date.now(), tool: effectiveTool, color, opacity, size: brushSize, points: [pos] };
                     updLayers(currentCutId, c => ({
                         layers: c.layers.map(l => l.id === c.activeLayerId ? { ...l, strokes: [...l.strokes, newStroke] } : l)
                     }));
@@ -2876,6 +2901,146 @@ export default function App() {
     const isSelectionTool = tool === 'lasso' || !!selection;
     const isColorPickerHexValid = !!colorPicker && /^#[0-9a-fA-F]{6}$/.test(String(colorPicker.hex || '').trim());
 
+    const toggleCutCollapsed = (cutId) => {
+        setCollapsedCutIds(prev => {
+            const s = new Set(prev);
+            s.has(cutId) ? s.delete(cutId) : s.add(cutId);
+            return s;
+        });
+    };
+
+    const renderCutRow = (cut) => {
+        const isCollapsed = collapsedCutIds.has(cut.id);
+        return (
+            <div
+                key={cut.id}
+                className={`cut-item${currentCutId === cut.id ? ' cut-active' : ''}${selectedCutIds.has(cut.id) ? ' cut-selected' : ''}${isCollapsed ? ' cut-collapsed' : ''}`}
+                onClick={(e) => {
+                    // Desktop: ctrl/meta toggle, shift range. Tablet: use checkbox button.
+                    if (e.shiftKey) {
+                        const arr = cuts.map(c => c.id);
+                        const a = arr.indexOf(currentCutId);
+                        const b = arr.indexOf(cut.id);
+                        if (a !== -1 && b !== -1) {
+                            const lo = Math.min(a, b), hi = Math.max(a, b);
+                            setSelectedCutIds(new Set(arr.slice(lo, hi + 1)));
+                            setCurrentCutId(cut.id);
+                            return;
+                        }
+                    }
+                    if (e.ctrlKey || e.metaKey) { toggleCutSelection(cut.id); return; }
+                    setSingleCutSelection(cut.id);
+                }}
+            >
+                <div className="cut-header">
+                    <button
+                        className={`icon-btn cut-select-btn${selectedCutIds.has(cut.id) ? ' active' : ''}`}
+                        onClick={e => { e.stopPropagation(); toggleCutSelection(cut.id); }}
+                        title="선택/해제"
+                    >
+                        {selectedCutIds.has(cut.id) ? '✓' : '□'}
+                    </button>
+                    <button className="icon-btn" onClick={e => { e.stopPropagation(); toggleCutCollapsed(cut.id); }} title="컷 접기/펼치기">
+                        {isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+                    </button>
+                    <input
+                        className="cut-name-input"
+                        value={cut.name}
+                        onClick={e => e.stopPropagation()}
+                        onChange={e => setCuts(p => p.map(c => c.id === cut.id ? ({ ...c, name: e.target.value }) : c))}
+                        spellCheck={false}
+                        title="컷 이름"
+                    />
+                    <div style={{ display: 'flex', gap: 4 }}>
+                        <button className="icon-btn" onClick={e => { e.stopPropagation(); handleCopyCut(cut.id); }} title="컷 복사 (Ctrl+C)"><Copy size={12} /></button>
+                        <button className="icon-btn" onClick={e => { e.stopPropagation(); toggleCutSettings(cut.id); }} title="설정"><Settings size={12} /></button>
+                        <button className="icon-btn del-btn" onClick={e => { e.stopPropagation(); handleDeleteCut(cut.id); }}><Trash2 size={12} /></button>
+                    </div>
+                </div>
+
+                {!isCollapsed && expandedCuts.has(cut.id) && (
+                    <div className="cut-settings">
+                        <div className="time-row">
+                            <label>Start<input type="number" step="0.5" min="0" className="time-input" value={cut.startTime} onChange={e => updCutTime(cut.id, 'startTime', e.target.value)} /></label>
+                            <label>End<input type="number" step="0.5" min="0" className="time-input" value={cut.endTime} onChange={e => updCutTime(cut.id, 'endTime', e.target.value)} /></label>
+                        </div>
+                        <div className="time-row" style={{ marginTop: 8 }}>
+                            <label>
+                                In
+                                <select className="time-input" value={(cut.animIn?.type ?? 'none')} onChange={e => updCutAnim(cut.id, 'in', 'type', e.target.value)}>
+                                    {CUT_ANIM_IN_TYPES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                </select>
+                            </label>
+                            <label>
+                                Out
+                                <select className="time-input" value={(cut.animOut?.type ?? 'none')} onChange={e => updCutAnim(cut.id, 'out', 'type', e.target.value)}>
+                                    {CUT_ANIM_OUT_TYPES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                </select>
+                            </label>
+                        </div>
+                        <div className="time-row" style={{ marginTop: 8 }}>
+                            <label>
+                                In Dur
+                                <input type="number" step="0.05" min="0" max="5" className="time-input" value={cut.animIn?.dur ?? DEFAULT_CUT_ANIM_DUR} onChange={e => updCutAnim(cut.id, 'in', 'dur', e.target.value)} />
+                            </label>
+                            <label>
+                                Out Dur
+                                <input type="number" step="0.05" min="0" max="5" className="time-input" value={cut.animOut?.dur ?? DEFAULT_CUT_ANIM_DUR} onChange={e => updCutAnim(cut.id, 'out', 'dur', e.target.value)} />
+                            </label>
+                        </div>
+                    </div>
+                )}
+
+                {!isCollapsed && (
+                    <>
+                        <div className="layer-list" data-layer-list="1" data-cut-id={cut.id} onContextMenu={e => { e.preventDefault(); }}>
+                            {renderLayers(cut)}
+                            <div
+                                className={`layer-row layer-folder text-layer-header${(cut.textCollapsed ?? true) ? '' : ' layer-active'}`}
+                                style={{ paddingLeft: 6 }}
+                                onClick={e => { e.stopPropagation(); toggleTextCollapsed(cut.id); }}
+                                draggable={false}
+                            >
+                                <button className="icon-btn" onClick={e => { e.stopPropagation(); toggleTextCollapsed(cut.id); }} title="접기/펼치기">
+                                    {(cut.textCollapsed ?? true) ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+                                </button>
+                                <Type size={12} style={{ marginLeft: 2, marginRight: 4, color: '#a7a7d6' }} />
+                                <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.4, color: '#a7a7d6' }}>TEXT</span>
+                                <span style={{ marginLeft: 6, fontSize: 11, color: '#666' }}>{safeArray(cut.texts).length}</span>
+                                <div style={{ flex: 1 }} />
+                                <button className="icon-btn" onClick={e => { e.stopPropagation(); handleSetTool('text'); setCurrentCutId(cut.id); if (cut.textCollapsed) toggleTextCollapsed(cut.id); }} title="텍스트 추가">
+                                    <Plus size={12} />
+                                </button>
+                            </div>
+                            {!(cut.textCollapsed ?? true) && safeArray(cut.texts).map(t => (
+                                <div
+                                    key={t.id}
+                                    className={`layer-row text-layer-row${selectedText?.cutId === cut.id && selectedText?.textId === t.id ? ' layer-active' : ''}`}
+                                    style={{ paddingLeft: 22 }}
+                                    onClick={e => { e.stopPropagation(); setSelectedText({ cutId: cut.id, textId: t.id }); }}
+                                    draggable={false}
+                                >
+                                    <button className="icon-btn" onClick={e => { e.stopPropagation(); toggleTextVisible(cut.id, t.id); }} title="표시">
+                                        {t.visible === false ? <EyeOff size={10} style={{ color: '#555' }} /> : <Eye size={10} />}
+                                    </button>
+                                    <div className="text-item-name" style={{ flex: 1, fontSize: 11, color: '#bbb' }}>
+                                        {String(t.text ?? '').split('\n')[0] || '(빈 텍스트)'}
+                                    </div>
+                                    <button className="icon-btn" onClick={e => { e.stopPropagation(); openEditText(cut.id, t.id); }} title="편집"><Settings size={11} /></button>
+                                    <button className="icon-btn del-btn" onClick={e => { e.stopPropagation(); deleteTextObject(cut.id, t.id); }} title="삭제"><Trash2 size={11} /></button>
+                                </div>
+                            ))}
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                            <button className="small-btn" onClick={e => handleAddLayer(e, cut.id)}><Plus size={11} /> 레이어</button>
+                            <button className="small-btn" onClick={e => handleAddFolder(e, cut.id)}><FolderPlus size={11} /> 폴더</button>
+                        </div>
+                    </>
+                )}
+            </div>
+        );
+    };
+
     return (
         <div className="app-container">
             <audio ref={audioRef} style={{ display: 'none' }} />
@@ -3194,151 +3359,40 @@ export default function App() {
                             <span style={{ fontSize: 11, color: '#777' }}>Selected: {selectedCutIds.size}</span>
                             <button className="small-btn" onClick={() => handleCopyCuts(Array.from(selectedCutIds))} disabled={selectedCutIds.size === 0} title="선택한 컷 복사"><Copy size={11} /> Copy</button>
                             <button className="small-btn" onClick={handleDeleteSelectedCuts} disabled={selectedCutIds.size === 0} title="선택한 컷 삭제"><Trash2 size={11} /> Delete</button>
+                            <button className="small-btn" onClick={() => setCutListGroupByTrack(v => !v)} title="트랙별 그룹/해제">
+                                {cutListGroupByTrack ? 'Track' : 'Flat'}
+                            </button>
+                            <button className="small-btn" onClick={() => setCollapsedCutIds(new Set(cuts.map(c => c.id)))} title="컷 전체 접기">접기</button>
+                            <button className="small-btn" onClick={() => setCollapsedCutIds(new Set())} title="컷 전체 펼치기">펼치기</button>
                         </div>
                         <div className="cut-list">
-                            {cuts.map(cut => (
-                                <div
-                                    key={cut.id}
-                                    className={`cut-item${currentCutId === cut.id ? ' cut-active' : ''}${selectedCutIds.has(cut.id) ? ' cut-selected' : ''}`}
-                                    onClick={(e) => {
-                                        // Desktop: ctrl/meta toggle, shift range. Tablet: use checkbox button.
-                                        if (e.shiftKey) {
-                                            const arr = cuts.map(c => c.id);
-                                            const a = arr.indexOf(currentCutId);
-                                            const b = arr.indexOf(cut.id);
-                                            if (a !== -1 && b !== -1) {
-                                                const lo = Math.min(a, b), hi = Math.max(a, b);
-                                                setSelectedCutIds(new Set(arr.slice(lo, hi + 1)));
-                                                setCurrentCutId(cut.id);
-                                                return;
-                                            }
-                                        }
-                                        if (e.ctrlKey || e.metaKey) { toggleCutSelection(cut.id); return; }
-                                        setSingleCutSelection(cut.id);
-                                    }}
-                                >
-                                    <div className="cut-header">
-                                        <button
-                                            className={`icon-btn cut-select-btn${selectedCutIds.has(cut.id) ? ' active' : ''}`}
-                                            onClick={e => { e.stopPropagation(); toggleCutSelection(cut.id); }}
-                                            title="선택/해제"
-                                        >
-                                            {selectedCutIds.has(cut.id) ? '✓' : '□'}
-                                        </button>
-                                        <input
-                                            className="cut-name-input"
-                                            value={cut.name}
-                                            onClick={e => e.stopPropagation()}
-                                            onChange={e => setCuts(p => p.map(c => c.id === cut.id ? ({ ...c, name: e.target.value }) : c))}
-                                            spellCheck={false}
-                                            title="컷 이름"
-                                        />
-                                        <div style={{ display: 'flex', gap: 4 }}>
-                                            <button className="icon-btn" onClick={e => { e.stopPropagation(); handleCopyCut(cut.id); }} title="컷 복사 (Ctrl+C)"><Copy size={12} /></button>
-                                            <button className="icon-btn" onClick={e => { e.stopPropagation(); toggleCutSettings(cut.id); }} title="설정"><Settings size={12} /></button>
-                                            <button className="icon-btn del-btn" onClick={e => { e.stopPropagation(); handleDeleteCut(cut.id); }}><Trash2 size={12} /></button>
-                                        </div>
-                                    </div>
-                                    {expandedCuts.has(cut.id) && (
-                                        <div className="cut-settings">
-                                            <div className="time-row">
-                                                <label>Start<input type="number" step="0.5" min="0" className="time-input" value={cut.startTime} onChange={e => updCutTime(cut.id, 'startTime', e.target.value)} /></label>
-                                                <label>End<input type="number" step="0.5" min="0" className="time-input" value={cut.endTime} onChange={e => updCutTime(cut.id, 'endTime', e.target.value)} /></label>
-                                            </div>
-                                            <div className="time-row" style={{ marginTop: 8 }}>
-                                                <label>
-                                                    In
-                                                    <select
-                                                        className="time-input"
-                                                        value={(cut.animIn?.type ?? 'none')}
-                                                        onChange={e => updCutAnim(cut.id, 'in', 'type', e.target.value)}
-                                                    >
-                                                        {CUT_ANIM_IN_TYPES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                                    </select>
-                                                </label>
-                                                <label>
-                                                    Out
-                                                    <select
-                                                        className="time-input"
-                                                        value={(cut.animOut?.type ?? 'none')}
-                                                        onChange={e => updCutAnim(cut.id, 'out', 'type', e.target.value)}
-                                                    >
-                                                        {CUT_ANIM_OUT_TYPES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                                    </select>
-                                                </label>
-                                            </div>
-                                            <div className="time-row" style={{ marginTop: 8 }}>
-                                                <label>
-                                                    In Dur
-                                                    <input
-                                                        type="number"
-                                                        step="0.05"
-                                                        min="0"
-                                                        max="5"
-                                                        className="time-input"
-                                                        value={cut.animIn?.dur ?? DEFAULT_CUT_ANIM_DUR}
-                                                        onChange={e => updCutAnim(cut.id, 'in', 'dur', e.target.value)}
-                                                    />
-                                                </label>
-                                                <label>
-                                                    Out Dur
-                                                    <input
-                                                        type="number"
-                                                        step="0.05"
-                                                        min="0"
-                                                        max="5"
-                                                        className="time-input"
-                                                        value={cut.animOut?.dur ?? DEFAULT_CUT_ANIM_DUR}
-                                                        onChange={e => updCutAnim(cut.id, 'out', 'dur', e.target.value)}
-                                                    />
-                                                </label>
-                                            </div>
-                                        </div>
-                                    )}
-                                    <div className="layer-list" data-layer-list="1" data-cut-id={cut.id} onContextMenu={e => { e.preventDefault(); }}>
-                                        {renderLayers(cut)}
-                                        <div
-                                            className={`layer-row layer-folder text-layer-header${(cut.textCollapsed ?? true) ? '' : ' layer-active'}`}
-                                            style={{ paddingLeft: 6 }}
-                                            onClick={e => { e.stopPropagation(); toggleTextCollapsed(cut.id); }}
-                                            draggable={false}
-                                        >
-                                            <button className="icon-btn" onClick={e => { e.stopPropagation(); toggleTextCollapsed(cut.id); }} title="접기/펼치기">
-                                                {(cut.textCollapsed ?? true) ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
-                                            </button>
-                                            <Type size={12} style={{ marginLeft: 2, marginRight: 4, color: '#a7a7d6' }} />
-                                            <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.4, color: '#a7a7d6' }}>TEXT</span>
-                                            <span style={{ marginLeft: 6, fontSize: 11, color: '#666' }}>{safeArray(cut.texts).length}</span>
-                                            <div style={{ flex: 1 }} />
-                                            <button className="icon-btn" onClick={e => { e.stopPropagation(); handleSetTool('text'); setCurrentCutId(cut.id); if (cut.textCollapsed) toggleTextCollapsed(cut.id); }} title="텍스트 추가">
-                                                <Plus size={12} />
-                                            </button>
-                                        </div>
-                                        {!(cut.textCollapsed ?? true) && safeArray(cut.texts).map(t => (
+                            {cutListGroupByTrack ? (
+                                Array.from({ length: Math.max(1, numTracks) }).map((_, ti) => {
+                                    const items = cuts.filter(c => (c.track || 0) === ti).sort((a, b) => (a.startTime - b.startTime) || (a.id - b.id));
+                                    if (items.length === 0) return null;
+                                    const collapsed = collapsedTrackIds.has(ti);
+                                    return (
+                                        <div key={`trk-${ti}`} className="cut-track-group">
                                             <div
-                                                key={t.id}
-                                                className={`layer-row text-layer-row${selectedText?.cutId === cut.id && selectedText?.textId === t.id ? ' layer-active' : ''}`}
-                                                style={{ paddingLeft: 22 }}
-                                                onClick={e => { e.stopPropagation(); setSelectedText({ cutId: cut.id, textId: t.id }); }}
-                                                draggable={false}
+                                                className="cut-track-header"
+                                                onClick={() => setCollapsedTrackIds(prev => {
+                                                    const s = new Set(prev);
+                                                    s.has(ti) ? s.delete(ti) : s.add(ti);
+                                                    return s;
+                                                })}
                                             >
-                                                <button className="icon-btn" onClick={e => { e.stopPropagation(); toggleTextVisible(cut.id, t.id); }} title="표시">
-                                                    {t.visible === false ? <EyeOff size={10} style={{ color: '#555' }} /> : <Eye size={10} />}
-                                                </button>
-                                                <div className="text-item-name" style={{ flex: 1, fontSize: 11, color: '#bbb' }}>
-                                                    {String(t.text ?? '').split('\n')[0] || '(빈 텍스트)'}
-                                                </div>
-                                                <button className="icon-btn" onClick={e => { e.stopPropagation(); openEditText(cut.id, t.id); }} title="편집"><Settings size={11} /></button>
-                                                <button className="icon-btn del-btn" onClick={e => { e.stopPropagation(); deleteTextObject(cut.id, t.id); }} title="삭제"><Trash2 size={11} /></button>
+                                                <span style={{ fontWeight: 900 }}>Track {ti}</span>
+                                                <span style={{ marginLeft: 6, color: '#666' }}>{items.length}</span>
+                                                <div style={{ flex: 1 }} />
+                                                {collapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
                                             </div>
-                                        ))}
-                                    </div>
-                                    <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-                                        <button className="small-btn" onClick={e => handleAddLayer(e, cut.id)}><Plus size={11} /> 레이어</button>
-                                        <button className="small-btn" onClick={e => handleAddFolder(e, cut.id)}><FolderPlus size={11} /> 폴더</button>
-                                    </div>
-                                </div>
-                            ))}
+                                            {!collapsed && items.map(renderCutRow)}
+                                        </div>
+                                    );
+                                })
+                            ) : (
+                                cuts.map(renderCutRow)
+                            )}
                         </div>
                         <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
                             <button className="button" style={{ flex: 1 }} onClick={handleAddCut}><Plus size={14} /> Add Cut</button>
