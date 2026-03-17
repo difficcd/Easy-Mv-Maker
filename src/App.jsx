@@ -545,6 +545,8 @@ export default function App() {
     const selectedCutIdsRef = useRef(new Set([1]));
     const [lassoPoints, setLassoPoints] = useState([]);
     const [selection, setSelection] = useState(null);
+    const [selectionClipboard, setSelectionClipboard] = useState(null); // { bitmapId, w, h }
+    const selectionPasteNudgeRef = useRef(0);
     const [textEdit, setTextEdit] = useState(null);
     const [selectedText, setSelectedText] = useState(null);
     const [layerCanvasCache, setLayerCanvasCache] = useState({});
@@ -771,6 +773,50 @@ export default function App() {
 
     const commitSelection = () => commitSelectionImpl(selection);
 
+    const copySelectionToClipboard = () => {
+        const sel = selection;
+        if (!sel) return;
+        const entry = bitmapStoreRef.current.get(sel.bitmapId);
+        const img = entry?.imageData;
+        if (!img) return;
+        const copied = new ImageData(new Uint8ClampedArray(img.data), img.width, img.height);
+        const id = storeBitmap(copied);
+        setSelectionClipboard({ bitmapId: id, w: img.width, h: img.height });
+        selectionPasteNudgeRef.current = 0;
+    };
+
+    const pasteSelectionFromClipboard = () => {
+        if (!selectionClipboard?.bitmapId) return;
+        const cc = cuts.find(c => c.id === currentCutId);
+        if (!cc) return;
+        const paintLayers = safeArray(cc.layers).filter(l => l.type !== 'folder' && l.visible !== false);
+        const activeLayerId = paintLayers.some(l => l.id === cc.activeLayerId) ? cc.activeLayerId : (paintLayers[0]?.id ?? 1);
+
+        const w = Math.max(1, selectionClipboard.w | 0);
+        const h = Math.max(1, selectionClipboard.h | 0);
+        const nudge = (selectionPasteNudgeRef.current++ % 10) * 10;
+
+        // Prefer pasting near the current selection box if it exists; otherwise center-ish with a small nudge.
+        const baseX = selection ? Math.round(selection.tx) : Math.round(CANVAS_W / 2 - w / 2);
+        const baseY = selection ? Math.round(selection.ty) : Math.round(CANVAS_H / 2 - h / 2);
+        const x = clamp(baseX + nudge, -CANVAS_W * 2, CANVAS_W * 3);
+        const y = clamp(baseY + nudge, -CANVAS_H * 2, CANVAS_H * 3);
+
+        updLayers(currentCutId, c => ({
+            layers: c.layers.map(l => {
+                if (l.id !== activeLayerId) return l;
+                return {
+                    ...l,
+                    strokes: [
+                        ...l.strokes,
+                        { id: Date.now(), tool: 'paste', bitmapId: selectionClipboard.bitmapId, x, y, w, h },
+                    ]
+                };
+            }),
+            activeLayerId,
+        }));
+    };
+
     const handleSetTool = (newTool) => {
         if (selection) return;
         if (textEdit) return;
@@ -817,17 +863,21 @@ export default function App() {
             if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); globalUndo(); }
             if ((e.ctrlKey || e.metaKey) && (e.key === 'Z' || (e.key === 'z' && e.shiftKey) || e.key === 'y')) { e.preventDefault(); globalRedo(); }
             if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+                if (selection) { e.preventDefault(); copySelectionToClipboard(); return; }
                 const ids = Array.from(selectedCutIdsRef.current);
                 if (ids.length) { e.preventDefault(); handleCopyCuts(ids); }
                 else if (currentCutId) { e.preventDefault(); handleCopyCut(currentCutId); }
             }
-            if ((e.ctrlKey || e.metaKey) && e.key === 'v') { if (copiedCuts?.cuts?.length) { e.preventDefault(); handlePasteCut(); } }
+            if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+                if (selectionClipboard?.bitmapId) { e.preventDefault(); pasteSelectionFromClipboard(); return; }
+                if (copiedCuts?.cuts?.length) { e.preventDefault(); handlePasteCut(); }
+            }
             if (e.key === 'Escape') { if (selection) { e.preventDefault(); cancelSelection(); } }
             if (e.key === 'Enter') { if (selection) { e.preventDefault(); commitSelection(); } }
         };
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [cuts, currentCutId, copiedCuts, selection]);
+    }, [cuts, currentCutId, copiedCuts, selection, selectionClipboard]);
 
     useEffect(() => {
         if (selection && selection.cutId !== currentCutId) cancelSelection();
@@ -3010,6 +3060,8 @@ export default function App() {
                         {selection && (
                             <div className="selection-actions">
                                 <button className="button button-primary" onClick={commitSelection} style={{ height: 30, padding: '0 10px' }}>완료</button>
+                                <button className="button" onClick={copySelectionToClipboard} style={{ height: 30, padding: '0 10px' }} title="선택 영역 복사 (Ctrl+C)">복사</button>
+                                <button className="button" onClick={pasteSelectionFromClipboard} style={{ height: 30, padding: '0 10px', opacity: selectionClipboard?.bitmapId ? 1 : 0.4 }} disabled={!selectionClipboard?.bitmapId} title="붙여넣기 (Ctrl+V)">붙여넣기</button>
                                 <button className="button" onClick={cancelSelection} style={{ height: 30, padding: '0 10px' }}>취소</button>
                             </div>
                         )}
