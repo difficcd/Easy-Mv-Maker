@@ -539,7 +539,9 @@ export default function App() {
     const fileMenuRef = useRef(null);
     const timelineRef = useRef(null);
     const [pps, setPps] = useState(50);
-    const [copiedCut, setCopiedCut] = useState(null);
+    const [copiedCuts, setCopiedCuts] = useState(null); // { cuts: Cut[], minStart: number }
+    const [selectedCutIds, setSelectedCutIds] = useState(new Set([1]));
+    const selectedCutIdsRef = useRef(new Set([1]));
     const [lassoPoints, setLassoPoints] = useState([]);
     const [selection, setSelection] = useState(null);
     const [textEdit, setTextEdit] = useState(null);
@@ -555,6 +557,26 @@ export default function App() {
     const canvasAreaRef = useRef(null);
     const navCanvasRef = useRef(null);
     const [navEnabled, setNavEnabled] = useState(true);
+
+    useEffect(() => { selectedCutIdsRef.current = selectedCutIds; }, [selectedCutIds]);
+
+    useEffect(() => {
+        // Keep multi-selection valid as cuts are added/removed.
+        const existing = new Set(cuts.map(c => c.id));
+        const next = new Set(Array.from(selectedCutIdsRef.current).filter(id => existing.has(id)));
+        let nextCurrent = currentCutId;
+        if (!existing.has(nextCurrent)) nextCurrent = null;
+        if (next.size === 0) {
+            const first = cuts[0]?.id ?? null;
+            if (first != null) next.add(first);
+            nextCurrent = first;
+        }
+        // Only set state when changes are needed (avoid loops).
+        const sameSel = next.size === selectedCutIdsRef.current.size && Array.from(next).every(id => selectedCutIdsRef.current.has(id));
+        if (!sameSel) setSelectedCutIds(next);
+        if (nextCurrent != null && nextCurrent !== currentCutId) setCurrentCutId(nextCurrent);
+        if (cuts.length === 0) setCopiedCuts(null);
+    }, [cuts, currentCutId]);
 
     useEffect(() => { canvasScaleRef.current = canvasScale; }, [canvasScale]);
     useEffect(() => { canvasOffsetRef.current = canvasOffset; }, [canvasOffset]);
@@ -791,14 +813,18 @@ export default function App() {
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
             if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); globalUndo(); }
             if ((e.ctrlKey || e.metaKey) && (e.key === 'Z' || (e.key === 'z' && e.shiftKey) || e.key === 'y')) { e.preventDefault(); globalRedo(); }
-            if ((e.ctrlKey || e.metaKey) && e.key === 'c') { if (currentCutId) { e.preventDefault(); handleCopyCut(currentCutId); } }
-            if ((e.ctrlKey || e.metaKey) && e.key === 'v') { if (copiedCut) { e.preventDefault(); handlePasteCut(); } }
+            if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+                const ids = Array.from(selectedCutIdsRef.current);
+                if (ids.length) { e.preventDefault(); handleCopyCuts(ids); }
+                else if (currentCutId) { e.preventDefault(); handleCopyCut(currentCutId); }
+            }
+            if ((e.ctrlKey || e.metaKey) && e.key === 'v') { if (copiedCuts?.cuts?.length) { e.preventDefault(); handlePasteCut(); } }
             if (e.key === 'Escape') { if (selection) { e.preventDefault(); cancelSelection(); } }
             if (e.key === 'Enter') { if (selection) { e.preventDefault(); commitSelection(); } }
         };
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [cuts, currentCutId, copiedCut, selection]);
+    }, [cuts, currentCutId, copiedCuts, selection]);
 
     useEffect(() => {
         if (selection && selection.cutId !== currentCutId) cancelSelection();
@@ -953,25 +979,90 @@ export default function App() {
                         setAudioData(prev => { if (!prev) return prev; const ns = Math.max(0, pendingTimelineOp.initialStart + dt); return { ...prev, startTime: ns, endTime: ns + (prev.endTime - prev.startTime) }; });
                     } else {
                         setCuts(prev => {
-                            const tc = prev.find(c => c.id === pendingTimelineOp.cutId); if (!tc) return prev;
-                            let ns = Math.max(0, pendingTimelineOp.initialStart + dt), dur = tc.endTime - tc.startTime;
-                            const nt = Math.max(0, Math.min(numTracks - 1, pendingTimelineOp.initialTrack + trackOff));
-                            const others = prev.filter(o => o.id !== tc.id && o.track === nt);
+                            const ids = Array.isArray(pendingTimelineOp.cutIds) && pendingTimelineOp.cutIds.length ? pendingTimelineOp.cutIds : [pendingTimelineOp.cutId];
+                            if (ids.length <= 1) {
+                                const tc = prev.find(c => c.id === pendingTimelineOp.cutId); if (!tc) return prev;
+                                let ns = Math.max(0, pendingTimelineOp.initialStart + dt), dur = tc.endTime - tc.startTime;
+                                const nt = Math.max(0, Math.min(numTracks - 1, pendingTimelineOp.initialTrack + trackOff));
+                                const others = prev.filter(o => o.id !== tc.id && o.track === nt);
+                                const edges = [0, ...others.flatMap(o => [o.startTime, o.endTime])];
+                                for (const ee of edges) { if (Math.abs((ns - ee) * pps) <= 8) { ns = ee; setSnapLinePos(ns * pps + 60); break; } }
+                                for (const o of others) {
+                                    if (ns < o.endTime && ns + dur > o.startTime) {
+                                        const sideL = o.startTime - dur, sideR = o.endTime;
+                                        ns = Math.abs(ns - sideL) < Math.abs(ns - sideR) ? sideL : sideR;
+                                        setSnapLinePos(null);
+                                    }
+                                }
+                                ns = Math.max(0, ns);
+                                return prev.map(c => c.id === tc.id ? { ...c, startTime: ns, endTime: ns + dur, track: nt } : c);
+                            }
+
+                            const sel = new Set(ids);
+                            const initials = Array.isArray(pendingTimelineOp.initials) && pendingTimelineOp.initials.length ? pendingTimelineOp.initials : ids.map(id => {
+                                const c0 = prev.find(c => c.id === id);
+                                return c0 ? ({ id, startTime: c0.startTime, endTime: c0.endTime, track: c0.track }) : ({ id, startTime: 0, endTime: 0, track: 0 });
+                            });
+                            const baseId = pendingTimelineOp.cutId;
+                            const baseInit = initials.find(it => it.id === baseId) ?? initials[0];
+
+                            let dt2 = dt;
+                            // Clamp so no cut starts before 0.
+                            const minStart = Math.min(...initials.map(it => it.startTime + dt2));
+                            if (minStart < 0) dt2 -= minStart;
+
+                            // Snap based on the base cut in its target track, then apply the same delta to all.
+                            const baseTrack = clamp((baseInit.track | 0) + trackOff, 0, numTracks - 1);
+                            const baseDur = (baseInit.endTime - baseInit.startTime);
+                            const others = prev.filter(o => !sel.has(o.id) && o.track === baseTrack);
                             const edges = [0, ...others.flatMap(o => [o.startTime, o.endTime])];
-                            for (const ee of edges) { if (Math.abs((ns - ee) * pps) <= 8) { ns = ee; setSnapLinePos(ns * pps + 60); break; } }
-                            for (const o of others) {
-                                if (ns < o.endTime && ns + dur > o.startTime) {
-                                    const sideL = o.startTime - dur, sideR = o.endTime;
-                                    ns = Math.abs(ns - sideL) < Math.abs(ns - sideR) ? sideL : sideR;
-                                    setSnapLinePos(null);
+                            const snap = (v) => { for (const ee of edges) { if (Math.abs((v - ee) * pps) <= 8) return ee; } return v; };
+                            const proposedBaseStart = baseInit.startTime + dt2;
+                            const snStart = snap(proposedBaseStart);
+                            const snEnd = snap(proposedBaseStart + baseDur);
+                            const dS = Math.abs((snStart - proposedBaseStart) * pps);
+                            const dE = Math.abs((snEnd - (proposedBaseStart + baseDur)) * pps);
+                            if (dS <= 8 || dE <= 8) {
+                                const useStart = dS <= dE;
+                                const target = useStart ? snStart : (snEnd - baseDur);
+                                dt2 += (target - proposedBaseStart);
+                            }
+                            const minStart2 = Math.min(...initials.map(it => it.startTime + dt2));
+                            if (minStart2 < 0) dt2 -= minStart2;
+
+                            const nextById = new Map();
+                            for (const it of initials) {
+                                const nt = clamp((it.track | 0) + trackOff, 0, numTracks - 1);
+                                nextById.set(it.id, { startTime: it.startTime + dt2, endTime: it.endTime + dt2, track: nt });
+                            }
+
+                            // Prevent overlaps with non-selected cuts in each destination track.
+                            for (const [id, nx] of nextById.entries()) {
+                                const dur = nx.endTime - nx.startTime;
+                                if (dur < 0.05) return prev;
+                                const colliders = prev.filter(o => !sel.has(o.id) && o.track === nx.track);
+                                for (const o of colliders) {
+                                    if (nx.startTime < o.endTime && nx.endTime > o.startTime) return prev;
                                 }
                             }
-                            ns = Math.max(0, ns);
-                            return prev.map(c => c.id === tc.id ? { ...c, startTime: ns, endTime: ns + dur, track: nt } : c);
+
+                            setSnapLinePos((baseInit.startTime + dt2) * pps + 60);
+                            return prev.map(c => {
+                                const nx = nextById.get(c.id);
+                                return nx ? ({ ...c, startTime: Math.max(0, nx.startTime), endTime: Math.max(0.05, nx.endTime), track: nx.track }) : c;
+                            });
                         });
                     }
                     setPendingTimelineOp(null);
-                    setDraggingCutData({ cutId: pendingTimelineOp.cutId, startX: e.clientX, startY: e.clientY, initialStart: pendingTimelineOp.initialStart, initialTrack: pendingTimelineOp.initialTrack });
+                    setDraggingCutData({
+                        cutId: pendingTimelineOp.cutId,
+                        cutIds: Array.isArray(pendingTimelineOp.cutIds) && pendingTimelineOp.cutIds.length ? pendingTimelineOp.cutIds : [pendingTimelineOp.cutId],
+                        initials: Array.isArray(pendingTimelineOp.initials) ? pendingTimelineOp.initials : null,
+                        startX: e.clientX,
+                        startY: e.clientY,
+                        initialStart: pendingTimelineOp.initialStart,
+                        initialTrack: pendingTimelineOp.initialTrack,
+                    });
                     return;
                 }
             }
@@ -1011,28 +1102,80 @@ export default function App() {
                     setAudioData(prev => { if (!prev) return prev; const ns = Math.max(0, draggingCutData.initialStart + dt); return { ...prev, startTime: ns, endTime: ns + (prev.endTime - prev.startTime) }; }); return;
                 }
                 setCuts(prev => {
-                    const tc = prev.find(c => c.id === draggingCutData.cutId); if (!tc) return prev;
-                    let ns = Math.max(0, draggingCutData.initialStart + dt), dur = tc.endTime - tc.startTime;
-                    const nt = Math.max(0, Math.min(numTracks - 1, draggingCutData.initialTrack + trackOff));
-                    const others = prev.filter(o => o.id !== tc.id && o.track === nt);
+                    const ids = Array.isArray(draggingCutData.cutIds) && draggingCutData.cutIds.length ? draggingCutData.cutIds : [draggingCutData.cutId];
+                    if (ids.length <= 1) {
+                        const tc = prev.find(c => c.id === draggingCutData.cutId); if (!tc) return prev;
+                        let ns = Math.max(0, draggingCutData.initialStart + dt), dur = tc.endTime - tc.startTime;
+                        const nt = Math.max(0, Math.min(numTracks - 1, draggingCutData.initialTrack + trackOff));
+                        const others = prev.filter(o => o.id !== tc.id && o.track === nt);
+                        const edges = [0, ...others.flatMap(o => [o.startTime, o.endTime])];
+                        const snap = (v) => { for (const e of edges) { if (Math.abs((v - e) * pps) <= 8) return e; } return v; };
+                        const snStart = snap(ns);
+                        const snEnd = snap(ns + dur);
+                        const dS = Math.abs((snStart - ns) * pps), dE = Math.abs((snEnd - (ns + dur)) * pps);
+                        let snapped = false;
+                        if (dS <= 8 && dS <= dE) { ns = snStart; setSnapLinePos(ns * pps + 60); snapped = true; }
+                        else if (dE <= 8) { ns = snEnd - dur; setSnapLinePos((ns + dur) * pps + 60); snapped = true; }
+                        if (!snapped) setSnapLinePos(null);
+                        for (const o of others) {
+                            if (ns < o.endTime && ns + dur > o.startTime) {
+                                const sideL = o.startTime - dur, sideR = o.endTime;
+                                ns = Math.abs(ns - sideL) < Math.abs(ns - sideR) ? sideL : sideR;
+                                setSnapLinePos(null);
+                            }
+                        }
+                        ns = Math.max(0, ns);
+                        return prev.map(c => c.id === tc.id ? { ...c, startTime: ns, endTime: ns + dur, track: nt } : c);
+                    }
+
+                    const sel = new Set(ids);
+                    const initials = Array.isArray(draggingCutData.initials) && draggingCutData.initials.length ? draggingCutData.initials : ids.map(id => {
+                        const c0 = prev.find(c => c.id === id);
+                        return c0 ? ({ id, startTime: c0.startTime, endTime: c0.endTime, track: c0.track }) : ({ id, startTime: 0, endTime: 0, track: 0 });
+                    });
+                    const baseId = draggingCutData.cutId;
+                    const baseInit = initials.find(it => it.id === baseId) ?? initials[0];
+
+                    let dt2 = dt;
+                    const minStart = Math.min(...initials.map(it => it.startTime + dt2));
+                    if (minStart < 0) dt2 -= minStart;
+
+                    const baseTrack = clamp((baseInit.track | 0) + trackOff, 0, numTracks - 1);
+                    const baseDur = (baseInit.endTime - baseInit.startTime);
+                    const others = prev.filter(o => !sel.has(o.id) && o.track === baseTrack);
                     const edges = [0, ...others.flatMap(o => [o.startTime, o.endTime])];
-                    const snap = (v) => { for (const e of edges) { if (Math.abs((v - e) * pps) <= 8) return e; } return v; };
-                    const snStart = snap(ns);
-                    const snEnd = snap(ns + dur);
-                    const dS = Math.abs((snStart - ns) * pps), dE = Math.abs((snEnd - (ns + dur)) * pps);
-                    let snapped = false;
-                    if (dS <= 8 && dS <= dE) { ns = snStart; setSnapLinePos(ns * pps + 60); snapped = true; }
-                    else if (dE <= 8) { ns = snEnd - dur; setSnapLinePos((ns + dur) * pps + 60); snapped = true; }
-                    if (!snapped) setSnapLinePos(null);
-                    for (const o of others) {
-                        if (ns < o.endTime && ns + dur > o.startTime) {
-                            const sideL = o.startTime - dur, sideR = o.endTime;
-                            ns = Math.abs(ns - sideL) < Math.abs(ns - sideR) ? sideL : sideR;
-                            setSnapLinePos(null);
+                    const snap = (v) => { for (const ee of edges) { if (Math.abs((v - ee) * pps) <= 8) return ee; } return v; };
+                    const proposedBaseStart = baseInit.startTime + dt2;
+                    const snStart = snap(proposedBaseStart);
+                    const snEnd = snap(proposedBaseStart + baseDur);
+                    const dS = Math.abs((snStart - proposedBaseStart) * pps);
+                    const dE = Math.abs((snEnd - (proposedBaseStart + baseDur)) * pps);
+                    if (dS <= 8 || dE <= 8) {
+                        const useStart = dS <= dE;
+                        const target = useStart ? snStart : (snEnd - baseDur);
+                        dt2 += (target - proposedBaseStart);
+                    }
+                    const minStart2 = Math.min(...initials.map(it => it.startTime + dt2));
+                    if (minStart2 < 0) dt2 -= minStart2;
+
+                    const nextById = new Map();
+                    for (const it of initials) {
+                        const nt = clamp((it.track | 0) + trackOff, 0, numTracks - 1);
+                        nextById.set(it.id, { startTime: it.startTime + dt2, endTime: it.endTime + dt2, track: nt });
+                    }
+
+                    for (const [id, nx] of nextById.entries()) {
+                        const colliders = prev.filter(o => !sel.has(o.id) && o.track === nx.track);
+                        for (const o of colliders) {
+                            if (nx.startTime < o.endTime && nx.endTime > o.startTime) return prev;
                         }
                     }
-                    ns = Math.max(0, ns);
-                    return prev.map(c => c.id === tc.id ? { ...c, startTime: ns, endTime: ns + dur, track: nt } : c);
+
+                    setSnapLinePos((baseInit.startTime + dt2) * pps + 60);
+                    return prev.map(c => {
+                        const nx = nextById.get(c.id);
+                        return nx ? ({ ...c, startTime: Math.max(0, nx.startTime), endTime: Math.max(0.05, nx.endTime), track: nx.track }) : c;
+                    });
                 });
             }
         };
@@ -1273,7 +1416,9 @@ export default function App() {
             animOut: { type: 'none', dur: DEFAULT_CUT_ANIM_DUR },
             textCollapsed: true,
         };
-        setCuts(p => [...p, nc]); setCurrentCutId(nc.id); setCurrentTime(ns);
+        setCuts(p => [...p, nc]);
+        setSingleCutSelection(nc.id);
+        setCurrentTime(ns);
     };
     const handleDeleteCut = (id) => { const nc = cuts.filter(c => c.id !== id); setCuts(nc); if (currentCutId === id) setCurrentCutId(nc.length > 0 ? nc[0].id : null); };
     const updCutTime = (id, field, val) => { let v = Math.max(0, parseFloat(val) || 0); if (field === 'track') { v = Math.round(v); if (v >= numTracks) setNumTracks(v + 1); } setCuts(p => p.map(c => c.id === id ? { ...c, [field]: v } : c)); };
@@ -1290,23 +1435,84 @@ export default function App() {
     const toggleCutSettings = (id) => setExpandedCuts(p => { const s = new Set(p); s.has(id) ? s.delete(id) : s.add(id); return s; });
     const handleAddTrack = () => setNumTracks(p => p + 1);
     const handleDeleteTrack = (i) => { if (numTracks <= 1) return; if (!window.confirm(`Track ${i} 삭제?`)) return; setCuts(p => p.filter(c => c.track !== i).map(c => c.track > i ? { ...c, track: c.track - 1 } : c)); setNumTracks(p => p - 1); };
-    const handleCopyCut = (id) => {
-        const cut = cuts.find(c => c.id === id);
-        if (!cut) return;
-        setCopiedCut(JSON.parse(JSON.stringify(cut)));
+
+    const setSingleCutSelection = (id) => {
+        setSelectedCutIds(new Set([id]));
+        setCurrentCutId(id);
     };
+
+    const toggleCutSelection = (id) => {
+        setSelectedCutIds(prev => {
+            const s = new Set(prev);
+            if (s.has(id)) s.delete(id); else s.add(id);
+            if (s.size === 0) s.add(id);
+            return s;
+        });
+        setCurrentCutId(id);
+    };
+
+    const handleDeleteSelectedCuts = () => {
+        const ids = Array.from(selectedCutIdsRef.current);
+        if (ids.length === 0) return;
+        if (!window.confirm(`${ids.length}개 Cut 삭제?`)) return;
+        setCuts(prev => prev.filter(c => !selectedCutIdsRef.current.has(c.id)));
+        setCopiedCuts(prev => prev); // keep clipboard
+    };
+
+    const normalizeCutForInsert = (cut) => {
+        const c = JSON.parse(JSON.stringify(cut));
+        c.layers = safeArray(c.layers).map(l => ({ ...l, type: l.type ?? 'layer', parentId: l.parentId ?? null, redoStrokes: [] }));
+        c.texts = safeArray(c.texts);
+        c.animIn = c.animIn ? ({ type: c.animIn.type ?? 'none', dur: typeof c.animIn.dur === 'number' ? c.animIn.dur : DEFAULT_CUT_ANIM_DUR }) : ({ type: 'none', dur: DEFAULT_CUT_ANIM_DUR });
+        c.animOut = c.animOut ? ({ type: c.animOut.type ?? 'none', dur: typeof c.animOut.dur === 'number' ? c.animOut.dur : DEFAULT_CUT_ANIM_DUR }) : ({ type: 'none', dur: DEFAULT_CUT_ANIM_DUR });
+        c.textCollapsed = c.textCollapsed ?? true;
+        const paintLayers = c.layers.filter(l => l.type !== 'folder');
+        const firstPaintId = paintLayers[0]?.id ?? 1;
+        const activeOk = paintLayers.some(l => l.id === c.activeLayerId);
+        c.activeLayerId = activeOk ? c.activeLayerId : firstPaintId;
+        return c;
+    };
+
+    const handleCopyCuts = (ids) => {
+        const uniq = Array.from(new Set(ids)).filter(Boolean);
+        const list = uniq.map(id => cuts.find(c => c.id === id)).filter(Boolean);
+        if (!list.length) return;
+        const cloned = list.map(c => normalizeCutForInsert(c));
+        const minStart = Math.min(...list.map(c => c.startTime));
+        setCopiedCuts({ cuts: cloned, minStart });
+    };
+
+    const handleCopyCut = (id) => {
+        const curSel = selectedCutIdsRef.current;
+        if (curSel.has(id) && curSel.size > 1) handleCopyCuts(Array.from(curSel));
+        else handleCopyCuts([id]);
+    };
+
     const handlePasteCut = () => {
-        if (!copiedCut) return;
+        if (!copiedCuts?.cuts?.length) return;
         const src = cuts.find(c => c.id === currentCutId);
-        const ns = src ? src.endTime : (cuts.length ? Math.max(...cuts.map(c => c.endTime)) : 0);
-        const dur = copiedCut.endTime - copiedCut.startTime;
-        const trk = src ? src.track : copiedCut.track;
-        const newId = Date.now();
-        const deepCopyLayers = copiedCut.layers.map((l, i) => ({ ...JSON.parse(JSON.stringify(l)), id: i + 1 }));
-        const nc = { ...copiedCut, id: newId, name: `${copiedCut.name} (copy)`, startTime: ns, endTime: ns + dur, track: trk, layers: deepCopyLayers, activeLayerId: deepCopyLayers[0]?.id ?? 1, texts: safeArray(copiedCut.texts) };
-        setCuts(p => [...p, nc]);
-        setCurrentCutId(newId);
-        setCurrentTime(ns);
+        const anchor = src ? src.endTime : (cuts.length ? Math.max(...cuts.map(c => c.endTime)) : 0);
+        const baseStart = copiedCuts.minStart ?? Math.min(...copiedCuts.cuts.map(c => c.startTime));
+        const stamp = Date.now();
+        const toInsert = copiedCuts.cuts.map((oc, i) => {
+            const dur = (oc.endTime - oc.startTime);
+            const rel = oc.startTime - baseStart;
+            const id = stamp + i;
+            const nc = normalizeCutForInsert(oc);
+            nc.id = id;
+            nc.name = `${oc.name} (copy)`;
+            nc.startTime = anchor + rel;
+            nc.endTime = anchor + rel + dur;
+            // Track info included as-is. Expand tracks if needed.
+            nc.track = Math.max(0, oc.track | 0);
+            return nc;
+        });
+        const maxTrack = Math.max(numTracks - 1, ...toInsert.map(c => c.track));
+        if (maxTrack >= numTracks) setNumTracks(maxTrack + 1);
+        setCuts(p => [...p, ...toInsert]);
+        const newActive = toInsert[0]?.id;
+        if (newActive != null) setSingleCutSelection(newActive);
+        setCurrentTime(anchor);
     };
 
     const nextLayerId = (c) => Math.max(...c.layers.map(l => l.id), 0) + 1;
@@ -2917,11 +3123,49 @@ export default function App() {
                             <span className="panel-title">CUT / LAYER</span>
                             <button className="icon-btn" onClick={() => setShowRight(false)}><ChevronRight size={14} /></button>
                         </div>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 8 }}>
+                            <span style={{ fontSize: 11, color: '#777' }}>Selected: {selectedCutIds.size}</span>
+                            <button className="small-btn" onClick={() => handleCopyCuts(Array.from(selectedCutIds))} disabled={selectedCutIds.size === 0} title="선택한 컷 복사"><Copy size={11} /> Copy</button>
+                            <button className="small-btn" onClick={handleDeleteSelectedCuts} disabled={selectedCutIds.size === 0} title="선택한 컷 삭제"><Trash2 size={11} /> Delete</button>
+                        </div>
                         <div className="cut-list">
                             {cuts.map(cut => (
-                                <div key={cut.id} className={`cut-item${currentCutId === cut.id ? ' cut-active' : ''}`} onClick={() => setCurrentCutId(cut.id)}>
+                                <div
+                                    key={cut.id}
+                                    className={`cut-item${currentCutId === cut.id ? ' cut-active' : ''}${selectedCutIds.has(cut.id) ? ' cut-selected' : ''}`}
+                                    onClick={(e) => {
+                                        // Desktop: ctrl/meta toggle, shift range. Tablet: use checkbox button.
+                                        if (e.shiftKey) {
+                                            const arr = cuts.map(c => c.id);
+                                            const a = arr.indexOf(currentCutId);
+                                            const b = arr.indexOf(cut.id);
+                                            if (a !== -1 && b !== -1) {
+                                                const lo = Math.min(a, b), hi = Math.max(a, b);
+                                                setSelectedCutIds(new Set(arr.slice(lo, hi + 1)));
+                                                setCurrentCutId(cut.id);
+                                                return;
+                                            }
+                                        }
+                                        if (e.ctrlKey || e.metaKey) { toggleCutSelection(cut.id); return; }
+                                        setSingleCutSelection(cut.id);
+                                    }}
+                                >
                                     <div className="cut-header">
-                                        <span className="cut-name">{cut.name}</span>
+                                        <button
+                                            className={`icon-btn cut-select-btn${selectedCutIds.has(cut.id) ? ' active' : ''}`}
+                                            onClick={e => { e.stopPropagation(); toggleCutSelection(cut.id); }}
+                                            title="선택/해제"
+                                        >
+                                            {selectedCutIds.has(cut.id) ? '✓' : '□'}
+                                        </button>
+                                        <input
+                                            className="cut-name-input"
+                                            value={cut.name}
+                                            onClick={e => e.stopPropagation()}
+                                            onChange={e => setCuts(p => p.map(c => c.id === cut.id ? ({ ...c, name: e.target.value }) : c))}
+                                            spellCheck={false}
+                                            title="컷 이름"
+                                        />
                                         <div style={{ display: 'flex', gap: 4 }}>
                                             <button className="icon-btn" onClick={e => { e.stopPropagation(); handleCopyCut(cut.id); }} title="컷 복사 (Ctrl+C)"><Copy size={12} /></button>
                                             <button className="icon-btn" onClick={e => { e.stopPropagation(); toggleCutSettings(cut.id); }} title="설정"><Settings size={12} /></button>
@@ -3031,7 +3275,15 @@ export default function App() {
                         </div>
                         <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
                             <button className="button" style={{ flex: 1 }} onClick={handleAddCut}><Plus size={14} /> Add Cut</button>
-                            <button className="button" style={{ flex: 1, opacity: copiedCut ? 1 : 0.4 }} onClick={handlePasteCut} disabled={!copiedCut} title="컷 붙여넣기 (Ctrl+V)"><ClipboardPaste size={14} /> Paste</button>
+                            <button
+                                className="button"
+                                style={{ flex: 1, opacity: (copiedCuts?.cuts?.length ? 1 : 0.4) }}
+                                onClick={handlePasteCut}
+                                disabled={!copiedCuts?.cuts?.length}
+                                title="컷 붙여넣기 (Ctrl+V)"
+                            >
+                                <ClipboardPaste size={14} /> Paste{copiedCuts?.cuts?.length ? ` (${copiedCuts.cuts.length})` : ''}
+                            </button>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
                             <span style={{ fontSize: 11, color: '#888', fontWeight: 800, letterSpacing: 0.2 }}>기본 길이</span>
@@ -3122,15 +3374,22 @@ export default function App() {
                                                 <div key={cut.id}
                                                     className={`cut-block${currentCutId === cut.id ? ' cut-block-active' : ''}`}
                                                     style={{ left: `${cut.startTime * pps + 60}px`, width: `${(cut.endTime - cut.startTime) * pps}px`, cursor: draggingCutData?.cutId === cut.id ? 'grabbing' : 'grab' }}
-                                                    onClick={e => { if (timelineInputBlocked()) { e.preventDefault(); e.stopPropagation(); return; } e.stopPropagation(); setCurrentCutId(cut.id); }}
+                                                    onClick={e => { if (timelineInputBlocked()) { e.preventDefault(); e.stopPropagation(); return; } e.stopPropagation(); setSingleCutSelection(cut.id); }}
                                                     onPointerDown={e => {
                                                         if (timelineInputBlocked()) { e.preventDefault(); e.stopPropagation(); return; }
                                                         // Prevent mobile tap highlight / click-through focus behavior.
                                                         e.preventDefault();
                                                         e.stopPropagation();
+                                                        const curSel = selectedCutIdsRef.current;
+                                                        const groupIds = (curSel && curSel.has(cut.id)) ? Array.from(curSel) : [cut.id];
+                                                        if (!curSel || !curSel.has(cut.id)) setSelectedCutIds(new Set([cut.id]));
                                                         setCurrentCutId(cut.id);
                                                         e.currentTarget.setPointerCapture(e.pointerId);
-                                                        setPendingTimelineOp({ kind: 'drag', cutId: cut.id, startX: e.clientX, startY: e.clientY, initialStart: cut.startTime, initialTrack: cut.track, pointerType: e.pointerType, t0: performance.now() });
+                                                        const initials = groupIds.map(id => {
+                                                            const c0 = cuts.find(cc => cc.id === id);
+                                                            return c0 ? ({ id, startTime: c0.startTime, endTime: c0.endTime, track: c0.track }) : ({ id, startTime: 0, endTime: 0, track: 0 });
+                                                        });
+                                                        setPendingTimelineOp({ kind: 'drag', cutId: cut.id, cutIds: groupIds, initials, startX: e.clientX, startY: e.clientY, initialStart: cut.startTime, initialTrack: cut.track, pointerType: e.pointerType, t0: performance.now() });
                                                     }}>
                                                 <div className="rh rh-left" onPointerDown={e => { if (timelineInputBlocked()) { e.preventDefault(); e.stopPropagation(); return; } e.preventDefault(); e.stopPropagation(); e.target.setPointerCapture(e.pointerId); setPendingTimelineOp({ kind: 'resize', cutId: cut.id, edge: 'left', startX: e.clientX, startY: e.clientY, pointerType: e.pointerType, t0: performance.now() }); }} />
                                                     {cut.name}
