@@ -74,12 +74,37 @@ Notes:
 
 ## Technical Architecture
 
+### Tech Stack (Used Technologies)
+Badges are just for quick scanning. This project is currently **offline/local** (no server, no REST API).
+
+![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=000)
+![Vite](https://img.shields.io/badge/Vite-6-646CFF?logo=vite&logoColor=fff)
+![JavaScript](https://img.shields.io/badge/JavaScript-ESM-F7DF1E?logo=javascript&logoColor=000)
+![Canvas](https://img.shields.io/badge/HTML5%20Canvas-2D-E34F26?logo=html5&logoColor=fff)
+![Capacitor](https://img.shields.io/badge/Capacitor-Android-119EFF?logo=capacitor&logoColor=fff)
+![Android](https://img.shields.io/badge/Android-Gradle-3DDC84?logo=android&logoColor=000)
+
+Core libraries:
+- React (UI rendering/state)
+- lucide-react (icons)
+- Capacitor (Android wrapper)
+
+Platform APIs used:
+- HTML Canvas 2D (`<canvas>` drawing)
+- Pointer Events (`pointerType` to distinguish pen vs finger)
+- File System Access API when available (`showOpenFilePicker` / `showSaveFilePicker`), with fallback to download/upload
+
+Not used (by design, for now):
+- Backend server
+- REST API / WebSocket
+- Cloud sync
+
 ### High Level
 - **UI**: React components (mostly in `src/App.jsx`) render toolbars, layer list, timeline, and canvas overlays.
 - **Rendering**: HTML Canvas 2D is the core drawing surface. Each cut has multiple paint layers; text objects are rendered separately.
 - **Data Model**:
   - `cuts[]`: timeline segments with `startTime/endTime/track`
-  - `cut.layers[]`: paint layers and folders, with parentId for nesting and `visible` flag
+  - `cut.layers[]`: paint layers and folders, with `parentId` for nesting and `visible` flag
   - `cut.texts[]`: text objects (position, font, size, visibility, in/out effects)
 - **Persistence**: `.emv` is JSON. Load path includes recovery for BOM/control chars and common malformed inputs.
 
@@ -110,4 +135,3 @@ Notes:
 - `src/App.css`: app styles
 - `android/`: Capacitor Android project
 - `capacitor.config.json`: Capacitor settings
-
