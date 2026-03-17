@@ -859,8 +859,10 @@ export default function App() {
         setCuts(JSON.parse(JSON.stringify(historyRef.current[historyIndexRef.current])));
     };
 
-    // maxTime is used for timeline layout, while playEndTime is used for playback stop/loop.
-    const playEndTime = Math.max(0.05, audioData?.endTime ?? audioDuration, ...cuts.map(c => c.endTime));
+    // maxTime is used for timeline layout, while playStartTime/playEndTime are used for playback stop/loop.
+    // Playback is defined by the "content window": from the first cut start to the last cut end ("nodes exist").
+    const playStartTime = Math.max(0, Math.min(...cuts.map(c => c.startTime)));
+    const playEndTime = Math.max(playStartTime + 0.05, Math.max(...cuts.map(c => c.endTime)));
     const maxTime = Math.max(60, playEndTime) + 60;
 
     useEffect(() => {
@@ -919,15 +921,23 @@ export default function App() {
             const delta = (now - last) / 1000; last = now;
             setCurrentTime(prev => {
                 let next = prev + delta;
+                const startT = playStartTime;
                 const endT = playEndTime;
+                const dur = Math.max(0.001, endT - startT);
 
-                if (!isExporting.current && loopPlayback && endT > 0.05 && next >= endT) {
-                    // Wrap time; keep any small overshoot so the loop feels continuous.
-                    next = (next - endT);
-                    if (next < 0) next = 0;
-                    // Force re-sync audio on loop boundary.
+                if (!isExporting.current && loopPlayback && next >= endT) {
+                    // Loop within the content window [startT, endT).
+                    const over = next - endT;
+                    next = startT + (over % dur);
+                    if (next < startT) next = startT;
+                    // Force re-sync audio on loop boundary (best-effort).
                     if (audioRef.current && audioUrl) {
-                        try { audioRef.current.currentTime = next; } catch { }
+                        if (audioData) {
+                            const exp = (next - audioData.startTime) + (audioData.offset || 0);
+                            try { audioRef.current.currentTime = Math.max(0, exp); } catch { }
+                        } else {
+                            try { audioRef.current.currentTime = next; } catch { }
+                        }
                     }
                 }
 
@@ -1460,9 +1470,12 @@ export default function App() {
     const handlePlayPause = () => {
         if (!isPlaying) {
             const hasActive = cuts.some(c => currentTime >= c.startTime && currentTime < c.endTime);
+            // If the cursor is on an empty region, start from the first cut (standard editing workflow).
+            // Also if the cursor is past the end, rewind to start.
             if (!hasActive || currentTime >= playEndTime) {
-                const t = cuts.filter(c => c.startTime > currentTime).length ? Math.min(...cuts.filter(c => c.startTime > currentTime).map(c => c.startTime)) : Math.min(...cuts.map(c => c.startTime), 0);
-                setCurrentTime(t); if (audioRef.current) audioRef.current.currentTime = t;
+                const t = playStartTime;
+                setCurrentTime(t);
+                if (audioRef.current) audioRef.current.currentTime = t;
             }
         }
         setIsPlaying(!isPlaying);
