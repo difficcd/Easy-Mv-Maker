@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, Square, Plus, Trash2, Download, Upload, PenLine, Pen, Feather, Eraser, Droplets, Undo, Redo, Layers, Trash, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, FolderPlus, Folder, FolderOpen, Settings, Eye, EyeOff, Copy, ClipboardPaste, GitBranch, Move, Type, Map as MapIcon, RefreshCw, CircleDot, ToggleLeft, ToggleRight, GripVertical } from 'lucide-react';
+import { Play, Pause, Square, Repeat, Plus, Trash2, Download, Upload, PenLine, Pen, Feather, Eraser, Droplets, Undo, Redo, Layers, Trash, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, FolderPlus, Folder, FolderOpen, Settings, Eye, EyeOff, Copy, ClipboardPaste, GitBranch, Move, Type, Map as MapIcon, RefreshCw, CircleDot, ToggleLeft, ToggleRight, GripVertical } from 'lucide-react';
 import './App.css';
 
 const DEFAULT_CUT_DURATION = 1;
@@ -470,6 +470,7 @@ export default function App() {
     const [pendingTimelineOp, setPendingTimelineOp] = useState(null);
     const [currentCutId, setCurrentCutId] = useState(1);
     const [isPlaying, setIsPlaying] = useState(false);
+    const [loopPlayback, setLoopPlayback] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
     const [leftW, setLeftW] = useState(96);
     const [rightW, setRightW] = useState(270);
@@ -800,7 +801,9 @@ export default function App() {
         setCuts(JSON.parse(JSON.stringify(historyRef.current[historyIndexRef.current])));
     };
 
-    const maxTime = Math.max(60, audioData?.endTime ?? audioDuration, ...cuts.map(c => c.endTime)) + 60;
+    // maxTime is used for timeline layout, while playEndTime is used for playback stop/loop.
+    const playEndTime = Math.max(0.05, audioData?.endTime ?? audioDuration, ...cuts.map(c => c.endTime));
+    const maxTime = Math.max(60, playEndTime) + 60;
 
     useEffect(() => {
         const h = (e) => { if (fileMenuRef.current && !fileMenuRef.current.contains(e.target)) setShowFileMenu(false); };
@@ -853,7 +856,19 @@ export default function App() {
         const step = (now) => {
             const delta = (now - last) / 1000; last = now;
             setCurrentTime(prev => {
-                const next = prev + delta;
+                let next = prev + delta;
+                const endT = playEndTime;
+
+                if (!isExporting.current && loopPlayback && endT > 0.05 && next >= endT) {
+                    // Wrap time; keep any small overshoot so the loop feels continuous.
+                    next = (next - endT);
+                    if (next < 0) next = 0;
+                    // Force re-sync audio on loop boundary.
+                    if (audioRef.current && audioUrl) {
+                        try { audioRef.current.currentTime = next; } catch { }
+                    }
+                }
+
                 if (audioRef.current && audioUrl) {
                     if (audioData) {
                         if (next >= audioData.startTime && next < audioData.endTime) {
@@ -867,14 +882,14 @@ export default function App() {
                     if (mediaRecorderRef.current?.state === 'recording') mediaRecorderRef.current.stop();
                     isExporting.current = false; setIsPlaying(false); if (audioRef.current) audioRef.current.pause(); return next;
                 }
-                if (next >= maxTime) { setIsPlaying(false); if (audioRef.current) audioRef.current.pause(); return maxTime; }
+                if (!isExporting.current && !loopPlayback && next >= endT) { setIsPlaying(false); if (audioRef.current) audioRef.current.pause(); return endT; }
                 return next;
             });
             reqRef.current = requestAnimationFrame(step);
         };
         reqRef.current = requestAnimationFrame(step);
         return () => cancelAnimationFrame(reqRef.current);
-    }, [isPlaying, maxTime, audioUrl]);
+    }, [isPlaying, playEndTime, audioUrl, audioData, loopPlayback]);
 
     useEffect(() => {
         if (!isPlaying && audioRef.current && audioUrl && Math.abs(audioRef.current.currentTime - currentTime) > 0.1)
@@ -1383,7 +1398,7 @@ export default function App() {
     const handlePlayPause = () => {
         if (!isPlaying) {
             const hasActive = cuts.some(c => currentTime >= c.startTime && currentTime < c.endTime);
-            if (!hasActive || currentTime >= maxTime) {
+            if (!hasActive || currentTime >= playEndTime) {
                 const t = cuts.filter(c => c.startTime > currentTime).length ? Math.min(...cuts.filter(c => c.startTime > currentTime).map(c => c.startTime)) : Math.min(...cuts.map(c => c.startTime), 0);
                 setCurrentTime(t); if (audioRef.current) audioRef.current.currentTime = t;
             }
@@ -3323,7 +3338,10 @@ export default function App() {
                         <div className="time-display">{fmt(currentTime)}</div>
                         <button className="button button-primary" onClick={handlePlayPause}>{isPlaying ? <Pause size={16} /> : <Play size={16} />}</button>
                         <button className="button" onClick={handleStop}><Square size={16} /></button>
-                        <span style={{ fontSize: 11, color: '#666', marginLeft: 16 }}>Max: {fmt(maxTime)}</span>
+                        <button className={loopPlayback ? 'button button-primary' : 'button'} onClick={() => setLoopPlayback(v => !v)} title="반복 재생">
+                            <Repeat size={16} /> Loop
+                        </button>
+                        <span style={{ fontSize: 11, color: '#666', marginLeft: 16 }}>End: {fmt(playEndTime)}</span>
                     </>}
                 </div>
                 {showBottom && (
