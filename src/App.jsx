@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Play, Pause, Square, Plus, Trash2, Download, Upload, PenLine, Pen, Feather, Eraser, Droplets, Undo, Redo, Layers, Trash, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, FolderPlus, Folder, FolderOpen, Settings, Eye, EyeOff, Copy, CopyPlus, ClipboardPaste, GitBranch, Move, Type, Server, Cloud, CloudDownload, Film, Repeat } from 'lucide-react';
 import './App.css';
-import { saveAutosave, loadAutosave } from './db';
+import { saveAutosave, loadAutosave, saveProject, loadProject, listProjects, deleteProject, autosaveKey } from './db';
 import { CutAnimPanel, LayerAnimPanel } from './AnimPanels';
 import {
     DEFAULT_CUT_DURATION, CANVAS_W, CANVAS_H, FONT_PRESETS,
@@ -37,6 +37,30 @@ function LayerThumbnail({ layer, cutId, layerCanvasCache }) {
         }
     }, [layer, layerCanvasCache[key]]);
     return <canvas ref={ref} width={56} height={31} style={{ width: 42, height: 23, borderRadius: 3, background: '#fff', flexShrink: 0, border: '1px solid #2e2e40' }} />;
+}
+
+function ProjectPicker({ title, items, onOpen, onDelete, onClose }) {
+    return (
+        <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div onClick={e => e.stopPropagation()} style={{ width: 420, maxHeight: '70vh', overflow: 'auto', background: '#1e1e2e', border: '1px solid #333', borderRadius: 8, padding: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <span className="panel-title">{title}</span>
+                    <button className="icon-btn" onClick={onClose}>✕</button>
+                </div>
+                {items.length === 0 && <div style={{ fontSize: 12, color: '#888', padding: '12px 2px' }}>저장된 프로젝트가 없습니다.</div>}
+                {items.map(p => (
+                    <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 6px', borderBottom: '1px solid #2a2a3a' }}>
+                        <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => onOpen(p.id, p.name)}>
+                            <div style={{ fontSize: 13, color: '#ddd', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
+                            <div style={{ fontSize: 10, color: '#777' }}>{p.savedAt ? new Date(p.savedAt).toLocaleString() : ''}</div>
+                        </div>
+                        <button className="button" style={{ height: 28, padding: '0 10px' }} onClick={() => onOpen(p.id, p.name)}>열기</button>
+                        <button className="icon-btn del-btn" onClick={() => onDelete(p.id)}><Trash2 size={13} /></button>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
 }
 
 export default function App() {
@@ -116,6 +140,9 @@ export default function App() {
     const [serverProjects, setServerProjects] = useState(null); // null = picker closed
     const [serverAvailable, setServerAvailable] = useState(false); // is the project API reachable?
     const [serverBusy, setServerBusy] = useState(false);
+    const [localProjects, setLocalProjects] = useState(null); // IndexedDB project picker
+    const localIdRef = useRef(null);
+    const localNameRef = useRef('');
     const serverIdRef = useRef(null);
     const serverNameRef = useRef('');
     const cutDragMovedRef = useRef(false); // distinguishes a click (select) from a real drag (move)
@@ -632,6 +659,33 @@ export default function App() {
             if (serverIdRef.current === id) { serverIdRef.current = null; serverNameRef.current = ''; }
             openServerList();
         } catch (e) { alert('삭제 실패: ' + e.message); }
+    };
+
+    // --- Local (IndexedDB) named projects — works offline / in the deployed build too ---
+    const doLocalSave = async (forceNew = false) => {
+        try {
+            const data = buildData();
+            if (!forceNew && localIdRef.current) { await saveProject(localIdRef.current, data, localNameRef.current || 'Untitled'); alert('로컬에 저장했습니다.'); return; }
+            const name = window.prompt('로컬 저장 이름:', localNameRef.current || 'MV Project');
+            if (!name) return;
+            const id = 'l_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+            await saveProject(id, data, name);
+            localIdRef.current = id; localNameRef.current = name;
+            alert('로컬에 저장했습니다.');
+        } catch (e) { alert('로컬 저장 실패: ' + e.message); }
+    };
+    const openLocalList = async () => {
+        try { setLocalProjects((await listProjects()).filter(p => p.id !== autosaveKey)); }
+        catch (e) { alert('로컬 목록 실패: ' + e.message); }
+    };
+    const doLocalOpen = async (id, name) => {
+        try { const data = await loadProject(id); if (!data) { alert('데이터가 없습니다.'); return; } await restore(data); localIdRef.current = id; localNameRef.current = name || ''; setLocalProjects(null); }
+        catch (e) { alert('로컬 열기 실패: ' + e.message); }
+    };
+    const doLocalDelete = async (id) => {
+        if (!window.confirm('이 로컬 프로젝트를 삭제할까요?')) return;
+        try { await deleteProject(id); if (localIdRef.current === id) { localIdRef.current = null; localNameRef.current = ''; } openLocalList(); }
+        catch (e) { alert('삭제 실패: ' + e.message); }
     };
 
     // Crash recovery: on first load, offer to restore the last autosaved project.
@@ -1809,29 +1863,8 @@ export default function App() {
         <div className="app-container">
             <audio ref={audioRef} style={{ display: 'none' }} />
 
-            {serverProjects !== null && (
-                <div onClick={() => setServerProjects(null)}
-                    style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <div onClick={e => e.stopPropagation()}
-                        style={{ width: 420, maxHeight: '70vh', overflow: 'auto', background: '#1e1e2e', border: '1px solid #333', borderRadius: 8, padding: 16 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                            <span className="panel-title">서버에서 열기</span>
-                            <button className="icon-btn" onClick={() => setServerProjects(null)}>✕</button>
-                        </div>
-                        {serverProjects.length === 0 && <div style={{ fontSize: 12, color: '#888', padding: '12px 2px' }}>저장된 프로젝트가 없습니다.</div>}
-                        {serverProjects.map(p => (
-                            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 6px', borderBottom: '1px solid #2a2a3a' }}>
-                                <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => doServerOpen(p.id, p.name)}>
-                                    <div style={{ fontSize: 13, color: '#ddd', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
-                                    <div style={{ fontSize: 10, color: '#777' }}>{p.savedAt ? new Date(p.savedAt).toLocaleString() : ''}</div>
-                                </div>
-                                <button className="button" style={{ height: 28, padding: '0 10px' }} onClick={() => doServerOpen(p.id, p.name)}>열기</button>
-                                <button className="icon-btn del-btn" onClick={() => doServerDelete(p.id)}><Trash2 size={13} /></button>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
+            {serverProjects !== null && <ProjectPicker title="서버에서 열기" items={serverProjects} onOpen={doServerOpen} onDelete={doServerDelete} onClose={() => setServerProjects(null)} />}
+            {localProjects !== null && <ProjectPicker title="로컬에서 열기" items={localProjects} onOpen={doLocalOpen} onDelete={doLocalDelete} onClose={() => setLocalProjects(null)} />}
 
             <div className="top-bar">
                 <h1 className="title">Easy MV Maker</h1>
@@ -1847,6 +1880,11 @@ export default function App() {
                                 <button className="file-menu-item" onClick={() => { doSave(true); setShowFileMenu(false); }}>다른 이름으로 저장...</button>
                                 <div className="file-menu-sep" />
                                 <button className="file-menu-item" onClick={() => { doOpen(); setShowFileMenu(false); }}>로컬 파일 열기...</button>
+                                <div className="file-menu-sep" />
+                                <div style={{ fontSize: 10, color: '#777', padding: '4px 12px 2px' }}>로컬 (브라우저 저장)</div>
+                                <button className="file-menu-item" onClick={() => { doLocalSave(false); setShowFileMenu(false); }}>로컬에 저장</button>
+                                <button className="file-menu-item" onClick={() => { doLocalSave(true); setShowFileMenu(false); }}>로컬에 새 이름으로 저장...</button>
+                                <button className="file-menu-item" onClick={() => { openLocalList(); setShowFileMenu(false); }}>로컬에서 열기...</button>
                                 {serverAvailable && <>
                                     <div className="file-menu-sep" />
                                     <div style={{ fontSize: 10, color: '#777', padding: '4px 12px 2px' }}>서버 (DB)</div>
