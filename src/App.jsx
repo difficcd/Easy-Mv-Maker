@@ -7,7 +7,7 @@ import {
     DEFAULT_CUT_DURATION, CANVAS_W, CANVAS_H, FONT_PRESETS,
     pointInPolygon, dist, safeArray, hexToRgb, bucketFillTransparentRegion,
     layerKey, imageDataToDataURL, dataURLToImageData, drawStrokesOnCtx,
-    flattenForCanvas, flattenLayersInUiOrder, strokeSig, morphFrames,
+    flattenForCanvas, flattenLayersInUiOrder, strokeSig,
     ANIM_DEFAULT, computeCutAnim, LAYER_ANIM_DEFAULT, computeLayerAnim,
 } from './canvasUtils';
 
@@ -81,8 +81,6 @@ export default function App() {
     const [selectedCutIds, setSelectedCutIds] = useState(new Set());
     const lassoClipRef = useRef(null); // copied lasso pixels: { bitmapId, w, h }
     const [hasLassoClip, setHasLassoClip] = useState(false);
-    const [tweenCount, setTweenCount] = useState(3);
-    const [tweenMode, setTweenMode] = useState('move'); // 'move' = rigid transform (sharp), 'morph' = SDF
     const [showFileMenu, setShowFileMenu] = useState(false);
     const fileHandleRef = useRef(null);
     const [dragLayerInfo, setDragLayerInfo] = useState(null);
@@ -797,84 +795,6 @@ export default function App() {
         });
         setCurrentCutId(newId);
         setCurrentTime(insertAt);
-    };
-
-    // Flatten a cut's visible paint layers + texts to an offscreen canvas (for tweening).
-    const renderCutToCanvas = (cut) => {
-        const cnv = document.createElement('canvas');
-        cnv.width = CANVAS_W; cnv.height = CANVAS_H;
-        const ctx = cnv.getContext('2d');
-        const order = flattenLayersInUiOrder(cut.layers || []).filter(l => l.type === 'layer' && l.visible !== false);
-        for (let i = order.length - 1; i >= 0; i--) drawStrokesOnCtx(ctx, order[i].strokes, false, bitmapStoreRef.current);
-        for (const t of safeArray(cut.texts)) {
-            if (!t || t.visible === false) continue;
-            const fs = Math.max(6, Math.min(220, t.fontSize ?? 32)), lh = Math.round(fs * 1.25);
-            ctx.globalAlpha = t.opacity ?? 1; ctx.fillStyle = t.color ?? '#000'; ctx.textBaseline = 'top';
-            ctx.font = `${fs}px ${t.fontFamily ?? 'sans-serif'}`;
-            String(t.text ?? '').split('\n').forEach((ln, k) => ctx.fillText(ln, t.x ?? 0, (t.y ?? 0) + k * lh));
-            ctx.globalAlpha = 1;
-        }
-        return cnv;
-    };
-
-    const contentStats = (canvas) => {
-        const d = canvas.getContext('2d').getImageData(0, 0, CANVAS_W, CANVAS_H).data;
-        let n = 0, sx = 0, sy = 0, minX = CANVAS_W, minY = CANVAS_H, maxX = 0, maxY = 0;
-        for (let y = 0; y < CANVAS_H; y++) for (let x = 0; x < CANVAS_W; x++) {
-            if (d[(y * CANVAS_W + x) * 4 + 3] > 16) { n++; sx += x; sy += y; if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y; }
-        }
-        if (!n) return { cx: CANVAS_W / 2, cy: CANVAS_H / 2, w: CANVAS_W, h: CANVAS_H, angle: 0 };
-        const cx = sx / n, cy = sy / n;
-        let mxx = 0, myy = 0, mxy = 0;
-        for (let y = 0; y < CANVAS_H; y++) for (let x = 0; x < CANVAS_W; x++) {
-            if (d[(y * CANVAS_W + x) * 4 + 3] > 16) { const ax = x - cx, ay = y - cy; mxx += ax * ax; myy += ay * ay; mxy += ax * ay; }
-        }
-        return { cx, cy, w: maxX - minX + 1, h: maxY - minY + 1, angle: 0.5 * Math.atan2(2 * mxy / n, (mxx - myy) / n) };
-    };
-
-    // Tween: fill the gap to the next cut with N in-betweens.
-    //  'move'  = keep frame A's shape intact and rigidly transform it (translate/scale/rotate)
-    //            toward B's pose — sharp, no distortion; best when the drawing just moves.
-    //  'morph' = SDF blend of the two shapes (use when the outline itself changes).
-    const handleTweenGap = () => {
-        const cut = cuts.find(c => c.id === currentCutId);
-        if (!cut) return;
-        const next = cuts.filter(c => c.track === cut.track && c.startTime >= cut.endTime - 1e-6 && c.id !== cut.id)
-            .sort((a, b) => a.startTime - b.startTime)[0];
-        if (!next) { alert('다음 컷이 없습니다. 같은 트랙에 다음 컷을 두세요.'); return; }
-        const gapStart = cut.endTime, gapEnd = next.startTime;
-        if (gapEnd - gapStart < 0.05) { alert('두 컷 사이에 빈 공간이 없습니다. 간격을 벌리세요.'); return; }
-        const n = Math.max(1, tweenCount), seg = (gapEnd - gapStart) / n;
-        const canA = renderCutToCanvas(cut), canB = renderCutToCanvas(next);
-        const morph = tweenMode === 'morph';
-        const imgA = morph ? canA.getContext('2d').getImageData(0, 0, CANVAS_W, CANVAS_H) : null;
-        const imgB = morph ? canB.getContext('2d').getImageData(0, 0, CANVAS_W, CANVAS_H) : null;
-        const A = morph ? null : contentStats(canA), B = morph ? null : contentStats(canB);
-        const lerp = (p, q, t) => p + (q - p) * t;
-        const lerpAng = (p, q, t) => { let dd = q - p; while (dd > Math.PI / 2) dd -= Math.PI; while (dd < -Math.PI / 2) dd += Math.PI; return p + dd * t; };
-        const made = [];
-        for (let i = 0; i < n; i++) {
-            const a = (i + 1) / (n + 1);
-            let bitmapId;
-            if (morph) {
-                bitmapId = storeBitmap(morphFrames(imgA, imgB, a));
-            } else {
-                const T = { cx: lerp(A.cx, B.cx, a), cy: lerp(A.cy, B.cy, a), w: lerp(A.w, B.w, a), h: lerp(A.h, B.h, a), angle: lerpAng(A.angle, B.angle, a) };
-                const tmp = document.createElement('canvas'); tmp.width = CANVAS_W; tmp.height = CANVAS_H;
-                const tctx = tmp.getContext('2d');
-                tctx.translate(T.cx, T.cy);
-                tctx.rotate(T.angle);
-                tctx.scale(T.w / Math.max(1, A.w), T.h / Math.max(1, A.h));
-                tctx.rotate(-A.angle);
-                tctx.translate(-A.cx, -A.cy);
-                tctx.drawImage(canA, 0, 0);
-                bitmapId = storeBitmap(tctx.getImageData(0, 0, CANVAS_W, CANVAS_H));
-            }
-            const s = gapStart + i * seg;
-            made.push({ id: Date.now() + i, name: `tween ${i + 1}`, startTime: s, endTime: s + seg, track: cut.track, activeLayerId: 1, texts: [],
-                layers: [{ id: 1, name: 'L1', type: 'layer', parentId: null, visible: true, redoStrokes: [], strokes: [{ id: Date.now() + 1000 + i, tool: 'paste', bitmapId, x: 0, y: 0 }] }] });
-        }
-        setCuts(p => [...p, ...made]);
     };
 
     const nextLayerId = (c) => Math.max(...c.layers.map(l => l.id), 0) + 1;
@@ -2055,12 +1975,14 @@ export default function App() {
                             <button className="icon-btn" onClick={() => setShowRight(false)}><ChevronRight size={14} /></button>
                         </div>
                         <div className="cut-list">
-                            {[...cuts].sort((a, b) => (a.track || 0) - (b.track || 0) || a.startTime - b.startTime).map((cut, _i, _arr) => { const collapsed = collapsedCutIds.has(cut.id); const showTrackHeader = _i === 0 || (_arr[_i - 1].track || 0) !== (cut.track || 0); return (
+                            {[...cuts].sort((a, b) => (a.track || 0) - (b.track || 0) || a.startTime - b.startTime).map((cut, _i, _arr) => { const isCur = currentCutId === cut.id; const collapsed = collapsedCutIds.has(cut.id); const layerCount = cut.layers.filter(l => l.type === 'layer').length; const showTrackHeader = _i === 0 || (_arr[_i - 1].track || 0) !== (cut.track || 0); return (
                                 <React.Fragment key={cut.id}>
                                 {showTrackHeader && <div className="track-group-header">Track {cut.track || 0}</div>}
                                 <div className={`cut-item${currentCutId === cut.id ? ' cut-active' : ''}${selectedCutIds.has(cut.id) && selectedCutIds.size > 1 ? ' cut-multi' : ''}`} onClick={e => handleCutClick(e, cut.id)}>
                                     <div className="cut-header">
-                                        <button className="icon-btn" onClick={e => { e.stopPropagation(); toggleCutCollapse(cut.id); }} title={collapsed ? '펼치기' : '접기'}>{collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}</button>
+                                        {isCur
+                                            ? <button className="icon-btn" onClick={e => { e.stopPropagation(); toggleCutCollapse(cut.id); }} title={collapsed ? '펼치기' : '접기'}>{collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}</button>
+                                            : <span style={{ width: 22, flexShrink: 0, fontSize: 9, color: '#666', textAlign: 'center' }}>L{layerCount}</span>}
                                         {renamingCutId === cut.id
                                             ? <input className="time-input" style={{ flex: 1, minWidth: 0 }} autoFocus defaultValue={cut.name}
                                                 onClick={e => e.stopPropagation()}
@@ -2074,7 +1996,7 @@ export default function App() {
                                             <button className="icon-btn del-btn" onClick={e => { e.stopPropagation(); handleDeleteCut(cut.id); }}><Trash2 size={12} /></button>
                                         </div>
                                     </div>
-                                    {!collapsed && (<>
+                                    {isCur && !collapsed && (<>
                                     {expandedCuts.has(cut.id) && (
                                         <div className="cut-settings" onClick={e => e.stopPropagation()}>
                                             <div className="time-row">
@@ -2125,16 +2047,6 @@ export default function App() {
                         <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
                             <button className="button" style={{ flex: 1, minWidth: 0 }} onClick={handleAddCut}><Plus size={14} /> Add Cut</button>
                             <button className="button" style={{ flex: 1, minWidth: 0, opacity: copiedCut ? 1 : 0.4 }} onClick={handlePasteCut} disabled={!copiedCut} title="컷 붙여넣기 (Ctrl+V)"><ClipboardPaste size={14} /> Paste</button>
-                        </div>
-                        <div style={{ display: 'flex', gap: 6, marginTop: 6, alignItems: 'center' }} title="현재 컷과 다음 컷 사이 빈 공간을 중간 프레임으로 채웁니다">
-                            <button className="button" style={{ flex: 1, minWidth: 0, opacity: currentCutId ? 1 : 0.4 }} onClick={handleTweenGap} disabled={!currentCutId}><GitBranch size={14} /> 사이 채우기</button>
-                            <select className="time-input" style={{ width: 64 }} value={tweenMode} onChange={e => setTweenMode(e.target.value)} title="이동: 형태 유지하며 위치/크기/회전 이동 / 모핑: 형태 자체 변형">
-                                <option value="move">이동</option>
-                                <option value="morph">모핑</option>
-                            </select>
-                            <select className="time-input" style={{ width: 56 }} value={tweenCount} onChange={e => setTweenCount(+e.target.value)} title="생성할 중간 프레임 수">
-                                {[1, 2, 3, 4, 5, 6, 8, 10].map(v => <option key={v} value={v}>{v}컷</option>)}
-                            </select>
                         </div>
                     </div>
                 )}
