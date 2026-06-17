@@ -263,7 +263,7 @@ export default function App() {
         historyRef.current = historyRef.current.slice(0, historyIndexRef.current + 1);
         historyRef.current.push(JSON.parse(snapshot));
         historyIndexRef.current = historyRef.current.length - 1;
-        if (historyRef.current.length > 150) { historyRef.current.shift(); historyIndexRef.current--; }
+        if (historyRef.current.length > 80) { historyRef.current.shift(); historyIndexRef.current--; }
     }, [cuts]);
 
     const globalUndo = () => {
@@ -478,7 +478,7 @@ export default function App() {
                 historyRef.current = historyRef.current.slice(0, historyIndexRef.current + 1);
                 historyRef.current.push(JSON.parse(snapshot));
                 historyIndexRef.current = historyRef.current.length - 1;
-                if (historyRef.current.length > 150) { historyRef.current.shift(); historyIndexRef.current--; }
+                if (historyRef.current.length > 80) { historyRef.current.shift(); historyIndexRef.current--; }
                 return prev;
             });
         };
@@ -1725,17 +1725,27 @@ export default function App() {
         } catch (e) { alert('음원 추출 실패: ' + e.message + '\n(서버에 yt-dlp + ffmpeg 설치 필요)'); }
     };
     const handleExport = () => {
-        if (!canvasRef.current) return;
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        if (typeof canvas.captureStream !== 'function' || typeof window.MediaRecorder === 'undefined') {
+            alert('이 환경에서는 내보내기를 지원하지 않습니다.\nPC 브라우저(Chrome 등)에서 실행해 주세요.'); return;
+        }
         const ctMax = Math.max(...cuts.map(c => c.endTime), audioData?.endTime ?? 0);
         if (ctMax <= 0) { alert('내보낼 콘텐츠가 없습니다.'); return; }
+        const candidates = ['video/mp4;codecs=h264', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+        const mimeType = candidates.find(t => { try { return MediaRecorder.isTypeSupported(t); } catch { return false; } }) || '';
+        const ext = mimeType.startsWith('video/mp4') ? 'mp4' : 'webm';
         alert('녹화가 시작됩니다.'); setCurrentTime(0); if (audioRef.current) audioRef.current.currentTime = 0;
-        const stream = canvasRef.current.captureStream(30), tracks = [...stream.getVideoTracks()];
+        const stream = canvas.captureStream(30), tracks = [...stream.getVideoTracks()];
         if (audioRef.current && audioUrl && !audioSourceRef.current) { try { audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)(); audioDestRef.current = audioCtxRef.current.createMediaStreamDestination(); audioSourceRef.current = audioCtxRef.current.createMediaElementSource(audioRef.current); audioSourceRef.current.connect(audioDestRef.current); audioSourceRef.current.connect(audioCtxRef.current.destination); } catch (e) { } }
         if (audioDestRef.current) tracks.push(...audioDestRef.current.stream.getAudioTracks());
-        let mr; try { mr = new MediaRecorder(new MediaStream(tracks), { mimeType: 'video/webm' }); } catch (e) { mr = new MediaRecorder(new MediaStream(tracks)); }
+        let mr;
+        try { mr = new MediaRecorder(new MediaStream(tracks), mimeType ? { mimeType } : undefined); }
+        catch (e) { try { mr = new MediaRecorder(new MediaStream(tracks)); } catch (e2) { alert('녹화를 시작할 수 없습니다: ' + e2.message); return; } }
+        const blobType = mimeType || 'video/webm';
         const chunks = [];
         mr.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
-        mr.onstop = () => { const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob(chunks, { type: 'video/webm' })), download: 'mv_export.webm', style: 'display:none' }); document.body.appendChild(a); a.click(); document.body.removeChild(a); alert('완료!'); isExporting.current = false; };
+        mr.onstop = () => { const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob(chunks, { type: blobType })), download: `mv_export.${ext}`, style: 'display:none' }); document.body.appendChild(a); a.click(); document.body.removeChild(a); alert('완료!'); isExporting.current = false; };
         exportEndRef.current = ctMax; isExporting.current = true; mediaRecorderRef.current = mr; mr.start(); setIsPlaying(true);
     };
 
