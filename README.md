@@ -1,137 +1,58 @@
-# Easy MV Maker
+<h1 align="center">🎬 Easy MV Maker</h1>
 
-Timeline-based MV maker with a built-in drawing canvas optimized for Galaxy Tab (pen vs finger).
+<p align="center">
+  <b>타임라인 기반 프레임 애니메이션 · 그리기 스튜디오</b><br/>
+  <i>Timeline-based frame-animation & drawing studio — built for the Galaxy Tab (pen + finger).</i>
+</p>
 
-This repo contains:
-- A Vite + React web app (single-page app)
-- An Android wrapper via Capacitor for release builds (APK/AAB)
+<p align="center">
+  <code>Vite</code> · <code>React 18</code> · <code>Canvas</code> · <code>Capacitor (Android)</code>
+</p>
 
-## Features
-- Multi-track timeline with cuts (drag, resize, snap)
-- Canvas drawing per-cut with layers and folders (order matters)
-- Lasso selection move/resize with confirm UI (Clip Studio-like behavior)
-- Text objects managed separately from paint layers (move, edit, font selection, in/out effects)
-- Bucket fill that respects line boundaries (fill transparent region)
-- Touch-first controls for Galaxy Tab:
-  - Finger: pan canvas (1 finger), pinch zoom (2 fingers)
-  - Pen: draw/erase/lasso/text interactions
-- Project save/load (`.emv` JSON) with robustness against BOM/control chars
+---
 
-## Quick Start (Web)
-Requirements: Node.js
+## ✨ 기능 · Features
+
+| | 한국어 | English |
+|---|---|---|
+| 🖌 | 도트펜·마커·지우개·채우기·올가미·텍스트 | Dot pen, marker, eraser, bucket fill, lasso, text |
+| ✍️ | S펜만 그림 · 손가락은 이동/줌 (팜 리젝션) | Stylus draws; finger pans/pinch-zooms (palm rejection) |
+| 🎞 | 멀티트랙 타임라인 (드래그·리사이즈·스냅) | Multi-track timeline (drag, resize, snap) |
+| 🗂 | 컷 = 레이어/폴더 · 이름변경 · 접기 · 다중선택 · 트랙 그룹핑 | Cuts with layers/folders, rename, collapse, multi-select, track grouping |
+| 🎬 | 컷 애니메이션: 진입/진출·변형(스퀴즈)·이동·이징·왕복/횟수 | Cut anim: in/out, deform, move, easing, ping-pong/count |
+| 🦿 | 파츠 애니메이션: 올가미 영역을 이동·회전·크기·경로로 | Part anim: lasso a region → move/rotate/scale/path |
+| 🧅 | 어니언 스킨 · 반복 재생 | Onion skin · loop playback |
+| 💾 | 자동저장(IndexedDB) · `.emv` 파일 · 서버 DB | Autosave (IndexedDB), `.emv` files, server DB |
+| 🎥 | WebM 내보내기 (오디오 포함) | WebM export (with audio) |
+| 📱 | PWA + Android(Capacitor) 패키징 | PWA + Android (Capacitor) packaging |
+
+## 🚀 시작 · Quick start
 
 ```bash
 npm install
-npm run dev
+npm run dev        # web(:5173, LAN+QR) + API(:8787)
+npm run build      # production build
 ```
 
-Open the URL printed by Vite. For LAN testing on tablet:
+탭에서 같은 Wi-Fi로 터미널의 **QR을 스캔**하면 바로 열립니다.
+Scan the **QR** printed by `npm run dev` from a tablet on the same Wi-Fi.
+
+## 📱 Android (Capacitor)
+
 ```bash
-npm run dev:host
+npm run android:sync   # build + sync
+npm run android:open   # open Android Studio → run / build APK
 ```
 
-Build:
-```bash
-npm run build
-npm run preview
+## 🗂 구조 · Layout
+
+```
+src/App.jsx        # UI + 상태 (main component)
+src/canvasUtils.js # 순수 헬퍼: 그리기·애니메이션·기하 (pure helpers)
+src/db.js          # IndexedDB 자동저장 (autosave)
+server/index.js    # 프로젝트 저장 API (Express, /api)
+ARCHITECTURE.md    # 코드 맵 (read before editing)
 ```
 
-## Android (Galaxy Tab Release)
-Requirements:
-- Android Studio + Android SDK
-- Java/Gradle that Android Studio installs
-
-One-time setup:
-```bash
-npm install
-npx cap add android
-```
-
-Sync web -> Android project:
-```bash
-npm run android:sync
-```
-
-Open Android Studio:
-```bash
-npm run android:open
-```
-
-Release build (AAB/APK):
-- Android Studio: `Build > Generate Signed Bundle / APK`
-
-Notes:
-- Do not commit `android/**/build/` or `android/.gradle/` (already ignored).
-- If you need device live-reload, you can temporarily configure Capacitor `server.url`, but do not ship with it.
-
-## Usage Notes
-- Cuts: `Add Cut` creates a new cut with the configured default duration (right panel).
-- Save/Load: saves a single `.emv` file containing timeline + layers + text objects + palette.
-- Gestures on tablet:
-  - Finger drag: pan canvas
-  - Pinch: zoom (anchored to the pinch midpoint)
-  - Pen: draw and interact with tools
-
-## Technical Architecture
-
-### Tech Stack (Used Technologies)
-Badges are just for quick scanning. This project is currently **offline/local** (no server, no REST API).
-
-![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=000)
-![Vite](https://img.shields.io/badge/Vite-6-646CFF?logo=vite&logoColor=fff)
-![JavaScript](https://img.shields.io/badge/JavaScript-ESM-F7DF1E?logo=javascript&logoColor=000)
-![Canvas](https://img.shields.io/badge/HTML5%20Canvas-2D-E34F26?logo=html5&logoColor=fff)
-![Capacitor](https://img.shields.io/badge/Capacitor-Android-119EFF?logo=capacitor&logoColor=fff)
-![Android](https://img.shields.io/badge/Android-Gradle-3DDC84?logo=android&logoColor=000)
-
-Core libraries:
-- React (UI rendering/state)
-- lucide-react (icons)
-- Capacitor (Android wrapper)
-
-Platform APIs used:
-- HTML Canvas 2D (`<canvas>` drawing)
-- Pointer Events (`pointerType` to distinguish pen vs finger)
-- File System Access API when available (`showOpenFilePicker` / `showSaveFilePicker`), with fallback to download/upload
-
-Not used (by design, for now):
-- Backend server
-- REST API / WebSocket
-- Cloud sync
-
-### High Level
-- **UI**: React components (mostly in `src/App.jsx`) render toolbars, layer list, timeline, and canvas overlays.
-- **Rendering**: HTML Canvas 2D is the core drawing surface. Each cut has multiple paint layers; text objects are rendered separately.
-- **Data Model**:
-  - `cuts[]`: timeline segments with `startTime/endTime/track`
-  - `cut.layers[]`: paint layers and folders, with `parentId` for nesting and `visible` flag
-  - `cut.texts[]`: text objects (position, font, size, visibility, in/out effects)
-- **Persistence**: `.emv` is JSON. Load path includes recovery for BOM/control chars and common malformed inputs.
-
-### Drawing Pipeline (Paint Layers)
-- Strokes are recorded as an array of sampled points with optional pressure.
-- Tools include pen, marker (multiply-ish feel), calligraphy, eraser, dot pen (stamp).
-- To avoid opacity blotching on pressure strokes, the app can render a uniform-alpha stroke shape to a temporary canvas and composite once.
-
-### Selection (Lasso)
-- Lasso produces a closed polygon; the app fills/normalizes the selection area and creates a draggable/resizeable bounding box.
-- Confirm/Cancel UX is shown; clicking outside the handles commits by default (standard drawing-app behavior).
-
-### Fill (Bucket)
-- Bucket fill targets the connected transparent region under the click (flood fill mask).
-- The resulting bitmap is pasted into the current layer; boundaries come from strokes above (so lines on upper layers can constrain fills on lower layers).
-
-### Input Handling (Galaxy Tab)
-- Uses Pointer Events to distinguish `pointerType`:
-  - `touch`: pan/zoom and UI drag operations with hold thresholds to prevent accidental grabs
-  - `pen`/`mouse`: drawing and precise interactions
-
-### Android Wrapper
-- Capacitor wraps the web build (`dist/`) into an Android project under `android/`.
-- `npm run android:sync` builds web assets and syncs them into the Android project.
-
-## Repo Layout
-- `src/App.jsx`: main app logic (timeline, canvas tools, save/load, touch logic)
-- `src/App.css`: app styles
-- `android/`: Capacitor Android project
-- `capacitor.config.json`: Capacitor settings
+> 펜 = 그리기, 손가락 = 탐색. 애니메이션은 ▶ 재생 시에만 보입니다.<br/>
+> Pen draws, finger navigates. Animations play only while ▶ playing.
