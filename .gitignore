@@ -25,3 +25,6 @@ android/captures/
 *.jks
 *.keystore
 
+
+# Server runtime project storage
+server/data/
