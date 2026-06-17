@@ -1705,11 +1705,24 @@ export default function App() {
         }
     };
     const fmt = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}.${String(Math.floor((s % 1) * 100)).padStart(2, '0')}`;
-    const handleAudioUpload = (e) => {
-        const file = e.target.files[0]; if (!file) return;
-        setAudioFile(file); const url = URL.createObjectURL(file); setAudioUrl(url);
+    const loadAudioUrl = (url, name) => {
+        setAudioFile({ name }); setAudioUrl(url);
         const audio = new Audio(url);
         audio.onloadedmetadata = () => { setAudioDuration(audio.duration); setAudioData({ startTime: 0, endTime: audio.duration, offset: 0 }); if (audioRef.current) audioRef.current.src = url; };
+    };
+    const handleAudioUpload = (e) => {
+        const file = e.target.files[0]; if (!file) return;
+        loadAudioUrl(URL.createObjectURL(file), file.name);
+    };
+    const loadYoutubeAudio = async () => {
+        const url = window.prompt('유튜브(또는 음원) 링크:');
+        if (!url) return;
+        try {
+            const res = await fetch('/api/youtube-audio?url=' + encodeURIComponent(url));
+            if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || ('HTTP ' + res.status)); }
+            const blob = await res.blob();
+            loadAudioUrl(URL.createObjectURL(blob), '유튜브 음원');
+        } catch (e) { alert('음원 추출 실패: ' + e.message + '\n(서버에 yt-dlp + ffmpeg 설치 필요)'); }
     };
     const handleExport = () => {
         if (!canvasRef.current) return;
@@ -1834,6 +1847,7 @@ export default function App() {
                         <Upload size={14} />{audioFile ? audioFile.name : 'Load Audio...'}
                         <input type="file" accept="audio/*" onChange={handleAudioUpload} style={{ display: 'none' }} />
                     </label>
+                    {serverAvailable && <button className="button" onClick={loadYoutubeAudio} title="유튜브 링크에서 음원 추출 (로컬 서버, yt-dlp 필요)" style={{ height: 34 }}>YT 음원</button>}
                 </div>
             </div>
 

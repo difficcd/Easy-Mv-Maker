@@ -4,6 +4,8 @@
 import express from 'express';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
+import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -66,6 +68,32 @@ app.put('/api/projects/:id', async (req, res) => {
 app.delete('/api/projects/:id', async (req, res) => {
     try { await fs.unlink(fileFor(req.params.id)); res.json({ ok: true }); }
     catch { res.status(404).json({ error: 'not found' }); }
+});
+
+// Local-only: extract audio from a URL (YouTube etc) via yt-dlp + ffmpeg. Not for the
+// deployed build. For personal/authorized use; respect source ToS and copyright.
+const audioType = (ext) => ({ '.webm': 'audio/webm', '.m4a': 'audio/mp4', '.mp4': 'audio/mp4', '.mp3': 'audio/mpeg', '.opus': 'audio/ogg', '.ogg': 'audio/ogg' }[ext] || 'application/octet-stream');
+app.get('/api/youtube-audio', async (req, res) => {
+    const url = String(req.query.url || '');
+    if (!/^https?:\/\//.test(url)) { res.status(400).json({ error: 'invalid url' }); return; }
+    const dir = path.join(os.tmpdir(), `yt_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+    await fs.mkdir(dir, { recursive: true });
+    // bestaudio in its native container — no ffmpeg needed; browser plays m4a/webm.
+    const p = spawn('yt-dlp', ['-f', 'bestaudio', '--no-playlist', '-o', path.join(dir, 'audio.%(ext)s'), url]);
+    let err = '';
+    p.stderr.on('data', d => { err += d; });
+    p.on('error', (e) => { fs.rm(dir, { recursive: true, force: true }); res.status(500).json({ error: 'yt-dlp 실행 불가 (설치 필요): ' + e.message }); });
+    p.on('close', async (code) => {
+        try {
+            if (code !== 0) { res.status(500).json({ error: '추출 실패: ' + err.slice(-400) }); return; }
+            const files = await fs.readdir(dir);
+            if (!files.length) { res.status(500).json({ error: '오디오 파일 없음' }); return; }
+            const f = files[0];
+            res.setHeader('Content-Type', audioType(path.extname(f).toLowerCase()));
+            res.send(await fs.readFile(path.join(dir, f)));
+        } catch (e) { res.status(500).json({ error: String(e) }); }
+        finally { fs.rm(dir, { recursive: true, force: true }).catch(() => { }); }
+    });
 });
 
 app.listen(PORT, () => console.log(`[mv-api] project storage listening on http://localhost:${PORT}`));
