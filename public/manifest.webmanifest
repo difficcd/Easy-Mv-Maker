@@ -1,0 +1,19 @@
+{
+  "name": "Easy MV Maker",
+  "short_name": "MV Maker",
+  "description": "Easy MV Maker",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#161620",
+  "theme_color": "#1c1c2a",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
+
