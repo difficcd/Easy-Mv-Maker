@@ -74,6 +74,11 @@ export default function App() {
     const [eraserSize, setEraserSize] = useState(20);
     const [opacity, setOpacity] = useState(1.0);
     const [expandedCuts, setExpandedCuts] = useState(new Set());
+    const [collapsedCutIds, setCollapsedCutIds] = useState(new Set());
+    const [renamingCutId, setRenamingCutId] = useState(null);
+    const [selectedCutIds, setSelectedCutIds] = useState(new Set());
+    const lassoClipRef = useRef(null); // copied lasso pixels: { bitmapId, w, h }
+    const [hasLassoClip, setHasLassoClip] = useState(false);
     const [showFileMenu, setShowFileMenu] = useState(false);
     const fileHandleRef = useRef(null);
     const [dragLayerInfo, setDragLayerInfo] = useState(null);
@@ -213,6 +218,30 @@ export default function App() {
         });
         cancelSelection();
         setAnimLayer({ cutId: sel.cutId, layerId: newId }); // open its anim panel
+    };
+
+    // Lasso copy: clone the selected pixels to a clipboard. Paste: drop them as a paste
+    // stroke on the current active layer (offset slightly so it's visible).
+    const copyLassoSelection = () => {
+        const sel = selection;
+        if (!sel) return;
+        const cache = new Map();
+        const bitmapId = cloneBitmapId(sel.bitmapId, cache);
+        lassoClipRef.current = { bitmapId, w: Math.max(1, Math.round(sel.tw)), h: Math.max(1, Math.round(sel.th)) };
+        setHasLassoClip(true);
+        commitSelectionImpl(sel); // keep the original in place
+    };
+    const pasteLassoSelection = () => {
+        const clip = lassoClipRef.current;
+        const cut = cuts.find(c => c.id === currentCutId);
+        if (!clip || !cut) return;
+        const layerId = cut.activeLayerId;
+        const bmpCache = new Map();
+        const bitmapId = cloneBitmapId(clip.bitmapId, bmpCache); // independent copy per paste
+        const x = Math.round(CANVAS_W / 2 - clip.w / 2), y = Math.round(CANVAS_H / 2 - clip.h / 2);
+        updLayers(currentCutId, c => ({
+            layers: c.layers.map(l => l.id === layerId ? { ...l, strokes: [...l.strokes, { id: Date.now(), tool: 'paste', bitmapId, x, y, w: clip.w, h: clip.h }] } : l)
+        }));
     };
 
     const handleSetTool = (newTool) => {
@@ -624,7 +653,13 @@ export default function App() {
         const nc = { id: Date.now(), name: `Cut ${cuts.length + 1}`, startTime: ns, endTime: ns + DEFAULT_CUT_DURATION, track: trk, layers: [mkLayer(1)], activeLayerId: 1, texts: [] };
         setCuts(p => [...p, nc]); setCurrentCutId(nc.id); setCurrentTime(ns);
     };
-    const handleDeleteCut = (id) => { const nc = cuts.filter(c => c.id !== id); setCuts(nc); if (currentCutId === id) setCurrentCutId(nc.length > 0 ? nc[0].id : null); };
+    const handleDeleteCut = (id) => {
+        const ids = (selectedCutIds.size > 1 && selectedCutIds.has(id)) ? new Set(selectedCutIds) : new Set([id]);
+        const nc = cuts.filter(c => !ids.has(c.id));
+        setCuts(nc);
+        if (ids.has(currentCutId)) setCurrentCutId(nc.length > 0 ? nc[0].id : null);
+        setSelectedCutIds(new Set());
+    };
     // Clear all drawing + text in the current cut (every layer's strokes), keeping the layers.
     const handleClearCut = () => {
         if (!currentCutId) return;
@@ -637,14 +672,32 @@ export default function App() {
     };
     const updCutTime = (id, field, val) => { let v = Math.max(0, parseFloat(val) || 0); if (field === 'track') { v = Math.round(v); if (v >= numTracks) setNumTracks(v + 1); } setCuts(p => p.map(c => c.id === id ? { ...c, [field]: v } : c)); };
     const toggleCutSettings = (id) => setExpandedCuts(p => { const s = new Set(p); s.has(id) ? s.delete(id) : s.add(id); return s; });
+    const toggleCutCollapse = (id) => setCollapsedCutIds(p => { const s = new Set(p); s.has(id) ? s.delete(id) : s.add(id); return s; });
+    const renameCut = (id, name) => setCuts(p => p.map(c => c.id === id ? { ...c, name } : c));
     const updCutAnim = (id, patch) => setCuts(p => p.map(c => c.id === id ? { ...c, anim: { ...ANIM_DEFAULT, ...c.anim, ...patch } } : c));
     const updLayerAnim = (cutId, layerId, patch) => updLayers(cutId, c => ({ layers: c.layers.map(l => l.id === layerId ? { ...l, anim: { ...LAYER_ANIM_DEFAULT, ...l.anim, ...patch } } : l) }));
     const handleAddTrack = () => setNumTracks(p => p + 1);
     const handleDeleteTrack = (i) => { if (numTracks <= 1) return; if (!window.confirm(`Track ${i} 삭제?`)) return; setCuts(p => p.filter(c => c.track !== i).map(c => c.track > i ? { ...c, track: c.track - 1 } : c)); setNumTracks(p => p - 1); };
+    // Click a cut in the list: plain = select one, Ctrl/Cmd = toggle, Shift = range (timeline order).
+    const handleCutClick = (e, id) => {
+        if (e.ctrlKey || e.metaKey) {
+            setSelectedCutIds(p => { const s = new Set(p); s.has(id) ? s.delete(id) : s.add(id); return s; });
+        } else if (e.shiftKey && currentCutId) {
+            const ordered = [...cuts].sort((a, b) => a.track - b.track || a.startTime - b.startTime);
+            const i1 = ordered.findIndex(c => c.id === currentCutId), i2 = ordered.findIndex(c => c.id === id);
+            if (i1 >= 0 && i2 >= 0) { const lo = Math.min(i1, i2), hi = Math.max(i1, i2); setSelectedCutIds(new Set(ordered.slice(lo, hi + 1).map(c => c.id))); }
+        } else {
+            setSelectedCutIds(new Set([id]));
+        }
+        setCurrentCutId(id);
+    };
     const handleCopyCut = (id) => {
-        const cut = cuts.find(c => c.id === id);
-        if (!cut) return;
-        setCopiedCut(JSON.parse(JSON.stringify(cut)));
+        // Multi-copy when several cuts are selected, else just this one.
+        const ids = (selectedCutIds.size > 1 && selectedCutIds.has(id)) ? [...selectedCutIds] : [id];
+        const arr = ids.map(i => cuts.find(c => c.id === i)).filter(Boolean)
+            .sort((a, b) => a.track - b.track || a.startTime - b.startTime)
+            .map(c => JSON.parse(JSON.stringify(c)));
+        if (arr.length) setCopiedCut(arr);
     };
     // Deep-clone a cut's contents: remap layer ids to 1..N (rewriting parentId so
     // folder hierarchy survives), clone referenced bitmaps to fresh ids, copy texts.
@@ -669,16 +722,23 @@ export default function App() {
     };
     const handlePasteCut = () => {
         if (!copiedCut) return;
+        const arr = Array.isArray(copiedCut) ? copiedCut : [copiedCut];
+        if (!arr.length) return;
         const src = cuts.find(c => c.id === currentCutId);
-        const ns = src ? src.endTime : (cuts.length ? Math.max(...cuts.map(c => c.endTime)) : 0);
-        const dur = copiedCut.endTime - copiedCut.startTime;
-        const trk = src ? src.track : copiedCut.track;
-        const newId = Date.now();
-        const { layers, activeLayerId, texts } = cloneCutContents(copiedCut);
-        const nc = { ...copiedCut, id: newId, name: `${copiedCut.name} (copy)`, startTime: ns, endTime: ns + dur, track: trk, layers, activeLayerId, texts };
-        setCuts(p => [...p, nc]);
-        setCurrentCutId(newId);
-        setCurrentTime(ns);
+        let cursor = src ? src.endTime : (cuts.length ? Math.max(...cuts.map(c => c.endTime)) : 0);
+        const trk = src ? src.track : (arr[0]?.track ?? 0);
+        const baseId = Date.now();
+        const made = arr.map((cc, idx) => {
+            const dur = cc.endTime - cc.startTime;
+            const { layers, activeLayerId, texts } = cloneCutContents(cc);
+            const nc = { ...cc, id: baseId + idx, name: `${cc.name} (copy)`, startTime: cursor, endTime: cursor + dur, track: trk, layers, activeLayerId, texts };
+            cursor += dur;
+            return nc;
+        });
+        setCuts(p => [...p, ...made]);
+        const last = made[made.length - 1];
+        setCurrentCutId(last.id);
+        setCurrentTime(last.startTime);
     };
     // Duplicate a cut as the *next frame*: clone it right after itself and push any
     // later cuts on the same track to make room. This is the core frame-by-frame flow.
@@ -1798,6 +1858,7 @@ export default function App() {
                             <button className="tool-btn" onClick={globalUndo} title="Undo"><Undo size={15} /><span className="tool-label">Undo</span></button>
                             <button className="tool-btn" onClick={globalRedo} title="Redo"><Redo size={15} /><span className="tool-label">Redo</span></button>
                             <button className="tool-btn" onClick={handleClearCut} title="현재 컷 전체 비우기"><Trash size={15} /><span className="tool-label">비우기</span></button>
+                            {hasLassoClip && <button className="tool-btn" onClick={pasteLassoSelection} title="복사한 올가미 선택을 현재 레이어에 붙여넣기"><ClipboardPaste size={15} /><span className="tool-label">올가미↓</span></button>}
                         </div>
                         <div className="tool-divider" />
                         <input type="color" className="color-picker" value={color} onChange={e => setColor(e.target.value)} title="색상" disabled={isSelectionTool} />
@@ -1834,6 +1895,7 @@ export default function App() {
                         {selection && (
                             <div className="selection-actions">
                                 <button className="button button-primary" onClick={extractSelectionToPart} style={{ height: 30, padding: '0 10px' }} title="선택 영역을 별도 레이어(파츠)로 분리해 애니메이션">파츠로 분리</button>
+                                <button className="button" onClick={copyLassoSelection} style={{ height: 30, padding: '0 10px' }} title="선택 영역 복사 (다른 컷/레이어에 붙여넣기)">복사</button>
                                 <button className="button" onClick={commitSelection} style={{ height: 30, padding: '0 10px' }} title="제자리에 적용(이동/크기)">완료</button>
                                 <button className="button" onClick={cancelSelection} style={{ height: 30, padding: '0 10px' }}>취소</button>
                             </div>
@@ -1915,10 +1977,18 @@ export default function App() {
                             <button className="icon-btn" onClick={() => setShowRight(false)}><ChevronRight size={14} /></button>
                         </div>
                         <div className="cut-list">
-                            {cuts.map(cut => (
-                                <div key={cut.id} className={`cut-item${currentCutId === cut.id ? ' cut-active' : ''}`} onClick={() => setCurrentCutId(cut.id)}>
+                            {[...cuts].sort((a, b) => (a.track || 0) - (b.track || 0) || a.startTime - b.startTime).map((cut, _i, _arr) => { const collapsed = collapsedCutIds.has(cut.id); const showTrackHeader = _i === 0 || (_arr[_i - 1].track || 0) !== (cut.track || 0); return (
+                                <React.Fragment key={cut.id}>
+                                {showTrackHeader && <div className="track-group-header">Track {cut.track || 0}</div>}
+                                <div className={`cut-item${currentCutId === cut.id ? ' cut-active' : ''}${selectedCutIds.has(cut.id) && selectedCutIds.size > 1 ? ' cut-multi' : ''}`} onClick={e => handleCutClick(e, cut.id)}>
                                     <div className="cut-header">
-                                        <span className="cut-name">{cut.name}</span>
+                                        <button className="icon-btn" onClick={e => { e.stopPropagation(); toggleCutCollapse(cut.id); }} title={collapsed ? '펼치기' : '접기'}>{collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}</button>
+                                        {renamingCutId === cut.id
+                                            ? <input className="time-input" style={{ flex: 1, minWidth: 0 }} autoFocus defaultValue={cut.name}
+                                                onClick={e => e.stopPropagation()}
+                                                onBlur={e => { renameCut(cut.id, e.target.value.trim() || cut.name); setRenamingCutId(null); }}
+                                                onKeyDown={e => { if (e.key === 'Enter') { renameCut(cut.id, e.target.value.trim() || cut.name); setRenamingCutId(null); } if (e.key === 'Escape') setRenamingCutId(null); }} />
+                                            : <span className="cut-name" onDoubleClick={e => { e.stopPropagation(); setRenamingCutId(cut.id); }} title="더블클릭으로 이름 변경">{cut.name}</span>}
                                         <div style={{ display: 'flex', gap: 4 }}>
                                             <button className="icon-btn" onClick={e => { e.stopPropagation(); handleDuplicateCut(cut.id); }} title="다음 프레임으로 복제 (Ctrl+D)"><CopyPlus size={12} /></button>
                                             <button className="icon-btn" onClick={e => { e.stopPropagation(); handleCopyCut(cut.id); }} title="컷 복사 (Ctrl+C)"><Copy size={12} /></button>
@@ -1926,6 +1996,7 @@ export default function App() {
                                             <button className="icon-btn del-btn" onClick={e => { e.stopPropagation(); handleDeleteCut(cut.id); }}><Trash2 size={12} /></button>
                                         </div>
                                     </div>
+                                    {!collapsed && (<>
                                     {expandedCuts.has(cut.id) && (
                                         <div className="cut-settings" onClick={e => e.stopPropagation()}>
                                             <div className="time-row">
@@ -2023,8 +2094,10 @@ export default function App() {
                                         <button className="small-btn" onClick={e => handleAddLayer(e, cut.id)}><Plus size={11} /> 레이어</button>
                                         <button className="small-btn" onClick={e => handleAddFolder(e, cut.id)}><FolderPlus size={11} /> 폴더</button>
                                     </div>
+                                    </>)}
                                 </div>
-                            ))}
+                                </React.Fragment>
+                            ); })}
                         </div>
                         <button className="button button-primary" style={{ width: '100%', marginTop: 10, opacity: currentCutId ? 1 : 0.4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }} onClick={() => handleDuplicateCut(currentCutId)} disabled={!currentCutId} title="현재 컷을 다음 프레임으로 복제 (Ctrl+D)"><CopyPlus size={14} /> 다음 프레임 복제</button>
                         <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
