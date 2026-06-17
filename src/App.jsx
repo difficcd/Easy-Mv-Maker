@@ -812,7 +812,18 @@ export default function App() {
         return cnv;
     };
 
-    // Tween: fill the empty gap to the next cut (same track) with N pixel-crossfade frames.
+    const contentCentroid = (canvas) => {
+        const d = canvas.getContext('2d').getImageData(0, 0, CANVAS_W, CANVAS_H).data;
+        let sx = 0, sy = 0, n = 0;
+        for (let y = 0; y < CANVAS_H; y++) for (let x = 0; x < CANVAS_W; x++) {
+            if (d[(y * CANVAS_W + x) * 4 + 3] > 16) { sx += x; sy += y; n++; }
+        }
+        return n ? { x: sx / n, y: sy / n, found: true } : { x: CANVAS_W / 2, y: CANVAS_H / 2, found: false };
+    };
+
+    // Tween: fill the gap to the next cut with N sharp in-betweens. The object is placed at
+    // the interpolated position between frame A's and frame B's pixel centroids (no fade) —
+    // A's pixels lead the first half, B's pixels the second half.
     const handleTweenGap = () => {
         const cut = cuts.find(c => c.id === currentCutId);
         if (!cut) return;
@@ -823,16 +834,17 @@ export default function App() {
         if (gapEnd - gapStart < 0.05) { alert('두 컷 사이에 빈 공간이 없습니다. 간격을 벌리세요.'); return; }
         const n = Math.max(1, tweenCount);
         const canA = renderCutToCanvas(cut), canB = renderCutToCanvas(next);
+        const pA = contentCentroid(canA), pB = contentCentroid(canB);
         const seg = (gapEnd - gapStart) / n;
         const made = [];
         for (let i = 0; i < n; i++) {
             const a = (i + 1) / (n + 1);
+            const cx = pA.x + (pB.x - pA.x) * a, cy = pA.y + (pB.y - pA.y) * a;
+            const useA = a < 0.5;
+            const src = useA ? canA : canB, sp = useA ? pA : pB;
             const tmp = document.createElement('canvas'); tmp.width = CANVAS_W; tmp.height = CANVAS_H;
-            const tctx = tmp.getContext('2d');
-            tctx.globalAlpha = 1 - a; tctx.drawImage(canA, 0, 0);
-            tctx.globalAlpha = a; tctx.drawImage(canB, 0, 0);
-            tctx.globalAlpha = 1;
-            const bitmapId = storeBitmap(tctx.getImageData(0, 0, CANVAS_W, CANVAS_H));
+            tmp.getContext('2d').drawImage(src, Math.round(cx - sp.x), Math.round(cy - sp.y));
+            const bitmapId = storeBitmap(tmp.getContext('2d').getImageData(0, 0, CANVAS_W, CANVAS_H));
             const s = gapStart + i * seg;
             made.push({ id: Date.now() + i, name: `tween ${i + 1}`, startTime: s, endTime: s + seg, track: cut.track, activeLayerId: 1, texts: [],
                 layers: [{ id: 1, name: 'L1', type: 'layer', parentId: null, visible: true, redoStrokes: [], strokes: [{ id: Date.now() + 1000 + i, tool: 'paste', bitmapId, x: 0, y: 0 }] }] });
