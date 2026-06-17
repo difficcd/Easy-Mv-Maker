@@ -2,6 +2,70 @@
 // layer flattening, and animation math. Kept free of React/component state so App.jsx
 // stays smaller (cheaper to read/edit) and these stay unit-testable.
 
+// --- Shape (distance-field) morphing for tweening ---
+// Felzenszwalb 1D squared Euclidean distance transform (f: 0 at seeds, INF elsewhere).
+function edt1d(f, n) {
+    const INF = 1e20;
+    const d = new Float64Array(n), v = new Int32Array(n), z = new Float64Array(n + 1);
+    let k = 0; v[0] = 0; z[0] = -INF; z[1] = INF;
+    for (let q = 1; q < n; q++) {
+        let s = ((f[q] + q * q) - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]);
+        while (s <= z[k]) { k--; s = ((f[q] + q * q) - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]); }
+        k++; v[k] = q; z[k] = s; z[k + 1] = INF;
+    }
+    k = 0;
+    for (let q = 0; q < n; q++) { while (z[k + 1] < q) k++; const dd = q - v[k]; d[q] = dd * dd + f[v[k]]; }
+    return d;
+}
+function edt2d(seed, w, h) {
+    const INF = 1e20;
+    const grid = new Float64Array(w * h);
+    for (let i = 0; i < w * h; i++) grid[i] = seed[i] ? 0 : INF;
+    const col = new Float64Array(h);
+    for (let x = 0; x < w; x++) { for (let y = 0; y < h; y++) col[y] = grid[y * w + x]; const d = edt1d(col, h); for (let y = 0; y < h; y++) grid[y * w + x] = d[y]; }
+    const row = new Float64Array(w);
+    for (let y = 0; y < h; y++) { const off = y * w; for (let x = 0; x < w; x++) row[x] = grid[off + x]; const d = edt1d(row, w); for (let x = 0; x < w; x++) grid[off + x] = Math.sqrt(d[x]); }
+    return grid; // Euclidean distance to nearest seed
+}
+function signedDist(mask, w, h) {
+    const inv = new Uint8Array(w * h);
+    for (let i = 0; i < w * h; i++) inv[i] = mask[i] ? 0 : 1;
+    const dOut = edt2d(mask, w, h);  // 0 inside, >0 outside
+    const dIn = edt2d(inv, w, h);    // 0 outside, >0 inside
+    const s = new Float32Array(w * h);
+    for (let i = 0; i < w * h; i++) s[i] = dOut[i] - dIn[i]; // <0 inside shape
+    return s;
+}
+
+// Morph the whole pixel distribution of A into B at t (0..1) via signed-distance-field
+// interpolation: the shape itself moves/grows between frames (not an A/B crossfade).
+// Filled with the A->B average ink colour; soft 1px edge.
+export function morphFrames(aImg, bImg, t) {
+    const w = aImg.width, h = aImg.height, N = w * h;
+    const A = aImg.data, B = bImg.data;
+    const mA = new Uint8Array(N), mB = new Uint8Array(N);
+    let ar = 0, ag = 0, ab = 0, an = 0, br = 0, bg = 0, bb = 0, bn = 0;
+    for (let i = 0; i < N; i++) {
+        const o = i * 4;
+        if (A[o + 3] > 16) { mA[i] = 1; ar += A[o]; ag += A[o + 1]; ab += A[o + 2]; an++; }
+        if (B[o + 3] > 16) { mB[i] = 1; br += B[o]; bg += B[o + 1]; bb += B[o + 2]; bn++; }
+    }
+    const sA = signedDist(mA, w, h), sB = signedDist(mB, w, h);
+    const cr = an ? ar / an : 0, cg = an ? ag / an : 0, cb = an ? ab / an : 0;
+    const dr = bn ? br / bn : cr, dg = bn ? bg / bn : cg, db = bn ? bb / bn : cb;
+    const R = Math.round(cr + (dr - cr) * t), G = Math.round(cg + (dg - cg) * t), Bl = Math.round(cb + (db - cb) * t);
+    const out = new ImageData(w, h), O = out.data;
+    for (let i = 0; i < N; i++) {
+        const s = (1 - t) * sA[i] + t * sB[i];
+        if (s < 1) {
+            const o = i * 4;
+            O[o] = R; O[o + 1] = G; O[o + 2] = Bl;
+            O[o + 3] = s <= 0 ? 255 : Math.round((1 - s) * 255);
+        }
+    }
+    return out;
+}
+
 export const DEFAULT_CUT_DURATION = 1;
 export const CANVAS_W = 854, CANVAS_H = 480;
 export const FONT_PRESETS = [
