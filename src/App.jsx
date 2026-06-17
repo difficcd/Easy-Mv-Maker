@@ -375,8 +375,9 @@ export default function App() {
     useEffect(() => {
         if (!splitter) return;
         const mv = (e) => {
-            if (splitter === 'right') setRightW(Math.max(200, Math.min(600, window.innerWidth - e.clientX)));
-            else if (splitter === 'bottom') setTimelineH(Math.max(100, Math.min(600, window.innerHeight - e.clientY)));
+            // Relative to grab point so the panel doesn't jump on first move (precise drag).
+            if (splitter.type === 'right') setRightW(Math.max(200, Math.min(600, splitter.startW + (splitter.startX - e.clientX))));
+            else if (splitter.type === 'bottom') setTimelineH(Math.max(100, Math.min(600, splitter.startH + (splitter.startY - e.clientY))));
         };
         const up = () => setSplitter(null);
         window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
@@ -1966,7 +1967,7 @@ export default function App() {
                     </div>
                 </div>
 
-                {showRight && <div className="splitter-v" style={{ touchAction: 'none' }} onPointerDown={e => { e.currentTarget.setPointerCapture?.(e.pointerId); setSplitter('right'); }} />}
+                {showRight && <div className="splitter-v" style={{ touchAction: 'none' }} onPointerDown={e => { e.currentTarget.setPointerCapture?.(e.pointerId); setSplitter({ type: 'right', startX: e.clientX, startW: rightW }); }} />}
 
                 {showRight && (
                     <div className="right-panel" style={{ width: rightW, flexShrink: 0 }}>
@@ -2053,7 +2054,7 @@ export default function App() {
                 {!showRight && <button onClick={() => setShowRight(true)} className="icon-btn" style={{ width: 24, alignSelf: 'stretch', padding: 0, borderRadius: 0, background: '#1e1e2e', border: 'none', borderLeft: '1px solid #333' }}><ChevronRight size={14} /></button>}
             </div>
 
-            {showBottom && <div className="splitter-h" style={{ touchAction: 'none' }} onPointerDown={e => { e.currentTarget.setPointerCapture?.(e.pointerId); setSplitter('bottom'); }} />}
+            {showBottom && <div className="splitter-h" style={{ touchAction: 'none' }} onPointerDown={e => { e.currentTarget.setPointerCapture?.(e.pointerId); setSplitter({ type: 'bottom', startY: e.clientY, startH: timelineH }); }} />}
 
             <div className="timeline" style={{ height: showBottom ? timelineH : 44, flexShrink: 0 }}>
                 <div className="tl-controls">
