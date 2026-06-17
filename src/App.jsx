@@ -258,25 +258,30 @@ export default function App() {
     useEffect(() => {
         if (isDrawing.current || isDraggingOrResizingRef.current || selectionDragRef.current) return;
         if (isUndoRedoRef.current) { isUndoRedoRef.current = false; return; }
-        const snapshot = JSON.stringify(cuts);
+        const snapshot = JSON.stringify({ cuts, audioData, numTracks });
         if (historyRef.current.length > 0 && JSON.stringify(historyRef.current[historyIndexRef.current]) === snapshot) return;
         historyRef.current = historyRef.current.slice(0, historyIndexRef.current + 1);
         historyRef.current.push(JSON.parse(snapshot));
         historyIndexRef.current = historyRef.current.length - 1;
         if (historyRef.current.length > 80) { historyRef.current.shift(); historyIndexRef.current--; }
-    }, [cuts]);
+    }, [cuts, audioData, numTracks]);
 
+    const applyHistory = (snap) => {
+        const s = JSON.parse(JSON.stringify(snap));
+        isUndoRedoRef.current = true;
+        setCuts(s.cuts);
+        setAudioData(s.audioData ?? null);
+        setNumTracks(s.numTracks ?? 2);
+    };
     const globalUndo = () => {
         if (historyIndexRef.current <= 0) return;
         historyIndexRef.current--;
-        isUndoRedoRef.current = true;
-        setCuts(JSON.parse(JSON.stringify(historyRef.current[historyIndexRef.current])));
+        applyHistory(historyRef.current[historyIndexRef.current]);
     };
     const globalRedo = () => {
         if (historyIndexRef.current >= historyRef.current.length - 1) return;
         historyIndexRef.current++;
-        isUndoRedoRef.current = true;
-        setCuts(JSON.parse(JSON.stringify(historyRef.current[historyIndexRef.current])));
+        applyHistory(historyRef.current[historyIndexRef.current]);
     };
 
     const maxTime = Math.max(60, audioData?.endTime ?? audioDuration, ...cuts.map(c => c.endTime)) + 60;
@@ -473,7 +478,8 @@ export default function App() {
             cutDragArmedRef.current = false;
             setResizingData(null); setDraggingCutData(null); setSnapLinePos(null);
             setCuts(prev => {
-                const snapshot = JSON.stringify(prev);
+                const lv = liveRef.current;
+                const snapshot = JSON.stringify({ cuts: prev, audioData: lv.audioData, numTracks: lv.numTracks });
                 if (historyRef.current.length > 0 && JSON.stringify(historyRef.current[historyIndexRef.current]) === snapshot) return prev;
                 historyRef.current = historyRef.current.slice(0, historyIndexRef.current + 1);
                 historyRef.current.push(JSON.parse(snapshot));
@@ -493,7 +499,7 @@ export default function App() {
         const scan = (arr) => arr && arr.forEach(c => c.layers && c.layers.forEach(l => l.strokes && l.strokes.forEach(s => { if (s.bitmapId) used.add(s.bitmapId); })));
         const live = liveRef.current;
         scan(live.cuts);
-        historyRef.current.forEach(scan);
+        historyRef.current.forEach(s => scan(s.cuts));
         const cc = live.copiedCut; if (cc) scan(Array.isArray(cc) ? cc : [cc]);
         if (lassoClipRef.current?.bitmapId) used.add(lassoClipRef.current.bitmapId);
         const sel = live.selection; if (sel) { if (sel.bitmapId) used.add(sel.bitmapId); if (sel.maskBitmapId) used.add(sel.maskBitmapId); }
@@ -1797,7 +1803,7 @@ export default function App() {
 
     const currentCut = cuts.find(c => c.id === currentCutId);
     const isSelectionTool = tool === 'lasso' || !!selection;
-    liveRef.current = { cuts, copiedCut, selection }; // keep GC sources current
+    liveRef.current = { cuts, copiedCut, selection, audioData, numTracks }; // current GC + history sources
 
     return (
         <div className="app-container">
