@@ -50,6 +50,7 @@ export default function App() {
     const [currentCutId, setCurrentCutId] = useState(1);
     const [isPlaying, setIsPlaying] = useState(false);
     const [loopPlay, setLoopPlay] = useState(false);
+    const [playbackRate, setPlaybackRate] = useState(1);
     const [currentTime, setCurrentTime] = useState(0);
     const [rightW, setRightW] = useState(270);
     const [timelineH, setTimelineH] = useState(240);
@@ -330,11 +331,14 @@ export default function App() {
 
     useEffect(() => {
         if (!isPlaying) { if (audioRef.current) audioRef.current.pause(); cancelAnimationFrame(reqRef.current); return; }
+        // Export must record at real time; preview honors the chosen playback speed.
+        const rate = isExporting.current ? 1 : playbackRate;
+        if (audioRef.current) audioRef.current.playbackRate = rate;
         let last = performance.now();
         const step = (now) => {
             const delta = (now - last) / 1000; last = now;
             setCurrentTime(prev => {
-                const next = prev + delta;
+                const next = prev + delta * rate;
                 if (audioRef.current && audioUrl) {
                     if (audioData) {
                         if (next >= audioData.startTime && next < audioData.endTime) {
@@ -362,7 +366,7 @@ export default function App() {
         };
         reqRef.current = requestAnimationFrame(step);
         return () => cancelAnimationFrame(reqRef.current);
-    }, [isPlaying, maxTime, audioUrl, loopPlay, contentStart, contentEnd]);
+    }, [isPlaying, maxTime, audioUrl, loopPlay, contentStart, contentEnd, playbackRate]);
 
     useEffect(() => {
         if (!isPlaying && audioRef.current && audioUrl && Math.abs(audioRef.current.currentTime - currentTime) > 0.1)
@@ -851,19 +855,15 @@ export default function App() {
             const T = { cx: lerp(A.cx, B.cx, a), cy: lerp(A.cy, B.cy, a), w: lerp(A.w, B.w, a), h: lerp(A.h, B.h, a), angle: lerpAng(A.angle, B.angle, a) };
             const tmp = document.createElement('canvas'); tmp.width = CANVAS_W; tmp.height = CANVAS_H;
             const tctx = tmp.getContext('2d');
-            const warp = (src, S, alpha) => {
-                tctx.save();
-                tctx.globalAlpha = alpha;
-                tctx.translate(T.cx, T.cy);
-                tctx.rotate(T.angle);
-                tctx.scale(T.w / Math.max(1, S.w), T.h / Math.max(1, S.h));
-                tctx.rotate(-S.angle);
-                tctx.translate(-S.cx, -S.cy);
-                tctx.drawImage(src, 0, 0);
-                tctx.restore();
-            };
-            warp(canA, A, 1 - a);
-            warp(canB, B, a);
+            // Single sharp object: take frame A's pixels and move/scale/rotate them to the
+            // interpolated pose toward B (no A/B blend, so the line moves instead of splitting).
+            const src = a < 0.5 ? canA : canB, S = a < 0.5 ? A : B;
+            tctx.translate(T.cx, T.cy);
+            tctx.rotate(T.angle);
+            tctx.scale(T.w / Math.max(1, S.w), T.h / Math.max(1, S.h));
+            tctx.rotate(-S.angle);
+            tctx.translate(-S.cx, -S.cy);
+            tctx.drawImage(src, 0, 0);
             const bitmapId = storeBitmap(tctx.getImageData(0, 0, CANVAS_W, CANVAS_H));
             const s = gapStart + i * seg;
             made.push({ id: Date.now() + i, name: `tween ${i + 1}`, startTime: s, endTime: s + seg, track: cut.track, activeLayerId: 1, texts: [],
@@ -2142,6 +2142,9 @@ export default function App() {
                         <button className="button button-primary" onClick={handlePlayPause}>{isPlaying ? <Pause size={16} /> : <Play size={16} />}</button>
                         <button className="button" onClick={handleStop}><Square size={16} /></button>
                         <button className={`button${loopPlay ? ' button-primary' : ''}`} onClick={() => setLoopPlay(v => !v)} title="반복 재생"><Repeat size={16} /></button>
+                        <select className="time-input" style={{ width: 60, marginLeft: 8 }} value={playbackRate} onChange={e => { const r = +e.target.value; setPlaybackRate(r); if (audioRef.current) audioRef.current.playbackRate = r; }} title="재생 속도">
+                            {[0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4].map(v => <option key={v} value={v}>{v}x</option>)}
+                        </select>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 2, marginLeft: 12 }} title="타임라인 확대/축소">
                             <button className="icon-btn" onClick={() => setPps(p => Math.max(10, p / 1.25))}>−</button>
                             <span style={{ fontSize: 11, color: '#888', minWidth: 30, textAlign: 'center' }}>{Math.round(pps)}</span>
