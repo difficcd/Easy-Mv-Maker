@@ -9,6 +9,7 @@ Frame-by-frame MV/animation app. Vite + React 18, single big component. Capacito
   - geometry/colour: `pointInPolygon, dist, safeArray, hexToRgb, bucketFillTransparentRegion`
   - canvas: `drawStrokesOnCtx(ctx, strokes, clear, bitmapStore)` (handles tools: text/eraseBitmap/paste/fill/pen=dot/marker=temp-composite/eraser/default), `layerKey(cutId,layerId)`, `imageDataToDataURL`, `dataURLToImageData`, `flattenForCanvas`, `flattenLayersInUiOrder`
   - animation: `ANIM_DEFAULT`, `computeCutAnim(cut,time)`, `LAYER_ANIM_DEFAULT`, `computeLayerAnim(layer,cut,time)`, `applyEase(t,type,power)`, `triwave`, `samplePath`
+- `src/AnimPanels.jsx` — `CutAnimPanel` / `LayerAnimPanel` (the animation control UI + option lists). Edit animation panel UI here, not in App.jsx.
 - `src/db.js` — IndexedDB autosave (`saveAutosave`, `loadAutosave`, plus project CRUD).
 - `server/index.js` — Express file-backed project DB on :8787, files under `server/data/`. Proxied at `/api` (vite.config). `npm run dev` runs api+web via concurrently.
 - `src/main.jsx` — boot + service-worker register (PWA, skipped in Capacitor) + fatal-error overlay.
