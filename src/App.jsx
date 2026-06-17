@@ -812,18 +812,25 @@ export default function App() {
         return cnv;
     };
 
-    const contentCentroid = (canvas) => {
+    // Content stats: centroid, bbox size, and principal-axis angle (for rotation interp).
+    const contentStats = (canvas) => {
         const d = canvas.getContext('2d').getImageData(0, 0, CANVAS_W, CANVAS_H).data;
-        let sx = 0, sy = 0, n = 0;
+        let n = 0, sx = 0, sy = 0, minX = CANVAS_W, minY = CANVAS_H, maxX = 0, maxY = 0;
         for (let y = 0; y < CANVAS_H; y++) for (let x = 0; x < CANVAS_W; x++) {
-            if (d[(y * CANVAS_W + x) * 4 + 3] > 16) { sx += x; sy += y; n++; }
+            if (d[(y * CANVAS_W + x) * 4 + 3] > 16) { n++; sx += x; sy += y; if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y; }
         }
-        return n ? { x: sx / n, y: sy / n, found: true } : { x: CANVAS_W / 2, y: CANVAS_H / 2, found: false };
+        if (!n) return { found: false, cx: CANVAS_W / 2, cy: CANVAS_H / 2, w: CANVAS_W, h: CANVAS_H, angle: 0 };
+        const cx = sx / n, cy = sy / n;
+        let mxx = 0, myy = 0, mxy = 0;
+        for (let y = 0; y < CANVAS_H; y++) for (let x = 0; x < CANVAS_W; x++) {
+            if (d[(y * CANVAS_W + x) * 4 + 3] > 16) { const ax = x - cx, ay = y - cy; mxx += ax * ax; myy += ay * ay; mxy += ax * ay; }
+        }
+        return { found: true, cx, cy, w: maxX - minX + 1, h: maxY - minY + 1, angle: 0.5 * Math.atan2(2 * mxy / n, (mxx - myy) / n) };
     };
 
-    // Tween: fill the gap to the next cut with N sharp in-betweens. The object is placed at
-    // the interpolated position between frame A's and frame B's pixel centroids (no fade) —
-    // A's pixels lead the first half, B's pixels the second half.
+    // Tween: fill the gap to the next cut with N in-betweens. Both frames are warped to the
+    // interpolated centroid / bbox-scale / principal-angle, then blended — so each middle
+    // frame reads as a real intermediate (position, scale and rotation), not a copy of B.
     const handleTweenGap = () => {
         const cut = cuts.find(c => c.id === currentCutId);
         if (!cut) return;
@@ -834,17 +841,30 @@ export default function App() {
         if (gapEnd - gapStart < 0.05) { alert('두 컷 사이에 빈 공간이 없습니다. 간격을 벌리세요.'); return; }
         const n = Math.max(1, tweenCount);
         const canA = renderCutToCanvas(cut), canB = renderCutToCanvas(next);
-        const pA = contentCentroid(canA), pB = contentCentroid(canB);
+        const A = contentStats(canA), B = contentStats(canB);
+        const lerp = (p, q, t) => p + (q - p) * t;
+        const lerpAng = (p, q, t) => { let dd = q - p; while (dd > Math.PI / 2) dd -= Math.PI; while (dd < -Math.PI / 2) dd += Math.PI; return p + dd * t; };
         const seg = (gapEnd - gapStart) / n;
         const made = [];
         for (let i = 0; i < n; i++) {
             const a = (i + 1) / (n + 1);
-            const cx = pA.x + (pB.x - pA.x) * a, cy = pA.y + (pB.y - pA.y) * a;
-            const useA = a < 0.5;
-            const src = useA ? canA : canB, sp = useA ? pA : pB;
+            const T = { cx: lerp(A.cx, B.cx, a), cy: lerp(A.cy, B.cy, a), w: lerp(A.w, B.w, a), h: lerp(A.h, B.h, a), angle: lerpAng(A.angle, B.angle, a) };
             const tmp = document.createElement('canvas'); tmp.width = CANVAS_W; tmp.height = CANVAS_H;
-            tmp.getContext('2d').drawImage(src, Math.round(cx - sp.x), Math.round(cy - sp.y));
-            const bitmapId = storeBitmap(tmp.getContext('2d').getImageData(0, 0, CANVAS_W, CANVAS_H));
+            const tctx = tmp.getContext('2d');
+            const warp = (src, S, alpha) => {
+                tctx.save();
+                tctx.globalAlpha = alpha;
+                tctx.translate(T.cx, T.cy);
+                tctx.rotate(T.angle);
+                tctx.scale(T.w / Math.max(1, S.w), T.h / Math.max(1, S.h));
+                tctx.rotate(-S.angle);
+                tctx.translate(-S.cx, -S.cy);
+                tctx.drawImage(src, 0, 0);
+                tctx.restore();
+            };
+            warp(canA, A, 1 - a);
+            warp(canB, B, a);
+            const bitmapId = storeBitmap(tctx.getImageData(0, 0, CANVAS_W, CANVAS_H));
             const s = gapStart + i * seg;
             made.push({ id: Date.now() + i, name: `tween ${i + 1}`, startTime: s, endTime: s + seg, track: cut.track, activeLayerId: 1, texts: [],
                 layers: [{ id: 1, name: 'L1', type: 'layer', parentId: null, visible: true, redoStrokes: [], strokes: [{ id: Date.now() + 1000 + i, tool: 'paste', bitmapId, x: 0, y: 0 }] }] });
