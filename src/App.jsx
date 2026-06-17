@@ -106,6 +106,7 @@ export default function App() {
     const lassoClipRef = useRef(null); // copied lasso pixels: { bitmapId, w, h }
     const [hasLassoClip, setHasLassoClip] = useState(false);
     const [showFileMenu, setShowFileMenu] = useState(false);
+    const [showHelp, setShowHelp] = useState(false);
     const fileHandleRef = useRef(null);
     const [dragLayerInfo, setDragLayerInfo] = useState(null);
     const [dropInfo, setDropInfo] = useState(null);
@@ -1865,9 +1866,32 @@ export default function App() {
 
             {serverProjects !== null && <ProjectPicker title="서버에서 열기" items={serverProjects} onOpen={doServerOpen} onDelete={doServerDelete} onClose={() => setServerProjects(null)} />}
             {localProjects !== null && <ProjectPicker title="로컬에서 열기" items={localProjects} onOpen={doLocalOpen} onDelete={doLocalDelete} onClose={() => setLocalProjects(null)} />}
+            {showHelp && (
+                <div onClick={() => setShowHelp(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div onClick={e => e.stopPropagation()} style={{ width: 460, maxHeight: '80vh', overflow: 'auto', background: '#1e1e2e', border: '1px solid #333', borderRadius: 8, padding: 18, fontSize: 12.5, color: '#ccc', lineHeight: 1.7 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                            <span className="panel-title">단축키 · 제스처</span>
+                            <button className="icon-btn" onClick={() => setShowHelp(false)}>✕</button>
+                        </div>
+                        <b style={{ color: '#9aa' }}>키보드</b>
+                        <div>Ctrl+Z 실행취소 · Ctrl+Shift+Z / Ctrl+Y 다시실행</div>
+                        <div>Ctrl+C 컷 복사 · Ctrl+V 붙여넣기 · Ctrl+D 다음 프레임 복제</div>
+                        <div>Ctrl+S 저장 · Esc 선택 취소 · Enter 선택 적용</div>
+                        <div style={{ marginTop: 8 }}><b style={{ color: '#9aa' }}>펜 / 손가락</b></div>
+                        <div>펜(S펜)·마우스 = 그리기 / 손가락은 그려지지 않음(팜 리젝션)</div>
+                        <div>캔버스: 손가락 1개 = 이동, 2개 = 핀치 줌 (우상단 ⟲ 초기화)</div>
+                        <div style={{ marginTop: 8 }}><b style={{ color: '#9aa' }}>타임라인</b></div>
+                        <div>1손가락 드래그 = 이동, 탭 = 재생위치 / 2손가락 = 확대·축소</div>
+                        <div>컷: 길게 눌러 이동 · 가장자리 드래그로 길이조절 · 더블클릭 이름변경 · Ctrl/Shift+클릭 다중선택</div>
+                        <div style={{ marginTop: 8 }}><b style={{ color: '#9aa' }}>팁</b></div>
+                        <div>애니메이션(컷·파츠)은 ▶ 재생 시에만 보입니다. 올가미 → "파츠로 분리"로 부분 애니메이션.</div>
+                    </div>
+                </div>
+            )}
 
             <div className="top-bar">
                 <h1 className="title">Easy MV Maker</h1>
+                <button className="icon-btn" onClick={() => setShowHelp(true)} title="단축키 · 도움말" style={{ fontSize: 13, fontWeight: 700, width: 22, height: 22 }}>?</button>
                 {autoSavedAt && <span style={{ fontSize: 11, color: '#5a8', marginLeft: 4 }} title="브라우저에 자동저장됨">● 자동저장 {new Date(autoSavedAt).toLocaleTimeString()}</span>}
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                     <div style={{ position: 'relative' }} ref={fileMenuRef}>
