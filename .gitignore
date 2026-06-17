@@ -28,3 +28,6 @@ android/captures/
 
 # Server runtime project storage
 server/data/
+
+# Claude Code local config
+.claude/

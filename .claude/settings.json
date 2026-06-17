@@ -1,7 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(cd \"/c/Users/diffi/Desktop/easy-mv-maker\" *)"
-    ]
-  }
-}
