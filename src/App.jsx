@@ -7,7 +7,7 @@ import {
     DEFAULT_CUT_DURATION, CANVAS_W, CANVAS_H, FONT_PRESETS,
     pointInPolygon, dist, safeArray, hexToRgb, bucketFillTransparentRegion,
     layerKey, imageDataToDataURL, dataURLToImageData, drawStrokesOnCtx,
-    flattenForCanvas, flattenLayersInUiOrder,
+    flattenForCanvas, flattenLayersInUiOrder, strokeSig,
     ANIM_DEFAULT, computeCutAnim, LAYER_ANIM_DEFAULT, computeLayerAnim,
 } from './canvasUtils';
 
@@ -98,6 +98,7 @@ export default function App() {
     const [layerCanvasCache, setLayerCanvasCache] = useState({});
     const bitmapStoreRef = useRef(new Map());
     const dataUrlCacheRef = useRef(new Map()); // id -> {imageData, url}; avoids re-encoding bitmaps each autosave
+    const liveRef = useRef({}); // latest {cuts, copiedCut, selection} for safe bitmap GC from effects
     const selectionDragRef = useRef(null);
     const activePointerIdRef = useRef(null);
     const textAreaRef = useRef(null);
@@ -112,6 +113,7 @@ export default function App() {
     const tlTouchRef = useRef(new Map());
     const tlPinchRef = useRef(null);
     const [serverProjects, setServerProjects] = useState(null); // null = picker closed
+    const [serverAvailable, setServerAvailable] = useState(false); // is the project API reachable?
     const [serverBusy, setServerBusy] = useState(false);
     const serverIdRef = useRef(null);
     const serverNameRef = useRef('');
@@ -479,6 +481,20 @@ export default function App() {
         return () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); };
     }, [resizingData, draggingCutData, pps, numTracks]);
 
+    // Free bitmaps no longer referenced by any cut, history snapshot, clipboard, or selection.
+    // Scans ALL reference sources so undo/paste never lose their pixels.
+    const gcBitmaps = () => {
+        const used = new Set();
+        const scan = (arr) => arr && arr.forEach(c => c.layers && c.layers.forEach(l => l.strokes && l.strokes.forEach(s => { if (s.bitmapId) used.add(s.bitmapId); })));
+        const live = liveRef.current;
+        scan(live.cuts);
+        historyRef.current.forEach(scan);
+        const cc = live.copiedCut; if (cc) scan(Array.isArray(cc) ? cc : [cc]);
+        if (lassoClipRef.current?.bitmapId) used.add(lassoClipRef.current.bitmapId);
+        const sel = live.selection; if (sel) { if (sel.bitmapId) used.add(sel.bitmapId); if (sel.maskBitmapId) used.add(sel.maskBitmapId); }
+        const store = bitmapStoreRef.current, cache = dataUrlCacheRef.current;
+        for (const id of [...store.keys()]) if (!used.has(id)) { store.delete(id); cache.delete(id); }
+    };
     const buildData = () => {
         // Persist the pixel data behind fill/lasso/paste strokes; otherwise reopening
         // a saved project loses everything that lives only in the in-memory bitmap store.
@@ -623,6 +639,13 @@ export default function App() {
         return () => { cancelled = true; };
     }, []);
 
+    // Probe the project-storage API once; hide server menu when absent (static host / APK).
+    useEffect(() => {
+        let alive = true;
+        fetch('/api/projects', { method: 'GET' }).then(r => { if (alive) setServerAvailable(r.ok); }).catch(() => { if (alive) setServerAvailable(false); });
+        return () => { alive = false; };
+    }, []);
+
     // Debounced autosave to IndexedDB so a refresh/crash never loses work.
     useEffect(() => {
         if (!didRecoverRef.current) return;
@@ -630,6 +653,7 @@ export default function App() {
         clearTimeout(autosaveTimerRef.current);
         autosaveTimerRef.current = setTimeout(() => {
             try {
+                gcBitmaps(); // reclaim orphaned bitmaps before encoding the save
                 const data = buildData();
                 saveAutosave(data).then(() => setAutoSavedAt(Date.now())).catch(() => { });
             } catch { }
@@ -1357,7 +1381,10 @@ export default function App() {
                 const key = layerKey(cut.id, layer.id);
                 validKeys.add(key);
                 const canvas = newCache[key];
-                const layerStrokes = JSON.stringify(layer.strokes);
+                // Cheap change signature instead of JSON.stringify(strokes): strokes are only
+                // appended/replaced in this app, so length + last-stroke id/points/tool is enough.
+                // Avoids O(n) stringify of a growing stroke on every drawing frame.
+                const layerStrokes = strokeSig(layer.strokes);
                 if (!canvas || canvas.dataset.strokes !== layerStrokes) {
                     const newCanvas = canvas || document.createElement('canvas');
                     newCanvas.width = CANVAS_W;
@@ -1733,6 +1760,7 @@ export default function App() {
 
     const currentCut = cuts.find(c => c.id === currentCutId);
     const isSelectionTool = tool === 'lasso' || !!selection;
+    liveRef.current = { cuts, copiedCut, selection }; // keep GC sources current
 
     return (
         <div className="app-container">
@@ -1776,11 +1804,13 @@ export default function App() {
                                 <button className="file-menu-item" onClick={() => { doSave(true); setShowFileMenu(false); }}>다른 이름으로 저장...</button>
                                 <div className="file-menu-sep" />
                                 <button className="file-menu-item" onClick={() => { doOpen(); setShowFileMenu(false); }}>로컬 파일 열기...</button>
-                                <div className="file-menu-sep" />
-                                <div style={{ fontSize: 10, color: '#777', padding: '4px 12px 2px' }}>서버 (DB)</div>
-                                <button className="file-menu-item" onClick={() => { doServerSave(false); setShowFileMenu(false); }}>서버에 저장</button>
-                                <button className="file-menu-item" onClick={() => { doServerSave(true); setShowFileMenu(false); }}>서버에 새 이름으로 저장...</button>
-                                <button className="file-menu-item" onClick={() => { openServerList(); setShowFileMenu(false); }}>서버에서 열기...</button>
+                                {serverAvailable && <>
+                                    <div className="file-menu-sep" />
+                                    <div style={{ fontSize: 10, color: '#777', padding: '4px 12px 2px' }}>서버 (DB)</div>
+                                    <button className="file-menu-item" onClick={() => { doServerSave(false); setShowFileMenu(false); }}>서버에 저장</button>
+                                    <button className="file-menu-item" onClick={() => { doServerSave(true); setShowFileMenu(false); }}>서버에 새 이름으로 저장...</button>
+                                    <button className="file-menu-item" onClick={() => { openServerList(); setShowFileMenu(false); }}>서버에서 열기...</button>
+                                </>}
                             </div>
                         )}
                     </div>

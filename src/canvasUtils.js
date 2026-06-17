@@ -321,6 +321,14 @@ export function flattenForCanvas(layers) {
     return layers.filter(l => l.type !== 'folder' && l.visible !== false);
 }
 
+// Cheap change signature for a layer's strokes (strokes are append/replace only here),
+// used to invalidate the layer canvas cache without stringifying the whole array.
+export function strokeSig(strokes) {
+    if (!strokes || !strokes.length) return '0';
+    const last = strokes[strokes.length - 1];
+    return strokes.length + '|' + (last.id ?? '') + '|' + (last.points ? last.points.length : 0) + '|' + (last.bitmapId ?? '') + '|' + (last.tool ?? '');
+}
+
 export const ANIM_DEFAULT = { inType: 'none', inDur: 0.4, inDir: 'left', outType: 'none', outDur: 0.4, outDir: 'right', deformAxis: 'x', deformAmount: 0, deformReturn: false, deformSpeed: 1, deformCount: 0, moveX: 0, moveY: 0, moveReturn: false, moveSpeed: 1, moveCount: 0, ease: 'linear', easePower: 2 };
 
 // Per-cut animation state at a given absolute time. Returns null when the cut is
