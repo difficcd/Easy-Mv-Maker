@@ -80,6 +80,7 @@ export default function App() {
     const [selectedCutIds, setSelectedCutIds] = useState(new Set());
     const lassoClipRef = useRef(null); // copied lasso pixels: { bitmapId, w, h }
     const [hasLassoClip, setHasLassoClip] = useState(false);
+    const [tweenCount, setTweenCount] = useState(3);
     const [showFileMenu, setShowFileMenu] = useState(false);
     const fileHandleRef = useRef(null);
     const [dragLayerInfo, setDragLayerInfo] = useState(null);
@@ -793,6 +794,52 @@ export default function App() {
         setCurrentTime(insertAt);
     };
 
+    // Flatten a cut's visible paint layers + texts to an offscreen canvas (for tweening).
+    const renderCutToCanvas = (cut) => {
+        const cnv = document.createElement('canvas');
+        cnv.width = CANVAS_W; cnv.height = CANVAS_H;
+        const ctx = cnv.getContext('2d');
+        const order = flattenLayersInUiOrder(cut.layers || []).filter(l => l.type === 'layer' && l.visible !== false);
+        for (let i = order.length - 1; i >= 0; i--) drawStrokesOnCtx(ctx, order[i].strokes, false, bitmapStoreRef.current);
+        for (const t of safeArray(cut.texts)) {
+            if (!t || t.visible === false) continue;
+            const fs = Math.max(6, Math.min(220, t.fontSize ?? 32)), lh = Math.round(fs * 1.25);
+            ctx.globalAlpha = t.opacity ?? 1; ctx.fillStyle = t.color ?? '#000'; ctx.textBaseline = 'top';
+            ctx.font = `${fs}px ${t.fontFamily ?? 'sans-serif'}`;
+            String(t.text ?? '').split('\n').forEach((ln, k) => ctx.fillText(ln, t.x ?? 0, (t.y ?? 0) + k * lh));
+            ctx.globalAlpha = 1;
+        }
+        return cnv;
+    };
+
+    // Tween: fill the empty gap to the next cut (same track) with N pixel-crossfade frames.
+    const handleTweenGap = () => {
+        const cut = cuts.find(c => c.id === currentCutId);
+        if (!cut) return;
+        const next = cuts.filter(c => c.track === cut.track && c.startTime >= cut.endTime - 1e-6 && c.id !== cut.id)
+            .sort((a, b) => a.startTime - b.startTime)[0];
+        if (!next) { alert('다음 컷이 없습니다. 같은 트랙에 다음 컷을 두세요.'); return; }
+        const gapStart = cut.endTime, gapEnd = next.startTime;
+        if (gapEnd - gapStart < 0.05) { alert('두 컷 사이에 빈 공간이 없습니다. 간격을 벌리세요.'); return; }
+        const n = Math.max(1, tweenCount);
+        const canA = renderCutToCanvas(cut), canB = renderCutToCanvas(next);
+        const seg = (gapEnd - gapStart) / n;
+        const made = [];
+        for (let i = 0; i < n; i++) {
+            const a = (i + 1) / (n + 1);
+            const tmp = document.createElement('canvas'); tmp.width = CANVAS_W; tmp.height = CANVAS_H;
+            const tctx = tmp.getContext('2d');
+            tctx.globalAlpha = 1 - a; tctx.drawImage(canA, 0, 0);
+            tctx.globalAlpha = a; tctx.drawImage(canB, 0, 0);
+            tctx.globalAlpha = 1;
+            const bitmapId = storeBitmap(tctx.getImageData(0, 0, CANVAS_W, CANVAS_H));
+            const s = gapStart + i * seg;
+            made.push({ id: Date.now() + i, name: `tween ${i + 1}`, startTime: s, endTime: s + seg, track: cut.track, activeLayerId: 1, texts: [],
+                layers: [{ id: 1, name: 'L1', type: 'layer', parentId: null, visible: true, redoStrokes: [], strokes: [{ id: Date.now() + 1000 + i, tool: 'paste', bitmapId, x: 0, y: 0 }] }] });
+        }
+        setCuts(p => [...p, ...made]);
+    };
+
     const nextLayerId = (c) => Math.max(...c.layers.map(l => l.id), 0) + 1;
     const handleAddLayer = (e, cutId) => { e.stopPropagation(); updLayers(cutId, c => { const id = nextLayerId(c); return { layers: [...c.layers, mkLayer(id)], activeLayerId: id }; }); };
     const handleAddFolder = (e, cutId) => { e.stopPropagation(); updLayers(cutId, c => { const id = nextLayerId(c); return { layers: [...c.layers, { id, name: `Folder ${id}`, type: 'folder', visible: true, collapsed: false, parentId: null }] }; }); };
@@ -1048,8 +1095,8 @@ export default function App() {
                 textId: null,
                 x: pos.x,
                 y: pos.y,
-                cssX: (pos.x * sx),
-                cssY: (pos.y * sy),
+                cssX: (pos.x * sx / view.zoom),
+                cssY: (pos.y * sy / view.zoom),
                 text: '',
                 fontSize: 36,
                 fontFamily: 'sans-serif',
@@ -1322,6 +1369,8 @@ export default function App() {
             color: textEdit.color,
             opacity: textEdit.opacity,
             visible: textEdit.visible ?? true,
+            outline: !!textEdit.outline,
+            outlineColor: textEdit.outlineColor || '#ffffff',
         };
         setCuts(p => p.map(c => {
             if (c.id !== textEdit.cutId) return c;
@@ -1348,14 +1397,16 @@ export default function App() {
             textId,
             x: t.x ?? 0,
             y: t.y ?? 0,
-            cssX: ((t.x ?? 0) * sx),
-            cssY: ((t.y ?? 0) * sy),
+            cssX: ((t.x ?? 0) * sx / view.zoom),
+            cssY: ((t.y ?? 0) * sy / view.zoom),
             text: t.text ?? '',
             fontSize: t.fontSize ?? 36,
             fontFamily: t.fontFamily ?? 'sans-serif',
             color: t.color ?? color,
             opacity: t.opacity ?? opacity,
             visible: t.visible !== false,
+            outline: !!t.outline,
+            outlineColor: t.outlineColor || '#ffffff',
         });
     };
 
@@ -1521,6 +1572,11 @@ export default function App() {
                 ctx.textBaseline = 'top';
                 ctx.font = `${fontSize}px ${fontFamily}`;
                 const lines = String(t.text ?? '').split('\n');
+                if (t.outline) {
+                    ctx.lineJoin = 'round'; ctx.lineWidth = Math.max(2, fontSize / 6);
+                    ctx.strokeStyle = t.outlineColor || '#ffffff';
+                    for (let i = 0; i < lines.length; i++) ctx.strokeText(lines[i], t.x ?? 0, (t.y ?? 0) + i * lineHeight);
+                }
                 for (let i = 0; i < lines.length; i++) {
                     ctx.fillText(lines[i], t.x ?? 0, (t.y ?? 0) + i * lineHeight);
                 }
@@ -1940,6 +1996,10 @@ export default function App() {
                                         className="text-editor-color"
                                         title="색상"
                                     />
+                                    <label style={{ fontSize: 11, color: '#aaa', display: 'flex', alignItems: 'center', gap: 3 }} title="가독성용 외곽선">
+                                        <input type="checkbox" checked={!!textEdit.outline} onChange={e => setTextEdit(te => te ? ({ ...te, outline: e.target.checked }) : te)} />테두리
+                                    </label>
+                                    {textEdit.outline && <input type="color" value={textEdit.outlineColor || '#ffffff'} onChange={e => setTextEdit(te => te ? ({ ...te, outlineColor: e.target.value }) : te)} className="text-editor-color" title="테두리 색" />}
                                     <div style={{ flex: 1 }} />
                                     <button className="button button-primary" onClick={commitText} style={{ height: 28, padding: '0 10px' }}>완료</button>
                                     <button className="button" onClick={cancelText} style={{ height: 28, padding: '0 10px' }}>취소</button>
@@ -2028,6 +2088,12 @@ export default function App() {
                         <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
                             <button className="button" style={{ flex: 1, minWidth: 0 }} onClick={handleAddCut}><Plus size={14} /> Add Cut</button>
                             <button className="button" style={{ flex: 1, minWidth: 0, opacity: copiedCut ? 1 : 0.4 }} onClick={handlePasteCut} disabled={!copiedCut} title="컷 붙여넣기 (Ctrl+V)"><ClipboardPaste size={14} /> Paste</button>
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, marginTop: 6, alignItems: 'center' }} title="현재 컷과 다음 컷 사이 빈 공간을 중간 프레임으로 채웁니다">
+                            <button className="button" style={{ flex: 1, minWidth: 0, opacity: currentCutId ? 1 : 0.4 }} onClick={handleTweenGap} disabled={!currentCutId}><GitBranch size={14} /> 사이 채우기</button>
+                            <select className="time-input" style={{ width: 56 }} value={tweenCount} onChange={e => setTweenCount(+e.target.value)} title="생성할 중간 프레임 수">
+                                {[1, 2, 3, 4, 5, 6, 8, 10].map(v => <option key={v} value={v}>{v}컷</option>)}
+                            </select>
                         </div>
                     </div>
                 )}
