@@ -79,7 +79,7 @@ app.get('/api/youtube-audio', async (req, res) => {
     const dir = path.join(os.tmpdir(), `yt_${Date.now()}_${Math.random().toString(36).slice(2)}`);
     await fs.mkdir(dir, { recursive: true });
     // bestaudio in its native container — no ffmpeg needed; browser plays m4a/webm.
-    const p = spawn('yt-dlp', ['-f', 'bestaudio', '--no-playlist', '-o', path.join(dir, 'audio.%(ext)s'), url]);
+    const p = spawn('yt-dlp', ['-f', 'bestaudio/best', '--no-playlist', '--extractor-args', 'youtube:player_client=default,web_safari,android', '-o', path.join(dir, 'audio.%(ext)s'), url]);
     let err = '';
     p.stderr.on('data', d => { err += d; });
     p.on('error', (e) => { fs.rm(dir, { recursive: true, force: true }); res.status(500).json({ error: 'yt-dlp 실행 불가 (설치 필요): ' + e.message }); });

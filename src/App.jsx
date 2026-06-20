@@ -113,6 +113,7 @@ export default function App() {
     const canvasRef = useRef(null);
     const isDrawing = useRef(false);
     const reqRef = useRef(null);
+    const isPlayingRef = useRef(false);
     const fileMenuRef = useRef(null);
     const timelineRef = useRef(null);
     const [pps, setPps] = useState(50);
@@ -362,12 +363,14 @@ export default function App() {
     }, [currentTime, isPlaying]);
 
     useEffect(() => {
+        isPlayingRef.current = isPlaying;
         if (!isPlaying) { if (audioRef.current) audioRef.current.pause(); cancelAnimationFrame(reqRef.current); return; }
         // Export must record at real time; preview honors the chosen playback speed.
         const rate = isExporting.current ? 1 : playbackRate;
         if (audioRef.current) audioRef.current.playbackRate = rate;
         let last = performance.now();
         const step = (now) => {
+            if (!isPlayingRef.current) return; // stop immediately, no stray audio replay
             const delta = (now - last) / 1000; last = now;
             setCurrentTime(prev => {
                 const next = prev + delta * rate;
@@ -734,11 +737,18 @@ export default function App() {
                 setCurrentTime(contentStart);
                 if (audioRef.current) audioRef.current.currentTime = contentStart;
             }
+        } else {
+            // Pausing: stop audio immediately (don't wait for the effect).
+            isPlayingRef.current = false;
+            cancelAnimationFrame(reqRef.current);
+            if (audioRef.current) audioRef.current.pause();
         }
         setIsPlaying(!isPlaying);
     };
     const handleStop = () => {
         // Stop should pause at the current position (do not rewind).
+        isPlayingRef.current = false;
+        cancelAnimationFrame(reqRef.current);
         setIsPlaying(false);
         if (audioRef.current) {
             audioRef.current.pause();
@@ -1775,6 +1785,11 @@ export default function App() {
         const file = e.target.files[0]; if (!file) return;
         loadAudioUrl(URL.createObjectURL(file), file.name);
     };
+    const handleDeleteAudio = () => {
+        if (audioRef.current) { audioRef.current.pause(); try { audioRef.current.removeAttribute('src'); audioRef.current.load(); } catch { } }
+        if (audioUrl && audioUrl.startsWith('blob:')) { try { URL.revokeObjectURL(audioUrl); } catch { } }
+        setAudioFile(null); setAudioUrl(null); setAudioData(null);
+    };
     const loadYoutubeAudio = async () => {
         const url = window.prompt('유튜브(또는 음원) 링크:');
         if (!url) return;
@@ -1926,6 +1941,7 @@ export default function App() {
                         <input type="file" accept="audio/*" onChange={handleAudioUpload} style={{ display: 'none' }} />
                     </label>
                     {serverAvailable && <button className="button" onClick={loadYoutubeAudio} title="유튜브 링크에서 음원 추출 (로컬 서버, yt-dlp 필요)" style={{ height: 34 }}>YT 음원</button>}
+                    {audioFile && <button className="icon-btn del-btn" onClick={handleDeleteAudio} title="오디오 삭제" style={{ height: 34, width: 30 }}><Trash2 size={14} /></button>}
                 </div>
             </div>
 
@@ -2218,7 +2234,7 @@ export default function App() {
                             </div>
                             {audioFile && audioData && (
                                 <div className="tl-track" style={{ background: '#161628' }}>
-                                    <div className="tl-track-label" style={{ background: '#161628' }}><span>Audio</span></div>
+                                    <div className="tl-track-label" style={{ background: '#161628' }}><span>Audio</span><button className="icon-btn del-btn" onClick={e => { e.stopPropagation(); handleDeleteAudio(); }} title="오디오 삭제"><Trash2 size={9} /></button></div>
                                     <div className="cut-block" style={{ left: `${audioData.startTime * pps + 60}px`, width: `${(audioData.endTime - audioData.startTime) * pps}px`, background: '#374151', borderColor: '#4b5563', cursor: draggingCutData?.cutId === 'audio' ? 'grabbing' : 'grab', touchAction: 'none' }}
                                         onPointerDown={e => { e.stopPropagation(); cutDragMovedRef.current = false; clearTimeout(cutDragTimerRef.current); cutDragArmedRef.current = e.pointerType !== 'touch'; if (e.pointerType === 'touch') cutDragTimerRef.current = setTimeout(() => { cutDragArmedRef.current = true; }, 350); e.currentTarget.setPointerCapture(e.pointerId); setDraggingCutData({ cutId: 'audio', startX: e.clientX, startY: e.clientY, initialStart: audioData.startTime, initialTrack: 0 }); }}>
                                         <div className="rh rh-left" style={{ touchAction: 'none' }} onPointerDown={e => { e.stopPropagation(); e.target.setPointerCapture(e.pointerId); setResizingData({ cutId: 'audio', edge: 'left', startX: e.clientX, initialStart: audioData.startTime, initialEnd: audioData.endTime, initialOffset: audioData.offset }); }} />
