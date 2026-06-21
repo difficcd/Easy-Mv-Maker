@@ -88,6 +88,7 @@ export default function App() {
     const [audioDuration, setAudioDuration] = useState(30);
     const [audioData, setAudioData] = useState(null);
     const audioRef = useRef(null);
+    const audioB64Ref = useRef(null); // audio as base64 data URL, embedded into saves
     const isExporting = useRef(false);
     const mediaRecorderRef = useRef(null);
     const audioCtxRef = useRef(null);
@@ -583,7 +584,7 @@ export default function App() {
         const store = bitmapStoreRef.current, cache = dataUrlCacheRef.current;
         for (const id of [...store.keys()]) if (!used.has(id)) { store.delete(id); cache.delete(id); }
     };
-    const buildData = () => {
+    const buildData = (includeAudio = true) => {
         // Persist the pixel data behind fill/lasso/paste strokes; otherwise reopening
         // a saved project loses everything that lives only in the in-memory bitmap store.
         const usedIds = new Set();
@@ -601,10 +602,16 @@ export default function App() {
             cache.set(id, { imageData: entry.imageData, url });
             bitmaps[id] = url;
         });
-        return {
-            version: '1.3', appName: 'EasyMVMaker', savedAt: new Date().toISOString(), numTracks, onionPrev, onionNext, pps, bitmaps,
+        const out = {
+            version: '1.4', appName: 'EasyMVMaker', savedAt: new Date().toISOString(), numTracks, onionPrev, onionNext, pps, bitmaps,
             cuts: cuts.map(c => ({ ...c, layers: c.layers.map(l => ({ ...l, redoStrokes: [] })) }))
         };
+        // Embed the audio (base64, cached) so the project saves "with the music". Skipped
+        // for autosave to keep it light.
+        if (includeAudio && audioB64Ref.current && audioData) {
+            out.audio = { dataUrl: audioB64Ref.current, name: audioFile?.name || '오디오', startTime: audioData.startTime, endTime: audioData.endTime, offset: audioData.offset, duration: audioDuration };
+        }
+        return out;
     };
     const restore = async (data) => {
         if (data.appName !== 'EasyMVMaker') { alert('올바른 .emv 파일이 아닙니다.'); return; }
@@ -631,6 +638,19 @@ export default function App() {
         setOnionPrev(data.onionPrev ?? false); setOnionNext(data.onionNext ?? false); setPps(data.pps ?? 50); setExpandedCuts(new Set());
         setCopiedCut(null); // clipboard may reference bitmaps from the old project
         setLayerCanvasCache({}); // Clear cache on new project
+        // Restore embedded audio, or clear if the project has none.
+        if (data.audio?.dataUrl) {
+            audioB64Ref.current = data.audio.dataUrl;
+            setAudioFile({ name: data.audio.name || '오디오' });
+            setAudioUrl(data.audio.dataUrl);
+            setAudioDuration(data.audio.duration || 30);
+            setAudioData({ startTime: data.audio.startTime ?? 0, endTime: data.audio.endTime ?? (data.audio.duration || 30), offset: data.audio.offset ?? 0 });
+            if (audioRef.current) audioRef.current.src = data.audio.dataUrl;
+        } else {
+            audioB64Ref.current = null;
+            if (audioRef.current) { audioRef.current.pause(); try { audioRef.current.removeAttribute('src'); audioRef.current.load(); } catch { } }
+            setAudioFile(null); setAudioUrl(null); setAudioData(null);
+        }
     };
     const doSave = async (asNew = false) => {
         const json = JSON.stringify(buildData(), null, 2);
@@ -658,6 +678,8 @@ export default function App() {
         setCopiedCut(null);
         setLayerCanvasCache({});
         serverIdRef.current = null; serverNameRef.current = '';
+        if (audioRef.current) { audioRef.current.pause(); try { audioRef.current.removeAttribute('src'); audioRef.current.load(); } catch { } }
+        audioB64Ref.current = null; setAudioFile(null); setAudioUrl(null); setAudioData(null);
     };
 
     // --- Server-side project storage (separate from local download / .emv file) ---
@@ -769,7 +791,7 @@ export default function App() {
         autosaveTimerRef.current = setTimeout(() => {
             try {
                 gcBitmaps(); // reclaim orphaned bitmaps before encoding the save
-                const data = buildData();
+                const data = buildData(false); // autosave stays light (no embedded audio)
                 saveAutosave(data).then(() => setAutoSavedAt(Date.now())).catch(() => { });
             } catch { }
         }, 1500);
@@ -1826,6 +1848,9 @@ export default function App() {
         setAudioFile({ name }); setAudioUrl(url);
         const audio = new Audio(url);
         audio.onloadedmetadata = () => { setAudioDuration(audio.duration); setAudioData({ startTime: 0, endTime: audio.duration, offset: 0 }); if (audioRef.current) audioRef.current.src = url; };
+        // Capture base64 once so the project can be saved "with the music".
+        if (url.startsWith('data:')) { audioB64Ref.current = url; }
+        else { fetch(url).then(r => r.blob()).then(b => { const fr = new FileReader(); fr.onload = () => { audioB64Ref.current = fr.result; }; fr.readAsDataURL(b); }).catch(() => { }); }
     };
     const handleAudioUpload = (e) => {
         const file = e.target.files[0]; if (!file) return;
@@ -1834,6 +1859,7 @@ export default function App() {
     const handleDeleteAudio = () => {
         if (audioRef.current) { audioRef.current.pause(); try { audioRef.current.removeAttribute('src'); audioRef.current.load(); } catch { } }
         if (audioUrl && audioUrl.startsWith('blob:')) { try { URL.revokeObjectURL(audioUrl); } catch { } }
+        audioB64Ref.current = null;
         setAudioFile(null); setAudioUrl(null); setAudioData(null);
     };
     const loadYoutubeAudio = async () => {
