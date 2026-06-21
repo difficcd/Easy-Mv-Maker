@@ -117,6 +117,8 @@ export default function App() {
     const fileMenuRef = useRef(null);
     const timelineRef = useRef(null);
     const [pps, setPps] = useState(50);
+    const ppsRef = useRef(50);
+    ppsRef.current = pps;
     const [copiedCut, setCopiedCut] = useState(null);
     const [lassoPoints, setLassoPoints] = useState([]);
     const [selection, setSelection] = useState(null);
@@ -425,6 +427,50 @@ export default function App() {
         const t = timelineRef.current;
         if (t) t.addEventListener('wheel', h, { passive: false });
         return () => { if (t) t.removeEventListener('wheel', h); };
+    }, []);
+
+    // Two-finger pinch-zoom on the timeline, intercepted in the CAPTURE phase so it works
+    // even over cut blocks (which stop propagation / capture the pointer for dragging).
+    useEffect(() => {
+        const el = timelineRef.current;
+        if (!el) return;
+        const pts = new Map();
+        let pinch = null;
+        const down = (e) => {
+            if (e.pointerType !== 'touch') return;
+            pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+            if (pts.size === 2) {
+                const [a, b] = [...pts.values()];
+                const rect = el.getBoundingClientRect();
+                const contentX = (a.x + b.x) / 2 - rect.left + el.scrollLeft - 60;
+                pinch = { startDist: Math.hypot(a.x - b.x, a.y - b.y) || 1, startPps: ppsRef.current, anchorTime: Math.max(0, contentX / ppsRef.current) };
+                e.preventDefault(); e.stopPropagation();
+            }
+        };
+        const move = (e) => {
+            if (e.pointerType !== 'touch' || !pts.has(e.pointerId)) return;
+            pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+            if (pts.size >= 2 && pinch) {
+                const [a, b] = [...pts.values()];
+                const np = Math.max(10, Math.min(300, pinch.startPps * (Math.hypot(a.x - b.x, a.y - b.y) / pinch.startDist)));
+                setPps(np);
+                const rect = el.getBoundingClientRect();
+                el.scrollLeft = Math.max(0, pinch.anchorTime * np + 60 - ((a.x + b.x) / 2 - rect.left));
+                e.preventDefault(); e.stopPropagation();
+            }
+        };
+        const up = (e) => { if (e.pointerType !== 'touch') return; pts.delete(e.pointerId); if (pts.size < 2) pinch = null; };
+        const opt = { capture: true, passive: false };
+        el.addEventListener('pointerdown', down, opt);
+        el.addEventListener('pointermove', move, opt);
+        el.addEventListener('pointerup', up, opt);
+        el.addEventListener('pointercancel', up, opt);
+        return () => {
+            el.removeEventListener('pointerdown', down, opt);
+            el.removeEventListener('pointermove', move, opt);
+            el.removeEventListener('pointerup', up, opt);
+            el.removeEventListener('pointercancel', up, opt);
+        };
     }, []);
 
     useEffect(() => {
