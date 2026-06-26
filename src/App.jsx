@@ -2038,11 +2038,23 @@ export default function App() {
                         <div className="tool-divider" />
                         <input type="color" className="color-picker" value={color} onChange={e => setColor(e.target.value)} title="색상" disabled={isSelectionTool} />
                         <div className="slider-wrap">
-                            <span className="slider-label">{tool === 'eraser' ? '지우개' : 'Size'} <b>{tool === 'eraser' ? eraserSize : brushSize}</b></span>
-                            <input type="range" min="1" max="80" value={tool === 'eraser' ? eraserSize : brushSize} onChange={e => tool === 'eraser' ? setEraserSize(+e.target.value) : setBrushSize(+e.target.value)} className="v-slider" disabled={isSelectionTool} />
+                            <span className="slider-label">{tool === 'eraser' ? '지우개' : 'Size'}</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 2, justifyContent: 'center' }}>
+                                <input type="number" min="1" max="200" value={tool === 'eraser' ? eraserSize : brushSize} disabled={isSelectionTool}
+                                    onChange={e => { const v = Math.max(1, Math.min(200, Math.round(+e.target.value) || 1)); tool === 'eraser' ? setEraserSize(v) : setBrushSize(v); }}
+                                    style={{ width: 46, textAlign: 'center' }} className="time-input" />
+                                <span style={{ fontSize: 10, color: '#888' }}>px</span>
+                            </div>
+                            <input type="range" min="1" max="80" value={Math.min(80, tool === 'eraser' ? eraserSize : brushSize)} onChange={e => tool === 'eraser' ? setEraserSize(+e.target.value) : setBrushSize(+e.target.value)} className="v-slider" disabled={isSelectionTool} />
                         </div>
                         <div className="slider-wrap">
-                            <span className="slider-label">Opacity <b>{Math.round(opacity * 100)}%</b></span>
+                            <span className="slider-label">Opacity</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 2, justifyContent: 'center' }}>
+                                <input type="number" min="0" max="100" value={Math.round(opacity * 100)} disabled={isSelectionTool}
+                                    onChange={e => setOpacity(Math.max(0, Math.min(100, Math.round(+e.target.value) || 0)) / 100)}
+                                    style={{ width: 46, textAlign: 'center' }} className="time-input" />
+                                <span style={{ fontSize: 10, color: '#888' }}>%</span>
+                            </div>
                             <input type="range" min="0" max="100" value={Math.round(opacity * 100)} onChange={e => setOpacity(+e.target.value / 100)} className="v-slider" disabled={isSelectionTool} />
                         </div>
                     </div>
