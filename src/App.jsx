@@ -2038,14 +2038,30 @@ export default function App() {
                         <div className="tool-divider" />
                         <input type="color" className="color-picker" value={color} onChange={e => setColor(e.target.value)} title="색상" disabled={isSelectionTool} />
                         <div className="slider-wrap">
-                            <span className="slider-label">{tool === 'eraser' ? '지우개' : 'Size'}</span>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 2, justifyContent: 'center' }}>
-                                <input type="number" min="1" max="200" value={tool === 'eraser' ? eraserSize : brushSize} disabled={isSelectionTool}
-                                    onChange={e => { const v = Math.max(1, Math.min(200, Math.round(+e.target.value) || 1)); tool === 'eraser' ? setEraserSize(v) : setBrushSize(v); }}
-                                    style={{ width: 46, textAlign: 'center' }} className="time-input" />
-                                <span style={{ fontSize: 10, color: '#888' }}>px</span>
-                            </div>
-                            <input type="range" min="1" max="80" value={Math.min(80, tool === 'eraser' ? eraserSize : brushSize)} onChange={e => tool === 'eraser' ? setEraserSize(+e.target.value) : setBrushSize(+e.target.value)} className="v-slider" disabled={isSelectionTool} />
+                            {(() => {
+                                const curSize = tool === 'eraser' ? eraserSize : brushSize;
+                                const setSize = (v) => { const n = Math.max(1, Math.min(200, Math.round(v) || 1)); tool === 'eraser' ? setEraserSize(n) : setBrushSize(n); };
+                                return (<>
+                                    <span className="slider-label">{tool === 'eraser' ? '지우개' : 'Size'}</span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 2, justifyContent: 'center' }}>
+                                        <input type="number" min="1" max="200" value={curSize} disabled={isSelectionTool}
+                                            onChange={e => setSize(+e.target.value)} style={{ width: 46, textAlign: 'center' }} className="time-input" />
+                                        <span style={{ fontSize: 10, color: '#888' }}>px</span>
+                                    </div>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, justifyContent: 'center', margin: '4px 0' }}>
+                                        {[2, 4, 8, 12, 20, 32, 48, 70].map(s => {
+                                            const d = Math.max(2, Math.min(18, s));
+                                            return (
+                                                <button key={s} onClick={() => setSize(s)} disabled={isSelectionTool} title={`${s}px`}
+                                                    style={{ width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, borderRadius: 4, background: curSize === s ? '#3a3a5c' : '#222', border: curSize === s ? '1px solid #7c8cff' : '1px solid #333', cursor: 'pointer' }}>
+                                                    <span style={{ width: d, height: d, borderRadius: '50%', background: '#ddd', display: 'block' }} />
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    <input type="range" min="1" max="80" value={Math.min(80, curSize)} onChange={e => setSize(+e.target.value)} className="v-slider" disabled={isSelectionTool} />
+                                </>);
+                            })()}
                         </div>
                         <div className="slider-wrap">
                             <span className="slider-label">Opacity</span>
