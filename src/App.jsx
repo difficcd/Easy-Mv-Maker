@@ -14,6 +14,8 @@ import {
 const PEN_TYPES = [
     { id: 'pen', label: 'Dot', Icon: PenLine },
     { id: 'brush', label: '펜', Icon: Feather },
+    { id: 'pencil', label: '연필', Icon: PenLine },
+    { id: 'soft', label: '에어', Icon: Cloud },
     { id: 'marker', label: 'Marker', Icon: Pen },
     { id: 'eraser', label: 'Eraser', Icon: Eraser },
     { id: 'fill', label: 'Fill', Icon: Droplets },
@@ -1251,6 +1253,8 @@ export default function App() {
                 break;
             case 'pen':
             case 'brush':
+            case 'pencil':
+            case 'soft':
             case 'marker':
             case 'calligraphy':
             case 'eraser':
@@ -1345,6 +1349,8 @@ export default function App() {
                 break;
             case 'pen':
             case 'brush':
+            case 'pencil':
+            case 'soft':
             case 'marker':
             case 'calligraphy':
             case 'eraser':

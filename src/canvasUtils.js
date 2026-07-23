@@ -220,6 +220,31 @@ export function dataURLToImageData(url) {
     });
 }
 
+// Draw a polyline as smooth quadratic segments through midpoints, with per-segment
+// width/alpha. Removes the "stiff" look of straight lineTo segments.
+function smoothStroke(ctx, pts, styleAt) {
+    if (!pts.length) return;
+    if (pts.length === 1) {
+        const w = styleAt(0, 1);
+        ctx.beginPath(); ctx.arc(pts[0].x, pts[0].y, Math.max(0.3, w / 2), 0, Math.PI * 2); ctx.fill();
+        return;
+    }
+    const n = pts.length;
+    for (let i = 1; i < n; i++) {
+        const p0 = pts[i - 1], p1 = pts[i];
+        const a = i === 1 ? p0 : { x: (pts[i - 2].x + p0.x) / 2, y: (pts[i - 2].y + p0.y) / 2 };
+        const b = i === n - 1 ? p1 : { x: (p0.x + p1.x) / 2, y: (p0.y + p1.y) / 2 };
+        styleAt(i, n);
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.quadraticCurveTo(p0.x, p0.y, b.x, b.y);
+        ctx.stroke();
+    }
+}
+const pressureAt = (pts, i) => ((pts[i - 1]?.pressure ?? 0.5) + (pts[i]?.pressure ?? 0.5)) / 2;
+// Thin the first/last few segments so strokes taper instead of ending bluntly.
+const taperAt = (i, n) => { const t = Math.min(6, Math.max(2, Math.floor(n / 4))); return Math.min(1, i / t, (n - i) / t) * 0.75 + 0.25; };
+
 export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null) {
     if (clear) {
         ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
@@ -327,20 +352,12 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null)
             const tmp = document.createElement('canvas');
             tmp.width = ctx.canvas.width; tmp.height = ctx.canvas.height;
             const tctx = tmp.getContext('2d');
-            tctx.lineCap = 'round'; tctx.lineJoin = 'round'; tctx.strokeStyle = baseColor;
-            if (hasPressure && s.points.length > 1) {
-                for (let i = 1; i < s.points.length; i++) {
-                    const p1 = s.points[i - 1], p2 = s.points[i];
-                    const pr = ((p1.pressure ?? 0.5) + (p2.pressure ?? 0.5)) / 2;
-                    tctx.lineWidth = Math.max(0.3, s.size * pr * 2);
-                    tctx.beginPath(); tctx.moveTo(p1.x, p1.y); tctx.lineTo(p2.x, p2.y); tctx.stroke();
-                }
-            } else {
-                tctx.lineWidth = Math.max(0.3, s.size);
-                tctx.beginPath();
-                s.points.forEach((p, i) => i === 0 ? tctx.moveTo(p.x, p.y) : tctx.lineTo(p.x, p.y));
-                tctx.stroke();
-            }
+            tctx.lineCap = 'round'; tctx.lineJoin = 'round'; tctx.strokeStyle = baseColor; tctx.fillStyle = baseColor;
+            smoothStroke(tctx, s.points, (i, n) => {
+                const w = hasPressure && n > 1 ? s.size * pressureAt(s.points, i) * 2 : s.size;
+                tctx.lineWidth = Math.max(0.3, w);
+                return tctx.lineWidth;
+            });
             ctx.save();
             ctx.globalCompositeOperation = 'multiply';
             ctx.globalAlpha = baseOpacity * 0.6;
@@ -349,34 +366,34 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null)
             ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1.0;
             return;
         }
-        const setStyle = (width) => {
-            if (s.tool === 'eraser') {
-                ctx.globalCompositeOperation = 'destination-out'; ctx.strokeStyle = 'rgba(0,0,0,1)'; ctx.globalAlpha = 1.0;
-            } else if (s.tool === 'marker') {
-                ctx.globalCompositeOperation = 'multiply'; ctx.strokeStyle = baseColor; ctx.globalAlpha = baseOpacity * 0.6;
-            } else if (s.tool === 'calligraphy') {
-                ctx.globalCompositeOperation = 'source-over'; ctx.strokeStyle = baseColor; ctx.globalAlpha = baseOpacity;
-                width *= 3;
+        const isEraser = s.tool === 'eraser';
+        ctx.save();
+        ctx.globalCompositeOperation = isEraser ? 'destination-out' : 'source-over';
+        ctx.strokeStyle = isEraser ? 'rgba(0,0,0,1)' : baseColor;
+        ctx.fillStyle = ctx.strokeStyle;
+        // Airbrush: soft blurred edge that builds up with overlap.
+        if (s.tool === 'soft') { try { ctx.filter = `blur(${Math.max(1, s.size / 4)}px)`; } catch { } }
+        smoothStroke(ctx, s.points, (i, n) => {
+            const pr = hasPressure && n > 1 ? pressureAt(s.points, i) : 0.5;
+            let w, alpha = isEraser ? 1 : baseOpacity;
+            if (s.tool === 'pencil') {
+                // Hard, near-constant width; pressure drives darkness instead of thickness.
+                w = s.size * (0.75 + 0.25 * pr * 2);
+                alpha = baseOpacity * (0.45 + 0.55 * Math.min(1, pr * 2));
+            } else if (s.tool === 'soft') {
+                w = s.size * (hasPressure ? pr * 2 : 1);
+                alpha = baseOpacity * 0.5;
+            } else if (s.tool === 'brush') {
+                // Pressure width + tapered ends for a natural pen feel.
+                w = s.size * (hasPressure ? pr * 2 : 1) * taperAt(i, n);
             } else {
-                ctx.globalCompositeOperation = 'source-over'; ctx.strokeStyle = baseColor; ctx.globalAlpha = baseOpacity;
+                w = s.size * (hasPressure ? pr * 2 : 1);
             }
-            ctx.lineWidth = Math.max(0.3, width);
-        };
-        if (hasPressure && s.points.length > 1) {
-            for (let i = 1; i < s.points.length; i++) {
-                const p1 = s.points[i - 1], p2 = s.points[i];
-                const pr = ((p1.pressure ?? 0.5) + (p2.pressure ?? 0.5)) / 2;
-                ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y);
-                setStyle(s.size * pr * 2);
-                ctx.stroke();
-            }
-        } else {
-            ctx.beginPath();
-            s.points.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
-            const avgPressure = s.points.reduce((sum, p) => sum + (p.pressure ?? 0.5), 0) / s.points.length;
-            setStyle(s.size * (hasPressure ? avgPressure * 2 : 1));
-            ctx.stroke();
-        }
+            ctx.globalAlpha = alpha;
+            ctx.lineWidth = Math.max(0.3, w);
+            return ctx.lineWidth;
+        });
+        ctx.restore();
         ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1.0;
     });
 }
