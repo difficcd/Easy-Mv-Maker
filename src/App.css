@@ -336,6 +336,17 @@ body {
 .canvas-stage {
     position: relative;
     display: inline-block;
+    max-width: 100%;
+    max-height: 100%;
+}
+
+/* The stage keeps the canvas aspect ratio (set inline from the project resolution) and is
+   capped to the area, so the canvas always fits. Drawing coords use getBoundingClientRect,
+   so CSS scaling is handled correctly. */
+.canvas-stage>canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
 }
 
 .selection-actions {

@@ -67,7 +67,7 @@ export function morphFrames(aImg, bImg, t) {
 }
 
 export const DEFAULT_CUT_DURATION = 1;
-export const CANVAS_W = 854, CANVAS_H = 480;
+export const CANVAS_W = 1920, CANVAS_H = 1080;
 export const FONT_PRESETS = [
     { value: 'sans-serif', label: 'Sans' },
     { value: 'serif', label: 'Serif' },
@@ -397,14 +397,14 @@ export const ANIM_DEFAULT = { inType: 'none', inDur: 0.4, inDir: 'left', outType
 
 // Per-cut animation state at a given absolute time. Returns null when the cut is
 // at rest (no transform), so callers can skip the save/transform fast-path.
-export function computeCutAnim(ac, time) {
+export function computeCutAnim(ac, time, cw = CANVAS_W, ch = CANVAS_H) {
     const a = ac.anim;
     if (!a) return null;
     const dur = Math.max(0.0001, ac.endTime - ac.startTime);
     const lt = time - ac.startTime;
     let alpha = 1, sx = 1, sy = 1, tx = 0, ty = 0;
     // Slide travels a full canvas dimension so the cut clearly enters from off-screen.
-    const dirOff = (dir, frac) => dir === 'left' ? [-CANVAS_W * frac, 0] : dir === 'right' ? [CANVAS_W * frac, 0] : dir === 'up' ? [0, -CANVAS_H * frac] : [0, CANVAS_H * frac];
+    const dirOff = (dir, frac) => dir === 'left' ? [-cw * frac, 0] : dir === 'right' ? [cw * frac, 0] : dir === 'up' ? [0, -ch * frac] : [0, ch * frac];
     if (a.inType && a.inType !== 'none' && a.inDur > 0 && lt < a.inDur) {
         const p = applyEase(lt / a.inDur, a.ease, a.easePower);
         if (a.inType === 'fade') alpha *= p;
@@ -468,7 +468,7 @@ export function samplePath(path, s) {
 // Per-layer ("part") transform animated across the cut's local time. Enables cutout /
 // puppet-style motion: move/rotate/scale a part, optionally along a drawn path, with
 // one-way or ping-pong(왕복) playback at a given speed and (optional) repeat count.
-export function computeLayerAnim(layer, ac, time) {
+export function computeLayerAnim(layer, ac, time, cw = CANVAS_W, ch = CANVAS_H) {
     const a = layer.anim;
     if (!a) return null;
     const dur = Math.max(0.0001, ac.endTime - ac.startTime);
@@ -488,7 +488,7 @@ export function computeLayerAnim(layer, ac, time) {
         tx += pt.x - p0.x; ty += pt.y - p0.y;
     }
     if (tx === 0 && ty === 0 && rot === 0 && sc === 1) return null;
-    return { tx, ty, rot, sc, px: (a.pivotX ?? 0.5) * CANVAS_W, py: (a.pivotY ?? 0.5) * CANVAS_H };
+    return { tx, ty, rot, sc, px: (a.pivotX ?? 0.5) * cw, py: (a.pivotY ?? 0.5) * ch };
 }
 
 export function flattenLayersInUiOrder(layers, parentId = null, out = []) {

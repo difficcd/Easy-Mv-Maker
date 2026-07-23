@@ -4,7 +4,7 @@ import './App.css';
 import { saveAutosave, loadAutosave, saveProject, loadProject, listProjects, deleteProject, autosaveKey } from './db';
 import { CutAnimPanel, LayerAnimPanel } from './AnimPanels';
 import {
-    DEFAULT_CUT_DURATION, CANVAS_W, CANVAS_H, FONT_PRESETS,
+    DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT, FONT_PRESETS,
     pointInPolygon, dist, safeArray, hexToRgb, bucketFillTransparentRegion,
     layerKey, imageDataToDataURL, dataURLToImageData, drawStrokesOnCtx,
     flattenForCanvas, flattenLayersInUiOrder, strokeSig,
@@ -13,6 +13,7 @@ import {
 
 const PEN_TYPES = [
     { id: 'pen', label: 'Dot', Icon: PenLine },
+    { id: 'brush', label: '펜', Icon: Feather },
     { id: 'marker', label: 'Marker', Icon: Pen },
     { id: 'eraser', label: 'Eraser', Icon: Eraser },
     { id: 'fill', label: 'Fill', Icon: Droplets },
@@ -120,6 +121,11 @@ export default function App() {
     const [pps, setPps] = useState(50);
     const ppsRef = useRef(50);
     ppsRef.current = pps;
+    // User-adjustable canvas resolution. Shadows the imported defaults for the whole component.
+    const [canvasSize, setCanvasSize] = useState({ w: CANVAS_W_DEFAULT, h: CANVAS_H_DEFAULT });
+    const CANVAS_W = canvasSize.w, CANVAS_H = canvasSize.h;
+    // Cached layer canvases hold the old dimensions — drop them when the size changes.
+    useEffect(() => { setLayerCanvasCache({}); }, [canvasSize.w, canvasSize.h]);
     const [copiedCut, setCopiedCut] = useState(null);
     const [lassoPoints, setLassoPoints] = useState([]);
     const [selection, setSelection] = useState(null);
@@ -603,7 +609,8 @@ export default function App() {
             bitmaps[id] = url;
         });
         const out = {
-            version: '1.4', appName: 'EasyMVMaker', savedAt: new Date().toISOString(), numTracks, onionPrev, onionNext, pps, bitmaps,
+            version: '1.5', appName: 'EasyMVMaker', savedAt: new Date().toISOString(), numTracks, onionPrev, onionNext, pps, bitmaps,
+            canvas: { w: CANVAS_W, h: CANVAS_H },
             cuts: cuts.map(c => ({ ...c, layers: c.layers.map(l => ({ ...l, redoStrokes: [] })) }))
         };
         // Embed the audio (base64, cached) so the project saves "with the music". Skipped
@@ -634,6 +641,7 @@ export default function App() {
             texts: safeArray(c.texts),
             layers: c.layers.map(l => ({ type: 'layer', parentId: null, ...l, redoStrokes: [] }))
         })));
+        if (data.canvas?.w && data.canvas?.h) setCanvasSize({ w: data.canvas.w, h: data.canvas.h });
         setNumTracks(data.numTracks || 2); setCurrentCutId(data.cuts[0]?.id || 1); setCurrentTime(0);
         setOnionPrev(data.onionPrev ?? false); setOnionNext(data.onionNext ?? false); setPps(data.pps ?? 50); setExpandedCuts(new Set());
         setCopiedCut(null); // clipboard may reference bitmaps from the old project
@@ -1053,17 +1061,23 @@ export default function App() {
         return textMeasureCtxRef.current;
     };
 
+    const textFontOf = (t) => {
+        const fontSize = Math.max(6, Math.min(400, t.fontSize ?? 32));
+        return `${t.italic ? 'italic ' : ''}${t.bold ? 'bold ' : ''}${fontSize}px ${t.fontFamily ?? 'sans-serif'}`;
+    };
     const measureTextBox = (t) => {
         const ctx = getTextMeasureCtx();
-        const fontSize = Math.max(6, Math.min(220, t.fontSize ?? 32));
-        const fontFamily = t.fontFamily ?? 'sans-serif';
-        ctx.font = `${fontSize}px ${fontFamily}`;
-        const lineHeight = Math.round(fontSize * 1.25);
+        const fontSize = Math.max(6, Math.min(400, t.fontSize ?? 32));
+        ctx.font = textFontOf(t);
+        const lineHeight = Math.round(fontSize * (t.lineHeight ?? 1.25));
         const lines = String(t.text ?? '').split('\n');
         let w = 0;
         for (const ln of lines) w = Math.max(w, ctx.measureText(ln).width);
-        const h = Math.max(1, lines.length) * lineHeight;
-        return { x: t.x ?? 0, y: t.y ?? 0, w: Math.max(1, Math.ceil(w)), h: Math.max(1, Math.ceil(h)) };
+        w = Math.max(1, Math.ceil(w));
+        const h = Math.max(1, Math.max(1, lines.length) * lineHeight);
+        const align = t.align || 'left';
+        const x = (t.x ?? 0) - (align === 'center' ? w / 2 : align === 'right' ? w : 0);
+        return { x, y: t.y ?? 0, w, h };
     };
 
     const hitTestText = (pos, cut) => {
@@ -1236,6 +1250,7 @@ export default function App() {
                 setLassoPoints([pos]);
                 break;
             case 'pen':
+            case 'brush':
             case 'marker':
             case 'calligraphy':
             case 'eraser':
@@ -1329,6 +1344,7 @@ export default function App() {
             case 'move':
                 break;
             case 'pen':
+            case 'brush':
             case 'marker':
             case 'calligraphy':
             case 'eraser':
@@ -1468,6 +1484,10 @@ export default function App() {
             visible: textEdit.visible ?? true,
             outline: !!textEdit.outline,
             outlineColor: textEdit.outlineColor || '#ffffff',
+            bold: !!textEdit.bold,
+            italic: !!textEdit.italic,
+            align: textEdit.align || 'left',
+            lineHeight: textEdit.lineHeight ?? 1.25,
         };
         setCuts(p => p.map(c => {
             if (c.id !== textEdit.cutId) return c;
@@ -1504,6 +1524,10 @@ export default function App() {
             visible: t.visible !== false,
             outline: !!t.outline,
             outlineColor: t.outlineColor || '#ffffff',
+            bold: !!t.bold,
+            italic: !!t.italic,
+            align: t.align || 'left',
+            lineHeight: t.lineHeight ?? 1.25,
         });
     };
 
@@ -1589,7 +1613,7 @@ export default function App() {
             const order = flattenLayersInUiOrder(ac.layers || []).filter(l => l.type === 'layer' && l.visible !== false);
             // Cut-level animation (enter/exit/deform) applies only during playback/export,
             // so editing stays at rest. Transform about the canvas centre.
-            const anim = isPlaying ? computeCutAnim(ac, currentTime) : null;
+            const anim = isPlaying ? computeCutAnim(ac, currentTime, CANVAS_W, CANVAS_H) : null;
             ctx.save();
             if (anim) {
                 ctx.globalAlpha = anim.alpha;
@@ -1604,7 +1628,7 @@ export default function App() {
                 if (!layerCanvas) continue;
 
                 // Per-layer ("part") transform nests inside the cut transform.
-                const la = isPlaying ? computeLayerAnim(l, ac, currentTime) : null;
+                const la = isPlaying ? computeLayerAnim(l, ac, currentTime, CANVAS_W, CANVAS_H) : null;
                 ctx.save();
                 if (la) {
                     ctx.translate(la.px + la.tx, la.py + la.ty);
@@ -1651,7 +1675,7 @@ export default function App() {
 
         // Text objects live outside paint layers ("text layer").
         activeCuts.forEach(ac => {
-            const anim = isPlaying ? computeCutAnim(ac, currentTime) : null;
+            const anim = isPlaying ? computeCutAnim(ac, currentTime, CANVAS_W, CANVAS_H) : null;
             ctx.save();
             if (anim) {
                 ctx.translate(CANVAS_W / 2 + anim.tx, CANVAS_H / 2 + anim.ty);
@@ -1660,14 +1684,14 @@ export default function App() {
             }
             for (const t of safeArray(ac.texts)) {
                 if (!t || t.visible === false) continue;
-                const fontSize = Math.max(6, Math.min(220, t.fontSize ?? 32));
-                const fontFamily = t.fontFamily ?? 'sans-serif';
-                const lineHeight = Math.round(fontSize * 1.25);
+                const fontSize = Math.max(6, Math.min(400, t.fontSize ?? 32));
+                const lineHeight = Math.round(fontSize * (t.lineHeight ?? 1.25));
                 ctx.globalCompositeOperation = 'source-over';
                 ctx.globalAlpha = (t.opacity ?? 1) * (anim ? anim.alpha : 1);
                 ctx.fillStyle = t.color ?? '#000';
                 ctx.textBaseline = 'top';
-                ctx.font = `${fontSize}px ${fontFamily}`;
+                ctx.textAlign = t.align || 'left';
+                ctx.font = textFontOf(t);
                 const lines = String(t.text ?? '').split('\n');
                 if (t.outline) {
                     ctx.lineJoin = 'round'; ctx.lineWidth = Math.max(2, fontSize / 6);
@@ -1677,6 +1701,7 @@ export default function App() {
                 for (let i = 0; i < lines.length; i++) {
                     ctx.fillText(lines[i], t.x ?? 0, (t.y ?? 0) + i * lineHeight);
                 }
+                ctx.textAlign = 'left';
                 ctx.globalAlpha = 1.0;
             }
             ctx.restore();
@@ -2007,6 +2032,24 @@ export default function App() {
                         )}
                     </div>
                     <div style={{ width: 1, height: 24, background: '#444' }} />
+                    <select className="time-input" style={{ height: 34, width: 116 }} title="캔버스 해상도"
+                        value={`${CANVAS_W}x${CANVAS_H}`}
+                        onChange={e => {
+                            if (e.target.value === 'custom') {
+                                const s = window.prompt('캔버스 크기 (가로x세로)', `${CANVAS_W}x${CANVAS_H}`);
+                                if (!s) return;
+                                const m = s.match(/(\d+)\s*[xX*,\s]\s*(\d+)/);
+                                if (!m) { alert('예: 1920x1080'); return; }
+                                setCanvasSize({ w: Math.max(64, Math.min(4096, +m[1])), h: Math.max(64, Math.min(4096, +m[2])) });
+                            } else {
+                                const [w, h] = e.target.value.split('x').map(Number);
+                                setCanvasSize({ w, h });
+                            }
+                        }}>
+                        {['854x480', '1280x720', '1920x1080', '2560x1440', '1080x1080', '1080x1920'].map(v => <option key={v} value={v}>{v}</option>)}
+                        {!['854x480', '1280x720', '1920x1080', '2560x1440', '1080x1080', '1080x1920'].includes(`${CANVAS_W}x${CANVAS_H}`) && <option value={`${CANVAS_W}x${CANVAS_H}`}>{CANVAS_W}x{CANVAS_H}</option>}
+                        <option value="custom">직접 입력…</option>
+                    </select>
                     <button className="button button-primary" onClick={handleExport} style={{ display: 'flex', alignItems: 'center', gap: 5, height: 34 }}><Download size={15} /> Export</button>
                     <label className="audio-input-label">
                         <Upload size={14} />{audioFile ? audioFile.name : 'Load Audio...'}
@@ -2091,7 +2134,7 @@ export default function App() {
                             {Math.round(view.zoom * 100)}% ⟲
                         </button>
                     )}
-                    <div className="canvas-stage" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})` }}>
+                    <div className="canvas-stage" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})`, aspectRatio: `${CANVAS_W} / ${CANVAS_H}`, maxWidth: '100%', maxHeight: '100%' }}>
                         <canvas ref={canvasRef} width={CANVAS_W} height={CANVAS_H}
                             onPointerDown={startDraw} onPointerMove={onDraw} onPointerUp={stopDraw} onPointerCancel={stopDraw} onPointerLeave={onPointerLeaveCanvas}
                             style={{ cursor: selection ? 'move' : tool === 'fill' ? 'cell' : tool === 'lasso' ? 'crosshair' : 'crosshair', touchAction: 'none' }} />
@@ -2120,9 +2163,9 @@ export default function App() {
                                     <input
                                         type="number"
                                         min="6"
-                                        max="220"
+                                        max="400"
                                         value={textEdit.fontSize}
-                                        onChange={e => setTextEdit(te => te ? ({ ...te, fontSize: Math.max(6, Math.min(220, +e.target.value || 6)) }) : te)}
+                                        onChange={e => setTextEdit(te => te ? ({ ...te, fontSize: Math.max(6, Math.min(400, +e.target.value || 6)) }) : te)}
                                         className="text-editor-num"
                                     />
                                     {(() => {
@@ -2162,6 +2205,18 @@ export default function App() {
                                         className="text-editor-color"
                                         title="색상"
                                     />
+                                    <button className="button" title="굵게" onClick={() => setTextEdit(te => te ? ({ ...te, bold: !te.bold }) : te)}
+                                        style={{ height: 26, width: 28, padding: 0, fontWeight: 800, background: textEdit.bold ? '#3a3a5c' : undefined }}>B</button>
+                                    <button className="button" title="기울임" onClick={() => setTextEdit(te => te ? ({ ...te, italic: !te.italic }) : te)}
+                                        style={{ height: 26, width: 28, padding: 0, fontStyle: 'italic', background: textEdit.italic ? '#3a3a5c' : undefined }}>I</button>
+                                    <select className="time-input" style={{ width: 52 }} title="정렬" value={textEdit.align || 'left'}
+                                        onChange={e => setTextEdit(te => te ? ({ ...te, align: e.target.value }) : te)}>
+                                        <option value="left">◧</option><option value="center">▣</option><option value="right">◨</option>
+                                    </select>
+                                    <select className="time-input" style={{ width: 54 }} title="줄간격" value={textEdit.lineHeight ?? 1.25}
+                                        onChange={e => setTextEdit(te => te ? ({ ...te, lineHeight: +e.target.value }) : te)}>
+                                        {[1, 1.15, 1.25, 1.5, 1.8, 2].map(v => <option key={v} value={v}>{v}x</option>)}
+                                    </select>
                                     <label style={{ fontSize: 11, color: '#aaa', display: 'flex', alignItems: 'center', gap: 3 }} title="가독성용 외곽선">
                                         <input type="checkbox" checked={!!textEdit.outline} onChange={e => setTextEdit(te => te ? ({ ...te, outline: e.target.checked }) : te)} />테두리
                                     </label>
