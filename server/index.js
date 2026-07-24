@@ -24,8 +24,11 @@ const assetsDirFor = (id) => path.join(DATA_DIR, `${safeId(id)}.assets`);
 const newId = () => `p_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 const ASSET_MIME = {
     webp: 'image/webp', png: 'image/png', jpeg: 'image/jpeg', jpg: 'image/jpeg',
-    mp3: 'audio/mpeg', m4a: 'audio/mp4', mp4: 'audio/mp4', webm: 'audio/webm', ogg: 'audio/ogg', opus: 'audio/ogg', wav: 'audio/wav',
+    mp3: 'audio/mpeg', m4a: 'audio/mp4', ogg: 'audio/ogg', opus: 'audio/ogg', wav: 'audio/wav',
+    webm: 'video/webm', mp4: 'video/mp4', mkv: 'video/x-matroska', mov: 'video/quicktime',
 };
+// webm/mp4/ogg are ambiguous (audio vs video) — the asset id tells us which.
+const AUDIO_MIME = { webm: 'audio/webm', mp4: 'audio/mp4', ogg: 'audio/ogg', m4a: 'audio/mp4', mp3: 'audio/mpeg', opus: 'audio/ogg', wav: 'audio/wav' };
 
 // List saved projects (metadata only).
 app.get('/api/projects', async (_req, res) => {
@@ -74,7 +77,7 @@ app.put('/api/projects/:id', async (req, res) => {
 // Binary asset store (video frames). Kept OUT of the project JSON so large/original-quality
 // projects don't build one giant base64 string (which OOMs the browser and the server).
 // Uploaded and fetched one asset at a time, so peak memory is a single frame.
-app.put('/api/projects/:id/asset/:assetId', express.raw({ type: '*/*', limit: '128mb' }), async (req, res) => {
+app.put('/api/projects/:id/asset/:assetId', express.raw({ type: '*/*', limit: '1024mb' }), async (req, res) => {
     try {
         const dir = assetsDirFor(req.params.id);
         await fs.mkdir(dir, { recursive: true });
@@ -89,7 +92,9 @@ app.get('/api/projects/:id/asset/:assetId', async (req, res) => {
         const want = safeId(req.params.assetId) + '.';
         const f = (await fs.readdir(dir)).find(n => n.startsWith(want));
         if (!f) { res.status(404).json({ error: 'not found' }); return; }
-        res.setHeader('Content-Type', ASSET_MIME[f.split('.').pop().toLowerCase()] || 'application/octet-stream');
+        const ext = f.split('.').pop().toLowerCase();
+        const mime = req.params.assetId === '__audio__' ? (AUDIO_MIME[ext] || 'audio/mpeg') : (ASSET_MIME[ext] || 'application/octet-stream');
+        res.setHeader('Content-Type', mime);
         res.send(await fs.readFile(path.join(dir, f)));
     } catch { res.status(404).json({ error: 'not found' }); }
 });

@@ -92,6 +92,12 @@ export default function App() {
     const [audioData, setAudioData] = useState(null);
     const audioRef = useRef(null);
     const audioB64Ref = useRef(null); // audio as base64 data URL, embedded into saves
+    // Video overlay track: play the original video underneath the drawing layers (no per-frame
+    // cuts) — for "덧그리기" over a video. Like audio but drawn onto the canvas each frame.
+    const [videoOverlay, setVideoOverlay] = useState(null); // { name, startTime, endTime, offset, duration, w, h }
+    const videoElRef = useRef(null);      // hidden <video> element that decodes/plays the overlay
+    const videoBlobRef = useRef(null);    // the video Blob, for saving
+    const videoSeekTokRef = useRef(0);    // paused-seek token so a stale 'seeked' doesn't repaint
     const [videoImport, setVideoImport] = useState(null); // {file, fps, maxFrames} dialog
     const [recentVideos, setRecentVideos] = useState([]); // fetched/opened videos, reusable without re-downloading
     const [videoBusy, setVideoBusy] = useState(null); // {done, total} while extracting
@@ -403,11 +409,11 @@ export default function App() {
         applyHistory(historyRef.current[historyIndexRef.current]);
     };
 
-    const maxTime = Math.max(60, audioData?.endTime ?? audioDuration, ...cuts.map(c => c.endTime)) + 60;
+    const maxTime = Math.max(60, audioData?.endTime ?? audioDuration, videoOverlay?.endTime ?? 0, ...cuts.map(c => c.endTime)) + 60;
     // Actual content bounds (where cuts/audio live) — playback & loop run between these,
     // not out to maxTime (which has empty padding for the timeline ruler).
-    const contentEnd = Math.max(0, audioData?.endTime ?? 0, ...cuts.map(c => c.endTime));
-    const contentStart = cuts.length ? Math.max(0, Math.min(...cuts.map(c => c.startTime), audioData?.startTime ?? Infinity)) : 0;
+    const contentEnd = Math.max(0, audioData?.endTime ?? 0, videoOverlay?.endTime ?? 0, ...cuts.map(c => c.endTime));
+    const contentStart = (cuts.length || videoOverlay) ? Math.max(0, Math.min(videoOverlay?.startTime ?? Infinity, ...cuts.map(c => c.startTime), audioData?.startTime ?? Infinity)) : 0;
     // Parts (scenes): cuts grouped by partId. Each video import is one part; cuts can also be
     // grouped manually. Selecting a part scopes playback (and dims the rest) to it.
     const parts = (() => {
@@ -484,7 +490,20 @@ export default function App() {
         if (audio && audioUrl) {
             if (audible()) { const exp = audioData ? (t - audioData.startTime) + audioData.offset : t; if (Math.abs(audio.currentTime - exp) > 0.05) audio.currentTime = exp; audio.play().catch(() => { }); }
         }
-        const finish = (end) => { isPlayingRef.current = false; setIsPlaying(false); if (audio) audio.pause(); setCurrentTime(end); currentTimeRef.current = end; paintFrameRef.current?.(end, false); };
+        // Video overlay follows the clock (audio stays the master). Seek only on real drift so the
+        // browser's native video decode plays smoothly instead of stuttering on per-frame seeks.
+        const vid = videoElRef.current;
+        if (vid && videoOverlay) vid.playbackRate = rate;
+        const syncVideo = (tt, forceSeek) => {
+            if (!vid || !videoOverlay) return;
+            if (tt >= videoOverlay.startTime && tt < videoOverlay.endTime) {
+                const exp = (tt - videoOverlay.startTime) + videoOverlay.offset;
+                if (forceSeek || Math.abs(vid.currentTime - exp) > 0.2) { try { vid.currentTime = exp; } catch { } }
+                if (vid.paused) vid.play().catch(() => { });
+            } else if (!vid.paused) vid.pause();
+        };
+        syncVideo(t, true);
+        const finish = (end) => { isPlayingRef.current = false; setIsPlaying(false); if (audio) audio.pause(); if (vid) vid.pause(); setCurrentTime(end); currentTimeRef.current = end; paintFrameRef.current?.(end, false); };
         const step = (now) => {
             if (!isPlayingRef.current) return;
             const dt = (now - last) / 1000; last = now;
@@ -492,6 +511,7 @@ export default function App() {
             if (seekRef.current != null) {
                 t = seekRef.current; seekRef.current = null;
                 if (audio && audioUrl) { const exp = audioData ? Math.max(0, (t - audioData.startTime) + audioData.offset) : t; try { audio.currentTime = exp; } catch { } }
+                syncVideo(t, true);
                 currentTimeRef.current = t;
                 paintFrameRef.current?.(t, true);
                 if (playheadRef.current) playheadRef.current.style.left = `${t * pps + 60}px`;
@@ -507,6 +527,7 @@ export default function App() {
                 if (audio && !audio.paused) audio.pause();
                 t += dt * rate;
             }
+            syncVideo(t, false);
             if (isExporting.current && t >= exportEndRef.current) {
                 if (mediaRecorderRef.current?.state === 'recording') mediaRecorderRef.current.stop();
                 isExporting.current = false; finish(t); return;
@@ -527,7 +548,7 @@ export default function App() {
         };
         reqRef.current = requestAnimationFrame(step);
         return () => cancelAnimationFrame(reqRef.current);
-    }, [isPlaying, maxTime, audioUrl, audioData, loopPlay, playStart, playEnd, playbackRate, pps]);
+    }, [isPlaying, maxTime, audioUrl, audioData, loopPlay, playStart, playEnd, playbackRate, pps, videoOverlay]);
 
     useEffect(() => { if (!isPlaying) currentTimeRef.current = currentTime; }, [currentTime, isPlaying]);
 
@@ -535,6 +556,15 @@ export default function App() {
         if (!isPlaying && audioRef.current && audioUrl && Math.abs(audioRef.current.currentTime - currentTime) > 0.1)
             audioRef.current.currentTime = currentTime;
     }, [currentTime, isPlaying, audioUrl]);
+    // Paused: seek the overlay video to the scrubbed time so the canvas shows that frame (onseeked repaints).
+    useEffect(() => {
+        if (isPlaying) return;
+        const v = videoElRef.current; if (!v || !videoOverlay) return;
+        if (currentTime >= videoOverlay.startTime && currentTime < videoOverlay.endTime) {
+            const exp = (currentTime - videoOverlay.startTime) + videoOverlay.offset;
+            if (Math.abs(v.currentTime - exp) > 0.03) { try { v.currentTime = exp; } catch { } }
+        }
+    }, [currentTime, isPlaying, videoOverlay]);
 
     useEffect(() => {
         if (!splitter) return;
@@ -673,6 +703,9 @@ export default function App() {
                 if (draggingCutData.cutId === 'audio') {
                     setAudioData(prev => { if (!prev) return prev; const ns = Math.max(0, draggingCutData.initialStart + dt); return { ...prev, startTime: ns, endTime: ns + (prev.endTime - prev.startTime) }; }); return;
                 }
+                if (draggingCutData.cutId === 'video') {
+                    setVideoOverlay(prev => { if (!prev) return prev; const ns = Math.max(0, draggingCutData.initialStart + dt); return { ...prev, startTime: ns, endTime: ns + (prev.endTime - prev.startTime) }; }); return;
+                }
                 // Multi-cut drag: move the whole selected group by the same delta (keeps their
                 // relative layout), clamped so none crosses t=0 or the track range.
                 const grp = draggingCutData.group;
@@ -802,6 +835,15 @@ export default function App() {
                 out.audio = { ...meta, dataUrl: audioB64Ref.current };
             }
         }
+        // Video overlay track (like audio): externalize the video blob for server saves; store the
+        // Blob directly for IndexedDB; embed as dataURL only for a self-contained .emv file.
+        if (videoOverlay && videoBlobRef.current) {
+            const meta = { name: videoOverlay.name, startTime: videoOverlay.startTime, endTime: videoOverlay.endTime, offset: videoOverlay.offset, duration: videoOverlay.duration, w: videoOverlay.w, h: videoOverlay.h };
+            const ext = (videoBlobRef.current.type.match(/video\/([\w.-]+)/)?.[1] || 'mp4').replace('x-matroska', 'mkv').replace('quicktime', 'mov');
+            if (assetSink) { assetSink.push({ id: '__video__', blob: videoBlobRef.current, ext }); out.video = { ...meta, asset: true, ext }; }
+            else if (blobsOk) { out.video = { ...meta, blob: videoBlobRef.current }; }
+            else { out.video = { ...meta, dataUrl: await blobToDataURL(videoBlobRef.current) }; }
+        }
         return out;
     };
     const restore = async (data, assetBase = null) => {
@@ -875,6 +917,21 @@ export default function App() {
             audioB64Ref.current = null;
             if (audioRef.current) { audioRef.current.pause(); try { audioRef.current.removeAttribute('src'); audioRef.current.load(); } catch { } }
             setAudioFile(null); setAudioUrl(null); setAudioData(null);
+        }
+        // Restore the video overlay track (Blob from IDB / server asset / embedded dataURL).
+        let videoBlob = null;
+        if (data.video?.blob instanceof Blob) videoBlob = data.video.blob;
+        else if (data.video?.asset && assetBase) { try { videoBlob = await (await fetch(`${assetBase}/asset/__video__`)).blob(); } catch { } }
+        else if (data.video?.dataUrl) { try { videoBlob = await (await fetch(data.video.dataUrl)).blob(); } catch { } }
+        if (videoBlob) {
+            videoBlobRef.current = videoBlob;
+            const url = URL.createObjectURL(videoBlob);
+            const v = videoElRef.current;
+            if (v) { v.muted = true; v.playsInline = true; v.src = url; v.onseeked = () => setFrameDecodeTick(t => t + 1); v.onloadedmetadata = () => { try { v.currentTime = data.video.offset || 0; } catch { } }; }
+            setVideoOverlay({ name: data.video.name || '영상', startTime: data.video.startTime ?? 0, endTime: data.video.endTime ?? (data.video.duration || 0), offset: data.video.offset ?? 0, duration: data.video.duration || 0, w: data.video.w || 0, h: data.video.h || 0 });
+        } else {
+            videoBlobRef.current = null; setVideoOverlay(null);
+            if (videoElRef.current) { try { videoElRef.current.pause(); videoElRef.current.removeAttribute('src'); videoElRef.current.load(); } catch { } }
         }
     };
     const doSave = async (asNew = false) => {
@@ -2007,6 +2064,15 @@ export default function App() {
         }
         ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
         paintedOnceRef.current = true;
+        // Video overlay track: drawn underneath everything. The <video> element is kept at time t by
+        // the playback loop (playing) or a paused-seek effect.
+        if (videoOverlay && t >= videoOverlay.startTime && t < videoOverlay.endTime) {
+            const v = videoElRef.current;
+            if (v && v.readyState >= 2) {
+                const r = fitRect(videoOverlay.w || v.videoWidth || CANVAS_W, videoOverlay.h || v.videoHeight || CANVAS_H, CANVAS_W, CANVAS_H);
+                try { ctx.drawImage(v, r.x, r.y, r.w, r.h); } catch { }
+            }
+        }
 
         if (!playing && primary) {
             if (onionPrev) {
@@ -2128,7 +2194,7 @@ export default function App() {
             }
             ctx.restore();
         });
-    }, [cuts, currentCutId, onionPrev, onionNext, selection, layerCanvasCache, frameDecodeTick]);
+    }, [cuts, currentCutId, onionPrev, onionNext, selection, layerCanvasCache, frameDecodeTick, videoOverlay]);
 
     const paintFrameRef = useRef(null);
     paintFrameRef.current = paintFrame;
@@ -2375,6 +2441,24 @@ export default function App() {
     const handleAudioUpload = (e) => {
         const file = e.target.files[0]; if (!file) return;
         loadAudioUrl(URL.createObjectURL(file), file.name);
+    };
+    // Lay a whole video under the drawing layers (overlay/rotoscope use). No frame cuts.
+    const loadVideoOverlay = (blob, name, startAt = 0, offset = 0, clipDur = null) => {
+        videoBlobRef.current = blob;
+        const url = URL.createObjectURL(blob);
+        const v = videoElRef.current || document.createElement('video');
+        v.muted = true; v.playsInline = true; v.src = url;
+        v.onloadedmetadata = () => {
+            const dur = clipDur != null ? Math.min(clipDur, Math.max(0, v.duration - offset)) : Math.max(0, v.duration - offset);
+            setVideoOverlay({ name: name || '영상', startTime: startAt, endTime: startAt + dur, offset, duration: v.duration, w: v.videoWidth, h: v.videoHeight });
+            // Prime the first frame so a paused canvas shows something immediately.
+            try { v.currentTime = offset; } catch { }
+        };
+        v.onseeked = () => { setFrameDecodeTick(t => t + 1); }; // repaint the (paused) overlay frame
+    };
+    const removeVideoOverlay = () => {
+        setVideoOverlay(null); videoBlobRef.current = null;
+        const v = videoElRef.current; if (v) { try { v.pause(); v.removeAttribute('src'); v.load(); } catch { } }
     };
     // Remember fetched/opened videos so they can be re-imported with different settings
     // without downloading again (session only — keeps at most 3 to bound memory).
@@ -2637,6 +2721,7 @@ export default function App() {
     return (
         <div className="app-container">
             <audio ref={audioRef} style={{ display: 'none' }} />
+            <video ref={videoElRef} muted playsInline style={{ display: 'none' }} />
 
             {serverProjects !== null && <ProjectPicker title="서버에서 열기" items={serverProjects} onOpen={doServerOpen} onDelete={doServerDelete} onClose={() => setServerProjects(null)} />}
             {localProjects !== null && <ProjectPicker title="로컬에서 열기" items={localProjects} onOpen={doLocalOpen} onDelete={doLocalDelete} onClose={() => setLocalProjects(null)} />}
@@ -2746,9 +2831,18 @@ export default function App() {
                                     {videoImport.parts > 1 && <><br /><b style={{ color: '#9cf' }}>{videoImport.parts}개 파트</b>로 나눠 가져옵니다 — 재생 시 파트별 또는 전체로 볼 수 있습니다.</>}
                                     {videoImport.whole && <><br /><span style={{ color: '#c99' }}>전체 추출: 길이가 길면 컷이 매우 많아집니다. fps를 낮게(1~4) 두는 것을 권장합니다.</span></>}
                                 </div>
+                                <div style={{ background: '#12202b', border: '1px solid #1c3a4a', borderRadius: 6, padding: '8px 10px', marginBottom: 10, color: '#9cc', fontSize: 11.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                                    <span><b style={{ color: '#8de' }}>영상 위에 덧그리기</b> — 프레임으로 쪼개지 않고 원본 영상을 트랙으로 깔고 그 위에 그림·텍스트. 24fps 장편도 매끄럽게 재생.</span>
+                                    <button className="button" style={{ whiteSpace: 'nowrap' }} onClick={() => {
+                                        const useRange = videoImport.rangeOn && parseClock(videoImport.endText) > parseClock(videoImport.startText);
+                                        loadVideoOverlay(videoImport.file, videoImport.label || videoImport.file.name, 0, useRange ? parseClock(videoImport.startText) : 0, useRange ? (parseClock(videoImport.endText) - parseClock(videoImport.startText)) : null);
+                                        if (videoImport.withAudio) loadAudioUrl(URL.createObjectURL(videoImport.file), (videoImport.label || '영상') + ' (음원)', 0, useRange ? parseClock(videoImport.startText) : 0, useRange ? (parseClock(videoImport.endText) - parseClock(videoImport.startText)) : null);
+                                        setVideoImport(null);
+                                    }}>🎬 영상 그대로 깔기</button>
+                                </div>
                                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
                                     <button className="button" onClick={() => setVideoImport(null)}>취소</button>
-                                    <button className="button button-primary" onClick={runVideoImport}>가져오기</button>
+                                    <button className="button button-primary" onClick={runVideoImport}>프레임으로 가져오기</button>
                                 </div>
                             </>
                         )}
@@ -3240,6 +3334,15 @@ export default function App() {
                                         <div className="rh rh-left" style={{ touchAction: 'none' }} onPointerDown={e => { e.stopPropagation(); e.target.setPointerCapture(e.pointerId); setResizingData({ cutId: 'audio', edge: 'left', startX: e.clientX, initialStart: audioData.startTime, initialEnd: audioData.endTime, initialOffset: audioData.offset }); }} />
                                         🎵 Audio
                                         <div className="rh rh-right" style={{ touchAction: 'none' }} onPointerDown={e => { e.stopPropagation(); e.target.setPointerCapture(e.pointerId); setResizingData({ cutId: 'audio', edge: 'right', startX: e.clientX, initialStart: audioData.startTime, initialEnd: audioData.endTime, initialOffset: audioData.offset }); }} />
+                                    </div>
+                                </div>
+                            )}
+                            {videoOverlay && (
+                                <div className="tl-track" style={{ background: '#0f1e2a' }}>
+                                    <div className="tl-track-label" style={{ background: '#0f1e2a' }}><span>영상</span><button className="icon-btn del-btn" onClick={e => { e.stopPropagation(); removeVideoOverlay(); }} title="영상 트랙 삭제"><Trash2 size={9} /></button></div>
+                                    <div className="cut-block" style={{ left: `${videoOverlay.startTime * pps + 60}px`, width: `${(videoOverlay.endTime - videoOverlay.startTime) * pps}px`, background: '#155e75', borderColor: '#22d3ee55', cursor: draggingCutData?.cutId === 'video' ? 'grabbing' : 'grab', touchAction: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                                        onPointerDown={e => { e.stopPropagation(); cutDragMovedRef.current = false; clearTimeout(cutDragTimerRef.current); cutDragArmedRef.current = e.pointerType !== 'touch'; if (e.pointerType === 'touch') cutDragTimerRef.current = setTimeout(() => { cutDragArmedRef.current = true; }, 350); try { e.currentTarget.setPointerCapture(e.pointerId); } catch { } setDraggingCutData({ cutId: 'video', startX: e.clientX, startY: e.clientY, initialStart: videoOverlay.startTime, initialTrack: 0 }); }}>
+                                        🎬 {videoOverlay.name}
                                     </div>
                                 </div>
                             )}
