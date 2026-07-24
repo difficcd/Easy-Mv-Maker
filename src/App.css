@@ -776,6 +776,29 @@ canvas {
     outline-offset: -1px;
 }
 
+.chip {
+    background: #2a2a3a;
+    border: 1px solid #3a3a4a;
+    color: #ccc;
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 12px;
+    white-space: nowrap;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+}
+
+.chip:hover {
+    background: #33334a;
+}
+
+.chip-active {
+    background: linear-gradient(135deg, #6d28d9, #5b21b6);
+    border-color: #7c5cff;
+    color: #fff;
+}
+
 .rh {
     position: absolute;
     top: 0;

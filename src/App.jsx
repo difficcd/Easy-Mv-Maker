@@ -112,6 +112,7 @@ export default function App() {
     const [renamingCutId, setRenamingCutId] = useState(null);
     const [selectedCutIds, setSelectedCutIds] = useState(new Set());
     const [marquee, setMarquee] = useState(null); // rubber-band rect (content px) while drag-selecting cuts
+    const [activePartId, setActivePartId] = useState(null); // scope playback/editing to one part (null = 전체)
     const lassoClipRef = useRef(null); // copied lasso pixels: { bitmapId, w, h }
     const [hasLassoClip, setHasLassoClip] = useState(false);
     const [showFileMenu, setShowFileMenu] = useState(false);
@@ -356,6 +357,22 @@ export default function App() {
     // not out to maxTime (which has empty padding for the timeline ruler).
     const contentEnd = Math.max(0, audioData?.endTime ?? 0, ...cuts.map(c => c.endTime));
     const contentStart = cuts.length ? Math.max(0, Math.min(...cuts.map(c => c.startTime), audioData?.startTime ?? Infinity)) : 0;
+    // Parts (scenes): cuts grouped by partId. Each video import is one part; cuts can also be
+    // grouped manually. Selecting a part scopes playback (and dims the rest) to it.
+    const parts = (() => {
+        const m = new Map();
+        for (const c of cuts) {
+            if (!c.partId) continue;
+            const p = m.get(c.partId) || { id: c.partId, name: c.partName || '파트', count: 0, start: Infinity, end: 0 };
+            p.count++; p.start = Math.min(p.start, c.startTime); p.end = Math.max(p.end, c.endTime);
+            m.set(c.partId, p);
+        }
+        return [...m.values()].sort((a, b) => a.start - b.start);
+    })();
+    const activePart = activePartId ? parts.find(p => p.id === activePartId) : null;
+    // Playback runs within the active part when one is selected, else across all content.
+    const playStart = activePart ? activePart.start : contentStart;
+    const playEnd = activePart ? activePart.end : contentEnd;
 
     useEffect(() => {
         const h = (e) => { if (fileMenuRef.current && !fileMenuRef.current.contains(e.target)) setShowFileMenu(false); };
@@ -443,11 +460,11 @@ export default function App() {
                 if (mediaRecorderRef.current?.state === 'recording') mediaRecorderRef.current.stop();
                 isExporting.current = false; finish(t); return;
             }
-            const endAt = isExporting.current ? maxTime : contentEnd;
+            const endAt = isExporting.current ? maxTime : playEnd;
             if (t >= endAt) {
                 if (loopPlay && !isExporting.current) {
-                    t = contentStart;
-                    if (audio && audioUrl) { audio.currentTime = audioData ? audioData.offset : contentStart; if (audible()) audio.play().catch(() => { }); }
+                    t = playStart;
+                    if (audio && audioUrl) { audio.currentTime = audioData ? Math.max(0, (playStart - audioData.startTime) + audioData.offset) : playStart; if (audible()) audio.play().catch(() => { }); }
                 } else { finish(endAt); return; }
             }
             currentTimeRef.current = t;
@@ -458,7 +475,7 @@ export default function App() {
         };
         reqRef.current = requestAnimationFrame(step);
         return () => cancelAnimationFrame(reqRef.current);
-    }, [isPlaying, maxTime, audioUrl, audioData, loopPlay, contentStart, contentEnd, playbackRate, pps]);
+    }, [isPlaying, maxTime, audioUrl, audioData, loopPlay, playStart, playEnd, playbackRate, pps]);
 
     useEffect(() => { if (!isPlaying) currentTimeRef.current = currentTime; }, [currentTime, isPlaying]);
 
@@ -771,9 +788,12 @@ export default function App() {
         }
         setCuts(data.cuts.map(c => ({
             ...c,
+            // Migrate older projects: a video import (videoBatch) becomes a part.
+            partId: c.partId ?? c.videoBatch, partName: c.partName ?? c.videoLabel,
             texts: safeArray(c.texts),
             layers: c.layers.map(l => ({ type: 'layer', parentId: null, ...l, redoStrokes: [] }))
         })));
+        setActivePartId(null);
         if (data.canvas?.w && data.canvas?.h) setCanvasSize({ w: data.canvas.w, h: data.canvas.h });
         setNumTracks(data.numTracks || 2); setCurrentCutId(data.cuts[0]?.id || 1); setCurrentTime(0);
         setOnionPrev(data.onionPrev ?? false); setOnionNext(data.onionNext ?? false); setPps(data.pps ?? 50); setExpandedCuts(new Set());
@@ -969,9 +989,10 @@ export default function App() {
             // Playback is cut-based: pressing play after the current cut (or all content) has
             // finished rewinds to the CURRENT cut's start — even with music (audio re-seeks to match).
             const cc = cuts.find(c => c.id === currentCutId);
-            const anchor = cc ? cc.startTime : contentStart;
-            const finished = currentTime >= contentEnd - 0.001 || (cc && currentTime >= cc.endTime - 0.001);
-            if (finished || currentTime < anchor - 0.001) {
+            let anchor = cc ? cc.startTime : playStart;
+            if (anchor < playStart - 0.001 || anchor >= playEnd) anchor = playStart; // keep the anchor inside the active part
+            const finished = currentTime >= playEnd - 0.001 || (cc && currentTime >= cc.endTime - 0.001);
+            if (finished || currentTime < anchor - 0.001 || currentTime > playEnd + 0.001) {
                 setCurrentTime(anchor);
                 currentTimeRef.current = anchor;
                 if (audioRef.current) audioRef.current.currentTime = audioData ? Math.max(0, (anchor - audioData.startTime) + audioData.offset) : anchor;
@@ -2243,6 +2264,38 @@ export default function App() {
         setTimeout(gcBitmaps, 0); // free the frame bitmaps right away
     };
 
+    // Select a part: scope playback to it and jump the playhead to its start.
+    const selectPart = (partId) => {
+        setActivePartId(partId);
+        const p = partId ? parts.find(x => x.id === partId) : null;
+        if (p) {
+            const first = cuts.filter(c => c.partId === partId).sort((a, b) => a.startTime - b.startTime)[0];
+            if (first) setCurrentCutId(first.id);
+            setCurrentTime(p.start); currentTimeRef.current = p.start;
+            if (audioRef.current && audioUrl) { try { audioRef.current.currentTime = audioData ? Math.max(0, (p.start - audioData.startTime) + audioData.offset) : p.start; } catch { } }
+        }
+    };
+    // Group the currently-selected cuts into a new part.
+    const makePartFromSelection = () => {
+        if (!selectedCutIds.size) { alert('먼저 컷을 선택하세요 (타임라인에서 드래그 또는 Ctrl+클릭).'); return; }
+        const name = window.prompt('새 파트 이름:', `파트 ${parts.length + 1}`);
+        if (name == null) return;
+        const pid = 'part_' + Date.now().toString(36);
+        setCuts(p => p.map(c => selectedCutIds.has(c.id) ? { ...c, partId: pid, partName: name } : c));
+        setActivePartId(pid);
+    };
+    const renamePart = (partId) => {
+        const p = parts.find(x => x.id === partId); if (!p) return;
+        const name = window.prompt('파트 이름 변경:', p.name);
+        if (name == null) return;
+        setCuts(prev => prev.map(c => c.partId === partId ? { ...c, partName: name } : c));
+    };
+    // Ungroup a part (cuts stay, just lose their part membership).
+    const ungroupPart = (partId) => {
+        setCuts(prev => prev.map(c => c.partId === partId ? { ...c, partId: undefined, partName: undefined } : c));
+        if (activePartId === partId) setActivePartId(null);
+    };
+
     // Local-only: pull a video by URL through the API, then reuse the frame-import dialog.
     const loadYoutubeVideo = async (presetUrl) => {
         const url = typeof presetUrl === 'string' ? presetUrl : window.prompt('유튜브(또는 영상) 링크:');
@@ -2299,7 +2352,7 @@ export default function App() {
                 t = e;
                 made.push({
                     id: baseId + i, name: `${label} ${i + 1}`, startTime: s, endTime: e, track,
-                    activeLayerId: 1, texts: [], videoBatch: batch, videoLabel: label, videoSrc: srcKey,
+                    activeLayerId: 1, texts: [], videoBatch: batch, videoLabel: label, videoSrc: srcKey, partId: batch, partName: label,
                     layers: [{ id: 1, name: 'L1', type: 'layer', parentId: null, visible: true, redoStrokes: [], strokes: [{ id: baseId + 100000 + i, tool: 'paste', bitmapId, x: px, y: py, w: pw, h: ph }] }],
                 });
             }
@@ -2894,6 +2947,23 @@ export default function App() {
                         <span style={{ fontSize: 11, color: '#666', marginLeft: 12 }}>Max: {fmt(maxTime)}</span>
                     </>}
                 </div>
+                {showBottom && (parts.length > 0 || selectedCutIds.size > 0) && (
+                    <div className="parts-bar" style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', borderBottom: '1px solid #2a2a3a', overflowX: 'auto', flexShrink: 0 }}>
+                        <span style={{ fontSize: 10, color: '#777', marginRight: 2, flexShrink: 0 }}>파트</span>
+                        <button className={`chip${!activePartId ? ' chip-active' : ''}`} onClick={() => selectPart(null)} title="전체 재생" style={{ flexShrink: 0 }}>전체</button>
+                        {parts.map((p, i) => (
+                            <button key={p.id} className={`chip${activePartId === p.id ? ' chip-active' : ''}`} style={{ flexShrink: 0 }}
+                                onClick={() => selectPart(p.id)} onDoubleClick={() => renamePart(p.id)}
+                                title={`${p.name} · ${p.count}컷 (클릭: 이 파트만 재생 / 더블클릭: 이름변경)`}>
+                                {p.name.slice(0, 14)} <span style={{ opacity: 0.6 }}>·{p.count}</span>
+                                <span onClick={e => { e.stopPropagation(); ungroupPart(p.id); }} title="파트 해제 (컷은 유지)" style={{ marginLeft: 4, opacity: 0.5, cursor: 'pointer' }}>✕</span>
+                            </button>
+                        ))}
+                        {selectedCutIds.size > 0 && (
+                            <button className="chip" onClick={makePartFromSelection} title="선택한 컷을 새 파트로 묶기" style={{ flexShrink: 0, color: '#9cf' }}>+ 선택 {selectedCutIds.size}컷 → 새 파트</button>
+                        )}
+                    </div>
+                )}
                 {showBottom && (
                     <div className="tl-tracks" ref={timelineRef} onPointerDown={onTimelinePointerDown} onPointerMove={onTimelinePointerMove} onPointerUp={onTimelinePointerUp} onPointerCancel={onTimelinePointerUp} style={{ position: 'relative', touchAction: 'none' }}>
                         <div style={{ minWidth: '100%', width: `${Math.max(100, maxTime * pps + 150)}px`, position: 'relative' }}>
@@ -2938,7 +3008,7 @@ export default function App() {
                                         {cuts.filter(c => (c.track || 0) === ti).filter(cut => { const l = cut.startTime * pps + 60, r = l + (cut.endTime - cut.startTime) * pps; return r >= tlWin.left && l <= tlWin.right; }).map(cut => (
                                             <div key={cut.id} data-cutid={cut.id}
                                                 className={`cut-block${currentCutId === cut.id ? ' cut-block-active' : ''}${selectedCutIds.has(cut.id) ? ' cut-block-selected' : ''}`}
-                                                style={{ left: `${cut.startTime * pps + 60}px`, width: `${(cut.endTime - cut.startTime) * pps}px`, cursor: draggingCutData?.cutId === cut.id ? 'grabbing' : 'grab', touchAction: 'none' }}
+                                                style={{ left: `${cut.startTime * pps + 60}px`, width: `${(cut.endTime - cut.startTime) * pps}px`, cursor: draggingCutData?.cutId === cut.id ? 'grabbing' : 'grab', touchAction: 'none', opacity: activePartId && cut.partId !== activePartId ? 0.3 : 1 }}
                                                 onClick={e => { e.stopPropagation(); if (cutDragMovedRef.current || e.shiftKey || e.ctrlKey || e.metaKey) return; setCurrentCutId(cut.id); setSelectedCutIds(new Set([cut.id])); }}
                                                 onPointerDown={e => {
                                                     e.stopPropagation();
