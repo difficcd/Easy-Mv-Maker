@@ -593,6 +593,23 @@ export default function App() {
                 if (draggingCutData.cutId === 'audio') {
                     setAudioData(prev => { if (!prev) return prev; const ns = Math.max(0, draggingCutData.initialStart + dt); return { ...prev, startTime: ns, endTime: ns + (prev.endTime - prev.startTime) }; }); return;
                 }
+                // Multi-cut drag: move the whole selected group by the same delta (keeps their
+                // relative layout), clamped so none crosses t=0 or the track range.
+                const grp = draggingCutData.group;
+                if (grp && grp.length > 1) {
+                    const minStart = Math.min(...grp.map(g => g.startTime));
+                    const minTrack = Math.min(...grp.map(g => g.track)), maxTrack = Math.max(...grp.map(g => g.track));
+                    const cdt = Math.max(dt, -minStart);
+                    const cto = Math.max(-minTrack, Math.min(numTracks - 1 - maxTrack, trackOff));
+                    const byId = new Map(grp.map(g => [g.id, g]));
+                    setSnapLinePos(null);
+                    setCuts(prev => prev.map(c => {
+                        const g = byId.get(c.id); if (!g) return c;
+                        const ns = Math.max(0, g.startTime + cdt), dur = g.endTime - g.startTime;
+                        return { ...c, startTime: ns, endTime: ns + dur, track: g.track + cto };
+                    }));
+                    return;
+                }
                 setCuts(prev => {
                     const tc = prev.find(c => c.id === draggingCutData.cutId); if (!tc) return prev;
                     let ns = Math.max(0, draggingCutData.initialStart + dt), dur = tc.endTime - tc.startTime;
@@ -884,10 +901,15 @@ export default function App() {
 
     const handlePlayPause = () => {
         if (!isPlaying) {
-            // Starting from the end (or before the content) rewinds to the first cut's start.
-            if (currentTime >= contentEnd - 0.001 || currentTime < contentStart) {
-                setCurrentTime(contentStart);
-                if (audioRef.current) audioRef.current.currentTime = contentStart;
+            // Playback is cut-based: pressing play after the current cut (or all content) has
+            // finished rewinds to the CURRENT cut's start — even with music (audio re-seeks to match).
+            const cc = cuts.find(c => c.id === currentCutId);
+            const anchor = cc ? cc.startTime : contentStart;
+            const finished = currentTime >= contentEnd - 0.001 || (cc && currentTime >= cc.endTime - 0.001);
+            if (finished || currentTime < anchor - 0.001) {
+                setCurrentTime(anchor);
+                currentTimeRef.current = anchor;
+                if (audioRef.current) audioRef.current.currentTime = audioData ? Math.max(0, (anchor - audioData.startTime) + audioData.offset) : anchor;
             }
         } else {
             // Pausing: stop audio immediately (don't wait for the effect).
@@ -2093,12 +2115,18 @@ export default function App() {
         if (parts.length === 2) return parts[0] * 60 + parts[1];
         return parts[0] || 0;
     };
-    const loadAudioUrl = (url, name, startAt = 0) => {
+    const loadAudioUrl = (url, name, startAt = 0, offset = 0, clipDur = null) => {
         setAudioFile({ name }); setAudioUrl(url);
         const audio = new Audio(url);
-        // startAt aligns the track to a given timeline position (e.g. the first imported video frame),
-        // so audio + frames extracted together stay mechanically in sync.
-        audio.onloadedmetadata = () => { setAudioDuration(audio.duration); setAudioData({ startTime: startAt, endTime: startAt + audio.duration, offset: 0 }); if (audioRef.current) audioRef.current.src = url; };
+        // startAt aligns the track to a given timeline position (e.g. the first imported video frame);
+        // offset/clipDur select a sub-range of the source audio (used when only a video segment is
+        // imported), so audio + frames extracted together stay mechanically in sync.
+        audio.onloadedmetadata = () => {
+            setAudioDuration(audio.duration);
+            const dur = clipDur != null ? Math.min(clipDur, Math.max(0, audio.duration - offset)) : Math.max(0, audio.duration - offset);
+            setAudioData({ startTime: startAt, endTime: startAt + dur, offset });
+            if (audioRef.current) audioRef.current.src = url;
+        };
         // Capture base64 once so the project can be saved "with the music".
         if (url.startsWith('data:')) { audioB64Ref.current = url; }
         else { fetch(url).then(r => r.blob()).then(b => { const fr = new FileReader(); fr.onload = () => { audioB64Ref.current = fr.result; }; fr.readAsDataURL(b); }).catch(() => { }); }
@@ -2210,8 +2238,9 @@ export default function App() {
             setCurrentCutId(made[0].id);
             setCurrentTime(made[0].startTime);
             // Audio (if asked) is the only thing that keeps the video bytes alive past this point.
-            // Aligned to the first imported frame so frames and their own audio stay in sync.
-            if (cfg.withAudio) loadAudioUrl(URL.createObjectURL(cfg.file), label + ' (영상 음원)', made[0].startTime);
+            // Aligned to the first imported frame; when only a range was imported, the audio is
+            // clipped to that same range (offset rStart, duration rEnd-rStart).
+            if (cfg.withAudio) loadAudioUrl(URL.createObjectURL(cfg.file), label + ' (영상 음원)', made[0].startTime, useRange ? rStart : 0, useRange ? (rEnd - rStart) : null);
             setVideoImport(null);
             setTimeout(gcBitmaps, 0); // replaced frames' bitmaps go too
         } catch (e) {
@@ -2841,8 +2870,23 @@ export default function App() {
                                             <div key={cut.id} data-cutid={cut.id}
                                                 className={`cut-block${currentCutId === cut.id ? ' cut-block-active' : ''}${selectedCutIds.has(cut.id) ? ' cut-block-selected' : ''}`}
                                                 style={{ left: `${cut.startTime * pps + 60}px`, width: `${(cut.endTime - cut.startTime) * pps}px`, cursor: draggingCutData?.cutId === cut.id ? 'grabbing' : 'grab', touchAction: 'none' }}
-                                                onClick={e => { e.stopPropagation(); setCurrentCutId(cut.id); setSelectedCutIds(new Set([cut.id])); }}
-                                                onPointerDown={e => { e.stopPropagation(); setCurrentCutId(cut.id); setSelectedCutIds(new Set([cut.id])); cutDragMovedRef.current = false; clearTimeout(cutDragTimerRef.current); cutDragArmedRef.current = e.pointerType !== 'touch'; if (e.pointerType === 'touch') cutDragTimerRef.current = setTimeout(() => { cutDragArmedRef.current = true; }, 350); e.currentTarget.setPointerCapture(e.pointerId); setDraggingCutData({ cutId: cut.id, startX: e.clientX, startY: e.clientY, initialStart: cut.startTime, initialTrack: cut.track }); }}>
+                                                onClick={e => { e.stopPropagation(); if (cutDragMovedRef.current || e.shiftKey || e.ctrlKey || e.metaKey) return; setCurrentCutId(cut.id); setSelectedCutIds(new Set([cut.id])); }}
+                                                onPointerDown={e => {
+                                                    e.stopPropagation();
+                                                    if (e.shiftKey || e.ctrlKey || e.metaKey) { // add/remove from selection, no drag
+                                                        setSelectedCutIds(p => { const s = new Set(p); s.has(cut.id) ? s.delete(cut.id) : s.add(cut.id); return s; });
+                                                        setCurrentCutId(cut.id); cutDragMovedRef.current = false; return;
+                                                    }
+                                                    setCurrentCutId(cut.id);
+                                                    // Pressing a cut that's part of a multi-selection keeps the group (so it can be
+                                                    // dragged together); pressing any other cut selects just that one.
+                                                    const inGroup = selectedCutIds.has(cut.id) && selectedCutIds.size > 1;
+                                                    const group = inGroup ? cuts.filter(c => selectedCutIds.has(c.id)).map(c => ({ id: c.id, startTime: c.startTime, endTime: c.endTime, track: c.track })) : null;
+                                                    if (!inGroup) setSelectedCutIds(new Set([cut.id]));
+                                                    cutDragMovedRef.current = false; clearTimeout(cutDragTimerRef.current); cutDragArmedRef.current = e.pointerType !== 'touch'; if (e.pointerType === 'touch') cutDragTimerRef.current = setTimeout(() => { cutDragArmedRef.current = true; }, 350);
+                                                    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { }
+                                                    setDraggingCutData({ cutId: cut.id, startX: e.clientX, startY: e.clientY, initialStart: cut.startTime, initialTrack: cut.track, group });
+                                                }}>
                                                 <div className="rh rh-left" style={{ touchAction: 'none' }} onPointerDown={e => { e.stopPropagation(); e.target.setPointerCapture(e.pointerId); setResizingData({ cutId: cut.id, edge: 'left', startX: e.clientX, initialStart: cut.startTime, initialEnd: cut.endTime }); }} />
                                                 {cut.name}
                                                 <div className="rh rh-right" style={{ touchAction: 'none' }} onPointerDown={e => { e.stopPropagation(); e.target.setPointerCapture(e.pointerId); setResizingData({ cutId: cut.id, edge: 'right', startX: e.clientX, initialStart: cut.startTime, initialEnd: cut.endTime }); }} />
