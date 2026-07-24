@@ -521,7 +521,7 @@ export default function App() {
             paintFrameRef.current?.(t, true);                                   // 60fps imperative canvas
             if (playheadRef.current) playheadRef.current.style.left = `${t * pps + 60}px`; // 60fps imperative playhead
             if (now - lastPrefetch > 120) { lastPrefetch = now; prefetchRef.current?.(t, true); } // decode ahead of the REAL playhead
-            if (now - lastUiSync > 90) { lastUiSync = now; setCurrentTime(t); } // ~11Hz React sync (highlight/readout)
+            if (now - lastUiSync > 200) { lastUiSync = now; setCurrentTime(t); } // ~5Hz React sync — keep re-renders off the rAF thread so prefetch keeps up
             reqRef.current = requestAnimationFrame(step);
         };
         reqRef.current = requestAnimationFrame(step);
@@ -1953,7 +1953,9 @@ export default function App() {
         requestFrameDecode(ids);
     };
     prefetchRef.current = prefetchFramesAt;
-    useEffect(() => { prefetchFramesAt(currentTime, isPlaying); }, [currentCutId, currentTime, isPlaying, cuts]);
+    // While playing, the rAF loop drives prefetch from the REAL playhead — don't also run it on the
+    // throttled currentTime (redundant work competing with the loop). Paused/seek uses this effect.
+    useEffect(() => { if (!isPlaying) prefetchFramesAt(currentTime, false); }, [currentCutId, currentTime, isPlaying, cuts]);
 
     // The cache effect only precomputes visible cuts, and it commits one render late — so a cut
     // that just became visible (every frame during playback) would draw as a blank/white frame.
@@ -1968,13 +1970,14 @@ export default function App() {
         if (hit && hit.dataset.strokes === sig) return hit;
         // A frame whose imageBitmap was released (part-scoped memory) needs re-decoding first.
         // Kick the decode and return the stale canvas (if any) rather than caching a blank one.
-        // If a frame isn't decoded yet, show the stale canvas (or nothing) — DON'T request a decode
-        // from the paint path (that fed a setState→effect→decode loop). Decoding is driven solely by
-        // the prefetch effect / rAF-loop prefetch, which repaint when frames land.
+        // If a frame isn't decoded yet, show the stale canvas (or nothing). Requesting a decode from
+        // the paint path is only safe WHILE PLAYING (requestFrameDecode does no setState then, so no
+        // loop) — it's a safety net if the prefetch fell behind. When paused, decoding is driven only
+        // by the prefetch effect (a paused decode fires setState, which would loop from here).
         const store = bitmapStoreRef.current;
-        let missing = false;
-        for (const st of safeArray(layer.strokes)) { if (st.tool === 'paste' && st.bitmapId) { const e = store.get(st.bitmapId); if (e && e.blob) { if (!e.imageBitmap && !e.imageData) missing = true; else if (e.imageBitmap) touchDecoded(st.bitmapId); } } }
-        if (missing) return cached || hit || null;
+        const missing = [];
+        for (const st of safeArray(layer.strokes)) { if (st.tool === 'paste' && st.bitmapId) { const e = store.get(st.bitmapId); if (e && e.blob) { if (!e.imageBitmap && !e.imageData) missing.push(st.bitmapId); else if (e.imageBitmap) touchDecoded(st.bitmapId); } } }
+        if (missing.length) { if (isPlayingRef.current) requestFrameDecode(missing); return cached || hit || null; }
         const cnv = hit || document.createElement('canvas');
         cnv.width = CANVAS_W; cnv.height = CANVAS_H;
         drawStrokesOnCtx(cnv.getContext('2d'), layer.strokes, true, bitmapStoreRef.current);
