@@ -2234,7 +2234,7 @@ export default function App() {
         const srcKey = src?.key || `f:${file.name}:${file.size}`;
         setRecentVideos(p => [{ id: 'rv_' + Date.now().toString(36), name: label, srcKey, url: src?.url || null },
         ...p.filter(v => v.srcKey !== srcKey)].slice(0, 3));
-        setVideoImport({ file, srcKey, label, fps: 4, maxFrames: 60, scale: 0.5, whole: true, withAudio: false, dedupe: 'exact', original: false, rangeOn: false, startText: '0:00', endText: '' });
+        setVideoImport({ file, srcKey, label, fps: 4, maxFrames: 60, scale: 0.5, whole: true, withAudio: false, dedupe: 'exact', original: false, rangeOn: false, startText: '0:00', endText: '', parts: 1 });
     };
     const reimportRecent = (v) => {
         if (v.url) loadYoutubeVideo(v.url);        // same link → download again
@@ -2344,15 +2344,22 @@ export default function App() {
             // compressed frames are already pre-letterboxed to the canvas (full-canvas paste).
             const fit = (cfg.original && fW && fH) ? fitRect(fW, fH, CANVAS_W, CANVAS_H) : { x: 0, y: 0, w: CANVAS_W, h: CANVAS_H };
             const px = Math.round(fit.x), py = Math.round(fit.y), pw = Math.round(fit.w), ph = Math.round(fit.h);
+            // Split the import into N sequential parts (part1~n) so a long video comes in already
+            // organized. videoBatch stays one value (the frame manager deletes the whole import).
+            const nParts = Math.max(1, Math.min(frames.length, Math.floor(cfg.parts) || 1));
+            const perPart = Math.ceil(frames.length / nParts);
             const made = [];
             let t = startAt;
             for (let i = 0; i < frames.length; i++) {
                 const bitmapId = await storeBitmapBlob(frames[i]);
                 const s = t, e = t + dur * (holds[i] || 1); // held frames span their whole duplicate run
                 t = e;
+                const pIdx = nParts > 1 ? Math.floor(i / perPart) : 0;
+                const partId = nParts > 1 ? `${batch}_p${pIdx}` : batch;
+                const partName = nParts > 1 ? `${label} ${pIdx + 1}` : label;
                 made.push({
                     id: baseId + i, name: `${label} ${i + 1}`, startTime: s, endTime: e, track,
-                    activeLayerId: 1, texts: [], videoBatch: batch, videoLabel: label, videoSrc: srcKey, partId: batch, partName: label,
+                    activeLayerId: 1, texts: [], videoBatch: batch, videoLabel: label, videoSrc: srcKey, partId, partName,
                     layers: [{ id: 1, name: 'L1', type: 'layer', parentId: null, visible: true, redoStrokes: [], strokes: [{ id: baseId + 100000 + i, tool: 'paste', bitmapId, x: px, y: py, w: pw, h: ph }] }],
                 });
             }
@@ -2531,6 +2538,11 @@ export default function App() {
                                     <label style={{ display: 'flex', alignItems: 'center', gap: 4 }} title="원본 화질로 추출 (배율 100%, 거의 무손실). 용량은 커집니다.">
                                         <input type="checkbox" checked={videoImport.original} onChange={e => setVideoImport(v => ({ ...v, original: e.target.checked, ...(e.target.checked ? { scale: 1 } : {}) }))} /> 원본 화질
                                     </label>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: 4 }} title="긴 영상을 여러 파트로 나눠서 가져오기 (재생 시 파트별/전체 선택 가능)">
+                                        <input type="number" className="time-input" style={{ width: 46 }} min={1} max={50} value={videoImport.parts}
+                                            onChange={e => setVideoImport(v => ({ ...v, parts: Math.max(1, Math.min(50, Math.floor(+e.target.value) || 1)) }))} />
+                                        <span style={{ color: '#888' }}>파트로 나누기</span>
+                                    </label>
                                     <span style={{ marginLeft: 'auto' }}>중복 통합</span>
                                     <select className="time-input" style={{ width: 100 }} value={videoImport.dedupe} onChange={e => setVideoImport(v => ({ ...v, dedupe: e.target.value === 'exact' ? 'exact' : +e.target.value }))}>
                                         {[['0', '끄기'], ['exact', '완전 동일'], ['3', '거의 같음'], ['8', '느슨']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -2546,6 +2558,7 @@ export default function App() {
                                         : videoImport.dedupe > 0 && <><br />이어지는 <b style={{ color: '#9b9' }}>비슷한 화면을 한 컷으로 합칩니다</b> — 정지 구간이 길수록 컷 수·용량이 줄어듭니다.</>}
                                     {!videoImport.whole && <><br />지정한 <b>{videoImport.maxFrames}컷</b>은 <b style={{ color: '#9b9' }}>중복 병합을 제외한 실제 컷 수</b>입니다 (합쳐진 프레임은 개수에 안 셉니다).</>}
                                     {videoImport.rangeOn && <><br /><b style={{ color: '#9cf' }}>{videoImport.startText || '0:00'} ~ {videoImport.endText || '끝'}</b> 구간만 가져옵니다 (mm:ss).</>}
+                                    {videoImport.parts > 1 && <><br /><b style={{ color: '#9cf' }}>{videoImport.parts}개 파트</b>로 나눠 가져옵니다 — 재생 시 파트별 또는 전체로 볼 수 있습니다.</>}
                                     {videoImport.whole && <><br /><span style={{ color: '#c99' }}>전체 추출: 길이가 길면 컷이 매우 많아집니다. fps를 낮게(1~4) 두는 것을 권장합니다.</span></>}
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
