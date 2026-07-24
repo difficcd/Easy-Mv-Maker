@@ -7,7 +7,7 @@ import {
     DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT, FONT_PRESETS,
     pointInPolygon, dist, safeArray, hexToRgb, bucketFillTransparentRegion,
     layerKey, imageDataToDataURL, dataURLToImageData, drawStrokesOnCtx,
-    flattenForCanvas, flattenLayersInUiOrder, strokeSig,
+    flattenForCanvas, flattenLayersInUiOrder, strokeSig, extractVideoFrames,
     ANIM_DEFAULT, computeCutAnim, LAYER_ANIM_DEFAULT, computeLayerAnim,
 } from './canvasUtils';
 
@@ -92,6 +92,9 @@ export default function App() {
     const [audioData, setAudioData] = useState(null);
     const audioRef = useRef(null);
     const audioB64Ref = useRef(null); // audio as base64 data URL, embedded into saves
+    const [videoImport, setVideoImport] = useState(null); // {file, fps, maxFrames} dialog
+    const [videoBusy, setVideoBusy] = useState(null); // {done, total} while extracting
+    const videoStopRef = useRef(false);
     const isExporting = useRef(false);
     const mediaRecorderRef = useRef(null);
     const audioCtxRef = useRef(null);
@@ -1892,6 +1895,42 @@ export default function App() {
         const file = e.target.files[0]; if (!file) return;
         loadAudioUrl(URL.createObjectURL(file), file.name);
     };
+    // Import a video as one cut per extracted frame (sequential on the current track).
+    const runVideoImport = async () => {
+        const cfg = videoImport;
+        if (!cfg?.file) return;
+        setVideoBusy({ done: 0, total: 0 });
+        try {
+            const { frames, fps } = await extractVideoFrames(cfg.file, {
+                fps: cfg.fps, maxFrames: cfg.maxFrames, width: CANVAS_W, height: CANVAS_H,
+                onProgress: (done, total) => setVideoBusy({ done, total }),
+                shouldStop: () => videoStopRef.current,
+            });
+            if (!frames.length) { alert('추출된 프레임이 없습니다.'); return; }
+            const track = cuts.find(c => c.id === currentCutId)?.track ?? 0;
+            const startAt = cuts.filter(c => c.track === track).reduce((m, c) => Math.max(m, c.endTime), 0);
+            const dur = 1 / Math.max(0.1, fps);
+            const baseId = Date.now();
+            const made = frames.map((img, i) => {
+                const bitmapId = storeBitmap(img);
+                const s = startAt + i * dur;
+                return {
+                    id: baseId + i, name: `frame ${i + 1}`, startTime: s, endTime: s + dur, track,
+                    activeLayerId: 1, texts: [],
+                    layers: [{ id: 1, name: 'L1', type: 'layer', parentId: null, visible: true, redoStrokes: [], strokes: [{ id: baseId + 100000 + i, tool: 'paste', bitmapId, x: 0, y: 0 }] }],
+                };
+            });
+            setCuts(p => [...p, ...made]);
+            setCurrentCutId(made[0].id);
+            setCurrentTime(made[0].startTime);
+            setVideoImport(null);
+        } catch (e) {
+            alert('영상 가져오기 실패: ' + e.message);
+        } finally {
+            videoStopRef.current = false;
+            setVideoBusy(null);
+        }
+    };
     const handleDeleteAudio = () => {
         if (audioRef.current) { audioRef.current.pause(); try { audioRef.current.removeAttribute('src'); audioRef.current.load(); } catch { } }
         if (audioUrl && audioUrl.startsWith('blob:')) { try { URL.revokeObjectURL(audioUrl); } catch { } }
@@ -1989,6 +2028,49 @@ export default function App() {
 
             {serverProjects !== null && <ProjectPicker title="서버에서 열기" items={serverProjects} onOpen={doServerOpen} onDelete={doServerDelete} onClose={() => setServerProjects(null)} />}
             {localProjects !== null && <ProjectPicker title="로컬에서 열기" items={localProjects} onOpen={doLocalOpen} onDelete={doLocalDelete} onClose={() => setLocalProjects(null)} />}
+            {videoImport && (
+                <div onClick={() => { if (!videoBusy) setVideoImport(null); }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div onClick={e => e.stopPropagation()} style={{ width: 420, background: '#1e1e2e', border: '1px solid #333', borderRadius: 8, padding: 18, color: '#ccc', fontSize: 12.5 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                            <span className="panel-title">영상 → 프레임 컷</span>
+                            {!videoBusy && <button className="icon-btn" onClick={() => setVideoImport(null)}>✕</button>}
+                        </div>
+                        <div style={{ marginBottom: 10, color: '#9aa', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{videoImport.file.name}</div>
+                        {videoBusy ? (
+                            <>
+                                <div style={{ marginBottom: 8 }}>프레임 추출 중… {videoBusy.done}/{videoBusy.total || '?'}</div>
+                                <div style={{ height: 8, background: '#2a2a3a', borderRadius: 4, overflow: 'hidden' }}>
+                                    <div style={{ height: '100%', width: `${videoBusy.total ? (videoBusy.done / videoBusy.total * 100) : 0}%`, background: '#7c8cff' }} />
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+                                    <button className="button" onClick={() => { videoStopRef.current = true; }}>중지</button>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+                                    <span style={{ width: 76 }}>초당 프레임</span>
+                                    <select className="time-input" style={{ width: 80 }} value={videoImport.fps} onChange={e => setVideoImport(v => ({ ...v, fps: +e.target.value }))}>
+                                        {[2, 3, 4, 6, 8, 12, 15, 24].map(v => <option key={v} value={v}>{v} fps</option>)}
+                                    </select>
+                                    <span style={{ width: 66, marginLeft: 6 }}>최대 컷</span>
+                                    <select className="time-input" style={{ width: 80 }} value={videoImport.maxFrames} onChange={e => setVideoImport(v => ({ ...v, maxFrames: +e.target.value }))}>
+                                        {[10, 20, 30, 60, 90, 120, 200].map(v => <option key={v} value={v}>{v}컷</option>)}
+                                    </select>
+                                </div>
+                                <div style={{ color: '#888', lineHeight: 1.6, marginBottom: 12 }}>
+                                    현재 캔버스({CANVAS_W}×{CANVAS_H})에 맞춰 비율 유지로 넣습니다. 현재 트랙 뒤에 이어서 컷이 생성됩니다.<br />
+                                    <span style={{ color: '#c99' }}>메모리 주의: 프레임당 약 {Math.round(CANVAS_W * CANVAS_H * 4 / 1048576)}MB — 최대 {videoImport.maxFrames}컷이면 약 {Math.round(CANVAS_W * CANVAS_H * 4 * videoImport.maxFrames / 1048576)}MB</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+                                    <button className="button" onClick={() => setVideoImport(null)}>취소</button>
+                                    <button className="button button-primary" onClick={runVideoImport}>가져오기</button>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+            )}
             {showHelp && (
                 <div onClick={() => setShowHelp(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <div onClick={e => e.stopPropagation()} style={{ width: 460, maxHeight: '80vh', overflow: 'auto', background: '#1e1e2e', border: '1px solid #333', borderRadius: 8, padding: 18, fontSize: 12.5, color: '#ccc', lineHeight: 1.7 }}>
@@ -2068,6 +2150,11 @@ export default function App() {
                     </label>
                     {serverAvailable && <button className="button" onClick={loadYoutubeAudio} title="유튜브 링크에서 음원 추출 (로컬 서버, yt-dlp 필요)" style={{ height: 34 }}>YT 음원</button>}
                     {audioFile && <button className="icon-btn del-btn" onClick={handleDeleteAudio} title="오디오 삭제" style={{ height: 34, width: 30 }}><Trash2 size={14} /></button>}
+                    <label className="audio-input-label" title="영상을 프레임별 컷으로 가져오기">
+                        <Film size={14} /> 영상 프레임
+                        <input type="file" accept="video/*" style={{ display: 'none' }}
+                            onChange={e => { const f = e.target.files[0]; e.target.value = ''; if (f) setVideoImport({ file: f, fps: 6, maxFrames: 60 }); }} />
+                    </label>
                 </div>
             </div>
 

@@ -441,6 +441,54 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null)
     });
 }
 
+// Letterbox rect: fit source into destination preserving aspect ratio.
+export function fitRect(sw, sh, dw, dh) {
+    const s = Math.min(dw / sw, dh / sh);
+    const w = sw * s, h = sh * s;
+    return { x: (dw - w) / 2, y: (dh - h) / 2, w, h };
+}
+
+// Decode a video file into evenly spaced frames (ImageData at the project resolution) by
+// seeking. Returns { frames, fps, duration }. onProgress(done, total) for UI feedback.
+export async function extractVideoFrames(file, { fps = 6, maxFrames = 60, start = 0, end = null, width, height, onProgress, shouldStop } = {}) {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement('video');
+    video.muted = true; video.playsInline = true; video.preload = 'auto'; video.src = url;
+    try {
+        await new Promise((res, rej) => {
+            video.onloadedmetadata = () => res();
+            video.onerror = () => rej(new Error('영상을 읽을 수 없습니다 (형식 미지원)'));
+        });
+        const duration = video.duration;
+        if (!isFinite(duration) || duration <= 0) throw new Error('영상 길이를 알 수 없습니다');
+        const to = Math.min(end ?? duration, duration);
+        const step = 1 / Math.max(0.1, fps);
+        const total = Math.min(maxFrames, Math.max(1, Math.ceil((to - start) / step)));
+        const cnv = document.createElement('canvas');
+        cnv.width = width; cnv.height = height;
+        const ctx = cnv.getContext('2d', { willReadFrequently: true });
+        const r = fitRect(video.videoWidth || width, video.videoHeight || height, width, height);
+        const seek = (t) => new Promise((res) => {
+            const on = () => { video.removeEventListener('seeked', on); res(); };
+            video.addEventListener('seeked', on);
+            video.currentTime = t;
+        });
+        const frames = [];
+        for (let i = 0; i < total; i++) {
+            if (shouldStop?.()) break;
+            await seek(Math.min(start + i * step, Math.max(0, duration - 0.01)));
+            ctx.clearRect(0, 0, width, height);
+            ctx.drawImage(video, r.x, r.y, r.w, r.h);
+            frames.push(ctx.getImageData(0, 0, width, height));
+            onProgress?.(frames.length, total);
+        }
+        return { frames, fps, duration };
+    } finally {
+        URL.revokeObjectURL(url);
+        video.src = '';
+    }
+}
+
 export function flattenForCanvas(layers) {
     return layers.filter(l => l.type !== 'folder' && l.visible !== false);
 }
