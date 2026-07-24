@@ -198,16 +198,35 @@ export default function App() {
     // Store an already-compressed image (video frames). Keeps only the decoded bitmap for
     // rendering plus its data URL for saving — no raw ImageData, so memory stays small.
     // Store a video frame as a Blob (browser-managed, off the JS heap) rather than a base64
-    // dataURL string. Hundreds of frames as dataURLs blow up memory (and OOM on save); Blobs
-    // stay compact and upload/persist directly. The decoded imageBitmap can be released and
-    // re-created from the Blob on demand (see the part-scoped decode effect).
+    // dataURL string. Crucially we DON'T decode it here — decoding every frame into an
+    // ImageBitmap at import is what OOMs a big video (hundreds of full-res bitmaps resident).
+    // The bitmap is decoded lazily on first display and released under an LRU cap.
     const storeBitmapBlob = async (blob) => {
         const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
-        let imageBitmap = null;
-        try { imageBitmap = await createImageBitmap(blob); } catch { }
         const ext = (blob.type.match(/image\/(\w+)/)?.[1] || 'webp');
-        bitmapStoreRef.current.set(id, { imageData: null, imageBitmap, blob, ext });
+        bitmapStoreRef.current.set(id, { imageData: null, imageBitmap: null, blob, ext });
         return id;
+    };
+    // LRU cap on how many frame ImageBitmaps stay decoded at once (bounds memory regardless of
+    // import size or which mode you're in). Released frames keep their Blob and re-decode on view.
+    const DECODED_CAP = 64;
+    const decodeOrderRef = useRef(new Map()); // id -> monotonically increasing use counter
+    const decodeSeqRef = useRef(0);
+    const touchDecoded = (id) => { decodeOrderRef.current.set(id, ++decodeSeqRef.current); };
+    const trimDecodedFrames = (protect) => {
+        const store = bitmapStoreRef.current;
+        const decoded = [];
+        for (const [id, e] of store) if (e.blob && e.imageBitmap) decoded.push(id);
+        if (decoded.length <= DECODED_CAP) return;
+        const order = decodeOrderRef.current;
+        decoded.sort((a, b) => (order.get(a) || 0) - (order.get(b) || 0)); // oldest first
+        let toRelease = decoded.length - DECODED_CAP;
+        for (const id of decoded) {
+            if (toRelease <= 0) break;
+            if (protect && protect.has(id)) continue;
+            const e = store.get(id); try { e.imageBitmap.close?.(); } catch { } e.imageBitmap = null;
+            order.delete(id); toRelease--;
+        }
     };
     const blobToDataURL = (blob) => new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(blob); });
 
@@ -769,8 +788,8 @@ export default function App() {
             for (const a of data.assets) {
                 try {
                     const blob = await (await fetch(`${assetBase}/asset/${a.id}`)).blob();
-                    let imageBitmap = null; try { imageBitmap = await createImageBitmap(blob); } catch { }
-                    store.set(a.id, { imageData: null, imageBitmap, blob, ext: a.ext });
+                    // Don't decode here — lazy decode on display keeps opening a big project from OOMing.
+                    store.set(a.id, { imageData: null, imageBitmap: null, blob, ext: a.ext });
                 } catch { }
             }
         }
@@ -779,16 +798,14 @@ export default function App() {
             const entries = await Promise.all(Object.entries(data.bitmaps).map(async ([id, val]) => {
                 try {
                     // Frames may arrive as a Blob (IndexedDB autosave) or a dataURL (embedded .emv).
-                    // Either way keep them as a Blob (off-heap) + decoded bitmap. Drawing layers
-                    // (small PNG dataURLs, not flagged compressed) become editable ImageData.
+                    // Keep them as a Blob (off-heap) and decode lazily. Drawing layers (small PNG
+                    // dataURLs, not flagged compressed) become editable ImageData up front.
                     if (val instanceof Blob) {
-                        let imageBitmap = null; try { imageBitmap = await createImageBitmap(val); } catch { }
-                        return [id, { imageData: null, imageBitmap, blob: val, ext: (val.type.match(/image\/(\w+)/)?.[1]) || 'webp' }];
+                        return [id, { imageData: null, imageBitmap: null, blob: val, ext: (val.type.match(/image\/(\w+)/)?.[1]) || 'webp' }];
                     }
                     if (compressedSet.has(id) || /^data:image\/(webp|jpeg)/.test(val)) {
                         const blob = await (await fetch(val)).blob();
-                        let imageBitmap = null; try { imageBitmap = await createImageBitmap(blob); } catch { }
-                        return [id, { imageData: null, imageBitmap, blob, ext: (blob.type.match(/image\/(\w+)/)?.[1]) || 'webp' }];
+                        return [id, { imageData: null, imageBitmap: null, blob, ext: (blob.type.match(/image\/(\w+)/)?.[1]) || 'webp' }];
                     }
                     const imageData = await dataURLToImageData(val);
                     let imageBitmap = null;
@@ -1856,9 +1873,10 @@ export default function App() {
         (async () => {
             for (const id of todo) {
                 const e = store.get(id); if (!e || !e.blob) { decodingRef.current.delete(id); continue; }
-                try { e.imageBitmap = await createImageBitmap(e.blob); } catch { }
+                try { e.imageBitmap = await createImageBitmap(e.blob); touchDecoded(id); } catch { }
                 decodingRef.current.delete(id);
             }
+            trimDecodedFrames(new Set(todo)); // keep memory bounded; protect what we just decoded
             fallbackCanvasRef.current.clear();
             setLayerCanvasCache({}); // repaint visible cuts now that frames are decoded
         })();
@@ -1894,7 +1912,7 @@ export default function App() {
         // Kick the decode and return the stale canvas (if any) rather than caching a blank one.
         const store = bitmapStoreRef.current;
         const need = [];
-        for (const st of safeArray(layer.strokes)) { if (st.tool === 'paste' && st.bitmapId) { const e = store.get(st.bitmapId); if (e && e.blob && !e.imageBitmap && !e.imageData) need.push(st.bitmapId); } }
+        for (const st of safeArray(layer.strokes)) { if (st.tool === 'paste' && st.bitmapId) { const e = store.get(st.bitmapId); if (e && e.blob) { if (!e.imageBitmap && !e.imageData) need.push(st.bitmapId); else if (e.imageBitmap) touchDecoded(st.bitmapId); } } }
         if (need.length) { requestFrameDecode(need); return cached || hit || null; }
         const cnv = hit || document.createElement('canvas');
         cnv.width = CANVAS_W; cnv.height = CANVAS_H;
