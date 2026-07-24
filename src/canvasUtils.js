@@ -354,6 +354,7 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null)
             const entry = bitmapStore?.get(s.bitmapId);
             const bmp = entry?.imageBitmap;
             const img = entry?.imageData;
+            ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high'; // crisp video-frame scaling
             if (bmp) {
                 if (typeof s.w === 'number' && typeof s.h === 'number') ctx.drawImage(bmp, s.x, s.y, s.w, s.h);
                 else ctx.drawImage(bmp, s.x, s.y);
@@ -464,7 +465,7 @@ export function fitRect(sw, sh, dw, dh) {
 
 // Decode a video file into evenly spaced frames (ImageData at the project resolution) by
 // seeking. Returns { frames, fps, duration }. onProgress(done, total) for UI feedback.
-export async function extractVideoFrames(file, { fps = 6, maxFrames = 0, start = 0, end = null, width, height, scale = 1, quality = 0.82, dedupe = 'exact', onProgress, shouldStop } = {}) {
+export async function extractVideoFrames(file, { fps = 6, maxFrames = 0, start = 0, end = null, width, height, scale = 1, quality = 0.82, dedupe = 'exact', nativeRes = false, format = 'webp', onProgress, shouldStop } = {}) {
     const url = URL.createObjectURL(file);
     const video = document.createElement('video');
     video.muted = true; video.playsInline = true; video.preload = 'auto'; video.src = url;
@@ -481,19 +482,25 @@ export async function extractVideoFrames(file, { fps = 6, maxFrames = 0, start =
         const total = maxFrames > 0 ? Math.min(maxFrames, count) : count; // 0 = whole video
         // Frames are stored compressed (WebP keeps the letterbox transparent) instead of raw
         // ImageData — ~20x less memory and much smaller project files.
-        const fw = Math.max(1, Math.round(width * scale)), fh = Math.max(1, Math.round(height * scale));
+        // Original-quality mode captures each frame at the video's NATIVE resolution (no down/up
+        // scaling) and stores it losslessly, so imported frames match the source exactly.
+        const vW = video.videoWidth || Math.round(width * scale), vH = video.videoHeight || Math.round(height * scale);
+        const useNative = nativeRes && video.videoWidth && video.videoHeight;
+        const fw = useNative ? vW : Math.max(1, Math.round(width * scale));
+        const fh = useNative ? vH : Math.max(1, Math.round(height * scale));
         const cnv = document.createElement('canvas');
         cnv.width = fw; cnv.height = fh;
         const ctx = cnv.getContext('2d');
-        const r = fitRect(video.videoWidth || fw, video.videoHeight || fh, fw, fh);
+        ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high'; // crisp resampling when scaling
+        const r = useNative ? { x: 0, y: 0, w: fw, h: fh } : fitRect(vW, vH, fw, fh);
         const seek = (t) => new Promise((res) => {
             const on = () => { video.removeEventListener('seeked', on); res(); };
             video.addEventListener('seeked', on);
             video.currentTime = t;
         });
-        const toBlob = () => new Promise((res) => {
-            cnv.toBlob(b => b ? res(b) : cnv.toBlob(res, 'image/jpeg', quality), 'image/webp', quality);
-        });
+        const toBlob = format === 'png'
+            ? () => new Promise((res) => cnv.toBlob(res, 'image/png'))                    // lossless
+            : () => new Promise((res) => cnv.toBlob(b => b ? res(b) : cnv.toBlob(res, 'image/jpeg', quality), 'image/webp', quality));
         // Cheap similarity signature: the frame downscaled to 32x32 grayscale. Comparing these
         // lets a still shot skip encoding entirely — the previous frame just gets held longer.
         const sw = 32, sh = 32;

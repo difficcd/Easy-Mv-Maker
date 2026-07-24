@@ -7,7 +7,7 @@ import {
     DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT, FONT_PRESETS,
     pointInPolygon, dist, safeArray, hexToRgb, bucketFillTransparentRegion,
     layerKey, imageDataToDataURL, dataURLToImageData, drawStrokesOnCtx,
-    flattenForCanvas, flattenLayersInUiOrder, strokeSig, extractVideoFrames,
+    flattenForCanvas, flattenLayersInUiOrder, strokeSig, extractVideoFrames, fitRect,
     ANIM_DEFAULT, computeCutAnim, LAYER_ANIM_DEFAULT, computeLayerAnim,
 } from './canvasUtils';
 
@@ -633,6 +633,7 @@ export default function App() {
         const usedIds = new Set();
         cuts.forEach(c => c.layers.forEach(l => safeArray(l.strokes).forEach(s => { if (s.bitmapId) usedIds.add(s.bitmapId); })));
         const bitmaps = {};
+        const compressed = []; // ids stored as a whole encoded image (video frames) — keep compressed on restore
         // Cache PNG encodes per bitmap id — imageData is immutable once stored, so the
         // (frequent) autosave doesn't re-encode every fill/part each time.
         const cache = dataUrlCacheRef.current;
@@ -640,7 +641,7 @@ export default function App() {
             const entry = bitmapStoreRef.current.get(id);
             if (!entry) return;
             // Already-compressed (video frames): store the data URL as-is, no re-encode.
-            if (entry.url) { bitmaps[id] = entry.url; return; }
+            if (entry.url) { bitmaps[id] = entry.url; compressed.push(id); return; }
             if (!entry.imageData) return;
             const c = cache.get(id);
             if (c && c.imageData === entry.imageData) { bitmaps[id] = c.url; return; }
@@ -649,7 +650,7 @@ export default function App() {
             bitmaps[id] = url;
         });
         const out = {
-            version: '1.5', appName: 'EasyMVMaker', savedAt: new Date().toISOString(), numTracks, onionPrev, onionNext, pps, bitmaps,
+            version: '1.5', appName: 'EasyMVMaker', savedAt: new Date().toISOString(), numTracks, onionPrev, onionNext, pps, bitmaps, compressedBitmaps: compressed,
             canvas: { w: CANVAS_W, h: CANVAS_H },
             cuts: cuts.map(c => ({ ...c, layers: c.layers.map(l => ({ ...l, redoStrokes: [] })) }))
         };
@@ -666,11 +667,12 @@ export default function App() {
         const store = bitmapStoreRef.current;
         store.clear();
         if (data.bitmaps) {
+            const compressedSet = new Set(data.compressedBitmaps || []);
             const entries = await Promise.all(Object.entries(data.bitmaps).map(async ([id, url]) => {
                 try {
-                    // Compressed frames (webp/jpeg) stay compressed: decode to a bitmap and
-                    // keep the URL. Only PNG layers (drawings) need editable ImageData.
-                    if (/^data:image\/(webp|jpeg)/.test(url)) {
+                    // Whole-image frames (video import; webp OR lossless png) stay compressed: decode
+                    // to a bitmap and keep the URL. Only drawing layers need editable PNG ImageData.
+                    if (compressedSet.has(id) || /^data:image\/(webp|jpeg)/.test(url)) {
                         const blob = await (await fetch(url)).blob();
                         let imageBitmap = null;
                         try { imageBitmap = await createImageBitmap(blob); } catch { }
@@ -2075,7 +2077,7 @@ export default function App() {
         if (!url) return;
         setVideoBusy({ done: 0, total: 0, fetching: true });
         try {
-            const res = await fetch('/api/youtube-video?url=' + encodeURIComponent(url) + '&maxHeight=720');
+            const res = await fetch('/api/youtube-video?url=' + encodeURIComponent(url) + '&maxHeight=1080');
             if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || ('HTTP ' + res.status)); }
             const blob = await res.blob();
             const file = new File([blob], 'youtube.mp4', { type: blob.type || 'video/mp4' });
@@ -2091,9 +2093,10 @@ export default function App() {
         if (!cfg?.file) return;
         setVideoBusy({ done: 0, total: 0 });
         try {
-            const { frames, holds = [], skipped = 0, fps } = await extractVideoFrames(cfg.file, {
+            const { frames, holds = [], skipped = 0, fps, width: fW, height: fH } = await extractVideoFrames(cfg.file, {
                 fps: cfg.fps, maxFrames: cfg.whole ? 0 : cfg.maxFrames,
-                scale: cfg.original ? 1 : cfg.scale, quality: cfg.original ? 0.96 : 0.82, dedupe: cfg.dedupe ?? 'exact',
+                scale: cfg.original ? 1 : cfg.scale, quality: cfg.original ? 1 : 0.82, dedupe: cfg.dedupe ?? 'exact',
+                nativeRes: cfg.original, format: cfg.original ? 'png' : 'webp',
                 width: CANVAS_W, height: CANVAS_H,
                 onProgress: (done, total, skipped) => setVideoBusy({ done, total, skipped }),
                 shouldStop: () => videoStopRef.current,
@@ -2108,6 +2111,10 @@ export default function App() {
             const baseId = Date.now();
             const batch = 'vb_' + baseId.toString(36);
             const label = cfg.label || cfg.file.name.replace(/\.[^.]+$/, '').slice(0, 24);
+            // Native-res frames keep the source aspect, so letterbox-fit them into the canvas;
+            // compressed frames are already pre-letterboxed to the canvas (full-canvas paste).
+            const fit = (cfg.original && fW && fH) ? fitRect(fW, fH, CANVAS_W, CANVAS_H) : { x: 0, y: 0, w: CANVAS_W, h: CANVAS_H };
+            const px = Math.round(fit.x), py = Math.round(fit.y), pw = Math.round(fit.w), ph = Math.round(fit.h);
             const made = [];
             let t = startAt;
             for (let i = 0; i < frames.length; i++) {
@@ -2117,7 +2124,7 @@ export default function App() {
                 made.push({
                     id: baseId + i, name: `${label} ${i + 1}`, startTime: s, endTime: e, track,
                     activeLayerId: 1, texts: [], videoBatch: batch, videoLabel: label, videoSrc: srcKey,
-                    layers: [{ id: 1, name: 'L1', type: 'layer', parentId: null, visible: true, redoStrokes: [], strokes: [{ id: baseId + 100000 + i, tool: 'paste', bitmapId, x: 0, y: 0, w: CANVAS_W, h: CANVAS_H }] }],
+                    layers: [{ id: 1, name: 'L1', type: 'layer', parentId: null, visible: true, redoStrokes: [], strokes: [{ id: baseId + 100000 + i, tool: 'paste', bitmapId, x: px, y: py, w: pw, h: ph }] }],
                 });
             }
             setCuts(p => [...p.filter(c => c.videoSrc !== srcKey), ...made]);
@@ -2290,7 +2297,7 @@ export default function App() {
                                 <div style={{ color: '#888', lineHeight: 1.6, marginBottom: 12 }}>
                                     캔버스({CANVAS_W}×{CANVAS_H})에 비율 유지로 넣고, 현재 트랙 뒤에 이어서 생성됩니다.<br />
                                     {videoImport.original
-                                        ? <>프레임을 <b style={{ color: '#9cf' }}>원본 화질(거의 무손실)</b>로 넣습니다 — 화질 우선, 용량이 커집니다.</>
+                                        ? <>프레임을 <b style={{ color: '#9cf' }}>원본 해상도·무손실(PNG)</b>로 넣습니다 — 화질 우선, 용량이 커집니다. (화질은 원본 영상 해상도까지만; 유튜브는 720~1080p로 제한될 수 있음)</>
                                         : <>프레임은 <b style={{ color: '#9b9' }}>WebP로 압축 저장</b>되어 원본 대비 용량이 크게 줄어듭니다{videoImport.scale < 1 ? ` (배율 ${Math.round(videoImport.scale * 100)}%로 추가 절감)` : ''}.</>}
                                     {videoImport.dedupe === 'exact'
                                         ? <><br /><b style={{ color: '#9b9' }}>완전히 똑같은 프레임만</b> 한 컷으로 합칩니다 (픽셀 단위 비교).</>
