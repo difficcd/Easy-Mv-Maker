@@ -305,6 +305,34 @@ const pressureAt = (pts, i) => ((pts[i - 1]?.pressure ?? 0.5) + (pts[i]?.pressur
 // Thin the first/last few segments so strokes taper instead of ending bluntly.
 const taperAt = (i, n) => { const t = Math.min(6, Math.max(2, Math.floor(n / 4))); return Math.min(1, i / t, (n - i) / t) * 0.75 + 0.25; };
 
+// Deterministic alpha-noise tile — punched into a pencil stroke (destination-in) to fake the
+// grain of paper tooth. Deterministic so a redraw of the same stroke looks identical.
+let _grainTile = null;
+function grainTile() {
+    if (_grainTile) return _grainTile;
+    const N = 128, c = document.createElement('canvas'); c.width = c.height = N;
+    const g = c.getContext('2d'), img = g.createImageData(N, N);
+    let seed = 0x1a2b3c;
+    const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+    for (let i = 0; i < img.data.length; i += 4) {
+        // mostly-opaque speckle: keeps the stroke but bites small light gaps into it
+        const a = rnd() < 0.72 ? 255 : 90 + (rnd() * 110 | 0);
+        img.data[i] = img.data[i + 1] = img.data[i + 2] = 0; img.data[i + 3] = a;
+    }
+    g.putImageData(img, 0, 0);
+    _grainTile = c; return c;
+}
+// Reusable soft radial stamp in a given rgb, for the airbrush spray.
+function softStamp(r, g, b, radius) {
+    const s = Math.max(2, Math.ceil(radius * 2)), c = document.createElement('canvas'); c.width = c.height = s;
+    const cx = c.getContext('2d'), grd = cx.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+    grd.addColorStop(0, `rgba(${r},${g},${b},0.16)`);
+    grd.addColorStop(0.5, `rgba(${r},${g},${b},0.06)`);
+    grd.addColorStop(1, `rgba(${r},${g},${b},0)`);
+    cx.fillStyle = grd; cx.fillRect(0, 0, s, s);
+    return c;
+}
+
 export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null) {
     if (clear) {
         ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
@@ -425,13 +453,48 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null)
             ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1.0;
             return;
         }
+        // Pencil: a smooth core stroke with paper-grain bitten out of it (destination-in), so it
+        // reads as a textured graphite line rather than a flat vector stroke. Pressure = darkness.
+        if (s.tool === 'pencil') {
+            const tmp = document.createElement('canvas'); tmp.width = ctx.canvas.width; tmp.height = ctx.canvas.height;
+            const tctx = tmp.getContext('2d');
+            tctx.lineCap = 'round'; tctx.lineJoin = 'round'; tctx.strokeStyle = baseColor; tctx.fillStyle = baseColor;
+            const pp = smoothPoints(s.points), pn = pp.length;
+            const pw = pp.map((_, idx) => { const i = Math.max(1, idx); const pr = hasPressure && pn > 1 ? pressureAt(pp, i) : 0.5; return s.size * (0.65 + 0.35 * Math.min(1, pr * 2)); });
+            smoothStroke(tctx, pp, pw, (i) => { const pr = hasPressure && pn > 1 ? pressureAt(pp, Math.max(1, i)) : 0.5; tctx.globalAlpha = 0.5 + 0.5 * Math.min(1, pr * 2); });
+            tctx.globalAlpha = 1; tctx.globalCompositeOperation = 'destination-in';
+            const pat = tctx.createPattern(grainTile(), 'repeat'); if (pat) { tctx.fillStyle = pat; tctx.fillRect(0, 0, tmp.width, tmp.height); }
+            tctx.globalCompositeOperation = 'source-over';
+            ctx.save(); ctx.globalAlpha = baseOpacity * 0.9; ctx.drawImage(tmp, 0, 0); ctx.restore();
+            ctx.globalAlpha = 1;
+            return;
+        }
+        // Airbrush: a real soft spray — dense radial stamps along the path that build up density on
+        // overlap and feather at the edges (instead of a plain blurred line).
+        if (s.tool === 'soft') {
+            const isErase = false; // airbrush erase falls through to the default eraser elsewhere
+            const { r, g, b } = hexToRgb(baseColor);
+            const R = Math.max(2, s.size * 0.9);
+            const stamp = softStamp(r, g, b, R), half = stamp.width / 2;
+            ctx.save();
+            ctx.globalAlpha = baseOpacity;
+            const put = (x, y) => ctx.drawImage(stamp, x - half, y - half);
+            const P = s.points;
+            if (P.length === 1) put(P[0].x, P[0].y);
+            for (let i = 1; i < P.length; i++) {
+                const a = P[i - 1], c = P[i], d = Math.hypot(c.x - a.x, c.y - a.y);
+                const steps = Math.max(1, Math.ceil(d / Math.max(1, R * 0.28)));
+                for (let t = 0; t <= steps; t++) put(a.x + (c.x - a.x) * t / steps, a.y + (c.y - a.y) * t / steps);
+            }
+            ctx.restore();
+            ctx.globalAlpha = 1;
+            return;
+        }
         const isEraser = s.tool === 'eraser';
         ctx.save();
         ctx.globalCompositeOperation = isEraser ? 'destination-out' : 'source-over';
         ctx.strokeStyle = isEraser ? 'rgba(0,0,0,1)' : baseColor;
         ctx.fillStyle = ctx.strokeStyle;
-        // Airbrush: soft blurred edge that builds up with overlap.
-        if (s.tool === 'soft') { try { ctx.filter = `blur(${Math.max(1, s.size / 4)}px)`; } catch { } }
         const pts = smoothPoints(s.points);
         const n = pts.length;
         const widths = pts.map((_, idx) => {
