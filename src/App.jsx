@@ -147,6 +147,7 @@ export default function App() {
     const [layerCanvasCache, setLayerCanvasCache] = useState({});
     const bitmapStoreRef = useRef(new Map());
     const fallbackCanvasRef = useRef(new Map()); // LRU of layer canvases built on demand during render
+    const decodingRef = useRef(new Set()); // frame ids currently being re-decoded from their Blob
     const canvasAreaRef = useRef(null);
     const videoFileRef = useRef(null);
     const currentTimeRef = useRef(0);       // playback clock read by the rAF loop (avoids stale closure)
@@ -196,14 +197,19 @@ export default function App() {
 
     // Store an already-compressed image (video frames). Keeps only the decoded bitmap for
     // rendering plus its data URL for saving — no raw ImageData, so memory stays small.
+    // Store a video frame as a Blob (browser-managed, off the JS heap) rather than a base64
+    // dataURL string. Hundreds of frames as dataURLs blow up memory (and OOM on save); Blobs
+    // stay compact and upload/persist directly. The decoded imageBitmap can be released and
+    // re-created from the Blob on demand (see the part-scoped decode effect).
     const storeBitmapBlob = async (blob) => {
         const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
-        const url = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(blob); });
         let imageBitmap = null;
         try { imageBitmap = await createImageBitmap(blob); } catch { }
-        bitmapStoreRef.current.set(id, { imageData: null, imageBitmap, url });
+        const ext = (blob.type.match(/image\/(\w+)/)?.[1] || 'webp');
+        bitmapStoreRef.current.set(id, { imageData: null, imageBitmap, blob, ext });
         return id;
     };
+    const blobToDataURL = (blob) => new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(blob); });
 
     // Duplicate a stored bitmap under a fresh id so a pasted/duplicated cut owns its
     // own pixels instead of aliasing the source's. `cache` dedups within one operation.
@@ -701,33 +707,36 @@ export default function App() {
     // assetSink: when provided (server save), whole-image frame bitmaps are NOT inlined as base64
     // in the JSON; they're collected here to upload as separate binary assets. This keeps the JSON
     // small so huge/original-quality projects don't OOM building one giant base64 string.
-    const buildData = (includeAudio = true, assetSink = null) => {
-        // Persist the pixel data behind fill/lasso/paste strokes; otherwise reopening
-        // a saved project loses everything that lives only in the in-memory bitmap store.
+    // buildData(includeAudio, assetSink, blobsOk):
+    //  - assetSink (server save): video frames/audio go out as separate binary assets (no base64).
+    //  - blobsOk (IndexedDB autosave): frames stored as Blob objects (IDB persists them natively,
+    //    so autosave stays cheap and low-memory even for a huge import).
+    //  - neither (local .emv file): frames embedded as base64 dataURLs so the file is self-contained.
+    const buildData = async (includeAudio = true, assetSink = null, blobsOk = false) => {
         const usedIds = new Set();
         cuts.forEach(c => c.layers.forEach(l => safeArray(l.strokes).forEach(s => { if (s.bitmapId) usedIds.add(s.bitmapId); })));
         const bitmaps = {};
         const compressed = []; // ids stored as a whole encoded image (video frames) — keep compressed on restore
         const assets = [];     // externalized frame manifest [{id, ext}] when assetSink is used
-        // Cache PNG encodes per bitmap id — imageData is immutable once stored, so the
-        // (frequent) autosave doesn't re-encode every fill/part each time.
         const cache = dataUrlCacheRef.current;
-        usedIds.forEach(id => {
+        for (const id of usedIds) {
             const entry = bitmapStoreRef.current.get(id);
-            if (!entry) return;
-            // Already-compressed (video frames): store the data URL as-is, no re-encode.
-            if (entry.url) {
-                if (assetSink) { const ext = (entry.url.match(/^data:image\/(\w+)/)?.[1] || 'webp'); assets.push({ id, ext }); assetSink.push({ id, url: entry.url, ext }); }
-                else { bitmaps[id] = entry.url; compressed.push(id); }
-                return;
+            if (!entry) continue;
+            // Video frames are held as a Blob (preferred) or legacy dataURL.
+            if (entry.blob || entry.url) {
+                const ext = entry.ext || (entry.url?.match(/^data:image\/(\w+)/)?.[1]) || 'webp';
+                if (assetSink) { assets.push({ id, ext }); assetSink.push({ id, blob: entry.blob, url: entry.url, ext }); }
+                else if (blobsOk && entry.blob) { bitmaps[id] = entry.blob; compressed.push(id); }
+                else { bitmaps[id] = entry.blob ? await blobToDataURL(entry.blob) : entry.url; compressed.push(id); }
+                continue;
             }
-            if (!entry.imageData) return;
+            if (!entry.imageData) continue;
             const c = cache.get(id);
-            if (c && c.imageData === entry.imageData) { bitmaps[id] = c.url; return; }
+            if (c && c.imageData === entry.imageData) { bitmaps[id] = c.url; continue; }
             const url = imageDataToDataURL(entry.imageData);
             cache.set(id, { imageData: entry.imageData, url });
             bitmaps[id] = url;
-        });
+        }
         const out = {
             version: '1.5', appName: 'EasyMVMaker', savedAt: new Date().toISOString(), numTracks, onionPrev, onionNext, pps, bitmaps, compressedBitmaps: compressed,
             canvas: { w: CANVAS_W, h: CANVAS_H },
@@ -754,31 +763,34 @@ export default function App() {
         // Rebuild the bitmap store before swapping cuts in, so fill/lasso/paste render correctly.
         const store = bitmapStoreRef.current;
         store.clear();
-        // Externalized frame assets (server projects): fetch one at a time and convert to a
-        // dataURL so the store stays self-contained (local re-save still works). Bounded memory.
+        // Externalized frame assets (server projects): fetch one at a time and keep as a Blob
+        // (off-heap). Bounded memory — one frame in flight.
         if (assetBase && Array.isArray(data.assets)) {
             for (const a of data.assets) {
                 try {
                     const blob = await (await fetch(`${assetBase}/asset/${a.id}`)).blob();
                     let imageBitmap = null; try { imageBitmap = await createImageBitmap(blob); } catch { }
-                    const url = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(blob); });
-                    store.set(a.id, { imageData: null, imageBitmap, url });
+                    store.set(a.id, { imageData: null, imageBitmap, blob, ext: a.ext });
                 } catch { }
             }
         }
         if (data.bitmaps) {
             const compressedSet = new Set(data.compressedBitmaps || []);
-            const entries = await Promise.all(Object.entries(data.bitmaps).map(async ([id, url]) => {
+            const entries = await Promise.all(Object.entries(data.bitmaps).map(async ([id, val]) => {
                 try {
-                    // Whole-image frames (video import; webp OR lossless png) stay compressed: decode
-                    // to a bitmap and keep the URL. Only drawing layers need editable PNG ImageData.
-                    if (compressedSet.has(id) || /^data:image\/(webp|jpeg)/.test(url)) {
-                        const blob = await (await fetch(url)).blob();
-                        let imageBitmap = null;
-                        try { imageBitmap = await createImageBitmap(blob); } catch { }
-                        return [id, { imageData: null, imageBitmap, url }];
+                    // Frames may arrive as a Blob (IndexedDB autosave) or a dataURL (embedded .emv).
+                    // Either way keep them as a Blob (off-heap) + decoded bitmap. Drawing layers
+                    // (small PNG dataURLs, not flagged compressed) become editable ImageData.
+                    if (val instanceof Blob) {
+                        let imageBitmap = null; try { imageBitmap = await createImageBitmap(val); } catch { }
+                        return [id, { imageData: null, imageBitmap, blob: val, ext: (val.type.match(/image\/(\w+)/)?.[1]) || 'webp' }];
                     }
-                    const imageData = await dataURLToImageData(url);
+                    if (compressedSet.has(id) || /^data:image\/(webp|jpeg)/.test(val)) {
+                        const blob = await (await fetch(val)).blob();
+                        let imageBitmap = null; try { imageBitmap = await createImageBitmap(blob); } catch { }
+                        return [id, { imageData: null, imageBitmap, blob, ext: (blob.type.match(/image\/(\w+)/)?.[1]) || 'webp' }];
+                    }
+                    const imageData = await dataURLToImageData(val);
                     let imageBitmap = null;
                     try { imageBitmap = await createImageBitmap(imageData); } catch { }
                     return [id, { imageData, imageBitmap }];
@@ -822,7 +834,7 @@ export default function App() {
         }
     };
     const doSave = async (asNew = false) => {
-        const json = JSON.stringify(buildData(), null, 2);
+        const json = JSON.stringify(await buildData(), null, 2);
         if ('showSaveFilePicker' in window && (asNew || !fileHandleRef.current)) {
             try { const h = await window.showSaveFilePicker({ suggestedName: 'project.emv', types: [{ description: 'Easy MV Project', accept: { 'application/json': ['.emv'] } }] }); fileHandleRef.current = h; const w = await h.createWritable(); await w.write(json); await w.close(); return; } catch (e) { if (e.name === 'AbortError') return; }
         } else if ('showSaveFilePicker' in window && fileHandleRef.current) {
@@ -862,7 +874,8 @@ export default function App() {
     const uploadAssets = async (id, assetSink) => {
         for (let i = 0; i < assetSink.length; i++) {
             const a = assetSink[i];
-            const blob = await (await fetch(a.url)).blob();
+            // Prefer the Blob (uploads directly, no decode); fall back to a legacy dataURL.
+            const blob = a.blob || await (await fetch(a.url)).blob();
             const res = await fetch(`/api/projects/${id}/asset/${a.id}?ext=${encodeURIComponent(a.ext)}`, {
                 method: 'PUT', headers: { 'Content-Type': blob.type || 'application/octet-stream' }, body: blob,
             });
@@ -873,7 +886,7 @@ export default function App() {
         setServerBusy(true);
         try {
             const assetSink = [];
-            const data = buildData(true, assetSink); // frames/audio externalized → small JSON
+            const data = await buildData(true, assetSink); // frames/audio externalized → small JSON
             let id = (!forceNew && serverIdRef.current) ? serverIdRef.current : null;
             let name = serverNameRef.current || 'Untitled';
             if (!id) {
@@ -922,7 +935,7 @@ export default function App() {
     // --- Local (IndexedDB) named projects — works offline / in the deployed build too ---
     const doLocalSave = async (forceNew = false) => {
         try {
-            const data = buildData();
+            const data = await buildData(true, null, true); // IndexedDB stores frame Blobs directly
             if (!forceNew && localIdRef.current) { await saveProject(localIdRef.current, data, localNameRef.current || 'Untitled'); alert('로컬에 저장했습니다.'); return; }
             const name = window.prompt('로컬 저장 이름:', localNameRef.current || 'MV Project');
             if (!name) return;
@@ -974,10 +987,10 @@ export default function App() {
         if (!didRecoverRef.current) return;
         if (isDrawing.current || isDraggingOrResizingRef.current) return;
         clearTimeout(autosaveTimerRef.current);
-        autosaveTimerRef.current = setTimeout(() => {
+        autosaveTimerRef.current = setTimeout(async () => {
             try {
                 gcBitmaps(); // reclaim orphaned bitmaps before encoding the save
-                const data = buildData(false); // autosave stays light (no embedded audio)
+                const data = await buildData(false, null, true); // IDB stores frame Blobs → cheap, low-memory
                 saveAutosave(data).then(() => setAutoSavedAt(Date.now())).catch(() => { });
             } catch { }
         }, 1500);
@@ -1810,6 +1823,10 @@ export default function App() {
                 // Avoids O(n) stringify of a growing stroke on every drawing frame.
                 const layerStrokes = strokeSig(layer.strokes);
                 if (!canvas || canvas.dataset.strokes !== layerStrokes) {
+                    // Skip (don't cache blank) if a frame is still decoding — decode then repaint.
+                    const need = [];
+                    for (const st of safeArray(layer.strokes)) { if (st.tool === 'paste' && st.bitmapId) { const e = bitmapStoreRef.current.get(st.bitmapId); if (e && e.blob && !e.imageBitmap && !e.imageData) need.push(st.bitmapId); } }
+                    if (need.length) { requestFrameDecode(need); continue; }
                     const newCanvas = canvas || document.createElement('canvas');
                     newCanvas.width = CANVAS_W;
                     newCanvas.height = CANVAS_H;
@@ -1829,6 +1846,39 @@ export default function App() {
         }
     }, [cuts, currentCutId, currentTime, onionPrev, onionNext]);
 
+    // Re-create released frame bitmaps (from their Blob) on demand, then repaint. Used both by the
+    // render path (a released frame scrolled into view) and the part-scoped release below.
+    const requestFrameDecode = (ids) => {
+        const store = bitmapStoreRef.current;
+        const todo = ids.filter(id => { const e = store.get(id); return e && e.blob && !e.imageBitmap && !decodingRef.current.has(id); });
+        if (!todo.length) return;
+        todo.forEach(id => decodingRef.current.add(id));
+        (async () => {
+            for (const id of todo) {
+                const e = store.get(id); if (!e || !e.blob) { decodingRef.current.delete(id); continue; }
+                try { e.imageBitmap = await createImageBitmap(e.blob); } catch { }
+                decodingRef.current.delete(id);
+            }
+            fallbackCanvasRef.current.clear();
+            setLayerCanvasCache({}); // repaint visible cuts now that frames are decoded
+        })();
+    };
+    // Part-scoped memory: when a part is active, keep only that part's (+ visible cuts') frames
+    // decoded in memory and release the rest (their compact Blob stays, ready to re-decode). This
+    // is what makes "work on one part" actually light for huge multi-part imports.
+    useEffect(() => {
+        if (!activePartId) return; // 전체: leave decoded frames as-is; on-demand handles misses
+        const store = bitmapStoreRef.current;
+        const hot = new Set();
+        const visible = new Set([currentCutId]);
+        cuts.forEach(c => { if (currentTime >= c.startTime && currentTime < c.endTime) visible.add(c.id); });
+        cuts.forEach(c => { if (c.partId === activePartId || visible.has(c.id)) safeArray(c.layers).forEach(l => safeArray(l.strokes).forEach(s => { if (s.tool === 'paste' && s.bitmapId) hot.add(s.bitmapId); })); });
+        let released = false;
+        for (const [id, e] of store) { if (e.blob && e.imageBitmap && !hot.has(id)) { try { e.imageBitmap.close?.(); } catch { } e.imageBitmap = null; released = true; } }
+        requestFrameDecode([...hot]);
+        if (released) { fallbackCanvasRef.current.clear(); setLayerCanvasCache({}); }
+    }, [activePartId, currentCutId]);
+
     // The cache effect only precomputes visible cuts, and it commits one render late — so a cut
     // that just became visible (every frame during playback) would draw as a blank/white frame.
     // Build it synchronously here instead of skipping; the ref map keeps it bounded.
@@ -1840,6 +1890,12 @@ export default function App() {
         const map = fallbackCanvasRef.current;
         const hit = map.get(key);
         if (hit && hit.dataset.strokes === sig) return hit;
+        // A frame whose imageBitmap was released (part-scoped memory) needs re-decoding first.
+        // Kick the decode and return the stale canvas (if any) rather than caching a blank one.
+        const store = bitmapStoreRef.current;
+        const need = [];
+        for (const st of safeArray(layer.strokes)) { if (st.tool === 'paste' && st.bitmapId) { const e = store.get(st.bitmapId); if (e && e.blob && !e.imageBitmap && !e.imageData) need.push(st.bitmapId); } }
+        if (need.length) { requestFrameDecode(need); return cached || hit || null; }
         const cnv = hit || document.createElement('canvas');
         cnv.width = CANVAS_W; cnv.height = CANVAS_H;
         drawStrokesOnCtx(cnv.getContext('2d'), layer.strokes, true, bitmapStoreRef.current);
@@ -1897,6 +1953,7 @@ export default function App() {
             for (let i = order.length - 1; i >= 0; i--) {
                 const l = order[i];
                 const layerCanvas = ensureLayerCanvas(ac.id, l);
+                if (!layerCanvas) continue; // frame still decoding (part-scoped memory); will repaint when ready
 
                 // Per-layer ("part") transform nests inside the cut transform.
                 const la = playing ? computeLayerAnim(l, ac, t, CANVAS_W, CANVAS_H) : null;
