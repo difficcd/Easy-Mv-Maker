@@ -95,6 +95,7 @@ export default function App() {
     const [videoImport, setVideoImport] = useState(null); // {file, fps, maxFrames} dialog
     const [recentVideos, setRecentVideos] = useState([]); // fetched/opened videos, reusable without re-downloading
     const [videoBusy, setVideoBusy] = useState(null); // {done, total} while extracting
+    const [videoBusyBg, setVideoBusyBg] = useState(false); // extraction moved to a background chip
     const videoStopRef = useRef(false);
     const isExporting = useRef(false);
     const mediaRecorderRef = useRef(null);
@@ -203,11 +204,21 @@ export default function App() {
     // dataURL string. Crucially we DON'T decode it here — decoding every frame into an
     // ImageBitmap at import is what OOMs a big video (hundreds of full-res bitmaps resident).
     // The bitmap is decoded lazily on first display and released under an LRU cap.
-    const storeBitmapBlob = async (blob) => {
+    const storeBitmapBlob = async (blob, w = 0, h = 0) => {
         const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
         const ext = (blob.type.match(/image\/(\w+)/)?.[1] || 'webp');
-        bitmapStoreRef.current.set(id, { imageData: null, imageBitmap: null, blob, ext });
+        bitmapStoreRef.current.set(id, { imageData: null, imageBitmap: null, blob, ext, w, h });
         return id;
+    };
+    // Decode a frame Blob to an ImageBitmap, downscaling to at most the canvas size. The source
+    // stays max-quality (for save/export); the DISPLAY bitmap is capped so decoding a 4K frame
+    // costs the same as a 1080p one — this is what keeps max-quality playback smooth.
+    const decodeFrameBitmap = (e) => {
+        if (e.w && e.h && (e.w > CANVAS_W || e.h > CANVAS_H)) {
+            const s = Math.min(CANVAS_W / e.w, CANVAS_H / e.h);
+            return createImageBitmap(e.blob, { resizeWidth: Math.max(1, Math.round(e.w * s)), resizeHeight: Math.max(1, Math.round(e.h * s)), resizeQuality: 'high' });
+        }
+        return createImageBitmap(e.blob);
     };
     // LRU cap on how many frame ImageBitmaps stay decoded at once (bounds memory regardless of
     // import size or which mode you're in). Released frames keep their Blob and re-decode on view.
@@ -759,7 +770,7 @@ export default function App() {
             // Video frames are held as a Blob (preferred) or legacy dataURL.
             if (entry.blob || entry.url) {
                 const ext = entry.ext || (entry.url?.match(/^data:image\/(\w+)/)?.[1]) || 'webp';
-                if (assetSink) { assets.push({ id, ext }); assetSink.push({ id, blob: entry.blob, url: entry.url, ext }); }
+                if (assetSink) { assets.push({ id, ext, w: entry.w || 0, h: entry.h || 0 }); assetSink.push({ id, blob: entry.blob, url: entry.url, ext }); }
                 else if (blobsOk && entry.blob) { bitmaps[id] = entry.blob; compressed.push(id); }
                 else { bitmaps[id] = entry.blob ? await blobToDataURL(entry.blob) : entry.url; compressed.push(id); }
                 continue;
@@ -804,7 +815,7 @@ export default function App() {
                 try {
                     const blob = await (await fetch(`${assetBase}/asset/${a.id}`)).blob();
                     // Don't decode here — lazy decode on display keeps opening a big project from OOMing.
-                    store.set(a.id, { imageData: null, imageBitmap: null, blob, ext: a.ext });
+                    store.set(a.id, { imageData: null, imageBitmap: null, blob, ext: a.ext, w: a.w || 0, h: a.h || 0 });
                 } catch { }
             }
         }
@@ -1855,10 +1866,11 @@ export default function App() {
                 // Avoids O(n) stringify of a growing stroke on every drawing frame.
                 const layerStrokes = strokeSig(layer.strokes);
                 if (!canvas || canvas.dataset.strokes !== layerStrokes) {
-                    // Skip (don't cache blank) if a frame is still decoding — decode then repaint.
-                    const need = [];
-                    for (const st of safeArray(layer.strokes)) { if (st.tool === 'paste' && st.bitmapId) { const e = bitmapStoreRef.current.get(st.bitmapId); if (e && e.blob && !e.imageBitmap && !e.imageData) need.push(st.bitmapId); } }
-                    if (need.length) { requestFrameDecode(need); continue; }
+                    // Skip (don't cache a blank) if a frame isn't decoded yet — the prefetch effect
+                    // decodes it and repaints. Do NOT request a decode here (would loop with tick).
+                    let notReady = false;
+                    for (const st of safeArray(layer.strokes)) { if (st.tool === 'paste' && st.bitmapId) { const e = bitmapStoreRef.current.get(st.bitmapId); if (e && e.blob && !e.imageBitmap && !e.imageData) { notReady = true; break; } } }
+                    if (notReady) continue;
                     const newCanvas = canvas || document.createElement('canvas');
                     newCanvas.width = CANVAS_W;
                     newCanvas.height = CANVAS_H;
@@ -1876,7 +1888,7 @@ export default function App() {
         if (changed) {
             setLayerCanvasCache(newCache);
         }
-    }, [cuts, currentCutId, currentTime, onionPrev, onionNext, frameDecodeTick]);
+    }, [cuts, currentCutId, currentTime, onionPrev, onionNext]);
 
     // Re-create released frame bitmaps (from their Blob) on demand, then repaint. Used both by the
     // render path (a released frame scrolled into view) and the part-scoped release below.
@@ -1894,7 +1906,7 @@ export default function App() {
                 while (cursor < todo.length) {
                     const id = todo[cursor++];
                     const e = store.get(id); if (!e || !e.blob) { decodingRef.current.delete(id); continue; }
-                    try { e.imageBitmap = await createImageBitmap(e.blob); touchDecoded(id); } catch { }
+                    try { e.imageBitmap = await decodeFrameBitmap(e); touchDecoded(id); } catch { }
                     decodingRef.current.delete(id);
                     // While playing, the rAF loop paints continuously and picks up decoded frames on
                     // its own — don't churn React state (that caused the flicker). When paused, repaint
@@ -1958,10 +1970,13 @@ export default function App() {
         if (hit && hit.dataset.strokes === sig) return hit;
         // A frame whose imageBitmap was released (part-scoped memory) needs re-decoding first.
         // Kick the decode and return the stale canvas (if any) rather than caching a blank one.
+        // If a frame isn't decoded yet, show the stale canvas (or nothing) — DON'T request a decode
+        // from the paint path (that fed a setState→effect→decode loop). Decoding is driven solely by
+        // the prefetch effect / rAF-loop prefetch, which repaint when frames land.
         const store = bitmapStoreRef.current;
-        const need = [];
-        for (const st of safeArray(layer.strokes)) { if (st.tool === 'paste' && st.bitmapId) { const e = store.get(st.bitmapId); if (e && e.blob) { if (!e.imageBitmap && !e.imageData) need.push(st.bitmapId); else if (e.imageBitmap) touchDecoded(st.bitmapId); } } }
-        if (need.length) { requestFrameDecode(need); return cached || hit || null; }
+        let missing = false;
+        for (const st of safeArray(layer.strokes)) { if (st.tool === 'paste' && st.bitmapId) { const e = store.get(st.bitmapId); if (e && e.blob) { if (!e.imageBitmap && !e.imageData) missing = true; else if (e.imageBitmap) touchDecoded(st.bitmapId); } } }
+        if (missing) return cached || hit || null;
         const cnv = hit || document.createElement('canvas');
         cnv.width = CANVAS_W; cnv.height = CANVAS_H;
         drawStrokesOnCtx(cnv.getContext('2d'), layer.strokes, true, bitmapStoreRef.current);
@@ -2358,6 +2373,14 @@ export default function App() {
         setRecentVideos(p => [{ id: 'rv_' + Date.now().toString(36), name: label, srcKey, url: src?.url || null },
         ...p.filter(v => v.srcKey !== srcKey)].slice(0, 3));
         setVideoImport({ file, srcKey, label, fps: 4, maxFrames: 60, scale: 0.5, whole: true, withAudio: false, dedupe: 'exact', quality: 'compressed', rangeOn: false, startText: '0:00', endText: '', parts: 1 });
+        // Auto-suggest a part count from the video length (~1 part per 30s) so a long video comes
+        // in already split. The user can still change it in the dialog.
+        try {
+            const v = document.createElement('video'); v.preload = 'metadata'; const u = URL.createObjectURL(file);
+            v.onloadedmetadata = () => { const dur = v.duration || 0; URL.revokeObjectURL(u); const parts = Math.max(1, Math.min(30, Math.round(dur / 30)));
+                setVideoImport(vi => (vi && vi.file === file) ? { ...vi, durationSec: dur, parts } : vi); };
+            v.src = u;
+        } catch { }
     };
     const reimportRecent = (v) => {
         if (v.url) loadYoutubeVideo(v.url);        // same link → download again
@@ -2478,7 +2501,7 @@ export default function App() {
             const made = [];
             let t = startAt;
             for (let i = 0; i < frames.length; i++) {
-                const bitmapId = await storeBitmapBlob(frames[i]);
+                const bitmapId = await storeBitmapBlob(frames[i], fW, fH);
                 const s = t, e = t + dur * (holds[i] || 1); // held frames span their whole duplicate run
                 t = e;
                 const pIdx = nParts > 1 ? Math.floor(i / perPart) : 0;
@@ -2504,6 +2527,7 @@ export default function App() {
         } finally {
             videoStopRef.current = false;
             setVideoBusy(null);
+            setVideoBusyBg(false);
         }
     };
     const handleDeleteAudio = () => {
@@ -2608,7 +2632,15 @@ export default function App() {
                     <div style={{ background: '#1e1e2e', border: '1px solid #333', borderRadius: 8, padding: 20, color: '#ccc', fontSize: 13 }}>영상을 받는 중…</div>
                 </div>
             )}
-            {videoImport && (
+            {videoBusy && videoBusyBg && !videoBusy.fetching && (
+                <div style={{ position: 'fixed', right: 16, bottom: 16, zIndex: 1000, background: '#1e1e2e', border: '1px solid #333', borderRadius: 8, padding: '10px 14px', color: '#ccc', fontSize: 12, display: 'flex', gap: 10, alignItems: 'center', boxShadow: '0 4px 16px rgba(0,0,0,.4)' }}>
+                    <span>프레임 추출 {videoBusy.done}/{videoBusy.total || '?'}</span>
+                    <div style={{ width: 80, height: 6, background: '#2a2a3a', borderRadius: 3, overflow: 'hidden' }}><div style={{ height: '100%', width: `${videoBusy.total ? (videoBusy.done / videoBusy.total * 100) : 0}%`, background: '#7c8cff' }} /></div>
+                    <button className="button" style={{ height: 26, padding: '0 8px' }} onClick={() => setVideoBusyBg(false)}>열기</button>
+                    <button className="button" style={{ height: 26, padding: '0 8px' }} onClick={() => { videoStopRef.current = true; }}>중지</button>
+                </div>
+            )}
+            {videoImport && !videoBusyBg && (
                 <div onClick={() => { if (!videoBusy) setVideoImport(null); }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <div onClick={e => e.stopPropagation()} style={{ width: 420, background: '#1e1e2e', border: '1px solid #333', borderRadius: 8, padding: 18, color: '#ccc', fontSize: 12.5 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
@@ -2622,8 +2654,12 @@ export default function App() {
                                 <div style={{ height: 8, background: '#2a2a3a', borderRadius: 4, overflow: 'hidden' }}>
                                     <div style={{ height: '100%', width: `${videoBusy.total ? (videoBusy.done / videoBusy.total * 100) : 0}%`, background: '#7c8cff' }} />
                                 </div>
-                                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
-                                    <button className="button" onClick={() => { videoStopRef.current = true; }}>중지</button>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
+                                    <span style={{ color: '#888', fontSize: 11 }}>백그라운드로 두고 다른 작업을 계속할 수 있어요.</span>
+                                    <span style={{ display: 'flex', gap: 6 }}>
+                                        <button className="button" onClick={() => setVideoBusyBg(true)}>백그라운드로</button>
+                                        <button className="button" onClick={() => { videoStopRef.current = true; }}>중지</button>
+                                    </span>
                                 </div>
                             </>
                         ) : (
