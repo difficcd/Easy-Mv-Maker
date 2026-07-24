@@ -149,6 +149,7 @@ export default function App() {
     const fallbackCanvasRef = useRef(new Map()); // LRU of layer canvases built on demand during render
     const decodingRef = useRef(new Set()); // frame ids currently being re-decoded from their Blob
     const hotWindowRef = useRef(new Set()); // frame ids in the current prefetch window — never LRU-evicted
+    const prefetchRef = useRef(null); // prefetchFramesAt, called by the rAF loop with the real playhead
     const canvasAreaRef = useRef(null);
     const videoFileRef = useRef(null);
     const currentTimeRef = useRef(0);       // playback clock read by the rAF loop (avoids stale closure)
@@ -210,7 +211,7 @@ export default function App() {
     };
     // LRU cap on how many frame ImageBitmaps stay decoded at once (bounds memory regardless of
     // import size or which mode you're in). Released frames keep their Blob and re-decode on view.
-    const DECODED_CAP = 90; // must exceed the prefetch window so prefetched frames aren't evicted
+    const DECODED_CAP = 120; // must exceed the prefetch window (~50) so prefetched frames aren't evicted
     const decodeOrderRef = useRef(new Map()); // id -> monotonically increasing use counter
     const decodeSeqRef = useRef(0);
     const [frameDecodeTick, setFrameDecodeTick] = useState(0); // bumped when a frame finishes decoding → forces cache rebuild
@@ -465,7 +466,7 @@ export default function App() {
         if (audio) audio.playbackRate = rate;
         let last = performance.now();
         let t = currentTimeRef.current;
-        let lastUiSync = 0;
+        let lastUiSync = 0, lastPrefetch = 0;
         const audible = () => audio && audioUrl && (!audioData || (t >= audioData.startTime && t < audioData.endTime));
         // Kick audio once, seeking only at the start — not every frame (per-frame seeks stutter).
         if (audio && audioUrl) {
@@ -508,6 +509,7 @@ export default function App() {
             currentTimeRef.current = t;
             paintFrameRef.current?.(t, true);                                   // 60fps imperative canvas
             if (playheadRef.current) playheadRef.current.style.left = `${t * pps + 60}px`; // 60fps imperative playhead
+            if (now - lastPrefetch > 120) { lastPrefetch = now; prefetchRef.current?.(t, true); } // decode ahead of the REAL playhead
             if (now - lastUiSync > 90) { lastUiSync = now; setCurrentTime(t); } // ~11Hz React sync (highlight/readout)
             reqRef.current = requestAnimationFrame(step);
         };
@@ -1883,18 +1885,26 @@ export default function App() {
         const todo = ids.filter(id => { const e = store.get(id); return e && e.blob && !e.imageBitmap && !decodingRef.current.has(id); });
         if (!todo.length) return;
         todo.forEach(id => decodingRef.current.add(id));
+        const playing = isPlayingRef.current;
         (async () => {
-            const done = [];
-            for (const id of todo) {
-                const e = store.get(id); if (!e || !e.blob) { decodingRef.current.delete(id); continue; }
-                try { e.imageBitmap = await createImageBitmap(e.blob); touchDecoded(id); done.push(id); } catch { }
-                decodingRef.current.delete(id);
-                // Repaint as soon as the FIRST (highest-priority = current) frame is ready — but only
-                // invalidate the cuts that use it, so on-screen frames don't flicker.
-                if (done.length === 1) { invalidateCutsUsing([id]); setFrameDecodeTick(t => t + 1); }
-            }
+            let cursor = 0;
+            // Decode several frames concurrently (createImageBitmap runs off-thread) so the buffer
+            // fills faster than playback consumes it.
+            const worker = async () => {
+                while (cursor < todo.length) {
+                    const id = todo[cursor++];
+                    const e = store.get(id); if (!e || !e.blob) { decodingRef.current.delete(id); continue; }
+                    try { e.imageBitmap = await createImageBitmap(e.blob); touchDecoded(id); } catch { }
+                    decodingRef.current.delete(id);
+                    // While playing, the rAF loop paints continuously and picks up decoded frames on
+                    // its own — don't churn React state (that caused the flicker). When paused, repaint
+                    // the affected cuts so the still frame appears.
+                    if (!playing) { invalidateCutsUsing([id]); setFrameDecodeTick(t => t + 1); }
+                }
+            };
+            await Promise.all(Array.from({ length: Math.min(4, todo.length) }, worker));
             trimDecodedFrames(new Set(todo)); // keep memory bounded; protect what we just decoded
-            if (done.length > 1) { invalidateCutsUsing(done); setFrameDecodeTick(t => t + 1); }
+            if (!playing) setFrameDecodeTick(t => t + 1);
         })();
     };
     // Part-scoped memory: when a part is active, keep only that part's (+ visible cuts') frames
@@ -1916,14 +1926,14 @@ export default function App() {
     // Prefetch: decode the current frame first (shows immediately) and a window of frames ahead of
     // the playhead (and a few behind), so playback and scrubbing don't stall on lazy decoding.
     // The LRU cap releases frames outside this window, so memory stays bounded.
-    useEffect(() => {
+    const prefetchFramesAt = (time, playing) => {
         const ordered = cuts.filter(c => safeArray(c.layers).some(l => safeArray(l.strokes).some(s => s.tool === 'paste' && s.bitmapId)))
             .sort((a, b) => a.startTime - b.startTime);
         if (!ordered.length) return;
-        let idx = ordered.findIndex(c => currentTime >= c.startTime && currentTime < c.endTime);
+        let idx = ordered.findIndex(c => time >= c.startTime && time < c.endTime);
         if (idx < 0) idx = ordered.findIndex(c => c.id === currentCutId);
         if (idx < 0) idx = 0;
-        const AHEAD = isPlaying ? 32 : 8, BEHIND = 4;
+        const AHEAD = playing ? 48 : 10, BEHIND = playing ? 2 : 4;
         const ids = [];
         const push = (c) => c && safeArray(c.layers).forEach(l => safeArray(l.strokes).forEach(s => { if (s.tool === 'paste' && s.bitmapId) ids.push(s.bitmapId); }));
         push(ordered[idx]);                                   // current first = highest priority
@@ -1931,7 +1941,9 @@ export default function App() {
         for (let d = 1; d <= BEHIND; d++) push(ordered[idx - d]);
         hotWindowRef.current = new Set(ids); // protect this window from LRU eviction
         requestFrameDecode(ids);
-    }, [currentCutId, currentTime, isPlaying, cuts]);
+    };
+    prefetchRef.current = prefetchFramesAt;
+    useEffect(() => { prefetchFramesAt(currentTime, isPlaying); }, [currentCutId, currentTime, isPlaying, cuts]);
 
     // The cache effect only precomputes visible cuts, and it commits one render late — so a cut
     // that just became visible (every frame during playback) would draw as a blank/white frame.
