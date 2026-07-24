@@ -151,6 +151,7 @@ export default function App() {
     const decodingRef = useRef(new Set()); // frame ids currently being re-decoded from their Blob
     const hotWindowRef = useRef(new Set()); // frame ids in the current prefetch window — never LRU-evicted
     const prefetchRef = useRef(null); // prefetchFramesAt, called by the rAF loop with the real playhead
+    const paintedOnceRef = useRef(false); // once we've painted a real frame, hold it rather than flash white
     const canvasAreaRef = useRef(null);
     const videoFileRef = useRef(null);
     const currentTimeRef = useRef(0);       // playback clock read by the rAF loop (avoids stale closure)
@@ -1990,11 +1991,22 @@ export default function App() {
     const paintFrame = useCallback((t, playing) => {
         const canvas = canvasRef.current; if (!canvas) return;
         const ctx = canvas.getContext('2d');
-        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
         const primary = cuts.find(c => c.id === currentCutId);
         let activeCuts = cuts.filter(c => t >= c.startTime && t < c.endTime);
         if (!activeCuts.find(c => c.id === currentCutId) && primary && !playing) activeCuts.push(primary);
         activeCuts.sort((a, b) => a.track - b.track);
+        // Never flash white DURING PLAYBACK: if the frame we're about to show isn't decoded yet,
+        // HOLD the last painted frame (skip this repaint) and kick a decode. The loop keeps advancing,
+        // so it reads as a brief hold instead of a white flash. Paused/editing always paints normally
+        // (the prefetch effect repaints once the frame is ready), so a still frame is never stuck.
+        if (playing && paintedOnceRef.current) {
+            const store = bitmapStoreRef.current;
+            const missing = [];
+            for (const ac of activeCuts) for (const l of safeArray(ac.layers)) { if (l.type !== 'layer' || l.visible === false) continue; for (const s of safeArray(l.strokes)) { if (s.tool === 'paste' && s.bitmapId) { const e = store.get(s.bitmapId); if (e && e.blob && !e.imageBitmap && !e.imageData) missing.push(s.bitmapId); } } }
+            if (missing.length) { requestFrameDecode(missing); return; }
+        }
+        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+        paintedOnceRef.current = true;
 
         if (!playing && primary) {
             if (onionPrev) {
