@@ -249,9 +249,19 @@ function smoothPoints(pts, passes) {
     return cur;
 }
 
-// Draw as smooth quadratic curves through midpoints. When the width is uniform the whole
-// stroke is one continuous path (no per-segment seams); variable width falls back to
-// per-segment curves whose widths were already smoothed.
+// Catmull-Rom control points for the segment p1->p2 (converted to a cubic Bezier). The
+// curve passes exactly through every sample and stays smooth across segment joins, which
+// quadratic-through-midpoints does not (it flattens when samples are far apart).
+function crControls(p0, p1, p2, p3, tension = 1) {
+    const k = tension / 6;
+    return [
+        { x: p1.x + (p2.x - p0.x) * k, y: p1.y + (p2.y - p0.y) * k },
+        { x: p2.x - (p3.x - p1.x) * k, y: p2.y - (p3.y - p1.y) * k },
+    ];
+}
+
+// Draw the stroke as a Catmull-Rom spline. Uniform width renders as one continuous path
+// (no seams); variable width renders per segment with already-smoothed widths.
 function smoothStroke(ctx, pts, widths, applyStyle) {
     const n = pts.length;
     if (!n) return;
@@ -260,6 +270,13 @@ function smoothStroke(ctx, pts, widths, applyStyle) {
         ctx.beginPath(); ctx.arc(pts[0].x, pts[0].y, Math.max(0.3, widths[0] / 2), 0, Math.PI * 2); ctx.fill();
         return;
     }
+    if (n === 2) {
+        applyStyle(1);
+        ctx.lineWidth = Math.max(0.3, widths[1]);
+        ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y); ctx.lineTo(pts[1].x, pts[1].y); ctx.stroke();
+        return;
+    }
+    const at = (i) => pts[Math.max(0, Math.min(n - 1, i))];
     let uniform = true;
     for (let i = 2; i < n; i++) if (Math.abs(widths[i] - widths[1]) > 0.2) { uniform = false; break; }
     if (uniform) {
@@ -267,23 +284,20 @@ function smoothStroke(ctx, pts, widths, applyStyle) {
         ctx.lineWidth = Math.max(0.3, widths[1]);
         ctx.beginPath();
         ctx.moveTo(pts[0].x, pts[0].y);
-        for (let i = 1; i < n - 1; i++) {
-            const m = { x: (pts[i].x + pts[i + 1].x) / 2, y: (pts[i].y + pts[i + 1].y) / 2 };
-            ctx.quadraticCurveTo(pts[i].x, pts[i].y, m.x, m.y);
+        for (let i = 0; i < n - 1; i++) {
+            const [c1, c2] = crControls(at(i - 1), at(i), at(i + 1), at(i + 2));
+            ctx.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, at(i + 1).x, at(i + 1).y);
         }
-        ctx.lineTo(pts[n - 1].x, pts[n - 1].y);
         ctx.stroke();
         return;
     }
-    for (let i = 1; i < n; i++) {
-        const p0 = pts[i - 1], p1 = pts[i];
-        const a = i === 1 ? p0 : { x: (pts[i - 2].x + p0.x) / 2, y: (pts[i - 2].y + p0.y) / 2 };
-        const b = i === n - 1 ? p1 : { x: (p0.x + p1.x) / 2, y: (p0.y + p1.y) / 2 };
-        applyStyle(i);
-        ctx.lineWidth = Math.max(0.3, widths[i]);
+    for (let i = 0; i < n - 1; i++) {
+        const [c1, c2] = crControls(at(i - 1), at(i), at(i + 1), at(i + 2));
+        applyStyle(i + 1);
+        ctx.lineWidth = Math.max(0.3, widths[i + 1]);
         ctx.beginPath();
-        ctx.moveTo(a.x, a.y);
-        ctx.quadraticCurveTo(p0.x, p0.y, b.x, b.y);
+        ctx.moveTo(at(i).x, at(i).y);
+        ctx.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, at(i + 1).x, at(i + 1).y);
         ctx.stroke();
     }
 }

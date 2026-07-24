@@ -1895,6 +1895,22 @@ export default function App() {
         const file = e.target.files[0]; if (!file) return;
         loadAudioUrl(URL.createObjectURL(file), file.name);
     };
+    // Local-only: pull a video by URL through the API, then reuse the frame-import dialog.
+    const loadYoutubeVideo = async () => {
+        const url = window.prompt('유튜브(또는 영상) 링크:');
+        if (!url) return;
+        setVideoBusy({ done: 0, total: 0, fetching: true });
+        try {
+            const res = await fetch('/api/youtube-video?url=' + encodeURIComponent(url) + '&maxHeight=720');
+            if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || ('HTTP ' + res.status)); }
+            const blob = await res.blob();
+            const file = new File([blob], 'youtube.mp4', { type: blob.type || 'video/mp4' });
+            setVideoImport({ file, fps: 6, maxFrames: 60 });
+        } catch (e) {
+            alert('영상 가져오기 실패: ' + e.message + '\n(서버에 yt-dlp 설치 필요)');
+        } finally { setVideoBusy(null); }
+    };
+
     // Import a video as one cut per extracted frame (sequential on the current track).
     const runVideoImport = async () => {
         const cfg = videoImport;
@@ -2028,6 +2044,11 @@ export default function App() {
 
             {serverProjects !== null && <ProjectPicker title="서버에서 열기" items={serverProjects} onOpen={doServerOpen} onDelete={doServerDelete} onClose={() => setServerProjects(null)} />}
             {localProjects !== null && <ProjectPicker title="로컬에서 열기" items={localProjects} onOpen={doLocalOpen} onDelete={doLocalDelete} onClose={() => setLocalProjects(null)} />}
+            {videoBusy?.fetching && (
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ background: '#1e1e2e', border: '1px solid #333', borderRadius: 8, padding: 20, color: '#ccc', fontSize: 13 }}>영상을 받는 중…</div>
+                </div>
+            )}
             {videoImport && (
                 <div onClick={() => { if (!videoBusy) setVideoImport(null); }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <div onClick={e => e.stopPropagation()} style={{ width: 420, background: '#1e1e2e', border: '1px solid #333', borderRadius: 8, padding: 18, color: '#ccc', fontSize: 12.5 }}>
@@ -2155,6 +2176,7 @@ export default function App() {
                         <input type="file" accept="video/*" style={{ display: 'none' }}
                             onChange={e => { const f = e.target.files[0]; e.target.value = ''; if (f) setVideoImport({ file: f, fps: 6, maxFrames: 60 }); }} />
                     </label>
+                    {serverAvailable && <button className="button" onClick={loadYoutubeVideo} title="유튜브 링크에서 영상을 받아 프레임 추출 (로컬 서버, yt-dlp 필요)" style={{ height: 34 }}>YT 영상</button>}
                 </div>
             </div>
 

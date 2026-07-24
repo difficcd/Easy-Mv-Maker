@@ -85,7 +85,7 @@ app.get('/api/youtube-audio', async (req, res) => {
     p.on('error', (e) => { fs.rm(dir, { recursive: true, force: true }); res.status(500).json({ error: 'yt-dlp 실행 불가 (설치 필요): ' + e.message }); });
     p.on('close', async (code) => {
         try {
-            if (code !== 0) { res.status(500).json({ error: '추출 실패: ' + err.slice(-400) }); return; }
+            if (code !== 0) { res.status(500).json({ error: friendlyYtError(err) }); return; }
             const files = await fs.readdir(dir);
             if (!files.length) { res.status(500).json({ error: '오디오 파일 없음' }); return; }
             const f = files[0];
@@ -94,6 +94,65 @@ app.get('/api/youtube-audio', async (req, res) => {
         } catch (e) { res.status(500).json({ error: String(e) }); }
         finally { fs.rm(dir, { recursive: true, force: true }).catch(() => { }); }
     });
+});
+
+// Local-only: fetch a video by URL for frame extraction. Progressive single-file formats
+// only, so no ffmpeg merge is needed. Personal/authorized use; respect source ToS.
+const videoType = (ext) => ({ '.mp4': 'video/mp4', '.webm': 'video/webm', '.mkv': 'video/x-matroska', '.mov': 'video/quicktime' }[ext] || 'video/mp4');
+// Map yt-dlp stderr to something actionable instead of a raw dump.
+const friendlyYtError = (err) => {
+    const e = err.toLowerCase();
+    if (e.includes('sign in') || e.includes('bot')) return '유튜브가 봇으로 판단해 차단했습니다. 잠시 후 재시도하거나 다른 영상을 사용하세요.';
+    if (e.includes('age')) return '연령 제한 영상이라 받을 수 없습니다.';
+    if (e.includes('private')) return '비공개 영상입니다.';
+    if (e.includes('unavailable') || e.includes('removed')) return '영상을 찾을 수 없거나 삭제되었습니다.';
+    if (e.includes('geo') || e.includes('country')) return '지역 제한 영상입니다.';
+    if (e.includes('live')) return '라이브 스트림은 지원하지 않습니다.';
+    if (e.includes('requested format') || e.includes('no video formats')) return '받을 수 있는 단일 파일 포맷이 없습니다 (ffmpeg 없이 병합 불가).';
+    if (e.includes('unable to download') || e.includes('network') || e.includes('timed out')) return '네트워크 오류로 받지 못했습니다.';
+    return '영상 받기 실패: ' + err.slice(-300);
+};
+const runYtdlp = (args) => new Promise((resolve) => {
+    const p = spawn('yt-dlp', args);
+    let err = '';
+    p.stderr.on('data', d => { err += d; });
+    p.on('error', (e) => resolve({ code: -1, err: 'SPAWN:' + e.message }));
+    p.on('close', (code) => resolve({ code, err }));
+});
+app.get('/api/youtube-video', async (req, res) => {
+    const url = String(req.query.url || '');
+    if (!/^https?:\/\//.test(url)) { res.status(400).json({ error: 'invalid url' }); return; }
+    const maxH = Math.max(144, Math.min(1080, Number(req.query.maxHeight) || 720));
+    const dir = path.join(os.tmpdir(), `ytv_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+    await fs.mkdir(dir, { recursive: true });
+    // Progressive single-file formats only (no ffmpeg merge), widening on each retry.
+    const formats = [
+        `best[height<=${maxH}][ext=mp4]/best[height<=${maxH}]`,
+        'best[ext=mp4]/best',
+        'worst[ext=mp4]/worst',
+    ];
+    try {
+        let lastErr = '';
+        for (const fmt of formats) {
+            const { code, err } = await runYtdlp(['-f', fmt, '--no-playlist', '--no-warnings',
+                '--extractor-args', 'youtube:player_client=default,web_safari,android',
+                '-o', path.join(dir, 'video.%(ext)s'), url]);
+            if (err.startsWith('SPAWN:')) { res.status(500).json({ error: 'yt-dlp 실행 불가 (설치 필요): ' + err.slice(6) }); return; }
+            lastErr = err;
+            const files = code === 0 ? await fs.readdir(dir) : [];
+            if (files.length) {
+                const f = files[0];
+                res.setHeader('Content-Type', videoType(path.extname(f).toLowerCase()));
+                res.send(await fs.readFile(path.join(dir, f)));
+                return;
+            }
+        }
+        res.status(500).json({ error: friendlyYtError(lastErr) });
+    } catch (e) {
+        res.status(500).json({ error: String(e) });
+    } finally {
+        fs.rm(dir, { recursive: true, force: true }).catch(() => { });
+    }
 });
 
 app.listen(PORT, () => console.log(`[mv-api] project storage listening on http://localhost:${PORT}`));
