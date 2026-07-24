@@ -139,6 +139,9 @@ export default function App() {
     const [selectedText, setSelectedText] = useState(null);
     const [layerCanvasCache, setLayerCanvasCache] = useState({});
     const bitmapStoreRef = useRef(new Map());
+    const fallbackCanvasRef = useRef(new Map()); // LRU of layer canvases built on demand during render
+    const canvasAreaRef = useRef(null);
+    const videoFileRef = useRef(null);
     const dataUrlCacheRef = useRef(new Map()); // id -> {imageData, url}; avoids re-encoding bitmaps each autosave
     const liveRef = useRef({}); // latest {cuts, copiedCut, selection} for safe bitmap GC from effects
     const selectionDragRef = useRef(null);
@@ -1080,6 +1083,25 @@ export default function App() {
     };
     const resetView = () => setView({ zoom: 1, x: 0, y: 0 });
 
+    // Wheel zoom on the canvas (PC): anchored at the cursor so the point under it stays put.
+    // Shift/Ctrl not required — plain wheel zooms, since the stage never scrolls.
+    useEffect(() => {
+        const el = canvasAreaRef.current; if (!el) return;
+        const h = (e) => {
+            e.preventDefault();
+            const r = el.getBoundingClientRect();
+            const cx = e.clientX - r.left - r.width / 2;
+            const cy = e.clientY - r.top - r.height / 2;
+            setView(v => {
+                const zoom = Math.max(0.25, Math.min(8, v.zoom * (e.deltaY > 0 ? 0.9 : 1.1)));
+                const k = zoom / v.zoom;
+                return { zoom, x: cx - (cx - v.x) * k, y: cy - (cy - v.y) * k };
+            });
+        };
+        el.addEventListener('wheel', h, { passive: false });
+        return () => el.removeEventListener('wheel', h);
+    }, []);
+
     const getTextMeasureCtx = () => {
         if (!textMeasureCtxRef.current) {
             const c = document.createElement('canvas');
@@ -1632,6 +1654,26 @@ export default function App() {
         }
     }, [cuts, currentCutId, currentTime, onionPrev, onionNext]);
 
+    // The cache effect only precomputes visible cuts, and it commits one render late — so a cut
+    // that just became visible (every frame during playback) would draw as a blank/white frame.
+    // Build it synchronously here instead of skipping; the ref map keeps it bounded.
+    const ensureLayerCanvas = (cutId, layer) => {
+        const key = layerKey(cutId, layer.id);
+        const sig = strokeSig(layer.strokes);
+        const cached = layerCanvasCache[key];
+        if (cached && cached.dataset.strokes === sig) return cached;
+        const map = fallbackCanvasRef.current;
+        const hit = map.get(key);
+        if (hit && hit.dataset.strokes === sig) return hit;
+        const cnv = hit || document.createElement('canvas');
+        cnv.width = CANVAS_W; cnv.height = CANVAS_H;
+        drawStrokesOnCtx(cnv.getContext('2d'), layer.strokes, true, bitmapStoreRef.current);
+        cnv.dataset.strokes = sig;
+        map.delete(key); map.set(key, cnv); // re-insert = most recently used
+        while (map.size > 24) map.delete(map.keys().next().value);
+        return cnv;
+    };
+
     useEffect(() => {
         const canvas = canvasRef.current; if (!canvas) return;
         const ctx = canvas.getContext('2d');
@@ -1647,7 +1689,7 @@ export default function App() {
                 if (prevCut) {
                     const order = flattenLayersInUiOrder(prevCut.layers || []).filter(l => l.type === 'layer' && l.visible !== false);
                     for (let i = order.length - 1; i >= 0; i--) {
-                        const lc = layerCanvasCache[layerKey(prevCut.id, order[i].id)];
+                        const lc = ensureLayerCanvas(prevCut.id, order[i]);
                         if (lc) { ctx.globalAlpha = 0.35; ctx.drawImage(lc, 0, 0); ctx.globalAlpha = 1.0; }
                     }
                 }
@@ -1657,7 +1699,7 @@ export default function App() {
                 if (nextCut) {
                     const order = flattenLayersInUiOrder(nextCut.layers || []).filter(l => l.type === 'layer' && l.visible !== false);
                     for (let i = order.length - 1; i >= 0; i--) {
-                        const lc = layerCanvasCache[layerKey(nextCut.id, order[i].id)];
+                        const lc = ensureLayerCanvas(nextCut.id, order[i]);
                         if (lc) { ctx.globalAlpha = 0.35; ctx.drawImage(lc, 0, 0); ctx.globalAlpha = 1.0; }
                     }
                 }
@@ -1679,8 +1721,7 @@ export default function App() {
             // Draw bottom -> top so the topmost layer (UI top) is visually on top.
             for (let i = order.length - 1; i >= 0; i--) {
                 const l = order[i];
-                const layerCanvas = layerCanvasCache[layerKey(ac.id, l.id)];
-                if (!layerCanvas) continue;
+                const layerCanvas = ensureLayerCanvas(ac.id, l);
 
                 // Per-layer ("part") transform nests inside the cut transform.
                 const la = isPlaying ? computeLayerAnim(l, ac, currentTime, CANVAS_W, CANVAS_H) : null;
@@ -1938,10 +1979,18 @@ export default function App() {
     };
     // Remember fetched/opened videos so they can be re-imported with different settings
     // without downloading again (session only — keeps at most 3 to bound memory).
-    const openVideoImport = (file, name) => {
-        const label = name || file.name;
-        setRecentVideos(p => [{ id: 'rv_' + Date.now().toString(36), name: label, file }, ...p.filter(v => v.name !== label)].slice(0, 3));
-        setVideoImport({ file, fps: 4, maxFrames: 60, scale: 0.5, whole: true, withAudio: false });
+    // Recents keep only the source key/link, never the video data — the downloaded file is
+    // dropped right after extraction, so re-importing the same link re-downloads it.
+    const openVideoImport = (file, name, src) => {
+        const label = (name || file.name).replace(/\.[^.]+$/, '').slice(0, 24);
+        const srcKey = src?.key || `f:${file.name}:${file.size}`;
+        setRecentVideos(p => [{ id: 'rv_' + Date.now().toString(36), name: label, srcKey, url: src?.url || null },
+        ...p.filter(v => v.srcKey !== srcKey)].slice(0, 3));
+        setVideoImport({ file, srcKey, label, fps: 4, maxFrames: 60, scale: 0.5, whole: true, withAudio: false, dedupe: 2 });
+    };
+    const reimportRecent = (v) => {
+        if (v.url) loadYoutubeVideo(v.url);        // same link → download again
+        else videoFileRef.current?.click();        // local file: the browser can't reopen it for us
     };
 
     // Imported frame sets, derived from the cuts themselves (so they survive save/load).
@@ -1968,8 +2017,8 @@ export default function App() {
     };
 
     // Local-only: pull a video by URL through the API, then reuse the frame-import dialog.
-    const loadYoutubeVideo = async () => {
-        const url = window.prompt('유튜브(또는 영상) 링크:');
+    const loadYoutubeVideo = async (presetUrl) => {
+        const url = typeof presetUrl === 'string' ? presetUrl : window.prompt('유튜브(또는 영상) 링크:');
         if (!url) return;
         setVideoBusy({ done: 0, total: 0, fetching: true });
         try {
@@ -1977,7 +2026,7 @@ export default function App() {
             if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || ('HTTP ' + res.status)); }
             const blob = await res.blob();
             const file = new File([blob], 'youtube.mp4', { type: blob.type || 'video/mp4' });
-            openVideoImport(file, 'YT ' + new Date().toLocaleTimeString());
+            openVideoImport(file, 'YT ' + (url.match(/(?:v=|youtu\.be\/|shorts\/)([\w-]{6,})/)?.[1] || '영상'), { url, key: 'yt:' + url });
         } catch (e) {
             alert('영상 가져오기 실패: ' + e.message + '\n(서버에 yt-dlp 설치 필요)');
         } finally { setVideoBusy(null); }
@@ -1989,34 +2038,41 @@ export default function App() {
         if (!cfg?.file) return;
         setVideoBusy({ done: 0, total: 0 });
         try {
-            const { frames, fps } = await extractVideoFrames(cfg.file, {
-                fps: cfg.fps, maxFrames: cfg.whole ? 0 : cfg.maxFrames, scale: cfg.scale,
+            const { frames, holds = [], skipped = 0, fps } = await extractVideoFrames(cfg.file, {
+                fps: cfg.fps, maxFrames: cfg.whole ? 0 : cfg.maxFrames, scale: cfg.scale, dedupe: cfg.dedupe ?? 2,
                 width: CANVAS_W, height: CANVAS_H,
-                onProgress: (done, total) => setVideoBusy({ done, total }),
+                onProgress: (done, total, skipped) => setVideoBusy({ done, total, skipped }),
                 shouldStop: () => videoStopRef.current,
             });
             if (!frames.length) { alert('추출된 프레임이 없습니다.'); return; }
-            const track = cuts.find(c => c.id === currentCutId)?.track ?? 0;
-            const startAt = cuts.filter(c => c.track === track).reduce((m, c) => Math.max(m, c.endTime), 0);
+            // Re-importing the same source replaces its old frames instead of piling up duplicates.
+            const srcKey = cfg.srcKey;
+            const kept = cuts.filter(c => c.videoSrc !== srcKey);
+            const track = kept.find(c => c.id === currentCutId)?.track ?? 0;
+            const startAt = kept.filter(c => c.track === track).reduce((m, c) => Math.max(m, c.endTime), 0);
             const dur = 1 / Math.max(0.1, fps);
             const baseId = Date.now();
             const batch = 'vb_' + baseId.toString(36);
-            const label = cfg.file.name.replace(/\.[^.]+$/, '').slice(0, 24);
+            const label = cfg.label || cfg.file.name.replace(/\.[^.]+$/, '').slice(0, 24);
             const made = [];
+            let t = startAt;
             for (let i = 0; i < frames.length; i++) {
                 const bitmapId = await storeBitmapBlob(frames[i]);
-                const s = startAt + i * dur;
+                const s = t, e = t + dur * (holds[i] || 1); // held frames span their whole duplicate run
+                t = e;
                 made.push({
-                    id: baseId + i, name: `${label} ${i + 1}`, startTime: s, endTime: s + dur, track,
-                    activeLayerId: 1, texts: [], videoBatch: batch, videoLabel: label,
+                    id: baseId + i, name: `${label} ${i + 1}`, startTime: s, endTime: e, track,
+                    activeLayerId: 1, texts: [], videoBatch: batch, videoLabel: label, videoSrc: srcKey,
                     layers: [{ id: 1, name: 'L1', type: 'layer', parentId: null, visible: true, redoStrokes: [], strokes: [{ id: baseId + 100000 + i, tool: 'paste', bitmapId, x: 0, y: 0, w: CANVAS_W, h: CANVAS_H }] }],
                 });
             }
-            setCuts(p => [...p, ...made]);
+            setCuts(p => [...p.filter(c => c.videoSrc !== srcKey), ...made]);
             setCurrentCutId(made[0].id);
             setCurrentTime(made[0].startTime);
+            // Audio (if asked) is the only thing that keeps the video bytes alive past this point.
             if (cfg.withAudio) loadAudioUrl(URL.createObjectURL(cfg.file), label + ' (영상 음원)');
             setVideoImport(null);
+            setTimeout(gcBitmaps, 0); // replaced frames' bitmaps go too
         } catch (e) {
             alert('영상 가져오기 실패: ' + e.message);
         } finally {
@@ -2136,7 +2192,7 @@ export default function App() {
                         <div style={{ marginBottom: 10, color: '#9aa', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{videoImport.file.name}</div>
                         {videoBusy ? (
                             <>
-                                <div style={{ marginBottom: 8 }}>프레임 추출 중… {videoBusy.done}/{videoBusy.total || '?'}</div>
+                                <div style={{ marginBottom: 8 }}>프레임 추출 중… {videoBusy.done}/{videoBusy.total || '?'}{videoBusy.skipped ? ` (중복 ${videoBusy.skipped}컷 통합)` : ''}</div>
                                 <div style={{ height: 8, background: '#2a2a3a', borderRadius: 4, overflow: 'hidden' }}>
                                     <div style={{ height: '100%', width: `${videoBusy.total ? (videoBusy.done / videoBusy.total * 100) : 0}%`, background: '#7c8cff' }} />
                                 </div>
@@ -2168,10 +2224,15 @@ export default function App() {
                                     <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                                         <input type="checkbox" checked={videoImport.withAudio} onChange={e => setVideoImport(v => ({ ...v, withAudio: e.target.checked }))} /> 음원도 같이
                                     </label>
+                                    <span style={{ marginLeft: 'auto' }}>중복 통합</span>
+                                    <select className="time-input" style={{ width: 88 }} value={videoImport.dedupe} onChange={e => setVideoImport(v => ({ ...v, dedupe: +e.target.value }))}>
+                                        {[[0, '끄기'], [1, '엄격'], [2, '보통'], [4, '느슨'], [8, '아주 느슨']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                                    </select>
                                 </div>
                                 <div style={{ color: '#888', lineHeight: 1.6, marginBottom: 12 }}>
                                     캔버스({CANVAS_W}×{CANVAS_H})에 비율 유지로 넣고, 현재 트랙 뒤에 이어서 생성됩니다.<br />
                                     프레임은 <b style={{ color: '#9b9' }}>WebP로 압축 저장</b>되어 원본 대비 용량이 크게 줄어듭니다{videoImport.scale < 1 ? ` (배율 ${Math.round(videoImport.scale * 100)}%로 추가 절감)` : ''}.
+                                    {videoImport.dedupe > 0 && <><br />이어지는 <b style={{ color: '#9b9' }}>같은 화면은 한 컷으로 합쳐집니다</b> — 정지 구간이 길수록 컷 수와 용량이 크게 줄어듭니다.</>}
                                     {videoImport.whole && <><br /><span style={{ color: '#c99' }}>전체 추출: 길이가 길면 컷이 매우 많아집니다. fps를 낮게(1~4) 두는 것을 권장합니다.</span></>}
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
@@ -2264,13 +2325,13 @@ export default function App() {
                     {audioFile && <button className="icon-btn del-btn" onClick={handleDeleteAudio} title="오디오 삭제" style={{ height: 34, width: 30 }}><Trash2 size={14} /></button>}
                     <label className="audio-input-label" title="영상을 프레임별 컷으로 가져오기">
                         <Film size={14} /> 영상 프레임
-                        <input type="file" accept="video/*" style={{ display: 'none' }}
+                        <input type="file" accept="video/*" ref={videoFileRef} style={{ display: 'none' }}
                             onChange={e => { const f = e.target.files[0]; e.target.value = ''; if (f) openVideoImport(f); }} />
                     </label>
                     {serverAvailable && <button className="button" onClick={loadYoutubeVideo} title="유튜브 링크에서 영상을 받아 프레임 추출 (로컬 서버, yt-dlp 필요)" style={{ height: 34 }}>YT 영상</button>}
                     {recentVideos.length > 0 && (
-                        <select className="time-input" style={{ height: 34, width: 120 }} value="" title="이미 받은 영상을 다시 가져오기 (재다운로드 없음)"
-                            onChange={e => { const v = recentVideos.find(x => x.id === e.target.value); if (v) openVideoImport(v.file, v.name); }}>
+                        <select className="time-input" style={{ height: 34, width: 120 }} value="" title="같은 출처에서 다시 가져오기 (기존 프레임은 교체됨)"
+                            onChange={e => { const v = recentVideos.find(x => x.id === e.target.value); e.target.value = ''; if (v) reimportRecent(v); }}>
                             <option value="">다시 가져오기…</option>
                             {recentVideos.map(v => <option key={v.id} value={v.id}>{v.name.slice(0, 20)}</option>)}
                         </select>
@@ -2338,7 +2399,7 @@ export default function App() {
                 )}
                 {!showLeft && <button onClick={() => setShowLeft(true)} className="icon-btn" style={{ width: 24, alignSelf: 'stretch', padding: 0, borderRadius: 0, background: '#1e1e2e', border: 'none', borderRight: '1px solid #333' }}><ChevronRight size={14} /></button>}
 
-                <div className="canvas-area" style={{ touchAction: 'none', position: 'relative' }}
+                <div className="canvas-area" ref={canvasAreaRef} style={{ touchAction: 'none', position: 'relative' }}
                     onPointerDown={onAreaPointerDown} onPointerMove={onAreaPointerMove} onPointerUp={onAreaPointerUp} onPointerCancel={onAreaPointerUp}>
                     {pathCapture && (
                         <div style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', zIndex: 31, background: '#7c8cff', color: '#fff', fontSize: 12, padding: '6px 12px', borderRadius: 6, display: 'flex', gap: 8, alignItems: 'center' }}>

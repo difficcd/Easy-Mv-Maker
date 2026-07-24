@@ -464,7 +464,7 @@ export function fitRect(sw, sh, dw, dh) {
 
 // Decode a video file into evenly spaced frames (ImageData at the project resolution) by
 // seeking. Returns { frames, fps, duration }. onProgress(done, total) for UI feedback.
-export async function extractVideoFrames(file, { fps = 6, maxFrames = 0, start = 0, end = null, width, height, scale = 1, quality = 0.82, onProgress, shouldStop } = {}) {
+export async function extractVideoFrames(file, { fps = 6, maxFrames = 0, start = 0, end = null, width, height, scale = 1, quality = 0.82, dedupe = 2, onProgress, shouldStop } = {}) {
     const url = URL.createObjectURL(file);
     const video = document.createElement('video');
     video.muted = true; video.playsInline = true; video.preload = 'auto'; video.src = url;
@@ -494,16 +494,52 @@ export async function extractVideoFrames(file, { fps = 6, maxFrames = 0, start =
         const toBlob = () => new Promise((res) => {
             cnv.toBlob(b => b ? res(b) : cnv.toBlob(res, 'image/jpeg', quality), 'image/webp', quality);
         });
-        const frames = [];
+        // Cheap similarity signature: the frame downscaled to 32x32 grayscale. Comparing these
+        // lets a still shot skip encoding entirely — the previous frame just gets held longer.
+        const sw = 32, sh = 32;
+        const sig = document.createElement('canvas');
+        sig.width = sw; sig.height = sh;
+        const sctx = sig.getContext('2d', { willReadFrequently: true });
+        const signature = () => {
+            sctx.clearRect(0, 0, sw, sh);
+            sctx.drawImage(cnv, 0, 0, sw, sh);
+            const d = sctx.getImageData(0, 0, sw, sh).data;
+            const out = new Uint8Array(sw * sh);
+            for (let i = 0, j = 0; j < out.length; i += 4, j++) {
+                const a = d[i + 3] / 255;
+                out[j] = ((d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114) * a + 255 * (1 - a)) | 0;
+            }
+            return out;
+        };
+        // Mean absolute difference per pixel (0-255). ~2 tolerates codec noise on a still shot.
+        const diff = (a, b) => {
+            let s = 0;
+            for (let i = 0; i < a.length; i++) s += Math.abs(a[i] - b[i]);
+            return s / a.length;
+        };
+
+        const frames = [], holds = [];
+        let prevSig = null, skipped = 0;
         for (let i = 0; i < total; i++) {
             if (shouldStop?.()) break;
             await seek(Math.min(start + i * step, Math.max(0, duration - 0.01)));
             ctx.clearRect(0, 0, fw, fh);
             ctx.drawImage(video, r.x, r.y, r.w, r.h);
+            // Compared against the last KEPT frame, so a slow pan still emits a new frame once
+            // it has drifted far enough, instead of being swallowed step by step.
+            const cur = dedupe > 0 ? signature() : null;
+            if (cur && prevSig && diff(prevSig, cur) <= dedupe) {
+                holds[holds.length - 1]++; // same picture: hold the previous cut one step longer
+                skipped++;
+                onProgress?.(frames.length, total, skipped);
+                continue;
+            }
+            prevSig = cur;
             frames.push(await toBlob());
-            onProgress?.(frames.length, total);
+            holds.push(1);
+            onProgress?.(frames.length, total, skipped);
         }
-        return { frames, fps, duration, width: fw, height: fh };
+        return { frames, holds, skipped, fps, duration, width: fw, height: fh };
     } finally {
         URL.revokeObjectURL(url);
         video.src = '';
