@@ -771,6 +771,11 @@ canvas {
     box-shadow: 0 0 8px rgba(109, 40, 217, .6);
 }
 
+.cut-block-selected {
+    outline: 2px solid #7c8cff;
+    outline-offset: -1px;
+}
+
 .rh {
     position: absolute;
     top: 0;

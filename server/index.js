@@ -3,6 +3,7 @@
 // so saving "to the server" is independent of the browser's local download / file save.
 import express from 'express';
 import { promises as fs } from 'node:fs';
+import fsSync from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { spawn } from 'node:child_process';
@@ -119,27 +120,65 @@ const runYtdlp = (args) => new Promise((resolve) => {
     p.on('error', (e) => resolve({ code: -1, err: 'SPAWN:' + e.message }));
     p.on('close', (code) => resolve({ code, err }));
 });
+// Locate ffmpeg so yt-dlp can merge DASH video+audio (needed for 1080p). Returns the containing
+// dir (for --ffmpeg-location) or null. Checks env, PATH, and the winget install location.
+const findFfmpegDir = () => {
+    const candidates = [];
+    if (process.env.FFMPEG_PATH) candidates.push(path.dirname(process.env.FFMPEG_PATH));
+    const la = process.env.LOCALAPPDATA;
+    if (la) {
+        candidates.push(path.join(la, 'Microsoft', 'WinGet', 'Links'));
+        try {
+            const pkgs = path.join(la, 'Microsoft', 'WinGet', 'Packages');
+            for (const d of fsSync.readdirSync(pkgs)) {
+                if (!/ffmpeg/i.test(d)) continue;
+                const stack = [path.join(pkgs, d)];
+                while (stack.length) {
+                    const cur = stack.pop();
+                    let ents = []; try { ents = fsSync.readdirSync(cur, { withFileTypes: true }); } catch { continue; }
+                    if (ents.some(e => e.isFile() && e.name.toLowerCase() === 'ffmpeg.exe')) { candidates.push(cur); break; }
+                    for (const e of ents) if (e.isDirectory()) stack.push(path.join(cur, e.name));
+                }
+            }
+        } catch { }
+    }
+    candidates.push('C:\\ffmpeg\\bin');
+    for (const c of candidates) {
+        try { if (fsSync.existsSync(path.join(c, 'ffmpeg.exe')) || fsSync.existsSync(path.join(c, 'ffmpeg'))) return c; } catch { }
+    }
+    return null;
+};
+const FFMPEG_DIR = findFfmpegDir();
+console.log('[mv-api] ffmpeg:', FFMPEG_DIR ? path.join(FFMPEG_DIR, 'ffmpeg.exe') : 'not found (YouTube capped at ~720p progressive)');
+
 app.get('/api/youtube-video', async (req, res) => {
     const url = String(req.query.url || '');
     if (!/^https?:\/\//.test(url)) { res.status(400).json({ error: 'invalid url' }); return; }
-    const maxH = Math.max(144, Math.min(1080, Number(req.query.maxHeight) || 720));
+    const maxH = Math.max(144, Math.min(2160, Number(req.query.maxHeight) || 1080));
     const dir = path.join(os.tmpdir(), `ytv_${Date.now()}_${Math.random().toString(36).slice(2)}`);
     await fs.mkdir(dir, { recursive: true });
-    // Progressive single-file formats only (no ffmpeg merge), widening on each retry.
-    const formats = [
+    // With ffmpeg present, prefer merged bestvideo+bestaudio (unlocks 1080p+); otherwise fall back
+    // to progressive single-file formats (≤720p). Each entry widens on retry.
+    const merged = [
+        `bv*[height<=${maxH}][ext=mp4]+ba[ext=m4a]/bv*[height<=${maxH}]+ba/b[height<=${maxH}]`,
+        `bv*+ba/b`,
+    ];
+    const progressive = [
         `best[height<=${maxH}][ext=mp4]/best[height<=${maxH}]`,
         'best[ext=mp4]/best',
         'worst[ext=mp4]/worst',
     ];
+    const formats = FFMPEG_DIR ? [...merged, ...progressive] : progressive;
+    const ffArgs = FFMPEG_DIR ? ['--ffmpeg-location', FFMPEG_DIR, '--merge-output-format', 'mp4'] : [];
     try {
         let lastErr = '';
         for (const fmt of formats) {
-            const { code, err } = await runYtdlp(['-f', fmt, '--no-playlist', '--no-warnings',
+            const { code, err } = await runYtdlp(['-f', fmt, ...ffArgs, '--no-playlist', '--no-warnings',
                 '--extractor-args', 'youtube:player_client=default,web_safari,android',
                 '-o', path.join(dir, 'video.%(ext)s'), url]);
             if (err.startsWith('SPAWN:')) { res.status(500).json({ error: 'yt-dlp 실행 불가 (설치 필요): ' + err.slice(6) }); return; }
             lastErr = err;
-            const files = code === 0 ? await fs.readdir(dir) : [];
+            const files = code === 0 ? (await fs.readdir(dir)).filter(f => !f.endsWith('.part')) : [];
             if (files.length) {
                 const f = files[0];
                 res.setHeader('Content-Type', videoType(path.extname(f).toLowerCase()));

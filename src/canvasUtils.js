@@ -479,7 +479,11 @@ export async function extractVideoFrames(file, { fps = 6, maxFrames = 0, start =
         const to = Math.min(end ?? duration, duration);
         const step = 1 / Math.max(0.1, fps);
         const count = Math.max(1, Math.ceil((to - start) / step));
-        const total = maxFrames > 0 ? Math.min(maxFrames, count) : count; // 0 = whole video
+        // maxFrames now means "number of KEPT (distinct) cuts": we scan the whole range but stop
+        // once that many non-duplicate frames are collected, so merged duplicates don't use up the
+        // budget. total (progress denominator) is the kept target, else the whole scan.
+        const keepTarget = maxFrames > 0 ? maxFrames : 0;
+        const total = keepTarget || count;
         // Frames are stored compressed (WebP keeps the letterbox transparent) instead of raw
         // ImageData — ~20x less memory and much smaller project files.
         // Original-quality mode captures each frame at the video's NATIVE resolution (no down/up
@@ -536,8 +540,9 @@ export async function extractVideoFrames(file, { fps = 6, maxFrames = 0, start =
 
         const frames = [], holds = [];
         let prevSig = null, prevFull = null, skipped = 0;
-        for (let i = 0; i < total; i++) {
+        for (let i = 0; i < count; i++) {
             if (shouldStop?.()) break;
+            if (keepTarget && frames.length >= keepTarget) break; // enough distinct cuts collected
             await seek(Math.min(start + i * step, Math.max(0, duration - 0.01)));
             ctx.clearRect(0, 0, fw, fh);
             ctx.drawImage(video, r.x, r.y, r.w, r.h);

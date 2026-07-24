@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
 import { Play, Pause, Square, Plus, Trash2, Download, Upload, PenLine, Pen, Feather, Eraser, Droplets, Undo, Redo, Layers, Trash, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, FolderPlus, Folder, FolderOpen, Settings, Eye, EyeOff, Copy, CopyPlus, ClipboardPaste, GitBranch, Move, Type, Server, Cloud, CloudDownload, Film, Repeat } from 'lucide-react';
 import './App.css';
 import { saveAutosave, loadAutosave, saveProject, loadProject, listProjects, deleteProject, autosaveKey } from './db';
@@ -111,6 +111,7 @@ export default function App() {
     const [collapsedCutIds, setCollapsedCutIds] = useState(new Set());
     const [renamingCutId, setRenamingCutId] = useState(null);
     const [selectedCutIds, setSelectedCutIds] = useState(new Set());
+    const [marquee, setMarquee] = useState(null); // rubber-band rect (content px) while drag-selecting cuts
     const lassoClipRef = useRef(null); // copied lasso pixels: { bitmapId, w, h }
     const [hasLassoClip, setHasLassoClip] = useState(false);
     const [showFileMenu, setShowFileMenu] = useState(false);
@@ -129,6 +130,7 @@ export default function App() {
     // ruler ticks are rendered (thousands of DOM nodes otherwise stall the whole app).
     const [tlWin, setTlWin] = useState({ left: 0, right: 4000 });
     const tlWinRafRef = useRef(0);
+    const pendingTlScrollRef = useRef(null); // scrollLeft to apply after a pps change (cursor-anchored zoom)
     const ppsRef = useRef(50);
     ppsRef.current = pps;
     // User-adjustable canvas resolution. Shadows the imported defaults for the whole component.
@@ -466,11 +468,35 @@ export default function App() {
         return () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); };
     }, [splitter]);
 
+    // Zoom the timeline about a screen x (cursor), keeping the time under it fixed. The scroll
+    // adjustment is deferred to a layout effect so it runs after the new width is laid out.
+    const zoomTimelineAt = (clientX, factor) => {
+        const el = timelineRef.current; if (!el) return;
+        const localX = clientX - el.getBoundingClientRect().left;
+        setPps(prev => {
+            const next = Math.max(10, Math.min(300, prev * factor));
+            if (next === prev) return prev;
+            const time = (el.scrollLeft + localX - 60) / prev;
+            pendingTlScrollRef.current = time * next + 60 - localX;
+            return next;
+        });
+    };
+    useLayoutEffect(() => {
+        if (pendingTlScrollRef.current != null && timelineRef.current) {
+            timelineRef.current.scrollLeft = Math.max(0, pendingTlScrollRef.current);
+            pendingTlScrollRef.current = null;
+        }
+    }, [pps]);
     useEffect(() => {
-        const h = (e) => { if (e.ctrlKey || e.metaKey) { e.preventDefault(); setPps(p => Math.max(10, Math.min(300, p * (e.deltaY > 0 ? 0.9 : 1.1)))); } };
-        const t = timelineRef.current;
-        if (t) t.addEventListener('wheel', h, { passive: false });
-        return () => { if (t) t.removeEventListener('wheel', h); };
+        const t = timelineRef.current; if (!t) return;
+        // Plain wheel over the timeline zooms about the cursor (Shift+wheel = horizontal scroll).
+        const h = (e) => {
+            if (e.shiftKey) return; // let shift-wheel scroll horizontally
+            e.preventDefault();
+            zoomTimelineAt(e.clientX, e.deltaY > 0 ? 0.9 : 1.1);
+        };
+        t.addEventListener('wheel', h, { passive: false });
+        return () => t.removeEventListener('wheel', h);
     }, []);
 
     // Two-finger pinch-zoom on the timeline, intercepted in the CAPTURE phase so it works
@@ -1969,8 +1995,50 @@ export default function App() {
     };
     // Timeline touch: 1 finger drag = pan (scroll), 1 finger tap = seek playhead,
     // 2 fingers = pinch-zoom (pps) anchored under the fingers. Mouse/pen = window-listener scrub.
+    // Drag on empty track area = rubber-band select cuts (like a file manager); a click without
+    // dragging seeks the playhead. The ruler always scrubs.
+    const startMarqueeOrSeek = (e) => {
+        if (e.button !== undefined && e.button !== 0) return;
+        const el = timelineRef.current; if (!el) return;
+        const rect = el.getBoundingClientRect();
+        const sx = e.clientX - rect.left + el.scrollLeft, sy = e.clientY - rect.top + el.scrollTop;
+        const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+        const base = additive ? new Set(selectedCutIds) : new Set();
+        let dragging = false;
+        const mv = (ev) => {
+            const cx = ev.clientX - rect.left + el.scrollLeft, cy = ev.clientY - rect.top + el.scrollTop;
+            if (!dragging && Math.abs(cx - sx) < 5 && Math.abs(cy - sy) < 5) return;
+            dragging = true;
+            const x = Math.min(sx, cx), y = Math.min(sy, cy), w = Math.abs(cx - sx), h = Math.abs(cy - sy);
+            setMarquee({ x, y, w, h });
+            const mL = ev.clientX < e.clientX ? ev.clientX : e.clientX;
+            const mR = ev.clientX < e.clientX ? e.clientX : ev.clientX;
+            const mT = ev.clientY < e.clientY ? ev.clientY : e.clientY;
+            const mB = ev.clientY < e.clientY ? e.clientY : ev.clientY;
+            const sel = new Set(base);
+            el.querySelectorAll('.cut-block[data-cutid]').forEach(node => {
+                const r = node.getBoundingClientRect();
+                if (r.right >= mL && r.left <= mR && r.bottom >= mT && r.top <= mB) {
+                    const cut = cuts.find(c => String(c.id) === node.getAttribute('data-cutid'));
+                    if (cut) { sel.add(cut.id); }
+                }
+            });
+            setSelectedCutIds(sel);
+            if (sel.size) { const first = [...sel][0]; if (first !== currentCutId) setCurrentCutId(first); }
+        };
+        const up = () => {
+            window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up);
+            setMarquee(null);
+            if (!dragging) { if (!additive) setSelectedCutIds(new Set()); seekToClientX(e.clientX); }
+        };
+        window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
+    };
     const onTimelinePointerDown = (e) => {
-        if (e.pointerType !== 'touch') { startTimelineScrub(e); return; }
+        if (e.pointerType !== 'touch') {
+            if (e.target.closest?.('.ruler')) startTimelineScrub(e);   // ruler = scrub playhead
+            else startMarqueeOrSeek(e);                                 // track area = marquee / click-seek
+            return;
+        }
         const el = timelineRef.current;
         tlTouchRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
         if (tlTouchRef.current.size === 2) {
@@ -2018,6 +2086,13 @@ export default function App() {
         }
     };
     const fmt = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}.${String(Math.floor((s % 1) * 100)).padStart(2, '0')}`;
+    // Parse "m:ss", "h:mm:ss", or a plain seconds number into seconds.
+    const parseClock = (str) => {
+        const parts = String(str).trim().split(':').map(p => +p || 0);
+        if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+        if (parts.length === 2) return parts[0] * 60 + parts[1];
+        return parts[0] || 0;
+    };
     const loadAudioUrl = (url, name, startAt = 0) => {
         setAudioFile({ name }); setAudioUrl(url);
         const audio = new Audio(url);
@@ -2041,7 +2116,7 @@ export default function App() {
         const srcKey = src?.key || `f:${file.name}:${file.size}`;
         setRecentVideos(p => [{ id: 'rv_' + Date.now().toString(36), name: label, srcKey, url: src?.url || null },
         ...p.filter(v => v.srcKey !== srcKey)].slice(0, 3));
-        setVideoImport({ file, srcKey, label, fps: 4, maxFrames: 60, scale: 0.5, whole: true, withAudio: false, dedupe: 'exact', original: false });
+        setVideoImport({ file, srcKey, label, fps: 4, maxFrames: 60, scale: 0.5, whole: true, withAudio: false, dedupe: 'exact', original: false, rangeOn: false, startText: '0:00', endText: '' });
     };
     const reimportRecent = (v) => {
         if (v.url) loadYoutubeVideo(v.url);        // same link → download again
@@ -2093,8 +2168,12 @@ export default function App() {
         if (!cfg?.file) return;
         setVideoBusy({ done: 0, total: 0 });
         try {
+            const rStart = cfg.rangeOn ? parseClock(cfg.startText) : 0;
+            const rEnd = cfg.rangeOn ? parseClock(cfg.endText) : 0;
+            const useRange = cfg.rangeOn && rEnd > rStart;
             const { frames, holds = [], skipped = 0, fps, width: fW, height: fH } = await extractVideoFrames(cfg.file, {
                 fps: cfg.fps, maxFrames: cfg.whole ? 0 : cfg.maxFrames,
+                start: useRange ? rStart : 0, end: useRange ? rEnd : null,
                 scale: cfg.original ? 1 : cfg.scale, quality: cfg.original ? 1 : 0.82, dedupe: cfg.dedupe ?? 'exact',
                 nativeRes: cfg.original, format: cfg.original ? 'png' : 'webp',
                 width: CANVAS_W, height: CANVAS_H,
@@ -2279,13 +2358,25 @@ export default function App() {
                                         <input type="checkbox" checked={videoImport.whole} onChange={e => setVideoImport(v => ({ ...v, whole: e.target.checked }))} /> 영상 전체
                                     </label>
                                     {!videoImport.whole && (
-                                        <select className="time-input" style={{ width: 88 }} value={videoImport.maxFrames} onChange={e => setVideoImport(v => ({ ...v, maxFrames: +e.target.value }))}>
-                                            {[10, 20, 30, 60, 90, 120, 200, 400].map(v => <option key={v} value={v}>최대 {v}컷</option>)}
-                                        </select>
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: 4 }} title="가져올 컷 개수 (중복 병합분은 제외한 실제 컷 수)">
+                                            <input type="number" className="time-input" style={{ width: 70 }} min={1} max={5000} value={videoImport.maxFrames}
+                                                onChange={e => setVideoImport(v => ({ ...v, maxFrames: Math.max(1, Math.min(5000, Math.floor(+e.target.value) || 1)) }))} />
+                                            <span style={{ color: '#888' }}>컷</span>
+                                        </label>
                                     )}
                                     <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                                         <input type="checkbox" checked={videoImport.withAudio} onChange={e => setVideoImport(v => ({ ...v, withAudio: e.target.checked }))} /> 음원도 같이
                                     </label>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: 4 }} title="영상의 일부 구간만 가져오기 (mm:ss)">
+                                        <input type="checkbox" checked={videoImport.rangeOn} onChange={e => setVideoImport(v => ({ ...v, rangeOn: e.target.checked }))} /> 구간만
+                                    </label>
+                                    {videoImport.rangeOn && (
+                                        <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                                            <input className="time-input" style={{ width: 60 }} placeholder="0:00" value={videoImport.startText} onChange={e => setVideoImport(v => ({ ...v, startText: e.target.value }))} />
+                                            <span style={{ color: '#888' }}>~</span>
+                                            <input className="time-input" style={{ width: 60 }} placeholder="끝" value={videoImport.endText} onChange={e => setVideoImport(v => ({ ...v, endText: e.target.value }))} />
+                                        </span>
+                                    )}
                                     <label style={{ display: 'flex', alignItems: 'center', gap: 4 }} title="원본 화질로 추출 (배율 100%, 거의 무손실). 용량은 커집니다.">
                                         <input type="checkbox" checked={videoImport.original} onChange={e => setVideoImport(v => ({ ...v, original: e.target.checked, ...(e.target.checked ? { scale: 1 } : {}) }))} /> 원본 화질
                                     </label>
@@ -2302,6 +2393,8 @@ export default function App() {
                                     {videoImport.dedupe === 'exact'
                                         ? <><br /><b style={{ color: '#9b9' }}>완전히 똑같은 프레임만</b> 한 컷으로 합칩니다 (픽셀 단위 비교).</>
                                         : videoImport.dedupe > 0 && <><br />이어지는 <b style={{ color: '#9b9' }}>비슷한 화면을 한 컷으로 합칩니다</b> — 정지 구간이 길수록 컷 수·용량이 줄어듭니다.</>}
+                                    {!videoImport.whole && <><br />지정한 <b>{videoImport.maxFrames}컷</b>은 <b style={{ color: '#9b9' }}>중복 병합을 제외한 실제 컷 수</b>입니다 (합쳐진 프레임은 개수에 안 셉니다).</>}
+                                    {videoImport.rangeOn && <><br /><b style={{ color: '#9cf' }}>{videoImport.startText || '0:00'} ~ {videoImport.endText || '끝'}</b> 구간만 가져옵니다 (mm:ss).</>}
                                     {videoImport.whole && <><br /><span style={{ color: '#c99' }}>전체 추출: 길이가 길면 컷이 매우 많아집니다. fps를 낮게(1~4) 두는 것을 권장합니다.</span></>}
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
@@ -2695,10 +2788,10 @@ export default function App() {
                         <select className="time-input" style={{ width: 60, marginLeft: 8 }} value={playbackRate} onChange={e => { const r = +e.target.value; setPlaybackRate(r); if (audioRef.current) audioRef.current.playbackRate = r; }} title="재생 속도">
                             {[0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4].map(v => <option key={v} value={v}>{v}x</option>)}
                         </select>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 2, marginLeft: 12 }} title="타임라인 확대/축소">
-                            <button className="icon-btn" onClick={() => setPps(p => Math.max(10, p / 1.25))}>−</button>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 2, marginLeft: 12 }} title="타임라인 확대/축소 (마우스 휠은 커서 기준)">
+                            <button className="icon-btn" onClick={() => { const el = timelineRef.current; const r = el?.getBoundingClientRect(); zoomTimelineAt(r ? r.left + el.clientWidth / 2 : 0, 1 / 1.25); }}>−</button>
                             <span style={{ fontSize: 11, color: '#888', minWidth: 30, textAlign: 'center' }}>{Math.round(pps)}</span>
-                            <button className="icon-btn" onClick={() => setPps(p => Math.min(300, p * 1.25))}>＋</button>
+                            <button className="icon-btn" onClick={() => { const el = timelineRef.current; const r = el?.getBoundingClientRect(); zoomTimelineAt(r ? r.left + el.clientWidth / 2 : 0, 1.25); }}>＋</button>
                         </div>
                         <span style={{ fontSize: 11, color: '#666', marginLeft: 12 }}>Max: {fmt(maxTime)}</span>
                     </>}
@@ -2745,8 +2838,8 @@ export default function App() {
                                             <button className="icon-btn del-btn" onClick={e => { e.stopPropagation(); handleDeleteTrack(ti); }}><Trash2 size={9} /></button>
                                         </div>
                                         {cuts.filter(c => (c.track || 0) === ti).filter(cut => { const l = cut.startTime * pps + 60, r = l + (cut.endTime - cut.startTime) * pps; return r >= tlWin.left && l <= tlWin.right; }).map(cut => (
-                                            <div key={cut.id}
-                                                className={`cut-block${currentCutId === cut.id ? ' cut-block-active' : ''}`}
+                                            <div key={cut.id} data-cutid={cut.id}
+                                                className={`cut-block${currentCutId === cut.id ? ' cut-block-active' : ''}${selectedCutIds.has(cut.id) ? ' cut-block-selected' : ''}`}
                                                 style={{ left: `${cut.startTime * pps + 60}px`, width: `${(cut.endTime - cut.startTime) * pps}px`, cursor: draggingCutData?.cutId === cut.id ? 'grabbing' : 'grab', touchAction: 'none' }}
                                                 onClick={e => { e.stopPropagation(); setCurrentCutId(cut.id); setSelectedCutIds(new Set([cut.id])); }}
                                                 onPointerDown={e => { e.stopPropagation(); setCurrentCutId(cut.id); setSelectedCutIds(new Set([cut.id])); cutDragMovedRef.current = false; clearTimeout(cutDragTimerRef.current); cutDragArmedRef.current = e.pointerType !== 'touch'; if (e.pointerType === 'touch') cutDragTimerRef.current = setTimeout(() => { cutDragArmedRef.current = true; }, 350); e.currentTarget.setPointerCapture(e.pointerId); setDraggingCutData({ cutId: cut.id, startX: e.clientX, startY: e.clientY, initialStart: cut.startTime, initialTrack: cut.track }); }}>
@@ -2772,6 +2865,9 @@ export default function App() {
                             <div style={{ marginTop: 8, paddingLeft: 60 }}>
                                 <button className="small-btn" onClick={handleAddTrack}><Plus size={11} /> Add Track</button>
                             </div>
+                            {marquee && (
+                                <div style={{ position: 'absolute', left: marquee.x, top: marquee.y, width: marquee.w, height: marquee.h, background: 'rgba(124,140,255,0.15)', border: '1px solid rgba(124,140,255,0.8)', zIndex: 16, pointerEvents: 'none' }} />
+                            )}
                             <div className="playhead" ref={playheadRef} style={{ left: `${currentTime * pps + 60}px` }}><div className="playhead-dot" /></div>
                             {snapLinePos !== null && (
                                 <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${snapLinePos}px`, width: 2, background: '#888', opacity: 0.85, zIndex: 15, pointerEvents: 'none', boxShadow: '0 0 6px rgba(136,136,136,.5)' }} />
