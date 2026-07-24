@@ -150,6 +150,7 @@ export default function App() {
     const videoFileRef = useRef(null);
     const currentTimeRef = useRef(0);       // playback clock read by the rAF loop (avoids stale closure)
     const playheadRef = useRef(null);        // moved imperatively during playback
+    const seekRef = useRef(null);            // pending seek the playback loop applies (scrub while playing)
     const dataUrlCacheRef = useRef(new Map()); // id -> {imageData, url}; avoids re-encoding bitmaps each autosave
     const liveRef = useRef({}); // latest {cuts, copiedCut, selection} for safe bitmap GC from effects
     const selectionDragRef = useRef(null);
@@ -419,6 +420,16 @@ export default function App() {
         const step = (now) => {
             if (!isPlayingRef.current) return;
             const dt = (now - last) / 1000; last = now;
+            // A scrub while playing drops a target time here; jump to it and re-seek audio this frame.
+            if (seekRef.current != null) {
+                t = seekRef.current; seekRef.current = null;
+                if (audio && audioUrl) { const exp = audioData ? Math.max(0, (t - audioData.startTime) + audioData.offset) : t; try { audio.currentTime = exp; } catch { } }
+                currentTimeRef.current = t;
+                paintFrameRef.current?.(t, true);
+                if (playheadRef.current) playheadRef.current.style.left = `${t * pps + 60}px`;
+                reqRef.current = requestAnimationFrame(step);
+                return;
+            }
             // Audio is the master clock while it's sounding: read its time so A/V never drift and
             // we never seek it mid-play. Fall back to wall-clock accumulation otherwise.
             if (audio && audioUrl && audible()) {
@@ -706,10 +717,18 @@ export default function App() {
             cuts: cuts.map(c => ({ ...c, layers: c.layers.map(l => ({ ...l, redoStrokes: [] })) }))
         };
         if (assetSink && assets.length) out.assets = assets;
-        // Embed the audio (base64, cached) so the project saves "with the music". Skipped
-        // for autosave to keep it light.
+        // Save the audio "with the music". For server save (assetSink) the audio goes out as a
+        // separate binary asset — embedding it as base64 (often tens of MB) is the main remaining
+        // OOM source. For local/autosave it's embedded so the file stays self-contained.
         if (includeAudio && audioB64Ref.current && audioData) {
-            out.audio = { dataUrl: audioB64Ref.current, name: audioFile?.name || '오디오', startTime: audioData.startTime, endTime: audioData.endTime, offset: audioData.offset, duration: audioDuration };
+            const meta = { name: audioFile?.name || '오디오', startTime: audioData.startTime, endTime: audioData.endTime, offset: audioData.offset, duration: audioDuration };
+            if (assetSink) {
+                const ext = (audioB64Ref.current.match(/^data:audio\/([\w.-]+)/)?.[1] || 'mp3').replace('mpeg', 'mp3').replace('x-m4a', 'm4a');
+                assetSink.push({ id: '__audio__', url: audioB64Ref.current, ext });
+                out.audio = { ...meta, asset: true, ext };
+            } else {
+                out.audio = { ...meta, dataUrl: audioB64Ref.current };
+            }
         }
         return out;
     };
@@ -760,14 +779,22 @@ export default function App() {
         setOnionPrev(data.onionPrev ?? false); setOnionNext(data.onionNext ?? false); setPps(data.pps ?? 50); setExpandedCuts(new Set());
         setCopiedCut(null); // clipboard may reference bitmaps from the old project
         setLayerCanvasCache({}); // Clear cache on new project
-        // Restore embedded audio, or clear if the project has none.
-        if (data.audio?.dataUrl) {
-            audioB64Ref.current = data.audio.dataUrl;
+        // Restore audio: embedded (dataUrl) or externalized as a server asset. Either way we end
+        // up with a dataURL in audioB64Ref so a later LOCAL save stays self-contained.
+        let audioDataUrl = data.audio?.dataUrl || null;
+        if (!audioDataUrl && data.audio?.asset && assetBase) {
+            try {
+                const blob = await (await fetch(`${assetBase}/asset/__audio__`)).blob();
+                audioDataUrl = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(blob); });
+            } catch { }
+        }
+        if (audioDataUrl) {
+            audioB64Ref.current = audioDataUrl;
             setAudioFile({ name: data.audio.name || '오디오' });
-            setAudioUrl(data.audio.dataUrl);
+            setAudioUrl(audioDataUrl);
             setAudioDuration(data.audio.duration || 30);
             setAudioData({ startTime: data.audio.startTime ?? 0, endTime: data.audio.endTime ?? (data.audio.duration || 30), offset: data.audio.offset ?? 0 });
-            if (audioRef.current) audioRef.current.src = data.audio.dataUrl;
+            if (audioRef.current) audioRef.current.src = audioDataUrl;
         } else {
             audioB64Ref.current = null;
             if (audioRef.current) { audioRef.current.pause(); try { audioRef.current.removeAttribute('src'); audioRef.current.load(); } catch { } }
@@ -826,26 +853,29 @@ export default function App() {
         setServerBusy(true);
         try {
             const assetSink = [];
-            const data = buildData(true, assetSink); // frames externalized → small JSON
+            const data = buildData(true, assetSink); // frames/audio externalized → small JSON
             let id = (!forceNew && serverIdRef.current) ? serverIdRef.current : null;
-            if (id) {
-                await apiFetch(`/api/projects/${id}`, {
-                    method: 'PUT', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name: serverNameRef.current || 'Untitled', data }),
-                });
-            } else {
-                const name = window.prompt('서버에 저장할 프로젝트 이름:', serverNameRef.current || 'MV Project');
+            let name = serverNameRef.current || 'Untitled';
+            if (!id) {
+                name = window.prompt('서버에 저장할 프로젝트 이름:', serverNameRef.current || 'MV Project');
                 if (!name) return;
+                // Create the record first (just to get an id); the real data is committed LAST.
                 const r = await apiFetch('/api/projects', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name, data }),
+                    body: JSON.stringify({ name, data: { appName: 'EasyMVMaker', pending: true } }),
                 });
                 id = r.id; serverIdRef.current = r.id; serverNameRef.current = r.name;
             }
+            // Upload assets BEFORE writing the manifest, so an interrupted save never leaves the
+            // project JSON pointing at frames/audio that aren't on disk (which caused 404s + blanks).
             if (assetSink.length) await uploadAssets(id, assetSink);
+            await apiFetch(`/api/projects/${id}`, {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, data }),
+            });
             alert('서버에 저장했습니다.');
         } catch (e) {
-            alert('서버 저장 실패: ' + e.message + '\n(API 서버가 실행 중인지 확인하세요: npm run dev)');
+            alert('서버 저장 실패: ' + e.message + '\n(API 서버가 실행 중인지 확인하세요. 큰 프로젝트는 저장에 시간이 걸립니다.)');
         } finally { setServerBusy(false); }
     };
     const openServerList = async () => {
@@ -2037,6 +2067,10 @@ export default function App() {
         const x = clientX - rect.left + el.scrollLeft - 60;
         const t = Math.min(maxTime, Math.max(0, x / pps));
         setCurrentTime(t);
+        currentTimeRef.current = t;
+        // Scrubbing while playing: hand the target to the loop (it re-seeks audio and keeps going).
+        if (isPlayingRef.current) seekRef.current = t;
+        else if (audioRef.current && audioUrl) { try { audioRef.current.currentTime = audioData ? Math.max(0, (t - audioData.startTime) + audioData.offset) : t; } catch { } }
         const active = cuts.filter(c => t >= c.startTime && t < c.endTime);
         if (active.length) setCurrentCutId(active.reduce((p, c) => p.track > c.track ? p : c).id);
     };

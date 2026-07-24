@@ -22,7 +22,10 @@ const safeId = (id) => String(id).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
 const fileFor = (id) => path.join(DATA_DIR, `${safeId(id)}.json`);
 const assetsDirFor = (id) => path.join(DATA_DIR, `${safeId(id)}.assets`);
 const newId = () => `p_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-const ASSET_MIME = { webp: 'image/webp', png: 'image/png', jpeg: 'image/jpeg', jpg: 'image/jpeg' };
+const ASSET_MIME = {
+    webp: 'image/webp', png: 'image/png', jpeg: 'image/jpeg', jpg: 'image/jpeg',
+    mp3: 'audio/mpeg', m4a: 'audio/mp4', mp4: 'audio/mp4', webm: 'audio/webm', ogg: 'audio/ogg', opus: 'audio/ogg', wav: 'audio/wav',
+};
 
 // List saved projects (metadata only).
 app.get('/api/projects', async (_req, res) => {
@@ -71,7 +74,7 @@ app.put('/api/projects/:id', async (req, res) => {
 // Binary asset store (video frames). Kept OUT of the project JSON so large/original-quality
 // projects don't build one giant base64 string (which OOMs the browser and the server).
 // Uploaded and fetched one asset at a time, so peak memory is a single frame.
-app.put('/api/projects/:id/asset/:assetId', express.raw({ type: '*/*', limit: '64mb' }), async (req, res) => {
+app.put('/api/projects/:id/asset/:assetId', express.raw({ type: '*/*', limit: '128mb' }), async (req, res) => {
     try {
         const dir = assetsDirFor(req.params.id);
         await fs.mkdir(dir, { recursive: true });
