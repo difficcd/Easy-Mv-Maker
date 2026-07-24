@@ -1899,41 +1899,39 @@ export default function App() {
         todo.forEach(id => decodingRef.current.add(id));
         const playing = isPlayingRef.current;
         (async () => {
-            let cursor = 0;
+            let cursor = 0, firstDone = false;
+            const done = [];
             // Decode several frames concurrently (createImageBitmap runs off-thread) so the buffer
             // fills faster than playback consumes it.
             const worker = async () => {
                 while (cursor < todo.length) {
                     const id = todo[cursor++];
                     const e = store.get(id); if (!e || !e.blob) { decodingRef.current.delete(id); continue; }
-                    try { e.imageBitmap = await decodeFrameBitmap(e); touchDecoded(id); } catch { }
+                    try { e.imageBitmap = await decodeFrameBitmap(e); touchDecoded(id); done.push(id); } catch { }
                     decodingRef.current.delete(id);
-                    // While playing, the rAF loop paints continuously and picks up decoded frames on
-                    // its own — don't churn React state (that caused the flicker). When paused, repaint
-                    // the affected cuts so the still frame appears.
-                    if (!playing) { invalidateCutsUsing([id]); setFrameDecodeTick(t => t + 1); }
+                    // Paused: repaint once as soon as the FIRST frame lands (so the current frame shows
+                    // immediately), then once more for the rest at the end — NOT per frame (hundreds of
+                    // setState in a big batch trip React's update-depth guard). Playing: the rAF loop paints.
+                    if (!playing && !firstDone) { firstDone = true; invalidateCutsUsing([id]); setFrameDecodeTick(t => t + 1); }
                 }
             };
             await Promise.all(Array.from({ length: Math.min(4, todo.length) }, worker));
             trimDecodedFrames(new Set(todo)); // keep memory bounded; protect what we just decoded
-            if (!playing) setFrameDecodeTick(t => t + 1);
+            if (!playing && done.length) { invalidateCutsUsing(done); setFrameDecodeTick(t => t + 1); }
         })();
     };
-    // Part-scoped memory: when a part is active, keep only that part's (+ visible cuts') frames
-    // decoded in memory and release the rest (their compact Blob stays, ready to re-decode). This
-    // is what makes "work on one part" actually light for huge multi-part imports.
+    // Part-scoped memory: when a part is active, release frames that belong to OTHER parts (their
+    // compact Blob stays, ready to re-decode). Decoding the active part's visible window is left to
+    // the prefetch effect — don't bulk-decode the whole part here (hundreds of decodes = update storm).
     useEffect(() => {
-        if (!activePartId) return; // 전체: leave decoded frames as-is; on-demand handles misses
+        if (!activePartId) return; // 전체: leave decoded frames as-is; the LRU cap bounds memory
         const store = bitmapStoreRef.current;
-        const hot = new Set();
-        const visible = new Set([currentCutId]);
-        cuts.forEach(c => { if (currentTime >= c.startTime && currentTime < c.endTime) visible.add(c.id); });
-        cuts.forEach(c => { if (c.partId === activePartId || visible.has(c.id)) safeArray(c.layers).forEach(l => safeArray(l.strokes).forEach(s => { if (s.tool === 'paste' && s.bitmapId) hot.add(s.bitmapId); })); });
+        const keep = new Set(); // frame ids belonging to the active part
+        cuts.forEach(c => { if (c.partId === activePartId) safeArray(c.layers).forEach(l => safeArray(l.strokes).forEach(s => { if (s.tool === 'paste' && s.bitmapId) keep.add(s.bitmapId); })); });
         let released = false;
-        for (const [id, e] of store) { if (e.blob && e.imageBitmap && !hot.has(id)) { try { e.imageBitmap.close?.(); } catch { } e.imageBitmap = null; released = true; } }
-        requestFrameDecode([...hot]);
+        for (const [id, e] of store) { if (e.blob && e.imageBitmap && !keep.has(id) && !hotWindowRef.current.has(id)) { try { e.imageBitmap.close?.(); } catch { } e.imageBitmap = null; released = true; } }
         if (released) { fallbackCanvasRef.current.clear(); setLayerCanvasCache({}); }
-    }, [activePartId, currentCutId]);
+    }, [activePartId]);
 
     // Prefetch: decode the current frame first (shows immediately) and a window of frames ahead of
     // the playhead (and a few behind), so playback and scrubbing don't stall on lazy decoding.
