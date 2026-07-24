@@ -212,6 +212,7 @@ export default function App() {
     const DECODED_CAP = 64;
     const decodeOrderRef = useRef(new Map()); // id -> monotonically increasing use counter
     const decodeSeqRef = useRef(0);
+    const [frameDecodeTick, setFrameDecodeTick] = useState(0); // bumped when a frame finishes decoding → forces cache rebuild
     const touchDecoded = (id) => { decodeOrderRef.current.set(id, ++decodeSeqRef.current); };
     const trimDecodedFrames = (protect) => {
         const store = bitmapStoreRef.current;
@@ -1861,7 +1862,7 @@ export default function App() {
         if (changed) {
             setLayerCanvasCache(newCache);
         }
-    }, [cuts, currentCutId, currentTime, onionPrev, onionNext]);
+    }, [cuts, currentCutId, currentTime, onionPrev, onionNext, frameDecodeTick]);
 
     // Re-create released frame bitmaps (from their Blob) on demand, then repaint. Used both by the
     // render path (a released frame scrolled into view) and the part-scoped release below.
@@ -1879,6 +1880,7 @@ export default function App() {
             trimDecodedFrames(new Set(todo)); // keep memory bounded; protect what we just decoded
             fallbackCanvasRef.current.clear();
             setLayerCanvasCache({}); // repaint visible cuts now that frames are decoded
+            setFrameDecodeTick(t => t + 1); // ensure the precompute cache effect re-runs too
         })();
     };
     // Part-scoped memory: when a part is active, keep only that part's (+ visible cuts') frames
@@ -2052,7 +2054,7 @@ export default function App() {
             }
             ctx.restore();
         });
-    }, [cuts, currentCutId, onionPrev, onionNext, selection, layerCanvasCache]);
+    }, [cuts, currentCutId, onionPrev, onionNext, selection, layerCanvasCache, frameDecodeTick]);
 
     const paintFrameRef = useRef(null);
     paintFrameRef.current = paintFrame;
@@ -2309,7 +2311,7 @@ export default function App() {
         const srcKey = src?.key || `f:${file.name}:${file.size}`;
         setRecentVideos(p => [{ id: 'rv_' + Date.now().toString(36), name: label, srcKey, url: src?.url || null },
         ...p.filter(v => v.srcKey !== srcKey)].slice(0, 3));
-        setVideoImport({ file, srcKey, label, fps: 4, maxFrames: 60, scale: 0.5, whole: true, withAudio: false, dedupe: 'exact', original: false, rangeOn: false, startText: '0:00', endText: '', parts: 1 });
+        setVideoImport({ file, srcKey, label, fps: 4, maxFrames: 60, scale: 0.5, whole: true, withAudio: false, dedupe: 'exact', quality: 'compressed', rangeOn: false, startText: '0:00', endText: '', parts: 1 });
     };
     const reimportRecent = (v) => {
         if (v.url) loadYoutubeVideo(v.url);        // same link → download again
@@ -2396,11 +2398,15 @@ export default function App() {
             const rStart = cfg.rangeOn ? parseClock(cfg.startText) : 0;
             const rEnd = cfg.rangeOn ? parseClock(cfg.endText) : 0;
             const useRange = cfg.rangeOn && rEnd > rStart;
+            // Quality tiers trade size vs fidelity. 'high' (WebP q0.95, native res) is visually
+            // lossless at ~5-8x smaller than true-lossless PNG — best default for large videos.
+            const q = cfg.quality || 'compressed';
+            const isNative = q !== 'compressed';
             const { frames, holds = [], skipped = 0, fps, width: fW, height: fH } = await extractVideoFrames(cfg.file, {
                 fps: cfg.fps, maxFrames: cfg.whole ? 0 : cfg.maxFrames,
                 start: useRange ? rStart : 0, end: useRange ? rEnd : null,
-                scale: cfg.original ? 1 : cfg.scale, quality: cfg.original ? 1 : 0.82, dedupe: cfg.dedupe ?? 'exact',
-                nativeRes: cfg.original, format: cfg.original ? 'png' : 'webp',
+                scale: isNative ? 1 : cfg.scale, quality: q === 'lossless' ? 1 : q === 'high' ? 0.95 : 0.82,
+                dedupe: cfg.dedupe ?? 'exact', nativeRes: isNative, format: q === 'lossless' ? 'png' : 'webp',
                 width: CANVAS_W, height: CANVAS_H,
                 onProgress: (done, total, skipped) => setVideoBusy({ done, total, skipped }),
                 shouldStop: () => videoStopRef.current,
@@ -2417,7 +2423,7 @@ export default function App() {
             const label = cfg.label || cfg.file.name.replace(/\.[^.]+$/, '').slice(0, 24);
             // Native-res frames keep the source aspect, so letterbox-fit them into the canvas;
             // compressed frames are already pre-letterboxed to the canvas (full-canvas paste).
-            const fit = (cfg.original && fW && fH) ? fitRect(fW, fH, CANVAS_W, CANVAS_H) : { x: 0, y: 0, w: CANVAS_W, h: CANVAS_H };
+            const fit = (isNative && fW && fH) ? fitRect(fW, fH, CANVAS_W, CANVAS_H) : { x: 0, y: 0, w: CANVAS_W, h: CANVAS_H };
             const px = Math.round(fit.x), py = Math.round(fit.y), pw = Math.round(fit.w), ph = Math.round(fit.h);
             // Split the import into N sequential parts (part1~n) so a long video comes in already
             // organized. videoBatch stays one value (the frame manager deletes the whole import).
@@ -2581,10 +2587,12 @@ export default function App() {
                                     <select className="time-input" style={{ width: 80 }} value={videoImport.fps} onChange={e => setVideoImport(v => ({ ...v, fps: +e.target.value }))}>
                                         {[1, 2, 3, 4, 6, 8, 12, 15, 24].map(v => <option key={v} value={v}>{v} fps</option>)}
                                     </select>
-                                    <span style={{ width: 50, marginLeft: 6 }}>배율</span>
-                                    <select className="time-input" style={{ width: 80 }} value={videoImport.scale} onChange={e => setVideoImport(v => ({ ...v, scale: +e.target.value }))}>
-                                        {[[1, '100%'], [0.75, '75%'], [0.5, '50%'], [0.35, '35%'], [0.25, '25%']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                                    </select>
+                                    {videoImport.quality === 'compressed' && <>
+                                        <span style={{ width: 50, marginLeft: 6 }}>배율</span>
+                                        <select className="time-input" style={{ width: 80 }} value={videoImport.scale} onChange={e => setVideoImport(v => ({ ...v, scale: +e.target.value }))}>
+                                            {[[1, '100%'], [0.75, '75%'], [0.5, '50%'], [0.35, '35%'], [0.25, '25%']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                                        </select>
+                                    </>}
                                 </div>
                                 <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 8, flexWrap: 'wrap' }}>
                                     <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -2610,8 +2618,13 @@ export default function App() {
                                             <input className="time-input" style={{ width: 60 }} placeholder="끝" value={videoImport.endText} onChange={e => setVideoImport(v => ({ ...v, endText: e.target.value }))} />
                                         </span>
                                     )}
-                                    <label style={{ display: 'flex', alignItems: 'center', gap: 4 }} title="원본 화질로 추출 (배율 100%, 거의 무손실). 용량은 커집니다.">
-                                        <input type="checkbox" checked={videoImport.original} onChange={e => setVideoImport(v => ({ ...v, original: e.target.checked, ...(e.target.checked ? { scale: 1 } : {}) }))} /> 원본 화질
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: 4 }} title="화질/용량 선택. 고화질=원본 해상도 WebP(거의 무손실, 용량 적당) / 무손실=PNG(픽셀 완전 보존, 용량 큼)">
+                                        <span style={{ color: '#888' }}>화질</span>
+                                        <select className="time-input" style={{ width: 118 }} value={videoImport.quality} onChange={e => setVideoImport(v => ({ ...v, quality: e.target.value }))}>
+                                            <option value="compressed">압축(작음)</option>
+                                            <option value="high">고화질 WebP</option>
+                                            <option value="lossless">무손실 PNG</option>
+                                        </select>
                                     </label>
                                     <label style={{ display: 'flex', alignItems: 'center', gap: 4 }} title="긴 영상을 여러 파트로 나눠서 가져오기 (재생 시 파트별/전체 선택 가능)">
                                         <input type="number" className="time-input" style={{ width: 46 }} min={1} max={50} value={videoImport.parts}
@@ -2625,9 +2638,11 @@ export default function App() {
                                 </div>
                                 <div style={{ color: '#888', lineHeight: 1.6, marginBottom: 12 }}>
                                     캔버스({CANVAS_W}×{CANVAS_H})에 비율 유지로 넣고, 현재 트랙 뒤에 이어서 생성됩니다.<br />
-                                    {videoImport.original
-                                        ? <>프레임을 <b style={{ color: '#9cf' }}>원본 해상도·무손실(PNG)</b>로 넣습니다 — 화질 우선, 용량이 커집니다. (화질은 원본 영상 해상도까지만; 유튜브는 720~1080p로 제한될 수 있음)</>
-                                        : <>프레임은 <b style={{ color: '#9b9' }}>WebP로 압축 저장</b>되어 원본 대비 용량이 크게 줄어듭니다{videoImport.scale < 1 ? ` (배율 ${Math.round(videoImport.scale * 100)}%로 추가 절감)` : ''}.</>}
+                                    {videoImport.quality === 'lossless'
+                                        ? <><b style={{ color: '#9cf' }}>무손실 PNG</b> — 픽셀 완전 보존, 장당 용량이 큽니다(수 MB). 긴 영상은 <b>고화질 WebP</b>를 권장.</>
+                                        : videoImport.quality === 'high'
+                                            ? <>원본 해상도 <b style={{ color: '#9cf' }}>고화질 WebP(거의 무손실)</b> — 무손실 대비 용량 약 1/5~1/8, 화질 차이는 거의 없음.</>
+                                            : <>프레임은 <b style={{ color: '#9b9' }}>WebP로 압축 저장</b>되어 원본 대비 용량이 크게 줄어듭니다{videoImport.scale < 1 ? ` (배율 ${Math.round(videoImport.scale * 100)}%로 추가 절감)` : ''}.</>}
                                     {videoImport.dedupe === 'exact'
                                         ? <><br /><b style={{ color: '#9b9' }}>완전히 똑같은 프레임만</b> 한 컷으로 합칩니다 (픽셀 단위 비교).</>
                                         : videoImport.dedupe > 0 && <><br />이어지는 <b style={{ color: '#9b9' }}>비슷한 화면을 한 컷으로 합칩니다</b> — 정지 구간이 길수록 컷 수·용량이 줄어듭니다.</>}
