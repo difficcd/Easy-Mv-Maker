@@ -464,7 +464,7 @@ export function fitRect(sw, sh, dw, dh) {
 
 // Decode a video file into evenly spaced frames (ImageData at the project resolution) by
 // seeking. Returns { frames, fps, duration }. onProgress(done, total) for UI feedback.
-export async function extractVideoFrames(file, { fps = 6, maxFrames = 60, start = 0, end = null, width, height, onProgress, shouldStop } = {}) {
+export async function extractVideoFrames(file, { fps = 6, maxFrames = 0, start = 0, end = null, width, height, scale = 1, quality = 0.82, onProgress, shouldStop } = {}) {
     const url = URL.createObjectURL(file);
     const video = document.createElement('video');
     video.muted = true; video.playsInline = true; video.preload = 'auto'; video.src = url;
@@ -477,26 +477,33 @@ export async function extractVideoFrames(file, { fps = 6, maxFrames = 60, start 
         if (!isFinite(duration) || duration <= 0) throw new Error('영상 길이를 알 수 없습니다');
         const to = Math.min(end ?? duration, duration);
         const step = 1 / Math.max(0.1, fps);
-        const total = Math.min(maxFrames, Math.max(1, Math.ceil((to - start) / step)));
+        const count = Math.max(1, Math.ceil((to - start) / step));
+        const total = maxFrames > 0 ? Math.min(maxFrames, count) : count; // 0 = whole video
+        // Frames are stored compressed (WebP keeps the letterbox transparent) instead of raw
+        // ImageData — ~20x less memory and much smaller project files.
+        const fw = Math.max(1, Math.round(width * scale)), fh = Math.max(1, Math.round(height * scale));
         const cnv = document.createElement('canvas');
-        cnv.width = width; cnv.height = height;
-        const ctx = cnv.getContext('2d', { willReadFrequently: true });
-        const r = fitRect(video.videoWidth || width, video.videoHeight || height, width, height);
+        cnv.width = fw; cnv.height = fh;
+        const ctx = cnv.getContext('2d');
+        const r = fitRect(video.videoWidth || fw, video.videoHeight || fh, fw, fh);
         const seek = (t) => new Promise((res) => {
             const on = () => { video.removeEventListener('seeked', on); res(); };
             video.addEventListener('seeked', on);
             video.currentTime = t;
         });
+        const toBlob = () => new Promise((res) => {
+            cnv.toBlob(b => b ? res(b) : cnv.toBlob(res, 'image/jpeg', quality), 'image/webp', quality);
+        });
         const frames = [];
         for (let i = 0; i < total; i++) {
             if (shouldStop?.()) break;
             await seek(Math.min(start + i * step, Math.max(0, duration - 0.01)));
-            ctx.clearRect(0, 0, width, height);
+            ctx.clearRect(0, 0, fw, fh);
             ctx.drawImage(video, r.x, r.y, r.w, r.h);
-            frames.push(ctx.getImageData(0, 0, width, height));
+            frames.push(await toBlob());
             onProgress?.(frames.length, total);
         }
-        return { frames, fps, duration };
+        return { frames, fps, duration, width: fw, height: fh };
     } finally {
         URL.revokeObjectURL(url);
         video.src = '';

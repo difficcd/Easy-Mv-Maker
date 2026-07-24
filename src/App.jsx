@@ -93,6 +93,7 @@ export default function App() {
     const audioRef = useRef(null);
     const audioB64Ref = useRef(null); // audio as base64 data URL, embedded into saves
     const [videoImport, setVideoImport] = useState(null); // {file, fps, maxFrames} dialog
+    const [recentVideos, setRecentVideos] = useState([]); // fetched/opened videos, reusable without re-downloading
     const [videoBusy, setVideoBusy] = useState(null); // {done, total} while extracting
     const videoStopRef = useRef(false);
     const isExporting = useRef(false);
@@ -177,6 +178,17 @@ export default function App() {
             if (!entry) return;
             entry.imageBitmap = bmp;
         }).catch(() => { });
+        return id;
+    };
+
+    // Store an already-compressed image (video frames). Keeps only the decoded bitmap for
+    // rendering plus its data URL for saving — no raw ImageData, so memory stays small.
+    const storeBitmapBlob = async (blob) => {
+        const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
+        const url = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(blob); });
+        let imageBitmap = null;
+        try { imageBitmap = await createImageBitmap(blob); } catch { }
+        bitmapStoreRef.current.set(id, { imageData: null, imageBitmap, url });
         return id;
     };
 
@@ -350,6 +362,7 @@ export default function App() {
             if ((e.ctrlKey || e.metaKey) && (e.key === 'd' || e.key === 'D')) { if (currentCutId) { e.preventDefault(); handleDuplicateCut(currentCutId); } }
             if (e.key === 'Escape') { if (selection) { e.preventDefault(); cancelSelection(); } }
             if (e.key === 'Enter') { if (selection) { e.preventDefault(); commitSelection(); } }
+            if ((e.key === 'Delete' || e.key === 'Backspace') && !selection && !textEdit && currentCutId) { e.preventDefault(); handleDeleteCut(currentCutId); }
         };
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
@@ -606,7 +619,10 @@ export default function App() {
         const cache = dataUrlCacheRef.current;
         usedIds.forEach(id => {
             const entry = bitmapStoreRef.current.get(id);
-            if (!entry?.imageData) return;
+            if (!entry) return;
+            // Already-compressed (video frames): store the data URL as-is, no re-encode.
+            if (entry.url) { bitmaps[id] = entry.url; return; }
+            if (!entry.imageData) return;
             const c = cache.get(id);
             if (c && c.imageData === entry.imageData) { bitmaps[id] = c.url; return; }
             const url = imageDataToDataURL(entry.imageData);
@@ -633,6 +649,14 @@ export default function App() {
         if (data.bitmaps) {
             const entries = await Promise.all(Object.entries(data.bitmaps).map(async ([id, url]) => {
                 try {
+                    // Compressed frames (webp/jpeg) stay compressed: decode to a bitmap and
+                    // keep the URL. Only PNG layers (drawings) need editable ImageData.
+                    if (/^data:image\/(webp|jpeg)/.test(url)) {
+                        const blob = await (await fetch(url)).blob();
+                        let imageBitmap = null;
+                        try { imageBitmap = await createImageBitmap(blob); } catch { }
+                        return [id, { imageData: null, imageBitmap, url }];
+                    }
                     const imageData = await dataURLToImageData(url);
                     let imageBitmap = null;
                     try { imageBitmap = await createImageBitmap(imageData); } catch { }
@@ -1561,7 +1585,24 @@ export default function App() {
         const newCache = { ...layerCanvasCache };
         const validKeys = new Set();
         let changed = false;
+        // Only cache cuts that can actually be on screen (playing/current + onion neighbours).
+        // Caching every cut made hundreds of frames rebuild on each edit and stalled the app.
+        const visible = new Set();
+        cuts.forEach(c => { if (currentTime >= c.startTime && currentTime < c.endTime) visible.add(c.id); });
+        const primary = cuts.find(c => c.id === currentCutId);
+        if (primary) {
+            visible.add(primary.id);
+            if (onionPrev) {
+                const prev = cuts.filter(c => c.startTime < primary.startTime && c.track === primary.track).sort((a, b) => b.startTime - a.startTime)[0];
+                if (prev) visible.add(prev.id);
+            }
+            if (onionNext) {
+                const next = cuts.filter(c => c.startTime >= primary.endTime && c.track === primary.track).sort((a, b) => a.startTime - b.startTime)[0];
+                if (next) visible.add(next.id);
+            }
+        }
         for (const cut of cuts) {
+            if (!visible.has(cut.id)) continue;
             for (const layer of cut.layers) {
                 if (layer.type !== 'layer') continue;
                 const key = layerKey(cut.id, layer.id);
@@ -1589,7 +1630,7 @@ export default function App() {
         if (changed) {
             setLayerCanvasCache(newCache);
         }
-    }, [cuts]);
+    }, [cuts, currentCutId, currentTime, onionPrev, onionNext]);
 
     useEffect(() => {
         const canvas = canvasRef.current; if (!canvas) return;
@@ -1895,6 +1936,37 @@ export default function App() {
         const file = e.target.files[0]; if (!file) return;
         loadAudioUrl(URL.createObjectURL(file), file.name);
     };
+    // Remember fetched/opened videos so they can be re-imported with different settings
+    // without downloading again (session only — keeps at most 3 to bound memory).
+    const openVideoImport = (file, name) => {
+        const label = name || file.name;
+        setRecentVideos(p => [{ id: 'rv_' + Date.now().toString(36), name: label, file }, ...p.filter(v => v.name !== label)].slice(0, 3));
+        setVideoImport({ file, fps: 4, maxFrames: 60, scale: 0.5, whole: true, withAudio: false });
+    };
+
+    // Imported frame sets, derived from the cuts themselves (so they survive save/load).
+    const videoBatches = (() => {
+        const m = new Map();
+        for (const c of cuts) {
+            if (!c.videoBatch) continue;
+            const b = m.get(c.videoBatch) || { id: c.videoBatch, label: c.videoLabel || '영상', count: 0, start: c.startTime, end: c.endTime };
+            b.count++; b.start = Math.min(b.start, c.startTime); b.end = Math.max(b.end, c.endTime);
+            m.set(c.videoBatch, b);
+        }
+        return [...m.values()];
+    })();
+    const deleteVideoBatch = (batchId) => {
+        const b = videoBatches.find(x => x.id === batchId);
+        if (!b || !window.confirm(`"${b.label}" 프레임 ${b.count}컷을 삭제할까요?`)) return;
+        setCuts(p => {
+            const left = p.filter(c => c.videoBatch !== batchId);
+            if (!left.some(c => c.id === currentCutId)) setCurrentCutId(left[0]?.id ?? null);
+            return left;
+        });
+        setSelectedCutIds(new Set());
+        setTimeout(gcBitmaps, 0); // free the frame bitmaps right away
+    };
+
     // Local-only: pull a video by URL through the API, then reuse the frame-import dialog.
     const loadYoutubeVideo = async () => {
         const url = window.prompt('유튜브(또는 영상) 링크:');
@@ -1905,7 +1977,7 @@ export default function App() {
             if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || ('HTTP ' + res.status)); }
             const blob = await res.blob();
             const file = new File([blob], 'youtube.mp4', { type: blob.type || 'video/mp4' });
-            setVideoImport({ file, fps: 6, maxFrames: 60 });
+            openVideoImport(file, 'YT ' + new Date().toLocaleTimeString());
         } catch (e) {
             alert('영상 가져오기 실패: ' + e.message + '\n(서버에 yt-dlp 설치 필요)');
         } finally { setVideoBusy(null); }
@@ -1918,7 +1990,8 @@ export default function App() {
         setVideoBusy({ done: 0, total: 0 });
         try {
             const { frames, fps } = await extractVideoFrames(cfg.file, {
-                fps: cfg.fps, maxFrames: cfg.maxFrames, width: CANVAS_W, height: CANVAS_H,
+                fps: cfg.fps, maxFrames: cfg.whole ? 0 : cfg.maxFrames, scale: cfg.scale,
+                width: CANVAS_W, height: CANVAS_H,
                 onProgress: (done, total) => setVideoBusy({ done, total }),
                 shouldStop: () => videoStopRef.current,
             });
@@ -1927,18 +2000,22 @@ export default function App() {
             const startAt = cuts.filter(c => c.track === track).reduce((m, c) => Math.max(m, c.endTime), 0);
             const dur = 1 / Math.max(0.1, fps);
             const baseId = Date.now();
-            const made = frames.map((img, i) => {
-                const bitmapId = storeBitmap(img);
+            const batch = 'vb_' + baseId.toString(36);
+            const label = cfg.file.name.replace(/\.[^.]+$/, '').slice(0, 24);
+            const made = [];
+            for (let i = 0; i < frames.length; i++) {
+                const bitmapId = await storeBitmapBlob(frames[i]);
                 const s = startAt + i * dur;
-                return {
-                    id: baseId + i, name: `frame ${i + 1}`, startTime: s, endTime: s + dur, track,
-                    activeLayerId: 1, texts: [],
-                    layers: [{ id: 1, name: 'L1', type: 'layer', parentId: null, visible: true, redoStrokes: [], strokes: [{ id: baseId + 100000 + i, tool: 'paste', bitmapId, x: 0, y: 0 }] }],
-                };
-            });
+                made.push({
+                    id: baseId + i, name: `${label} ${i + 1}`, startTime: s, endTime: s + dur, track,
+                    activeLayerId: 1, texts: [], videoBatch: batch, videoLabel: label,
+                    layers: [{ id: 1, name: 'L1', type: 'layer', parentId: null, visible: true, redoStrokes: [], strokes: [{ id: baseId + 100000 + i, tool: 'paste', bitmapId, x: 0, y: 0, w: CANVAS_W, h: CANVAS_H }] }],
+                });
+            }
             setCuts(p => [...p, ...made]);
             setCurrentCutId(made[0].id);
             setCurrentTime(made[0].startTime);
+            if (cfg.withAudio) loadAudioUrl(URL.createObjectURL(cfg.file), label + ' (영상 음원)');
             setVideoImport(null);
         } catch (e) {
             alert('영상 가져오기 실패: ' + e.message);
@@ -2072,16 +2149,30 @@ export default function App() {
                                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
                                     <span style={{ width: 76 }}>초당 프레임</span>
                                     <select className="time-input" style={{ width: 80 }} value={videoImport.fps} onChange={e => setVideoImport(v => ({ ...v, fps: +e.target.value }))}>
-                                        {[2, 3, 4, 6, 8, 12, 15, 24].map(v => <option key={v} value={v}>{v} fps</option>)}
+                                        {[1, 2, 3, 4, 6, 8, 12, 15, 24].map(v => <option key={v} value={v}>{v} fps</option>)}
                                     </select>
-                                    <span style={{ width: 66, marginLeft: 6 }}>최대 컷</span>
-                                    <select className="time-input" style={{ width: 80 }} value={videoImport.maxFrames} onChange={e => setVideoImport(v => ({ ...v, maxFrames: +e.target.value }))}>
-                                        {[10, 20, 30, 60, 90, 120, 200].map(v => <option key={v} value={v}>{v}컷</option>)}
+                                    <span style={{ width: 50, marginLeft: 6 }}>배율</span>
+                                    <select className="time-input" style={{ width: 80 }} value={videoImport.scale} onChange={e => setVideoImport(v => ({ ...v, scale: +e.target.value }))}>
+                                        {[[1, '100%'], [0.75, '75%'], [0.5, '50%'], [0.35, '35%'], [0.25, '25%']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                                     </select>
                                 </div>
+                                <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 8, flexWrap: 'wrap' }}>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                        <input type="checkbox" checked={videoImport.whole} onChange={e => setVideoImport(v => ({ ...v, whole: e.target.checked }))} /> 영상 전체
+                                    </label>
+                                    {!videoImport.whole && (
+                                        <select className="time-input" style={{ width: 88 }} value={videoImport.maxFrames} onChange={e => setVideoImport(v => ({ ...v, maxFrames: +e.target.value }))}>
+                                            {[10, 20, 30, 60, 90, 120, 200, 400].map(v => <option key={v} value={v}>최대 {v}컷</option>)}
+                                        </select>
+                                    )}
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                        <input type="checkbox" checked={videoImport.withAudio} onChange={e => setVideoImport(v => ({ ...v, withAudio: e.target.checked }))} /> 음원도 같이
+                                    </label>
+                                </div>
                                 <div style={{ color: '#888', lineHeight: 1.6, marginBottom: 12 }}>
-                                    현재 캔버스({CANVAS_W}×{CANVAS_H})에 맞춰 비율 유지로 넣습니다. 현재 트랙 뒤에 이어서 컷이 생성됩니다.<br />
-                                    <span style={{ color: '#c99' }}>메모리 주의: 프레임당 약 {Math.round(CANVAS_W * CANVAS_H * 4 / 1048576)}MB — 최대 {videoImport.maxFrames}컷이면 약 {Math.round(CANVAS_W * CANVAS_H * 4 * videoImport.maxFrames / 1048576)}MB</span>
+                                    캔버스({CANVAS_W}×{CANVAS_H})에 비율 유지로 넣고, 현재 트랙 뒤에 이어서 생성됩니다.<br />
+                                    프레임은 <b style={{ color: '#9b9' }}>WebP로 압축 저장</b>되어 원본 대비 용량이 크게 줄어듭니다{videoImport.scale < 1 ? ` (배율 ${Math.round(videoImport.scale * 100)}%로 추가 절감)` : ''}.
+                                    {videoImport.whole && <><br /><span style={{ color: '#c99' }}>전체 추출: 길이가 길면 컷이 매우 많아집니다. fps를 낮게(1~4) 두는 것을 권장합니다.</span></>}
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
                                     <button className="button" onClick={() => setVideoImport(null)}>취소</button>
@@ -2174,9 +2265,16 @@ export default function App() {
                     <label className="audio-input-label" title="영상을 프레임별 컷으로 가져오기">
                         <Film size={14} /> 영상 프레임
                         <input type="file" accept="video/*" style={{ display: 'none' }}
-                            onChange={e => { const f = e.target.files[0]; e.target.value = ''; if (f) setVideoImport({ file: f, fps: 6, maxFrames: 60 }); }} />
+                            onChange={e => { const f = e.target.files[0]; e.target.value = ''; if (f) openVideoImport(f); }} />
                     </label>
                     {serverAvailable && <button className="button" onClick={loadYoutubeVideo} title="유튜브 링크에서 영상을 받아 프레임 추출 (로컬 서버, yt-dlp 필요)" style={{ height: 34 }}>YT 영상</button>}
+                    {recentVideos.length > 0 && (
+                        <select className="time-input" style={{ height: 34, width: 120 }} value="" title="이미 받은 영상을 다시 가져오기 (재다운로드 없음)"
+                            onChange={e => { const v = recentVideos.find(x => x.id === e.target.value); if (v) openVideoImport(v.file, v.name); }}>
+                            <option value="">다시 가져오기…</option>
+                            {recentVideos.map(v => <option key={v.id} value={v.id}>{v.name.slice(0, 20)}</option>)}
+                        </select>
+                    )}
                 </div>
             </div>
 
@@ -2432,6 +2530,23 @@ export default function App() {
                             <button className="button" style={{ flex: 1, minWidth: 0 }} onClick={handleAddCut}><Plus size={14} /> Add Cut</button>
                             <button className="button" style={{ flex: 1, minWidth: 0, opacity: copiedCut ? 1 : 0.4 }} onClick={handlePasteCut} disabled={!copiedCut} title="컷 붙여넣기 (Ctrl+V)"><ClipboardPaste size={14} /> Paste</button>
                         </div>
+                        {selectedCutIds.size > 1 && (
+                            <button className="button del-btn" style={{ width: '100%', marginTop: 6 }} onClick={() => handleDeleteCut(currentCutId)} title="선택한 컷 삭제 (Delete)">
+                                <Trash2 size={14} /> 선택 {selectedCutIds.size}컷 삭제
+                            </button>
+                        )}
+                        {videoBatches.length > 0 && (
+                            <div style={{ marginTop: 10, borderTop: '1px solid #2a2a3a', paddingTop: 8 }}>
+                                <div style={{ fontSize: 10, color: '#888', marginBottom: 4 }}>가져온 영상 프레임</div>
+                                {videoBatches.map(b => (
+                                    <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#bbb', padding: '3px 0' }}>
+                                        <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.label}</span>
+                                        <span style={{ color: '#777' }}>{b.count}컷</span>
+                                        <button className="icon-btn del-btn" title="이 영상 프레임 전체 삭제" onClick={() => deleteVideoBatch(b.id)}><Trash2 size={11} /></button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 )}
                 {!showRight && <button onClick={() => setShowRight(true)} className="icon-btn" style={{ width: 24, alignSelf: 'stretch', padding: 0, borderRadius: 0, background: '#1e1e2e', border: 'none', borderLeft: '1px solid #333' }}><ChevronRight size={14} /></button>}
