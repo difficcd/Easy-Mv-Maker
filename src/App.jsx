@@ -670,13 +670,17 @@ export default function App() {
         const store = bitmapStoreRef.current, cache = dataUrlCacheRef.current;
         for (const id of [...store.keys()]) if (!used.has(id)) { store.delete(id); cache.delete(id); }
     };
-    const buildData = (includeAudio = true) => {
+    // assetSink: when provided (server save), whole-image frame bitmaps are NOT inlined as base64
+    // in the JSON; they're collected here to upload as separate binary assets. This keeps the JSON
+    // small so huge/original-quality projects don't OOM building one giant base64 string.
+    const buildData = (includeAudio = true, assetSink = null) => {
         // Persist the pixel data behind fill/lasso/paste strokes; otherwise reopening
         // a saved project loses everything that lives only in the in-memory bitmap store.
         const usedIds = new Set();
         cuts.forEach(c => c.layers.forEach(l => safeArray(l.strokes).forEach(s => { if (s.bitmapId) usedIds.add(s.bitmapId); })));
         const bitmaps = {};
         const compressed = []; // ids stored as a whole encoded image (video frames) — keep compressed on restore
+        const assets = [];     // externalized frame manifest [{id, ext}] when assetSink is used
         // Cache PNG encodes per bitmap id — imageData is immutable once stored, so the
         // (frequent) autosave doesn't re-encode every fill/part each time.
         const cache = dataUrlCacheRef.current;
@@ -684,7 +688,11 @@ export default function App() {
             const entry = bitmapStoreRef.current.get(id);
             if (!entry) return;
             // Already-compressed (video frames): store the data URL as-is, no re-encode.
-            if (entry.url) { bitmaps[id] = entry.url; compressed.push(id); return; }
+            if (entry.url) {
+                if (assetSink) { const ext = (entry.url.match(/^data:image\/(\w+)/)?.[1] || 'webp'); assets.push({ id, ext }); assetSink.push({ id, url: entry.url, ext }); }
+                else { bitmaps[id] = entry.url; compressed.push(id); }
+                return;
+            }
             if (!entry.imageData) return;
             const c = cache.get(id);
             if (c && c.imageData === entry.imageData) { bitmaps[id] = c.url; return; }
@@ -697,6 +705,7 @@ export default function App() {
             canvas: { w: CANVAS_W, h: CANVAS_H },
             cuts: cuts.map(c => ({ ...c, layers: c.layers.map(l => ({ ...l, redoStrokes: [] })) }))
         };
+        if (assetSink && assets.length) out.assets = assets;
         // Embed the audio (base64, cached) so the project saves "with the music". Skipped
         // for autosave to keep it light.
         if (includeAudio && audioB64Ref.current && audioData) {
@@ -704,11 +713,23 @@ export default function App() {
         }
         return out;
     };
-    const restore = async (data) => {
+    const restore = async (data, assetBase = null) => {
         if (data.appName !== 'EasyMVMaker') { alert('올바른 .emv 파일이 아닙니다.'); return; }
         // Rebuild the bitmap store before swapping cuts in, so fill/lasso/paste render correctly.
         const store = bitmapStoreRef.current;
         store.clear();
+        // Externalized frame assets (server projects): fetch one at a time and convert to a
+        // dataURL so the store stays self-contained (local re-save still works). Bounded memory.
+        if (assetBase && Array.isArray(data.assets)) {
+            for (const a of data.assets) {
+                try {
+                    const blob = await (await fetch(`${assetBase}/asset/${a.id}`)).blob();
+                    let imageBitmap = null; try { imageBitmap = await createImageBitmap(blob); } catch { }
+                    const url = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(blob); });
+                    store.set(a.id, { imageData: null, imageBitmap, url });
+                } catch { }
+            }
+        }
         if (data.bitmaps) {
             const compressedSet = new Set(data.compressedBitmaps || []);
             const entries = await Promise.all(Object.entries(data.bitmaps).map(async ([id, url]) => {
@@ -789,25 +810,39 @@ export default function App() {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();
     };
+    // Upload externalized frame assets one at a time (binary, no base64) so peak memory is a
+    // single frame — this is what keeps big/original-quality projects from OOMing on save.
+    const uploadAssets = async (id, assetSink) => {
+        for (let i = 0; i < assetSink.length; i++) {
+            const a = assetSink[i];
+            const blob = await (await fetch(a.url)).blob();
+            const res = await fetch(`/api/projects/${id}/asset/${a.id}?ext=${encodeURIComponent(a.ext)}`, {
+                method: 'PUT', headers: { 'Content-Type': blob.type || 'application/octet-stream' }, body: blob,
+            });
+            if (!res.ok) throw new Error(`프레임 업로드 실패 (${i + 1}/${assetSink.length})`);
+        }
+    };
     const doServerSave = async (forceNew = false) => {
         setServerBusy(true);
         try {
-            const data = buildData();
-            if (!forceNew && serverIdRef.current) {
-                await apiFetch(`/api/projects/${serverIdRef.current}`, {
+            const assetSink = [];
+            const data = buildData(true, assetSink); // frames externalized → small JSON
+            let id = (!forceNew && serverIdRef.current) ? serverIdRef.current : null;
+            if (id) {
+                await apiFetch(`/api/projects/${id}`, {
                     method: 'PUT', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ name: serverNameRef.current || 'Untitled', data }),
                 });
-                alert('서버에 저장했습니다.');
-                return;
+            } else {
+                const name = window.prompt('서버에 저장할 프로젝트 이름:', serverNameRef.current || 'MV Project');
+                if (!name) return;
+                const r = await apiFetch('/api/projects', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, data }),
+                });
+                id = r.id; serverIdRef.current = r.id; serverNameRef.current = r.name;
             }
-            const name = window.prompt('서버에 저장할 프로젝트 이름:', serverNameRef.current || 'MV Project');
-            if (!name) return;
-            const r = await apiFetch('/api/projects', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, data }),
-            });
-            serverIdRef.current = r.id; serverNameRef.current = r.name;
+            if (assetSink.length) await uploadAssets(id, assetSink);
             alert('서버에 저장했습니다.');
         } catch (e) {
             alert('서버 저장 실패: ' + e.message + '\n(API 서버가 실행 중인지 확인하세요: npm run dev)');
@@ -820,7 +855,7 @@ export default function App() {
     const doServerOpen = async (id, name) => {
         try {
             const data = await apiFetch(`/api/projects/${id}`);
-            await restore(data);
+            await restore(data, `/api/projects/${id}`); // fetch externalized frame assets from this project
             serverIdRef.current = id; serverNameRef.current = name || '';
             setServerProjects(null);
         } catch (e) { alert('서버에서 열기 실패: ' + e.message); }

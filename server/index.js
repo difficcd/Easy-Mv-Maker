@@ -20,7 +20,9 @@ await fs.mkdir(DATA_DIR, { recursive: true });
 
 const safeId = (id) => String(id).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
 const fileFor = (id) => path.join(DATA_DIR, `${safeId(id)}.json`);
+const assetsDirFor = (id) => path.join(DATA_DIR, `${safeId(id)}.assets`);
 const newId = () => `p_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+const ASSET_MIME = { webp: 'image/webp', png: 'image/png', jpeg: 'image/jpeg', jpg: 'image/jpeg' };
 
 // List saved projects (metadata only).
 app.get('/api/projects', async (_req, res) => {
@@ -66,8 +68,35 @@ app.put('/api/projects/:id', async (req, res) => {
     } catch (e) { res.status(500).json({ error: String(e) }); }
 });
 
+// Binary asset store (video frames). Kept OUT of the project JSON so large/original-quality
+// projects don't build one giant base64 string (which OOMs the browser and the server).
+// Uploaded and fetched one asset at a time, so peak memory is a single frame.
+app.put('/api/projects/:id/asset/:assetId', express.raw({ type: '*/*', limit: '64mb' }), async (req, res) => {
+    try {
+        const dir = assetsDirFor(req.params.id);
+        await fs.mkdir(dir, { recursive: true });
+        const ext = String(req.query.ext || 'webp').replace(/[^a-z0-9]/gi, '').slice(0, 5) || 'webp';
+        await fs.writeFile(path.join(dir, `${safeId(req.params.assetId)}.${ext}`), req.body);
+        res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+app.get('/api/projects/:id/asset/:assetId', async (req, res) => {
+    try {
+        const dir = assetsDirFor(req.params.id);
+        const want = safeId(req.params.assetId) + '.';
+        const f = (await fs.readdir(dir)).find(n => n.startsWith(want));
+        if (!f) { res.status(404).json({ error: 'not found' }); return; }
+        res.setHeader('Content-Type', ASSET_MIME[f.split('.').pop().toLowerCase()] || 'application/octet-stream');
+        res.send(await fs.readFile(path.join(dir, f)));
+    } catch { res.status(404).json({ error: 'not found' }); }
+});
+
 app.delete('/api/projects/:id', async (req, res) => {
-    try { await fs.unlink(fileFor(req.params.id)); res.json({ ok: true }); }
+    try {
+        await fs.unlink(fileFor(req.params.id)).catch(() => { });
+        await fs.rm(assetsDirFor(req.params.id), { recursive: true, force: true }).catch(() => { });
+        res.json({ ok: true });
+    }
     catch { res.status(404).json({ error: 'not found' }); }
 });
 
