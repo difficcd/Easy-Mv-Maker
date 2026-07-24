@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Play, Pause, Square, Plus, Trash2, Download, Upload, PenLine, Pen, Feather, Eraser, Droplets, Undo, Redo, Layers, Trash, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, FolderPlus, Folder, FolderOpen, Settings, Eye, EyeOff, Copy, CopyPlus, ClipboardPaste, GitBranch, Move, Type, Server, Cloud, CloudDownload, Film, Repeat } from 'lucide-react';
 import './App.css';
 import { saveAutosave, loadAutosave, saveProject, loadProject, listProjects, deleteProject, autosaveKey } from './db';
@@ -142,6 +142,8 @@ export default function App() {
     const fallbackCanvasRef = useRef(new Map()); // LRU of layer canvases built on demand during render
     const canvasAreaRef = useRef(null);
     const videoFileRef = useRef(null);
+    const currentTimeRef = useRef(0);       // playback clock read by the rAF loop (avoids stale closure)
+    const playheadRef = useRef(null);        // moved imperatively during playback
     const dataUrlCacheRef = useRef(new Map()); // id -> {imageData, url}; avoids re-encoding bitmaps each autosave
     const liveRef = useRef({}); // latest {cuts, copiedCut, selection} for safe bitmap GC from effects
     const selectionDragRef = useRef(null);
@@ -397,41 +399,51 @@ export default function App() {
         if (!isPlaying) { if (audioRef.current) audioRef.current.pause(); cancelAnimationFrame(reqRef.current); return; }
         // Export must record at real time; preview honors the chosen playback speed.
         const rate = isExporting.current ? 1 : playbackRate;
-        if (audioRef.current) audioRef.current.playbackRate = rate;
+        const audio = audioRef.current;
+        if (audio) audio.playbackRate = rate;
         let last = performance.now();
+        let t = currentTimeRef.current;
+        let lastUiSync = 0;
+        const audible = () => audio && audioUrl && (!audioData || (t >= audioData.startTime && t < audioData.endTime));
+        // Kick audio once, seeking only at the start — not every frame (per-frame seeks stutter).
+        if (audio && audioUrl) {
+            if (audible()) { const exp = audioData ? (t - audioData.startTime) + audioData.offset : t; if (Math.abs(audio.currentTime - exp) > 0.05) audio.currentTime = exp; audio.play().catch(() => { }); }
+        }
+        const finish = (end) => { isPlayingRef.current = false; setIsPlaying(false); if (audio) audio.pause(); setCurrentTime(end); currentTimeRef.current = end; paintFrameRef.current?.(end, false); };
         const step = (now) => {
-            if (!isPlayingRef.current) return; // stop immediately, no stray audio replay
-            const delta = (now - last) / 1000; last = now;
-            setCurrentTime(prev => {
-                const next = prev + delta * rate;
-                if (audioRef.current && audioUrl) {
-                    if (audioData) {
-                        if (next >= audioData.startTime && next < audioData.endTime) {
-                            if (audioRef.current.paused) audioRef.current.play().catch(() => { });
-                            const exp = (next - audioData.startTime) + audioData.offset;
-                            if (Math.abs(audioRef.current.currentTime - exp) > 0.15) audioRef.current.currentTime = exp;
-                        } else if (!audioRef.current.paused) audioRef.current.pause();
-                    } else { if (audioRef.current.paused) audioRef.current.play().catch(() => { }); }
-                }
-                if (isExporting.current && next >= exportEndRef.current) {
-                    if (mediaRecorderRef.current?.state === 'recording') mediaRecorderRef.current.stop();
-                    isExporting.current = false; setIsPlaying(false); if (audioRef.current) audioRef.current.pause(); return next;
-                }
-                const endAt = isExporting.current ? maxTime : contentEnd;
-                if (next >= endAt) {
-                    if (loopPlay && !isExporting.current) {
-                        if (audioRef.current) audioRef.current.currentTime = contentStart;
-                        return contentStart; // repeat from the first cut's start
-                    }
-                    setIsPlaying(false); if (audioRef.current) audioRef.current.pause(); return endAt;
-                }
-                return next;
-            });
+            if (!isPlayingRef.current) return;
+            const dt = (now - last) / 1000; last = now;
+            // Audio is the master clock while it's sounding: read its time so A/V never drift and
+            // we never seek it mid-play. Fall back to wall-clock accumulation otherwise.
+            if (audio && audioUrl && audible()) {
+                if (audio.paused) { const exp = audioData ? (t - audioData.startTime) + audioData.offset : t; audio.currentTime = exp; audio.play().catch(() => { }); }
+                t = audioData ? audioData.startTime + (audio.currentTime - audioData.offset) : audio.currentTime;
+            } else {
+                if (audio && !audio.paused) audio.pause();
+                t += dt * rate;
+            }
+            if (isExporting.current && t >= exportEndRef.current) {
+                if (mediaRecorderRef.current?.state === 'recording') mediaRecorderRef.current.stop();
+                isExporting.current = false; finish(t); return;
+            }
+            const endAt = isExporting.current ? maxTime : contentEnd;
+            if (t >= endAt) {
+                if (loopPlay && !isExporting.current) {
+                    t = contentStart;
+                    if (audio && audioUrl) { audio.currentTime = audioData ? audioData.offset : contentStart; if (audible()) audio.play().catch(() => { }); }
+                } else { finish(endAt); return; }
+            }
+            currentTimeRef.current = t;
+            paintFrameRef.current?.(t, true);                                   // 60fps imperative canvas
+            if (playheadRef.current) playheadRef.current.style.left = `${t * pps + 60}px`; // 60fps imperative playhead
+            if (now - lastUiSync > 90) { lastUiSync = now; setCurrentTime(t); } // ~11Hz React sync (highlight/readout)
             reqRef.current = requestAnimationFrame(step);
         };
         reqRef.current = requestAnimationFrame(step);
         return () => cancelAnimationFrame(reqRef.current);
-    }, [isPlaying, maxTime, audioUrl, loopPlay, contentStart, contentEnd, playbackRate]);
+    }, [isPlaying, maxTime, audioUrl, audioData, loopPlay, contentStart, contentEnd, playbackRate, pps]);
+
+    useEffect(() => { if (!isPlaying) currentTimeRef.current = currentTime; }, [currentTime, isPlaying]);
 
     useEffect(() => {
         if (!isPlaying && audioRef.current && audioUrl && Math.abs(audioRef.current.currentTime - currentTime) > 0.1)
@@ -1674,16 +1686,16 @@ export default function App() {
         return cnv;
     };
 
-    useEffect(() => {
+    const paintFrame = useCallback((t, playing) => {
         const canvas = canvasRef.current; if (!canvas) return;
         const ctx = canvas.getContext('2d');
         ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
         const primary = cuts.find(c => c.id === currentCutId);
-        let activeCuts = cuts.filter(c => currentTime >= c.startTime && currentTime < c.endTime);
-        if (!activeCuts.find(c => c.id === currentCutId) && primary && !isPlaying) activeCuts.push(primary);
+        let activeCuts = cuts.filter(c => t >= c.startTime && t < c.endTime);
+        if (!activeCuts.find(c => c.id === currentCutId) && primary && !playing) activeCuts.push(primary);
         activeCuts.sort((a, b) => a.track - b.track);
 
-        if (!isPlaying && primary) {
+        if (!playing && primary) {
             if (onionPrev) {
                 const prevCut = cuts.filter(c => c.startTime < primary.startTime && c.track === primary.track).sort((a, b) => b.startTime - a.startTime)[0];
                 if (prevCut) {
@@ -1710,7 +1722,7 @@ export default function App() {
             const order = flattenLayersInUiOrder(ac.layers || []).filter(l => l.type === 'layer' && l.visible !== false);
             // Cut-level animation (enter/exit/deform) applies only during playback/export,
             // so editing stays at rest. Transform about the canvas centre.
-            const anim = isPlaying ? computeCutAnim(ac, currentTime, CANVAS_W, CANVAS_H) : null;
+            const anim = playing ? computeCutAnim(ac, t, CANVAS_W, CANVAS_H) : null;
             ctx.save();
             if (anim) {
                 ctx.globalAlpha = anim.alpha;
@@ -1724,7 +1736,7 @@ export default function App() {
                 const layerCanvas = ensureLayerCanvas(ac.id, l);
 
                 // Per-layer ("part") transform nests inside the cut transform.
-                const la = isPlaying ? computeLayerAnim(l, ac, currentTime, CANVAS_W, CANVAS_H) : null;
+                const la = playing ? computeLayerAnim(l, ac, t, CANVAS_W, CANVAS_H) : null;
                 ctx.save();
                 if (la) {
                     ctx.translate(la.px + la.tx, la.py + la.ty);
@@ -1771,7 +1783,7 @@ export default function App() {
 
         // Text objects live outside paint layers ("text layer").
         activeCuts.forEach(ac => {
-            const anim = isPlaying ? computeCutAnim(ac, currentTime, CANVAS_W, CANVAS_H) : null;
+            const anim = playing ? computeCutAnim(ac, t, CANVAS_W, CANVAS_H) : null;
             ctx.save();
             if (anim) {
                 ctx.translate(CANVAS_W / 2 + anim.tx, CANVAS_H / 2 + anim.ty);
@@ -1802,8 +1814,20 @@ export default function App() {
             }
             ctx.restore();
         });
+    }, [cuts, currentCutId, onionPrev, onionNext, selection, layerCanvasCache]);
 
-        if (selectedText?.cutId === currentCutId) {
+    const paintFrameRef = useRef(null);
+    paintFrameRef.current = paintFrame;
+
+    // Editing render: full frame + editing-only overlays. During playback the rAF loop
+    // paints imperatively (see below), so this effect just draws overlays at rest.
+    useEffect(() => {
+        if (isPlaying) return;              // rAF loop owns the canvas during playback
+        paintFrame(currentTime, false);
+        const canvas = canvasRef.current; if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+
+                if (selectedText?.cutId === currentCutId) {
             const c = cuts.find(cc => cc.id === selectedText.cutId);
             const t = safeArray(c?.texts).find(tt => tt.id === selectedText.textId && tt.visible !== false);
             if (t) {
@@ -1893,7 +1917,7 @@ export default function App() {
             ctx.stroke();
             ctx.setLineDash([]);
         }
-    }, [cuts, currentCutId, isPlaying, currentTime, onionPrev, onionNext, lassoPoints, selection, selectedText, layerCanvasCache, animLayer]);
+    }, [paintFrame, cuts, currentCutId, isPlaying, currentTime, lassoPoints, selection, selectedText, animLayer]);
 
     const seekToClientX = (clientX) => {
         const el = timelineRef.current; if (!el) return;
@@ -1965,10 +1989,12 @@ export default function App() {
         }
     };
     const fmt = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}.${String(Math.floor((s % 1) * 100)).padStart(2, '0')}`;
-    const loadAudioUrl = (url, name) => {
+    const loadAudioUrl = (url, name, startAt = 0) => {
         setAudioFile({ name }); setAudioUrl(url);
         const audio = new Audio(url);
-        audio.onloadedmetadata = () => { setAudioDuration(audio.duration); setAudioData({ startTime: 0, endTime: audio.duration, offset: 0 }); if (audioRef.current) audioRef.current.src = url; };
+        // startAt aligns the track to a given timeline position (e.g. the first imported video frame),
+        // so audio + frames extracted together stay mechanically in sync.
+        audio.onloadedmetadata = () => { setAudioDuration(audio.duration); setAudioData({ startTime: startAt, endTime: startAt + audio.duration, offset: 0 }); if (audioRef.current) audioRef.current.src = url; };
         // Capture base64 once so the project can be saved "with the music".
         if (url.startsWith('data:')) { audioB64Ref.current = url; }
         else { fetch(url).then(r => r.blob()).then(b => { const fr = new FileReader(); fr.onload = () => { audioB64Ref.current = fr.result; }; fr.readAsDataURL(b); }).catch(() => { }); }
@@ -2070,7 +2096,8 @@ export default function App() {
             setCurrentCutId(made[0].id);
             setCurrentTime(made[0].startTime);
             // Audio (if asked) is the only thing that keeps the video bytes alive past this point.
-            if (cfg.withAudio) loadAudioUrl(URL.createObjectURL(cfg.file), label + ' (영상 음원)');
+            // Aligned to the first imported frame so frames and their own audio stay in sync.
+            if (cfg.withAudio) loadAudioUrl(URL.createObjectURL(cfg.file), label + ' (영상 음원)', made[0].startTime);
             setVideoImport(null);
             setTimeout(gcBitmaps, 0); // replaced frames' bitmaps go too
         } catch (e) {
@@ -2697,7 +2724,7 @@ export default function App() {
                             <div style={{ marginTop: 8, paddingLeft: 60 }}>
                                 <button className="small-btn" onClick={handleAddTrack}><Plus size={11} /> Add Track</button>
                             </div>
-                            <div className="playhead" style={{ left: `${currentTime * pps + 60}px` }}><div className="playhead-dot" /></div>
+                            <div className="playhead" ref={playheadRef} style={{ left: `${currentTime * pps + 60}px` }}><div className="playhead-dot" /></div>
                             {snapLinePos !== null && (
                                 <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${snapLinePos}px`, width: 2, background: '#888', opacity: 0.85, zIndex: 15, pointerEvents: 'none', boxShadow: '0 0 6px rgba(136,136,136,.5)' }} />
                             )}
