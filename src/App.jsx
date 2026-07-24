@@ -209,7 +209,7 @@ export default function App() {
     };
     // LRU cap on how many frame ImageBitmaps stay decoded at once (bounds memory regardless of
     // import size or which mode you're in). Released frames keep their Blob and re-decode on view.
-    const DECODED_CAP = 64;
+    const DECODED_CAP = 90; // must exceed the prefetch window so prefetched frames aren't evicted
     const decodeOrderRef = useRef(new Map()); // id -> monotonically increasing use counter
     const decodeSeqRef = useRef(0);
     const [frameDecodeTick, setFrameDecodeTick] = useState(0); // bumped when a frame finishes decoding → forces cache rebuild
@@ -1872,15 +1872,19 @@ export default function App() {
         if (!todo.length) return;
         todo.forEach(id => decodingRef.current.add(id));
         (async () => {
+            let firstShown = false;
             for (const id of todo) {
                 const e = store.get(id); if (!e || !e.blob) { decodingRef.current.delete(id); continue; }
                 try { e.imageBitmap = await createImageBitmap(e.blob); touchDecoded(id); } catch { }
                 decodingRef.current.delete(id);
+                // Repaint as soon as the FIRST (highest-priority = current) frame is ready, so the
+                // canvas shows immediately instead of waiting for the whole prefetch batch.
+                if (!firstShown) { firstShown = true; fallbackCanvasRef.current.clear(); setLayerCanvasCache({}); setFrameDecodeTick(t => t + 1); }
             }
             trimDecodedFrames(new Set(todo)); // keep memory bounded; protect what we just decoded
             fallbackCanvasRef.current.clear();
-            setLayerCanvasCache({}); // repaint visible cuts now that frames are decoded
-            setFrameDecodeTick(t => t + 1); // ensure the precompute cache effect re-runs too
+            setLayerCanvasCache({});
+            setFrameDecodeTick(t => t + 1);
         })();
     };
     // Part-scoped memory: when a part is active, keep only that part's (+ visible cuts') frames
@@ -1898,6 +1902,25 @@ export default function App() {
         requestFrameDecode([...hot]);
         if (released) { fallbackCanvasRef.current.clear(); setLayerCanvasCache({}); }
     }, [activePartId, currentCutId]);
+
+    // Prefetch: decode the current frame first (shows immediately) and a window of frames ahead of
+    // the playhead (and a few behind), so playback and scrubbing don't stall on lazy decoding.
+    // The LRU cap releases frames outside this window, so memory stays bounded.
+    useEffect(() => {
+        const ordered = cuts.filter(c => safeArray(c.layers).some(l => safeArray(l.strokes).some(s => s.tool === 'paste' && s.bitmapId)))
+            .sort((a, b) => a.startTime - b.startTime);
+        if (!ordered.length) return;
+        let idx = ordered.findIndex(c => currentTime >= c.startTime && currentTime < c.endTime);
+        if (idx < 0) idx = ordered.findIndex(c => c.id === currentCutId);
+        if (idx < 0) idx = 0;
+        const AHEAD = isPlaying ? 32 : 8, BEHIND = 4;
+        const ids = [];
+        const push = (c) => c && safeArray(c.layers).forEach(l => safeArray(l.strokes).forEach(s => { if (s.tool === 'paste' && s.bitmapId) ids.push(s.bitmapId); }));
+        push(ordered[idx]);                                   // current first = highest priority
+        for (let d = 1; d <= AHEAD; d++) push(ordered[idx + d]);
+        for (let d = 1; d <= BEHIND; d++) push(ordered[idx - d]);
+        requestFrameDecode(ids);
+    }, [currentCutId, currentTime, isPlaying, cuts]);
 
     // The cache effect only precomputes visible cuts, and it commits one render late — so a cut
     // that just became visible (every frame during playback) would draw as a blank/white frame.
