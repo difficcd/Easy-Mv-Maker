@@ -148,6 +148,7 @@ export default function App() {
     const bitmapStoreRef = useRef(new Map());
     const fallbackCanvasRef = useRef(new Map()); // LRU of layer canvases built on demand during render
     const decodingRef = useRef(new Set()); // frame ids currently being re-decoded from their Blob
+    const hotWindowRef = useRef(new Set()); // frame ids in the current prefetch window — never LRU-evicted
     const canvasAreaRef = useRef(null);
     const videoFileRef = useRef(null);
     const currentTimeRef = useRef(0);       // playback clock read by the rAF loop (avoids stale closure)
@@ -220,14 +221,25 @@ export default function App() {
         for (const [id, e] of store) if (e.blob && e.imageBitmap) decoded.push(id);
         if (decoded.length <= DECODED_CAP) return;
         const order = decodeOrderRef.current;
+        const hot = hotWindowRef.current; // the on-screen / prefetch window is never evicted
         decoded.sort((a, b) => (order.get(a) || 0) - (order.get(b) || 0)); // oldest first
         let toRelease = decoded.length - DECODED_CAP;
         for (const id of decoded) {
             if (toRelease <= 0) break;
-            if (protect && protect.has(id)) continue;
+            if ((protect && protect.has(id)) || hot.has(id)) continue;
             const e = store.get(id); try { e.imageBitmap.close?.(); } catch { } e.imageBitmap = null;
             order.delete(id); toRelease--;
         }
+    };
+    // Invalidate ONLY the cached layer canvases of cuts that use the given (just-decoded) frames,
+    // instead of nuking the whole cache — nuking made on-screen frames flicker while playing.
+    const invalidateCutsUsing = (ids) => {
+        const idset = new Set(ids);
+        const affected = new Set();
+        for (const c of cuts) for (const l of safeArray(c.layers)) if (safeArray(l.strokes).some(s => s.tool === 'paste' && idset.has(s.bitmapId))) affected.add(layerKey(c.id, l.id));
+        if (!affected.size) return;
+        for (const k of affected) fallbackCanvasRef.current.delete(k);
+        setLayerCanvasCache(prev => { const n = { ...prev }; for (const k of affected) delete n[k]; return n; });
     };
     const blobToDataURL = (blob) => new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(blob); });
 
@@ -1872,19 +1884,17 @@ export default function App() {
         if (!todo.length) return;
         todo.forEach(id => decodingRef.current.add(id));
         (async () => {
-            let firstShown = false;
+            const done = [];
             for (const id of todo) {
                 const e = store.get(id); if (!e || !e.blob) { decodingRef.current.delete(id); continue; }
-                try { e.imageBitmap = await createImageBitmap(e.blob); touchDecoded(id); } catch { }
+                try { e.imageBitmap = await createImageBitmap(e.blob); touchDecoded(id); done.push(id); } catch { }
                 decodingRef.current.delete(id);
-                // Repaint as soon as the FIRST (highest-priority = current) frame is ready, so the
-                // canvas shows immediately instead of waiting for the whole prefetch batch.
-                if (!firstShown) { firstShown = true; fallbackCanvasRef.current.clear(); setLayerCanvasCache({}); setFrameDecodeTick(t => t + 1); }
+                // Repaint as soon as the FIRST (highest-priority = current) frame is ready — but only
+                // invalidate the cuts that use it, so on-screen frames don't flicker.
+                if (done.length === 1) { invalidateCutsUsing([id]); setFrameDecodeTick(t => t + 1); }
             }
             trimDecodedFrames(new Set(todo)); // keep memory bounded; protect what we just decoded
-            fallbackCanvasRef.current.clear();
-            setLayerCanvasCache({});
-            setFrameDecodeTick(t => t + 1);
+            if (done.length > 1) { invalidateCutsUsing(done); setFrameDecodeTick(t => t + 1); }
         })();
     };
     // Part-scoped memory: when a part is active, keep only that part's (+ visible cuts') frames
@@ -1919,6 +1929,7 @@ export default function App() {
         push(ordered[idx]);                                   // current first = highest priority
         for (let d = 1; d <= AHEAD; d++) push(ordered[idx + d]);
         for (let d = 1; d <= BEHIND; d++) push(ordered[idx - d]);
+        hotWindowRef.current = new Set(ids); // protect this window from LRU eviction
         requestFrameDecode(ids);
     }, [currentCutId, currentTime, isPlaying, cuts]);
 
