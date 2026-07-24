@@ -220,21 +220,67 @@ export function dataURLToImageData(url) {
     });
 }
 
-// Draw a polyline as smooth quadratic segments through midpoints, with per-segment
-// width/alpha. Removes the "stiff" look of straight lineTo segments.
-function smoothStroke(ctx, pts, styleAt) {
-    if (!pts.length) return;
-    if (pts.length === 1) {
-        const w = styleAt(0, 1);
-        ctx.beginPath(); ctx.arc(pts[0].x, pts[0].y, Math.max(0.3, w / 2), 0, Math.PI * 2); ctx.fill();
+// Remove hand/sampling jitter before drawing: weighted moving average over position and
+// pressure, keeping the endpoints fixed. Without this the curve wobbles unnaturally.
+function smoothPoints(pts, passes) {
+    if (!pts || pts.length < 3) return pts || [];
+    if (passes == null) {
+        // Sparse points (fast strokes) lose curvature if over-smoothed — scale by spacing.
+        let d = 0;
+        for (let i = 1; i < pts.length; i++) d += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+        const avg = d / (pts.length - 1);
+        passes = avg > 14 ? 0 : avg > 7 ? 1 : 2;
+    }
+    if (!passes) return pts;
+    let cur = pts;
+    for (let p = 0; p < passes; p++) {
+        const next = [cur[0]];
+        for (let i = 1; i < cur.length - 1; i++) {
+            const a = cur[i - 1], b = cur[i], c = cur[i + 1];
+            next.push({
+                x: (a.x + b.x * 2 + c.x) / 4,
+                y: (a.y + b.y * 2 + c.y) / 4,
+                pressure: ((a.pressure ?? 0.5) + (b.pressure ?? 0.5) * 2 + (c.pressure ?? 0.5)) / 4,
+            });
+        }
+        next.push(cur[cur.length - 1]);
+        cur = next;
+    }
+    return cur;
+}
+
+// Draw as smooth quadratic curves through midpoints. When the width is uniform the whole
+// stroke is one continuous path (no per-segment seams); variable width falls back to
+// per-segment curves whose widths were already smoothed.
+function smoothStroke(ctx, pts, widths, applyStyle) {
+    const n = pts.length;
+    if (!n) return;
+    if (n === 1) {
+        applyStyle(0);
+        ctx.beginPath(); ctx.arc(pts[0].x, pts[0].y, Math.max(0.3, widths[0] / 2), 0, Math.PI * 2); ctx.fill();
         return;
     }
-    const n = pts.length;
+    let uniform = true;
+    for (let i = 2; i < n; i++) if (Math.abs(widths[i] - widths[1]) > 0.2) { uniform = false; break; }
+    if (uniform) {
+        applyStyle(1);
+        ctx.lineWidth = Math.max(0.3, widths[1]);
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+        for (let i = 1; i < n - 1; i++) {
+            const m = { x: (pts[i].x + pts[i + 1].x) / 2, y: (pts[i].y + pts[i + 1].y) / 2 };
+            ctx.quadraticCurveTo(pts[i].x, pts[i].y, m.x, m.y);
+        }
+        ctx.lineTo(pts[n - 1].x, pts[n - 1].y);
+        ctx.stroke();
+        return;
+    }
     for (let i = 1; i < n; i++) {
         const p0 = pts[i - 1], p1 = pts[i];
         const a = i === 1 ? p0 : { x: (pts[i - 2].x + p0.x) / 2, y: (pts[i - 2].y + p0.y) / 2 };
         const b = i === n - 1 ? p1 : { x: (p0.x + p1.x) / 2, y: (p0.y + p1.y) / 2 };
-        styleAt(i, n);
+        applyStyle(i);
+        ctx.lineWidth = Math.max(0.3, widths[i]);
         ctx.beginPath();
         ctx.moveTo(a.x, a.y);
         ctx.quadraticCurveTo(p0.x, p0.y, b.x, b.y);
@@ -353,11 +399,9 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null)
             tmp.width = ctx.canvas.width; tmp.height = ctx.canvas.height;
             const tctx = tmp.getContext('2d');
             tctx.lineCap = 'round'; tctx.lineJoin = 'round'; tctx.strokeStyle = baseColor; tctx.fillStyle = baseColor;
-            smoothStroke(tctx, s.points, (i, n) => {
-                const w = hasPressure && n > 1 ? s.size * pressureAt(s.points, i) * 2 : s.size;
-                tctx.lineWidth = Math.max(0.3, w);
-                return tctx.lineWidth;
-            });
+            const mp = smoothPoints(s.points);
+            const mw = mp.map((_, i) => hasPressure && mp.length > 1 ? s.size * pressureAt(mp, Math.max(1, i)) * 2 : s.size);
+            smoothStroke(tctx, mp, mw, () => { });
             ctx.save();
             ctx.globalCompositeOperation = 'multiply';
             ctx.globalAlpha = baseOpacity * 0.6;
@@ -373,26 +417,25 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null)
         ctx.fillStyle = ctx.strokeStyle;
         // Airbrush: soft blurred edge that builds up with overlap.
         if (s.tool === 'soft') { try { ctx.filter = `blur(${Math.max(1, s.size / 4)}px)`; } catch { } }
-        smoothStroke(ctx, s.points, (i, n) => {
-            const pr = hasPressure && n > 1 ? pressureAt(s.points, i) : 0.5;
-            let w, alpha = isEraser ? 1 : baseOpacity;
-            if (s.tool === 'pencil') {
-                // Hard, near-constant width; pressure drives darkness instead of thickness.
-                w = s.size * (0.75 + 0.25 * pr * 2);
-                alpha = baseOpacity * (0.45 + 0.55 * Math.min(1, pr * 2));
-            } else if (s.tool === 'soft') {
-                w = s.size * (hasPressure ? pr * 2 : 1);
-                alpha = baseOpacity * 0.5;
-            } else if (s.tool === 'brush') {
-                // Pressure width + tapered ends for a natural pen feel.
-                w = s.size * (hasPressure ? pr * 2 : 1) * taperAt(i, n);
-            } else {
-                w = s.size * (hasPressure ? pr * 2 : 1);
-            }
-            ctx.globalAlpha = alpha;
-            ctx.lineWidth = Math.max(0.3, w);
-            return ctx.lineWidth;
+        const pts = smoothPoints(s.points);
+        const n = pts.length;
+        const widths = pts.map((_, idx) => {
+            const i = Math.max(1, idx);
+            const pr = hasPressure && n > 1 ? pressureAt(pts, i) : 0.5;
+            if (s.tool === 'pencil') return s.size * (0.85 + 0.15 * pr * 2);
+            if (s.tool === 'brush') return s.size * (hasPressure ? pr * 2 : 1) * taperAt(i, n);
+            return s.size * (hasPressure ? pr * 2 : 1);
         });
+        const alphas = pts.map((_, idx) => {
+            const i = Math.max(1, idx);
+            const pr = hasPressure && n > 1 ? pressureAt(pts, i) : 0.5;
+            if (isEraser) return 1;
+            // Pencil: pressure drives darkness rather than thickness.
+            if (s.tool === 'pencil') return baseOpacity * (0.45 + 0.55 * Math.min(1, pr * 2));
+            if (s.tool === 'soft') return baseOpacity * 0.5;
+            return baseOpacity;
+        });
+        smoothStroke(ctx, pts, widths, (i) => { ctx.globalAlpha = alphas[i]; });
         ctx.restore();
         ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1.0;
     });

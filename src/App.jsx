@@ -1353,19 +1353,24 @@ export default function App() {
             case 'soft':
             case 'marker':
             case 'calligraphy':
-            case 'eraser':
+            case 'eraser': {
+                // Fast strokes get coalesced by the browser into one event; recover every
+                // intermediate sample so quick curves stay curved instead of going polygonal.
+                const raw = e.getCoalescedEvents ? e.getCoalescedEvents() : null;
+                const positions = raw && raw.length > 1 ? raw.map(getPos) : [pos];
                 updLayers(currentCutId, c => ({
                     layers: c.layers.map(l => {
                         if (l.id !== c.activeLayerId) return l;
                         const newStrokes = [...l.strokes];
                         const currentStroke = newStrokes[newStrokes.length - 1];
                         if (currentStroke && currentStroke.tool !== 'paste' && currentStroke.tool !== 'fill') {
-                            currentStroke.points.push(pos);
+                            for (const p of positions) currentStroke.points.push(p);
                         }
                         return { ...l, strokes: newStrokes };
                     })
                 }));
                 break;
+            }
         }
     };
 
