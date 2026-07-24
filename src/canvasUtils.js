@@ -464,7 +464,7 @@ export function fitRect(sw, sh, dw, dh) {
 
 // Decode a video file into evenly spaced frames (ImageData at the project resolution) by
 // seeking. Returns { frames, fps, duration }. onProgress(done, total) for UI feedback.
-export async function extractVideoFrames(file, { fps = 6, maxFrames = 0, start = 0, end = null, width, height, scale = 1, quality = 0.82, dedupe = 2, onProgress, shouldStop } = {}) {
+export async function extractVideoFrames(file, { fps = 6, maxFrames = 0, start = 0, end = null, width, height, scale = 1, quality = 0.82, dedupe = 'exact', onProgress, shouldStop } = {}) {
     const url = URL.createObjectURL(file);
     const video = document.createElement('video');
     video.muted = true; video.playsInline = true; video.preload = 'auto'; video.src = url;
@@ -518,8 +518,17 @@ export async function extractVideoFrames(file, { fps = 6, maxFrames = 0, start =
             return s / a.length;
         };
 
+        // Byte-exact equality of two full-resolution frames (early-exit on first difference).
+        const bytesEqual = (a, b) => {
+            if (!a || !b || a.length !== b.length) return false;
+            for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+            return true;
+        };
+        const on = dedupe && dedupe !== 0;
+        const exact = dedupe === 'exact'; // skip ONLY pixel-identical frames (default)
+
         const frames = [], holds = [];
-        let prevSig = null, skipped = 0;
+        let prevSig = null, prevFull = null, skipped = 0;
         for (let i = 0; i < total; i++) {
             if (shouldStop?.()) break;
             await seek(Math.min(start + i * step, Math.max(0, duration - 0.01)));
@@ -527,14 +536,29 @@ export async function extractVideoFrames(file, { fps = 6, maxFrames = 0, start =
             ctx.drawImage(video, r.x, r.y, r.w, r.h);
             // Compared against the last KEPT frame, so a slow pan still emits a new frame once
             // it has drifted far enough, instead of being swallowed step by step.
-            const cur = dedupe > 0 ? signature() : null;
-            if (cur && prevSig && diff(prevSig, cur) <= dedupe) {
-                holds[holds.length - 1]++; // same picture: hold the previous cut one step longer
+            const cur = on ? signature() : null;
+            let dup = false;
+            if (cur && prevSig) {
+                if (exact) {
+                    // 32x32 signature is a cheap prefilter; a match triggers a full-res byte compare,
+                    // so only truly identical frames are merged (a static shot, a hard-held frame).
+                    if (diff(prevSig, cur) === 0) {
+                        const full = ctx.getImageData(0, 0, fw, fh).data;
+                        dup = bytesEqual(prevFull, full);
+                        if (!dup) prevFull = full;
+                    }
+                } else {
+                    dup = diff(prevSig, cur) <= dedupe;
+                }
+            }
+            if (dup) {
+                holds[holds.length - 1]++; // identical picture: hold the previous cut one step longer
                 skipped++;
                 onProgress?.(frames.length, total, skipped);
                 continue;
             }
             prevSig = cur;
+            if (exact) prevFull = ctx.getImageData(0, 0, fw, fh).data;
             frames.push(await toBlob());
             holds.push(1);
             onProgress?.(frames.length, total, skipped);

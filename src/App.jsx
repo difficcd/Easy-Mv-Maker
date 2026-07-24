@@ -125,6 +125,10 @@ export default function App() {
     const fileMenuRef = useRef(null);
     const timelineRef = useRef(null);
     const [pps, setPps] = useState(50);
+    // Visible px window of the horizontally-scrolled timeline, so only on-screen cut blocks and
+    // ruler ticks are rendered (thousands of DOM nodes otherwise stall the whole app).
+    const [tlWin, setTlWin] = useState({ left: 0, right: 4000 });
+    const tlWinRafRef = useRef(0);
     const ppsRef = useRef(50);
     ppsRef.current = pps;
     // User-adjustable canvas resolution. Shadows the imported defaults for the whole component.
@@ -1114,6 +1118,29 @@ export default function App() {
         return () => el.removeEventListener('wheel', h);
     }, []);
 
+    // Track the timeline's visible px window (scroll + resize) to drive virtualization.
+    useEffect(() => {
+        const el = timelineRef.current; if (!el) return;
+        const update = () => {
+            cancelAnimationFrame(tlWinRafRef.current);
+            tlWinRafRef.current = requestAnimationFrame(() => {
+                const pad = el.clientWidth || 2000; // one screen of margin each side
+                setTlWin({ left: el.scrollLeft - pad, right: el.scrollLeft + (el.clientWidth || 2000) + pad });
+            });
+        };
+        update();
+        el.addEventListener('scroll', update, { passive: true });
+        const ro = new ResizeObserver(update);
+        ro.observe(el);
+        return () => { el.removeEventListener('scroll', update); ro.disconnect(); cancelAnimationFrame(tlWinRafRef.current); };
+    }, [showBottom, timelineH]);
+    // Keep the window sensible when zoom/content changes the scrollable width.
+    useEffect(() => {
+        const el = timelineRef.current; if (!el) return;
+        const pad = el.clientWidth || 2000;
+        setTlWin({ left: el.scrollLeft - pad, right: el.scrollLeft + (el.clientWidth || 2000) + pad });
+    }, [pps, maxTime, numTracks]);
+
     const getTextMeasureCtx = () => {
         if (!textMeasureCtxRef.current) {
             const c = document.createElement('canvas');
@@ -2012,7 +2039,7 @@ export default function App() {
         const srcKey = src?.key || `f:${file.name}:${file.size}`;
         setRecentVideos(p => [{ id: 'rv_' + Date.now().toString(36), name: label, srcKey, url: src?.url || null },
         ...p.filter(v => v.srcKey !== srcKey)].slice(0, 3));
-        setVideoImport({ file, srcKey, label, fps: 4, maxFrames: 60, scale: 0.5, whole: true, withAudio: false, dedupe: 2 });
+        setVideoImport({ file, srcKey, label, fps: 4, maxFrames: 60, scale: 0.5, whole: true, withAudio: false, dedupe: 'exact', original: false });
     };
     const reimportRecent = (v) => {
         if (v.url) loadYoutubeVideo(v.url);        // same link → download again
@@ -2065,7 +2092,8 @@ export default function App() {
         setVideoBusy({ done: 0, total: 0 });
         try {
             const { frames, holds = [], skipped = 0, fps } = await extractVideoFrames(cfg.file, {
-                fps: cfg.fps, maxFrames: cfg.whole ? 0 : cfg.maxFrames, scale: cfg.scale, dedupe: cfg.dedupe ?? 2,
+                fps: cfg.fps, maxFrames: cfg.whole ? 0 : cfg.maxFrames,
+                scale: cfg.original ? 1 : cfg.scale, quality: cfg.original ? 0.96 : 0.82, dedupe: cfg.dedupe ?? 'exact',
                 width: CANVAS_W, height: CANVAS_H,
                 onProgress: (done, total, skipped) => setVideoBusy({ done, total, skipped }),
                 shouldStop: () => videoStopRef.current,
@@ -2251,15 +2279,22 @@ export default function App() {
                                     <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                                         <input type="checkbox" checked={videoImport.withAudio} onChange={e => setVideoImport(v => ({ ...v, withAudio: e.target.checked }))} /> 음원도 같이
                                     </label>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: 4 }} title="원본 화질로 추출 (배율 100%, 거의 무손실). 용량은 커집니다.">
+                                        <input type="checkbox" checked={videoImport.original} onChange={e => setVideoImport(v => ({ ...v, original: e.target.checked, ...(e.target.checked ? { scale: 1 } : {}) }))} /> 원본 화질
+                                    </label>
                                     <span style={{ marginLeft: 'auto' }}>중복 통합</span>
-                                    <select className="time-input" style={{ width: 88 }} value={videoImport.dedupe} onChange={e => setVideoImport(v => ({ ...v, dedupe: +e.target.value }))}>
-                                        {[[0, '끄기'], [1, '엄격'], [2, '보통'], [4, '느슨'], [8, '아주 느슨']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                                    <select className="time-input" style={{ width: 100 }} value={videoImport.dedupe} onChange={e => setVideoImport(v => ({ ...v, dedupe: e.target.value === 'exact' ? 'exact' : +e.target.value }))}>
+                                        {[['0', '끄기'], ['exact', '완전 동일'], ['3', '거의 같음'], ['8', '느슨']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                                     </select>
                                 </div>
                                 <div style={{ color: '#888', lineHeight: 1.6, marginBottom: 12 }}>
                                     캔버스({CANVAS_W}×{CANVAS_H})에 비율 유지로 넣고, 현재 트랙 뒤에 이어서 생성됩니다.<br />
-                                    프레임은 <b style={{ color: '#9b9' }}>WebP로 압축 저장</b>되어 원본 대비 용량이 크게 줄어듭니다{videoImport.scale < 1 ? ` (배율 ${Math.round(videoImport.scale * 100)}%로 추가 절감)` : ''}.
-                                    {videoImport.dedupe > 0 && <><br />이어지는 <b style={{ color: '#9b9' }}>같은 화면은 한 컷으로 합쳐집니다</b> — 정지 구간이 길수록 컷 수와 용량이 크게 줄어듭니다.</>}
+                                    {videoImport.original
+                                        ? <>프레임을 <b style={{ color: '#9cf' }}>원본 화질(거의 무손실)</b>로 넣습니다 — 화질 우선, 용량이 커집니다.</>
+                                        : <>프레임은 <b style={{ color: '#9b9' }}>WebP로 압축 저장</b>되어 원본 대비 용량이 크게 줄어듭니다{videoImport.scale < 1 ? ` (배율 ${Math.round(videoImport.scale * 100)}%로 추가 절감)` : ''}.</>}
+                                    {videoImport.dedupe === 'exact'
+                                        ? <><br /><b style={{ color: '#9b9' }}>완전히 똑같은 프레임만</b> 한 컷으로 합칩니다 (픽셀 단위 비교).</>
+                                        : videoImport.dedupe > 0 && <><br />이어지는 <b style={{ color: '#9b9' }}>비슷한 화면을 한 컷으로 합칩니다</b> — 정지 구간이 길수록 컷 수·용량이 줄어듭니다.</>}
                                     {videoImport.whole && <><br /><span style={{ color: '#c99' }}>전체 추출: 길이가 길면 컷이 매우 많아집니다. fps를 낮게(1~4) 두는 것을 권장합니다.</span></>}
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
@@ -2666,9 +2701,15 @@ export default function App() {
                         <div style={{ minWidth: '100%', width: `${Math.max(100, maxTime * pps + 150)}px`, position: 'relative' }}>
                             <div className="ruler" style={{ position: 'sticky', top: 0, left: 0, right: 0, height: 20, background: '#1a1a2e', borderBottom: '1px solid #2e2e4a', zIndex: 20 }}>
                                 <div style={{ position: 'sticky', left: 0, width: 60, height: '100%', background: '#1a1a2e', zIndex: 21, float: 'left' }} />
-                                {Array.from({ length: Math.ceil(maxTime) + 1 }).map((_, i) => (
-                                    <div key={i} style={{ position: 'absolute', left: `${i * pps + 60}px`, borderLeft: '1px solid #333', height: i % 5 === 0 ? 20 : 10, fontSize: 10, paddingLeft: 2, top: 0, color: '#555' }}>{i % 5 === 0 ? i : ''}</div>
-                                ))}
+                                {(() => {
+                                    const iMin = Math.max(0, Math.floor((tlWin.left - 60) / pps));
+                                    const iMax = Math.min(Math.ceil(maxTime), Math.ceil((tlWin.right - 60) / pps));
+                                    const ticks = [];
+                                    for (let i = iMin; i <= iMax; i++) ticks.push(
+                                        <div key={i} style={{ position: 'absolute', left: `${i * pps + 60}px`, borderLeft: '1px solid #333', height: i % 5 === 0 ? 20 : 10, fontSize: 10, paddingLeft: 2, top: 0, color: '#555' }}>{i % 5 === 0 ? i : ''}</div>
+                                    );
+                                    return ticks;
+                                })()}
                             </div>
                             <div style={{ marginTop: 8 }}>
                                 {Array.from({ length: numTracks }).map((_, ti) => (
@@ -2696,7 +2737,7 @@ export default function App() {
                                             <span>Track {ti}</span>
                                             <button className="icon-btn del-btn" onClick={e => { e.stopPropagation(); handleDeleteTrack(ti); }}><Trash2 size={9} /></button>
                                         </div>
-                                        {cuts.filter(c => (c.track || 0) === ti).map(cut => (
+                                        {cuts.filter(c => (c.track || 0) === ti).filter(cut => { const l = cut.startTime * pps + 60, r = l + (cut.endTime - cut.startTime) * pps; return r >= tlWin.left && l <= tlWin.right; }).map(cut => (
                                             <div key={cut.id}
                                                 className={`cut-block${currentCutId === cut.id ? ' cut-block-active' : ''}`}
                                                 style={{ left: `${cut.startTime * pps + 60}px`, width: `${(cut.endTime - cut.startTime) * pps}px`, cursor: draggingCutData?.cutId === cut.id ? 'grabbing' : 'grab', touchAction: 'none' }}
