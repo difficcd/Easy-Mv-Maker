@@ -645,6 +645,45 @@ export async function extractVideoFrames(file, { fps = 6, maxFrames = 0, start =
     }
 }
 
+// Detect scene-cut times in a video file by seeking through it and comparing 32x32 grayscale
+// signatures — a big jump = a scene change. Returns sorted times (seconds). Own hidden <video>,
+// so it doesn't disturb the overlay's display element.
+export async function detectSceneCuts(file, { step = 0.15, threshold = 20, start = 0, end = null, minGap = 0.4, onProgress, shouldStop } = {}) {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement('video');
+    video.muted = true; video.playsInline = true; video.preload = 'auto'; video.src = url;
+    try {
+        await new Promise((res, rej) => { video.onloadedmetadata = () => res(); video.onerror = () => rej(new Error('scene-detect: cannot read video')); });
+        const dur = video.duration; if (!isFinite(dur) || dur <= 0) return [];
+        const to = Math.min(end ?? dur, dur), from = Math.max(0, start);
+        // Higher-res signature (48x48) picks up finer differences than 32x32 for more precise cuts.
+        const sw = 48, sh = 48, c = document.createElement('canvas'); c.width = sw; c.height = sh;
+        const cx = c.getContext('2d', { willReadFrequently: true });
+        const sig = () => { cx.drawImage(video, 0, 0, sw, sh); const d = cx.getImageData(0, 0, sw, sh).data, o = new Uint8Array(sw * sh); for (let i = 0, j = 0; j < o.length; i += 4, j++) o[j] = (d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114) | 0; return o; };
+        const diff = (a, b) => { let s = 0; for (let i = 0; i < a.length; i++) s += Math.abs(a[i] - b[i]); return s / a.length; };
+        const seek = (t) => new Promise((res) => { const on = () => { video.removeEventListener('seeked', on); res(); }; video.addEventListener('seeked', on); video.currentTime = t; });
+        // First pass: sample the whole range's frame-to-frame difference.
+        const n = Math.max(1, Math.ceil((to - from) / step));
+        const diffs = [], times = []; let prev = null;
+        for (let i = 0; i <= n; i++) {
+            if (shouldStop?.()) break;
+            const t = Math.min(from + i * step, to - 0.03); await seek(t);
+            const s = sig(); diffs.push(prev ? diff(prev, s) : 0); times.push(t); prev = s;
+            onProgress?.(i + 1, n + 1);
+        }
+        // Second pass: a cut = a LOCAL PEAK of difference above threshold (the actual change frame),
+        // with a minimum gap so a single hard cut isn't marked twice.
+        const cuts = [from];
+        for (let i = 1; i < diffs.length; i++) {
+            if (diffs[i] <= threshold) continue;
+            if (diffs[i] < (diffs[i - 1] || 0) || diffs[i] < (diffs[i + 1] || 0)) continue; // must be the peak
+            if (times[i] - cuts[cuts.length - 1] < minGap) { if (diffs[i] > (diffs[cuts.length - 1] || 0)) cuts[cuts.length - 1] = +times[i].toFixed(2); continue; }
+            cuts.push(+times[i].toFixed(2));
+        }
+        return cuts;
+    } finally { URL.revokeObjectURL(url); video.src = ''; }
+}
+
 export function flattenForCanvas(layers) {
     return layers.filter(l => l.type !== 'folder' && l.visible !== false);
 }
