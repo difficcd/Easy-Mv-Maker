@@ -96,7 +96,7 @@ export default function App() {
     // cuts) — for "덧그리기" over a video. Like audio but drawn onto the canvas each frame.
     const [videoOverlay, setVideoOverlay] = useState(null); // { name, startTime, endTime, offset, duration, w, h, cuts? }
     const [sceneDetect, setSceneDetect] = useState(null);   // { done, total } while auto-detecting scene cuts
-    const [detectCfg, setDetectCfg] = useState({ threshold: 20, startText: '', endText: '', open: false }); // scene-detect controls
+    const [sceneCfg, setSceneCfg] = useState(null);         // scene-detect settings modal { threshold, rangeOn, startText, endText }
     const videoElRef = useRef(null);      // hidden <video> element that decodes/plays the overlay
     const videoBlobRef = useRef(null);    // the video Blob, for saving
     const videoSeekTokRef = useRef(0);    // paused-seek token so a stale 'seeked' doesn't repaint
@@ -2475,26 +2475,26 @@ export default function App() {
         };
         v.onseeked = () => { setFrameDecodeTick(t => t + 1); }; // repaint the (paused) overlay frame
         // Auto-detect scene cuts in the background so the timeline can mark where the video changes.
+        runSceneDetect({ cutStart: startAt, cutOffset: offset });
+    };
+    // Detect scene cuts (precise, with optional range + sensitivity) and store the markers. Runs on
+    // the stored video blob so it can be re-run with different settings without re-importing.
+    const runSceneDetect = ({ threshold = 14, rangeOn = false, startText = '0:00', endText = '', cutStart = null, cutOffset = null } = {}) => {
+        const blob = videoBlobRef.current; if (!blob) return;
+        const cs = cutStart != null ? cutStart : (videoOverlay?.startTime ?? 0);
+        const co = cutOffset != null ? cutOffset : (videoOverlay?.offset ?? 0);
+        const rStart = rangeOn ? parseClock(startText) : 0;
+        const rEndRaw = rangeOn ? parseClock(endText) : 0;
+        const rEnd = rangeOn && rEndRaw > rStart ? rEndRaw : null;
         setSceneDetect({ done: 0, total: 0 });
-        detectSceneCuts(blob, { onProgress: (d, t) => setSceneDetect({ done: d, total: t }) })
-            .then(cuts => setVideoOverlay(prev => prev ? { ...prev, cuts, cutStart: startAt, cutOffset: offset } : prev))
+        detectSceneCuts(blob, { start: rStart, end: rEnd, threshold, onProgress: (d, t) => setSceneDetect({ done: d, total: t }) })
+            .then(cuts => setVideoOverlay(prev => prev ? { ...prev, cuts, cutStart: cs, cutOffset: co } : prev))
             .catch(() => { })
             .finally(() => setSceneDetect(null));
     };
     const removeVideoOverlay = () => {
-        setVideoOverlay(null); videoBlobRef.current = null;
+        setVideoOverlay(null); videoBlobRef.current = null; setSceneCfg(null);
         const v = videoElRef.current; if (v) { try { v.pause(); v.removeAttribute('src'); v.load(); } catch { } }
-    };
-    // Re-detect scene cuts with a chosen sensitivity, optionally only within a video-time range.
-    const redetectScenes = () => {
-        const blob = videoBlobRef.current; if (!blob) return;
-        const rs = detectCfg.startText ? parseClock(detectCfg.startText) : 0;
-        const re = detectCfg.endText ? parseClock(detectCfg.endText) : null;
-        setSceneDetect({ done: 0, total: 0 });
-        detectSceneCuts(blob, { threshold: detectCfg.threshold, start: rs, end: re && re > rs ? re : null, onProgress: (d, t) => setSceneDetect({ done: d, total: t }) })
-            .then(cuts => setVideoOverlay(prev => prev ? { ...prev, cuts, cutStart: prev.startTime, cutOffset: prev.offset } : prev))
-            .catch(() => { })
-            .finally(() => setSceneDetect(null));
     };
     // Remember fetched/opened videos so they can be re-imported with different settings
     // without downloading again (session only — keeps at most 3 to bound memory).
@@ -2505,7 +2505,7 @@ export default function App() {
         const srcKey = src?.key || `f:${file.name}:${file.size}`;
         setRecentVideos(p => [{ id: 'rv_' + Date.now().toString(36), name: label, srcKey, url: src?.url || null },
         ...p.filter(v => v.srcKey !== srcKey)].slice(0, 3));
-        setVideoImport({ file, srcKey, label, fps: 4, maxFrames: 60, scale: 0.5, whole: true, withAudio: true, dedupe: 'exact', quality: 'compressed', rangeOn: false, startText: '0:00', endText: '', parts: 1 });
+        setVideoImport({ file, srcKey, label, fps: 4, maxFrames: 60, scale: 0.5, whole: true, withAudio: false, dedupe: 'exact', quality: 'compressed', rangeOn: false, startText: '0:00', endText: '', parts: 1 });
         // Auto-suggest a part count from the video length (~1 part per 30s) so a long video comes
         // in already split. The user can still change it in the dialog.
         try {
@@ -2868,14 +2868,16 @@ export default function App() {
                                     {videoImport.whole && <><br /><span style={{ color: '#c99' }}>전체 추출: 길이가 길면 컷이 매우 많아집니다. fps를 낮게(1~4) 두는 것을 권장합니다.</span></>}
                                 </div>
                                 <div style={{ background: '#12202b', border: '1px solid #1c3a4a', borderRadius: 6, padding: '8px 10px', marginBottom: 10, color: '#9cc', fontSize: 11.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                                    <span><b style={{ color: '#8de' }}>영상 위에 덧그리기</b> — 프레임으로 쪼개지 않고 원본 영상을 트랙으로 깔고 그 위에 그림·텍스트. 24fps 장편도 매끄럽게 재생.</span>
+                                    <span><b style={{ color: '#8de' }}>영상 위에 덧그리기</b> — 프레임으로 쪼개지 않고 원본 영상을 트랙으로 깔고 그 위에 그림·텍스트. 24fps 장편도 매끄럽게 재생. <b style={{ color: '#8de' }}>음원도 함께</b> 들어갑니다.</span>
                                     <button className="button" style={{ whiteSpace: 'nowrap' }} onClick={() => {
                                         const useRange = videoImport.rangeOn && parseClock(videoImport.endText) > parseClock(videoImport.startText);
-                                        loadVideoOverlay(videoImport.file, videoImport.label || videoImport.file.name, 0, useRange ? parseClock(videoImport.startText) : 0, useRange ? (parseClock(videoImport.endText) - parseClock(videoImport.startText)) : null);
-                                        // Always bring the video's audio (as a synced track) — the overlay is muted to avoid double.
-                                        loadAudioUrl(URL.createObjectURL(videoImport.file), (videoImport.label || '영상') + ' (음원)', 0, useRange ? parseClock(videoImport.startText) : 0, useRange ? (parseClock(videoImport.endText) - parseClock(videoImport.startText)) : null);
+                                        const off = useRange ? parseClock(videoImport.startText) : 0;
+                                        const clip = useRange ? (parseClock(videoImport.endText) - parseClock(videoImport.startText)) : null;
+                                        loadVideoOverlay(videoImport.file, videoImport.label || videoImport.file.name, 0, off, clip);
+                                        // The overlay <video> is muted; always bring the audio via a synced audio track.
+                                        loadAudioUrl(URL.createObjectURL(videoImport.file), (videoImport.label || '영상') + ' (음원)', 0, off, clip);
                                         setVideoImport(null);
-                                    }}>🎬 영상 그대로 깔기</button>
+                                    }}>🎬 영상 그대로 깔기(+음원)</button>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
                                     <button className="button" onClick={() => setVideoImport(null)}>취소</button>
@@ -2883,6 +2885,39 @@ export default function App() {
                                 </div>
                             </>
                         )}
+                    </div>
+                </div>
+            )}
+            {sceneCfg && videoOverlay && (
+                <div onClick={() => setSceneCfg(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div onClick={e => e.stopPropagation()} style={{ width: 360, background: '#1e1e2e', border: '1px solid #333', borderRadius: 8, padding: 18, color: '#ccc', fontSize: 12.5 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                            <span className="panel-title">🎯 장면(컷) 감지</span>
+                            <button className="icon-btn" onClick={() => setSceneCfg(null)}>✕</button>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                            <span style={{ width: 56 }}>민감도</span>
+                            <input type="range" min={6} max={30} step={1} value={30 - sceneCfg.threshold + 6} onChange={e => setSceneCfg(v => ({ ...v, threshold: 30 - (+e.target.value) + 6 }))} style={{ flex: 1 }} />
+                            <span style={{ width: 60, color: '#888', textAlign: 'right' }}>{sceneCfg.threshold <= 10 ? '민감' : sceneCfg.threshold >= 20 ? '둔감' : '보통'}</span>
+                        </div>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                            <input type="checkbox" checked={sceneCfg.rangeOn} onChange={e => setSceneCfg(v => ({ ...v, rangeOn: e.target.checked }))} /> 구간만 감지 (전체보다 빠름)
+                        </label>
+                        {sceneCfg.rangeOn && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, paddingLeft: 22 }}>
+                                <input className="time-input" style={{ width: 70 }} placeholder="0:00" value={sceneCfg.startText} onChange={e => setSceneCfg(v => ({ ...v, startText: e.target.value }))} />
+                                <span style={{ color: '#888' }}>~</span>
+                                <input className="time-input" style={{ width: 70 }} placeholder="끝(mm:ss)" value={sceneCfg.endText} onChange={e => setSceneCfg(v => ({ ...v, endText: e.target.value }))} />
+                            </div>
+                        )}
+                        <div style={{ color: '#888', lineHeight: 1.6, marginBottom: 12 }}>
+                            장면이 바뀌는 지점을 정밀하게 찾아 <b style={{ color: '#fde047' }}>노란 표시</b>로 타임라인에 찍습니다. 민감도를 올리면 미세한 전환도 잡습니다.
+                            {sceneDetect && <><br /><b style={{ color: '#9cf' }}>감지 중… {sceneDetect.total ? Math.round(sceneDetect.done / sceneDetect.total * 100) : 0}%</b></>}
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+                            <button className="button" onClick={() => setSceneCfg(null)}>닫기</button>
+                            <button className="button button-primary" disabled={!!sceneDetect} onClick={() => runSceneDetect(sceneCfg)}>{sceneDetect ? '감지 중…' : '감지'}</button>
+                        </div>
                     </div>
                 </div>
             )}
@@ -3269,7 +3304,6 @@ export default function App() {
                             <button className="button" onClick={() => goToScene(-1)} title="이전 장면(컷)">◀컷</button>
                             <button className="button" onClick={() => goToScene(1)} title="다음 장면(컷)">컷▶</button>
                         </>}
-                        {videoOverlay && <button className={`button${detectCfg.open ? ' button-primary' : ''}`} onClick={() => setDetectCfg(v => ({ ...v, open: !v.open }))} title="장면(컷) 감지 설정">컷감지</button>}
                         <select className="time-input" style={{ width: 60, marginLeft: 8 }} value={playbackRate} onChange={e => { const r = +e.target.value; setPlaybackRate(r); if (audioRef.current) audioRef.current.playbackRate = r; }} title="재생 속도">
                             {[0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4].map(v => <option key={v} value={v}>{v}x</option>)}
                         </select>
@@ -3281,23 +3315,6 @@ export default function App() {
                         <span style={{ fontSize: 11, color: '#666', marginLeft: 12 }}>Max: {fmt(maxTime)}</span>
                     </>}
                 </div>
-                {showBottom && videoOverlay && detectCfg.open && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px', borderBottom: '1px solid #2a2a3a', flexShrink: 0, fontSize: 11.5, color: '#bcd', flexWrap: 'wrap' }}>
-                        <span style={{ color: '#8ac' }}>장면(컷) 감지</span>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }} title="민감도: 낮을수록 작은 변화도 컷으로 잡음">
-                            민감도
-                            <input type="range" min={8} max={45} value={50 - detectCfg.threshold + 8} onChange={e => setDetectCfg(v => ({ ...v, threshold: 50 - (+e.target.value) + 8 }))} style={{ width: 90 }} />
-                        </span>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 3 }} title="이 구간만 감지 (mm:ss). 비우면 전체">
-                            구간
-                            <input className="time-input" style={{ width: 56 }} placeholder="0:00" value={detectCfg.startText} onChange={e => setDetectCfg(v => ({ ...v, startText: e.target.value }))} />
-                            <span>~</span>
-                            <input className="time-input" style={{ width: 56 }} placeholder="끝" value={detectCfg.endText} onChange={e => setDetectCfg(v => ({ ...v, endText: e.target.value }))} />
-                        </span>
-                        <button className="button" disabled={!!sceneDetect} onClick={redetectScenes}>{sceneDetect ? `감지 중 ${sceneDetect.total ? Math.round(sceneDetect.done / sceneDetect.total * 100) : 0}%` : '다시 감지'}</button>
-                        <span style={{ color: '#789' }}>{videoOverlay.cuts?.length ? `${videoOverlay.cuts.length}개 컷 표시됨` : ''}</span>
-                    </div>
-                )}
                 {showBottom && (parts.length > 0 || selectedCutIds.size > 0) && (
                     <div className="parts-bar" style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', borderBottom: '1px solid #2a2a3a', overflowX: 'auto', flexShrink: 0 }}>
                         <span style={{ fontSize: 10, color: '#777', marginRight: 2, flexShrink: 0 }}>파트</span>
@@ -3401,6 +3418,7 @@ export default function App() {
                                     <div className="tl-track-label" style={{ background: '#0f1e2a' }}><span>영상</span>
                                         {sceneDetect ? <span style={{ fontSize: 9, color: '#7aa' }}>컷감지 {sceneDetect.total ? Math.round(sceneDetect.done / sceneDetect.total * 100) : 0}%</span>
                                             : videoOverlay.cuts?.length ? <span style={{ fontSize: 9, color: '#7aa' }}>{videoOverlay.cuts.length}컷</span> : null}
+                                        <button className="icon-btn" title="장면(컷) 감지 설정" style={{ fontSize: 11 }} onClick={e => { e.stopPropagation(); setSceneCfg({ threshold: 14, rangeOn: false, startText: '0:00', endText: '' }); }}>🎯</button>
                                         <button className="icon-btn del-btn" onClick={e => { e.stopPropagation(); removeVideoOverlay(); }} title="영상 트랙 삭제"><Trash2 size={9} /></button></div>
                                     <div className="cut-block" style={{ left: `${videoOverlay.startTime * pps + 60}px`, width: `${(videoOverlay.endTime - videoOverlay.startTime) * pps}px`, background: '#155e75', borderColor: '#22d3ee55', cursor: draggingCutData?.cutId === 'video' ? 'grabbing' : 'grab', touchAction: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                                         onPointerDown={e => { e.stopPropagation(); cutDragMovedRef.current = false; clearTimeout(cutDragTimerRef.current); cutDragArmedRef.current = e.pointerType !== 'touch'; if (e.pointerType === 'touch') cutDragTimerRef.current = setTimeout(() => { cutDragArmedRef.current = true; }, 350); try { e.currentTarget.setPointerCapture(e.pointerId); } catch { } setDraggingCutData({ cutId: 'video', startX: e.clientX, startY: e.clientY, initialStart: videoOverlay.startTime, initialTrack: 0 }); }}>
