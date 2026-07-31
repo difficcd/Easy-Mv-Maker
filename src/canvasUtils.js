@@ -222,30 +222,40 @@ export function dataURLToImageData(url) {
 
 // Remove hand/sampling jitter before drawing: weighted moving average over position and
 // pressure, keeping the endpoints fixed. Without this the curve wobbles unnaturally.
+const _lerpPt = (a, b, t) => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, pressure: (a.pressure ?? 0.5) + ((b.pressure ?? 0.5) - (a.pressure ?? 0.5)) * t });
+// Resample a polyline to ~uniform arc-length spacing so clustered/sparse samples smooth evenly.
+function resamplePts(pts, spacing) {
+    if (pts.length < 2) return pts.slice();
+    const out = [pts[0]]; let acc = 0, a = pts[0];
+    for (let i = 1; i < pts.length; i++) {
+        let b = pts[i], seg = Math.hypot(b.x - a.x, b.y - a.y);
+        while (seg > 0 && acc + seg >= spacing) {
+            const t = (spacing - acc) / seg, np = _lerpPt(a, b, t);
+            out.push(np); a = np; seg = Math.hypot(b.x - a.x, b.y - a.y); acc = 0;
+        }
+        acc += seg; a = b;
+    }
+    const last = pts[pts.length - 1];
+    if (Math.hypot(last.x - out[out.length - 1].x, last.y - out[out.length - 1].y) > 0.4) out.push(last);
+    return out;
+}
+// Chaikin corner-cutting: replaces each corner with two points at 1/4 and 3/4, rounding the
+// polyline. A couple of iterations turn a shaky hand path into a smooth curve.
+function chaikin(pts) {
+    if (pts.length < 3) return pts;
+    const out = [pts[0]];
+    for (let i = 0; i < pts.length - 1; i++) { const a = pts[i], b = pts[i + 1]; out.push(_lerpPt(a, b, 0.25), _lerpPt(a, b, 0.75)); }
+    out.push(pts[pts.length - 1]);
+    return out;
+}
+// Smooth a raw hand stroke: resample to uniform spacing, then round corners with Chaikin. The
+// caller renders the result as a Catmull-Rom spline, so the final curve is genuinely smooth.
 function smoothPoints(pts, passes) {
     if (!pts || pts.length < 3) return pts || [];
-    if (passes == null) {
-        // Sparse points (fast strokes) lose curvature if over-smoothed — scale by spacing.
-        let d = 0;
-        for (let i = 1; i < pts.length; i++) d += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
-        const avg = d / (pts.length - 1);
-        passes = avg > 14 ? 0 : avg > 7 ? 1 : 2;
-    }
-    if (!passes) return pts;
-    let cur = pts;
-    for (let p = 0; p < passes; p++) {
-        const next = [cur[0]];
-        for (let i = 1; i < cur.length - 1; i++) {
-            const a = cur[i - 1], b = cur[i], c = cur[i + 1];
-            next.push({
-                x: (a.x + b.x * 2 + c.x) / 4,
-                y: (a.y + b.y * 2 + c.y) / 4,
-                pressure: ((a.pressure ?? 0.5) + (b.pressure ?? 0.5) * 2 + (c.pressure ?? 0.5)) / 4,
-            });
-        }
-        next.push(cur[cur.length - 1]);
-        cur = next;
-    }
+    let cur = resamplePts(pts, 2.5);
+    if (cur.length < 3) cur = pts.slice();
+    const iters = passes != null ? passes : 2;
+    for (let k = 0; k < iters; k++) cur = chaikin(cur);
     return cur;
 }
 
