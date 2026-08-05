@@ -113,6 +113,14 @@ export default function App() {
     const exportEndRef = useRef(0);
     const [tool, setTool] = useState('pen');
     const [color, setColor] = useState('#000000');
+    const [recentColors, setRecentColors] = useState(['#000000', '#ffffff', '#ff3b30', '#ff9500', '#ffcc00', '#34c759', '#007aff', '#5856d6', '#ff2d55', '#8e8e93']);
+    const [pickingColor, setPickingColor] = useState(false); // eyedropper: next canvas click samples a pixel
+    const useColor = (c) => { if (!c) return; setColor(c); setRecentColors(p => [c, ...p.filter(x => x.toLowerCase() !== c.toLowerCase())].slice(0, 12)); };
+    // Eyedropper: native picker where available, else sample the canvas on the next click.
+    const pickColor = async () => {
+        if (window.EyeDropper) { try { const r = await new window.EyeDropper().open(); useColor(r.sRGBHex); } catch { } }
+        else setPickingColor(true);
+    };
     const [brushSize, setBrushSize] = useState(5);
     const [eraserSize, setEraserSize] = useState(20);
     const [opacity, setOpacity] = useState(1.0);
@@ -1489,6 +1497,11 @@ export default function App() {
         // Palm rejection: only a stylus (S Pen) or mouse may draw — ignore finger/touch.
         if (e.pointerType === 'touch') return;
         const pos = getPos(e);
+        // Eyedropper fallback: sample the composited canvas pixel under the click.
+        if (pickingColor) {
+            try { const d = canvasRef.current.getContext('2d').getImageData(Math.round(pos.x), Math.round(pos.y), 1, 1).data; if (d[3] > 0) useColor('#' + [d[0], d[1], d[2]].map(v => v.toString(16).padStart(2, '0')).join('')); } catch { }
+            setPickingColor(false); return;
+        }
         // Recording a motion path for a part animation: capture the stroke as a path.
         if (pathCapture) {
             activePointerIdRef.current = e.pointerId;
@@ -3035,7 +3048,14 @@ export default function App() {
                             {hasLassoClip && <button className="tool-btn" onClick={pasteLassoSelection} title="복사한 올가미 선택을 현재 레이어에 붙여넣기"><ClipboardPaste size={15} /><span className="tool-label">올가미↓</span></button>}
                         </div>
                         <div className="tool-divider" />
-                        <input type="color" className="color-picker" value={color} onChange={e => setColor(e.target.value)} title="색상" disabled={isSelectionTool} />
+                        <input type="color" className="color-picker" value={color} onChange={e => useColor(e.target.value)} title="색상" disabled={isSelectionTool} />
+                        <button className={`tool-btn${pickingColor ? ' active' : ''}`} onClick={pickColor} title="스포이드 (화면에서 색 추출)" disabled={isSelectionTool} style={{ padding: '0 6px' }}><Droplets size={15} /><span className="tool-label">스포이드</span></button>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, width: 92, alignContent: 'center' }} title="최근 색상">
+                            {recentColors.slice(0, 12).map((c, i) => (
+                                <button key={i} onClick={() => useColor(c)} title={c}
+                                    style={{ width: 14, height: 14, borderRadius: 3, background: c, border: c.toLowerCase() === color.toLowerCase() ? '2px solid #7c8cff' : '1px solid #0004', padding: 0, cursor: 'pointer' }} />
+                            ))}
+                        </div>
                         <div className="slider-wrap">
                             {(() => {
                                 const curSize = tool === 'eraser' ? eraserSize : brushSize;
