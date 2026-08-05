@@ -961,17 +961,65 @@ export default function App() {
         const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.emv';
         inp.onchange = e => { const f = e.target.files[0]; if (!f) return; const r = new FileReader(); r.onload = ev => { try { restore(JSON.parse(ev.target.result)) } catch (err) { alert('파일 오류: ' + err.message) } }; r.readAsText(f); }; inp.click();
     };
-    const doNew = () => {
-        if (!window.confirm('새 프로젝트? 저장되지 않은 내용은 사라집니다.')) return;
+    const resetToEmpty = () => {
         fileHandleRef.current = null;
         bitmapStoreRef.current.clear();
         setCuts([{ id: 1, name: 'Cut 1', startTime: 0, endTime: 1, track: 0, layers: [mkLayer(1)], activeLayerId: 1, texts: [] }]);
         setNumTracks(2); setCurrentCutId(1); setCurrentTime(0); setExpandedCuts(new Set());
-        setCopiedCut(null);
+        setCopiedCut(null); setSelectedCutIds(new Set()); setActivePartId(null);
         setLayerCanvasCache({});
         serverIdRef.current = null; serverNameRef.current = '';
         if (audioRef.current) { audioRef.current.pause(); try { audioRef.current.removeAttribute('src'); audioRef.current.load(); } catch { } }
         audioB64Ref.current = null; setAudioFile(null); setAudioUrl(null); setAudioData(null);
+        videoBlobRef.current = null; setVideoOverlay(null); setSceneCfg(null);
+        if (videoElRef.current) { try { videoElRef.current.pause(); videoElRef.current.removeAttribute('src'); videoElRef.current.load(); } catch { } }
+    };
+    const doNew = () => {
+        if (!window.confirm('새 프로젝트? 저장되지 않은 내용은 사라집니다.')) return;
+        resetToEmpty();
+    };
+
+    // --- Document tabs (multiple projects open at once, Clip Studio / SAI style) ---
+    // Each tab keeps a full in-memory document snapshot (buildData with Blobs, so no base64 cost).
+    // Switching = snapshot the current tab, then restore the target's snapshot.
+    const [tabs, setTabs] = useState([{ id: 't1', name: '프로젝트 1' }]);
+    const [activeTabId, setActiveTabId] = useState('t1');
+    const tabDocsRef = useRef({}); // id -> doc snapshot (null = fresh/empty)
+    const tabBusyRef = useRef(false);
+    const snapshotActiveTab = async () => { try { tabDocsRef.current[activeTabId] = await buildData(true, null, true); } catch { } };
+    const switchTab = async (id) => {
+        if (id === activeTabId || tabBusyRef.current) return;
+        tabBusyRef.current = true;
+        try {
+            await snapshotActiveTab();
+            setActiveTabId(id);
+            const doc = tabDocsRef.current[id];
+            if (doc) await restore(doc); else resetToEmpty();
+        } finally { tabBusyRef.current = false; }
+    };
+    const newTab = async () => {
+        if (tabBusyRef.current) return; tabBusyRef.current = true;
+        try {
+            await snapshotActiveTab();
+            const id = 't' + Date.now().toString(36);
+            setTabs(p => { const n = [...p, { id, name: '프로젝트 ' + (p.length + 1) }]; return n; });
+            tabDocsRef.current[id] = null;
+            setActiveTabId(id);
+            resetToEmpty();
+        } finally { tabBusyRef.current = false; }
+    };
+    const closeTab = async (id) => {
+        if (tabs.length <= 1) { if (window.confirm('마지막 탭입니다. 내용을 비울까요?')) { resetToEmpty(); tabDocsRef.current[id] = null; } return; }
+        if (!window.confirm('이 탭을 닫을까요? 저장하지 않은 내용은 사라집니다.')) return;
+        delete tabDocsRef.current[id];
+        const rest = tabs.filter(t => t.id !== id);
+        setTabs(rest);
+        if (id === activeTabId) {
+            const target = rest[rest.length - 1];
+            setActiveTabId(target.id);
+            const doc = tabDocsRef.current[target.id];
+            if (doc) await restore(doc); else resetToEmpty();
+        }
     };
 
     // --- Server-side project storage (separate from local download / .emv file) ---
@@ -2785,6 +2833,18 @@ export default function App() {
         <div className="app-container">
             <audio ref={audioRef} style={{ display: 'none' }} />
             <video ref={videoElRef} muted playsInline style={{ display: 'none' }} />
+            <div className="doc-tabs" style={{ display: 'flex', alignItems: 'stretch', gap: 2, background: '#141422', borderBottom: '1px solid #2a2a3a', padding: '3px 6px 0', overflowX: 'auto', flexShrink: 0 }}>
+                {tabs.map(t => (
+                    <div key={t.id} onClick={() => switchTab(t.id)}
+                        onDoubleClick={() => { const n = window.prompt('탭 이름', t.name); if (n != null) setTabs(p => p.map(x => x.id === t.id ? { ...x, name: n || x.name } : x)); }}
+                        title="클릭: 전환 · 더블클릭: 이름변경"
+                        style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: '6px 6px 0 0', cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap', maxWidth: 180, background: t.id === activeTabId ? '#1e1e2e' : 'transparent', color: t.id === activeTabId ? '#fff' : '#9a9ab0', borderBottom: t.id === activeTabId ? '2px solid #7c8cff' : '2px solid transparent' }}>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.name}</span>
+                        <span onClick={e => { e.stopPropagation(); closeTab(t.id); }} title="탭 닫기" style={{ opacity: 0.6, fontSize: 13, lineHeight: 1 }}>✕</span>
+                    </div>
+                ))}
+                <button className="icon-btn" onClick={newTab} title="새 탭(프로젝트)" style={{ alignSelf: 'center', marginLeft: 2 }}><Plus size={14} /></button>
+            </div>
 
             {serverProjects !== null && <ProjectPicker title="서버에서 열기" items={serverProjects} onOpen={doServerOpen} onDelete={doServerDelete} onClose={() => setServerProjects(null)} />}
             {localProjects !== null && <ProjectPicker title="로컬에서 열기" items={localProjects} onOpen={doLocalOpen} onDelete={doLocalDelete} onClose={() => setLocalProjects(null)} />}
