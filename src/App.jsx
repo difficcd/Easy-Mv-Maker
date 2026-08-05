@@ -2146,6 +2146,7 @@ export default function App() {
                     ctx.rotate(la.rot);
                     ctx.scale(la.sc, la.sc);
                     ctx.translate(-la.px, -la.py);
+                    if (la.shear) ctx.transform(1, 0, la.shear, 1, -la.shear * la.py, 0); // hair/cloth sway
                 }
 
                 const shouldMask = selection?.maskBitmapId && selection.cutId === ac.id && selection.sourceLayerId === l.id;

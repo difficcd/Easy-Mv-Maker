@@ -115,6 +115,11 @@ export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCaptur
                 X<input type="range" min="0" max="1" step="0.05" value={a.pivotX} onChange={e => updLayerAnim(cut.id, layer.id, { pivotX: +e.target.value })} style={{ width: 54 }} />
                 Y<input type="range" min="0" max="1" step="0.05" value={a.pivotY} onChange={e => updLayerAnim(cut.id, layer.id, { pivotY: +e.target.value })} style={{ width: 54 }} />
             </div>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 10, color: '#8bd' }} title="머리카락·천처럼 계속 흔들리는 효과. 기준점 Y를 위(0)로 두면 아래가 크게 흔들립니다.">
+                <span style={{ width: 24 }}>흔들</span>
+                <span>강도</span><input type="range" min="0" max="40" step="1" value={a.swayAmount || 0} onChange={e => updLayerAnim(cut.id, layer.id, { swayAmount: +e.target.value })} style={{ width: 60 }} />
+                <span>속도</span><input type="range" min="0.2" max="4" step="0.1" value={a.swaySpeed || 1} disabled={!(a.swayAmount > 0)} onChange={e => updLayerAnim(cut.id, layer.id, { swaySpeed: +e.target.value })} style={{ width: 54 }} />
+            </div>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 10, color: '#aaa' }}>
                 <span style={{ width: 24 }}>경로</span>
                 <button className="small-btn" style={{ background: pathCapture && pathCapture.layerId === layer.id ? '#7c8cff' : undefined }}

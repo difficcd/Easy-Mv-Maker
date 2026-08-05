@@ -755,7 +755,7 @@ export function computeCutAnim(ac, time, cw = CANVAS_W, ch = CANVAS_H) {
     return { alpha: Math.max(0, alpha), sx, sy, tx, ty };
 }
 
-export const LAYER_ANIM_DEFAULT = { mode: 'progress', speed: 1, count: 0, tx: 0, ty: 0, rot: 0, scale: 0, pivotX: 0.5, pivotY: 0.5, path: null, ease: 'linear', easePower: 2 };
+export const LAYER_ANIM_DEFAULT = { mode: 'progress', speed: 1, count: 0, tx: 0, ty: 0, rot: 0, scale: 0, pivotX: 0.5, pivotY: 0.5, path: null, ease: 'linear', easePower: 2, swayAmount: 0, swaySpeed: 1 };
 
 // Easing applied to a 0..1 progress. type: linear | in (slow→fast) | out (fast→slow)
 // | inout. power (>=1) is the user-adjustable strength/weight.
@@ -803,8 +803,12 @@ export function computeLayerAnim(layer, ac, time, cw = CANVAS_W, ch = CANVAS_H) 
         const p0 = a.path[0], pt = samplePath(a.path, s);
         tx += pt.x - p0.x; ty += pt.y - p0.y;
     }
-    if (tx === 0 && ty === 0 && rot === 0 && sc === 1) return null;
-    return { tx, ty, rot, sc, px: (a.pivotX ?? 0.5) * cw, py: (a.pivotY ?? 0.5) * ch };
+    // Continuous sway (hair/cloth): a horizontal shear that oscillates by absolute time and grows
+    // toward the far end from the pivot — anchor the pivot at the top of the hair for a natural swing.
+    const sway = a.swayAmount || 0;
+    const shear = sway ? (sway / 100) * Math.sin(2 * Math.PI * (a.swaySpeed || 1) * time) : 0;
+    if (tx === 0 && ty === 0 && rot === 0 && sc === 1 && shear === 0) return null;
+    return { tx, ty, rot, sc, shear, px: (a.pivotX ?? 0.5) * cw, py: (a.pivotY ?? 0.5) * ch };
 }
 
 export function flattenLayersInUiOrder(layers, parentId = null, out = []) {
