@@ -2983,14 +2983,14 @@ export default function App() {
                                 if (!s) return;
                                 const m = s.match(/(\d+)\s*[xX*,\s]\s*(\d+)/);
                                 if (!m) { alert('예: 1920x1080'); return; }
-                                setCanvasSize({ w: Math.max(64, Math.min(4096, +m[1])), h: Math.max(64, Math.min(4096, +m[2])) });
+                                setCanvasSize({ w: Math.max(64, Math.min(8192, +m[1])), h: Math.max(64, Math.min(8192, +m[2])) });
                             } else {
                                 const [w, h] = e.target.value.split('x').map(Number);
                                 setCanvasSize({ w, h });
                             }
                         }}>
-                        {['854x480', '1280x720', '1920x1080', '2560x1440', '1080x1080', '1080x1920'].map(v => <option key={v} value={v}>{v}</option>)}
-                        {!['854x480', '1280x720', '1920x1080', '2560x1440', '1080x1080', '1080x1920'].includes(`${CANVAS_W}x${CANVAS_H}`) && <option value={`${CANVAS_W}x${CANVAS_H}`}>{CANVAS_W}x{CANVAS_H}</option>}
+                        {['1280x720', '1920x1080', '2560x1440', '3840x2160', '1080x1080', '2048x2048', '1080x1920', '2160x3840'].map(v => <option key={v} value={v}>{v}{v === '3840x2160' ? ' (4K)' : ''}</option>)}
+                        {!['1280x720', '1920x1080', '2560x1440', '3840x2160', '1080x1080', '2048x2048', '1080x1920', '2160x3840'].includes(`${CANVAS_W}x${CANVAS_H}`) && <option value={`${CANVAS_W}x${CANVAS_H}`}>{CANVAS_W}x{CANVAS_H}</option>}
                         <option value="custom">직접 입력…</option>
                     </select>
                     <button className="button button-primary" onClick={handleExport} style={{ display: 'flex', alignItems: 'center', gap: 5, height: 34 }}><Download size={15} /> Export</button>

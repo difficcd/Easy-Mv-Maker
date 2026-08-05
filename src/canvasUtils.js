@@ -252,9 +252,9 @@ function chaikin(pts) {
 // caller renders the result as a Catmull-Rom spline, so the final curve is genuinely smooth.
 function smoothPoints(pts, passes) {
     if (!pts || pts.length < 3) return pts || [];
-    let cur = resamplePts(pts, 2.5);
+    let cur = resamplePts(pts, 2);
     if (cur.length < 3) cur = pts.slice();
-    const iters = passes != null ? passes : 2;
+    const iters = passes != null ? passes : 3; // one more corner-cut pass = smoother
     for (let k = 0; k < iters; k++) cur = chaikin(cur);
     return cur;
 }
