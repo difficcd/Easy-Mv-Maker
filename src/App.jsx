@@ -1852,6 +1852,10 @@ export default function App() {
             italic: !!textEdit.italic,
             align: textEdit.align || 'left',
             lineHeight: textEdit.lineHeight ?? 1.25,
+            letterSpacing: textEdit.letterSpacing ?? 0,
+            shadow: !!textEdit.shadow,
+            shadowColor: textEdit.shadowColor || 'rgba(0,0,0,0.5)',
+            shadowBlur: textEdit.shadowBlur ?? 6,
         };
         setCuts(p => p.map(c => {
             if (c.id !== textEdit.cutId) return c;
@@ -1892,6 +1896,10 @@ export default function App() {
             italic: !!t.italic,
             align: t.align || 'left',
             lineHeight: t.lineHeight ?? 1.25,
+            letterSpacing: t.letterSpacing ?? 0,
+            shadow: !!t.shadow,
+            shadowColor: t.shadowColor || 'rgba(0,0,0,0.5)',
+            shadowBlur: t.shadowBlur ?? 6,
         });
     };
 
@@ -2195,7 +2203,9 @@ export default function App() {
                 ctx.textBaseline = 'top';
                 ctx.textAlign = t.align || 'left';
                 ctx.font = textFontOf(t);
+                try { ctx.letterSpacing = `${t.letterSpacing || 0}px`; } catch { }
                 const lines = String(t.text ?? '').split('\n');
+                if (t.shadow) { ctx.shadowColor = t.shadowColor || 'rgba(0,0,0,0.5)'; ctx.shadowBlur = t.shadowBlur ?? 6; ctx.shadowOffsetX = t.shadowDX ?? 2; ctx.shadowOffsetY = t.shadowDY ?? 2; }
                 if (t.outline) {
                     ctx.lineJoin = 'round'; ctx.lineWidth = Math.max(2, fontSize / 6);
                     ctx.strokeStyle = t.outlineColor || '#ffffff';
@@ -2203,7 +2213,10 @@ export default function App() {
                 }
                 for (let i = 0; i < lines.length; i++) {
                     ctx.fillText(lines[i], t.x ?? 0, (t.y ?? 0) + i * lineHeight);
+                    if (i === 0 && t.shadow) { ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0; } // shadow once, not per line stack
                 }
+                try { ctx.letterSpacing = '0px'; } catch { }
+                ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
                 ctx.textAlign = 'left';
                 ctx.globalAlpha = 1.0;
             }
@@ -3197,6 +3210,14 @@ export default function App() {
                                         <input type="checkbox" checked={!!textEdit.outline} onChange={e => setTextEdit(te => te ? ({ ...te, outline: e.target.checked }) : te)} />테두리
                                     </label>
                                     {textEdit.outline && <input type="color" value={textEdit.outlineColor || '#ffffff'} onChange={e => setTextEdit(te => te ? ({ ...te, outlineColor: e.target.value }) : te)} className="text-editor-color" title="테두리 색" />}
+                                    <select className="time-input" style={{ width: 58 }} title="자간(글자 간격)" value={textEdit.letterSpacing ?? 0}
+                                        onChange={e => setTextEdit(te => te ? ({ ...te, letterSpacing: +e.target.value }) : te)}>
+                                        {[-2, 0, 1, 2, 4, 8, 12].map(v => <option key={v} value={v}>자간{v}</option>)}
+                                    </select>
+                                    <label style={{ fontSize: 11, color: '#aaa', display: 'flex', alignItems: 'center', gap: 3 }} title="그림자">
+                                        <input type="checkbox" checked={!!textEdit.shadow} onChange={e => setTextEdit(te => te ? ({ ...te, shadow: e.target.checked }) : te)} />그림자
+                                    </label>
+                                    {textEdit.shadow && <input type="color" value={(textEdit.shadowColor || '#000000').startsWith('#') ? textEdit.shadowColor : '#000000'} onChange={e => setTextEdit(te => te ? ({ ...te, shadowColor: e.target.value }) : te)} className="text-editor-color" title="그림자 색" />}
                                     <div style={{ flex: 1 }} />
                                     <button className="button button-primary" onClick={commitText} style={{ height: 28, padding: '0 10px' }}>완료</button>
                                     <button className="button" onClick={cancelText} style={{ height: 28, padding: '0 10px' }}>취소</button>
