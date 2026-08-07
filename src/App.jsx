@@ -17,7 +17,6 @@ const PEN_TYPES = [
     { id: 'pencil', label: '연필', Icon: PenLine },
     { id: 'soft', label: '에어', Icon: Cloud },
     { id: 'marker', label: 'Marker', Icon: Pen },
-    { id: 'rough', label: '자글', Icon: Waves },
     { id: 'line', label: '직선', Icon: Minus },
     { id: 'curve', label: '곡선', Icon: Spline },
     { id: 'mosaic', label: '모자이크', Icon: Grid3x3 },
@@ -84,6 +83,7 @@ export default function App() {
     const [playbackRate, setPlaybackRate] = useState(1);
     const [currentTime, setCurrentTime] = useState(0);
     const [rightW, setRightW] = useState(270);
+    const [leftW, setLeftW] = useState(96);
     const [timelineH, setTimelineH] = useState(240);
     const [showLeft, setShowLeft] = useState(true);
     const [showRight, setShowRight] = useState(true);
@@ -164,7 +164,9 @@ export default function App() {
     const liveCanvasRef = useRef(null);   // overlay for the in-progress stroke (drawn without touching layer state)
     const liveStrokeRef = useRef(null);   // the stroke currently being drawn
     const liveClearTokRef = useRef(0);
+    const liveClearPendingRef = useRef(false); // 커밋 후, 레이어 캐시가 새 선을 그린 뒤 오버레이를 지움 (깜빡임/사라짐 방지)
     const lineStartRef = useRef(null);    // 직선 도구 시작점
+    const drawTargetLayerRef = useRef(null); // 이번 스트로크를 커밋할 실제 레이어 id (활성 레이어 무효화 대비)
     const curveAnchorsRef = useRef(null); // 곡선 도구: 탭으로 찍은 앵커점들
     const curveDraggingRef = useRef(false); // 곡선 앵커를 방금 찍고 드래그로 미세조정 중
     const [curvePts, setCurvePts] = useState(0); // 곡선 앵커 개수 (완료/취소 바 표시용)
@@ -327,6 +329,34 @@ export default function App() {
     const isDraggingOrResizingRef = useRef(false);
 
     const updLayers = (cutId, fn) => setCuts(p => p.map(c => c.id === cutId ? { ...c, ...fn(c) } : c));
+
+    // 그릴 실제 레이어 결정: 활성 레이어가 폴더/없음이면 보이는 최상단 그리기 레이어로 대체.
+    // (활성이 '숨긴 레이어'면 그대로 두되, 커밋 시 자동으로 다시 보이게 함 → 그린 선이 사라지지 않음)
+    const resolveDrawLayer = (cut) => {
+        if (!cut) return null;
+        const a = cut.layers.find(l => l.id === cut.activeLayerId);
+        if (a && a.type === 'layer') return a;
+        const drawables = flattenLayersInUiOrder(cut.layers); // 보이는 leaf 레이어들
+        if (drawables.length) return drawables[drawables.length - 1];
+        return cut.layers.find(l => l.type === 'layer') || null;
+    };
+    // 스트로크를 대상 레이어에 커밋 + 그 레이어와 상위 폴더들을 강제로 보이게 → 결과가 항상 화면에 보임.
+    const commitStrokeToLayer = (cutId, layerId, st) => {
+        updLayers(cutId, c => {
+            const byId = new Map(c.layers.map(l => [l.id, l]));
+            const reveal = new Set([layerId]);
+            let cur = byId.get(layerId);
+            while (cur && cur.parentId != null) { reveal.add(cur.parentId); cur = byId.get(cur.parentId); }
+            return {
+                activeLayerId: layerId,
+                layers: c.layers.map(l => {
+                    if (l.id === layerId) return { ...l, visible: true, strokes: [...l.strokes, st] };
+                    if (reveal.has(l.id)) return { ...l, visible: true };
+                    return l;
+                }),
+            };
+        });
+    };
 
     const cancelSelection = () => {
         setSelection(null);
@@ -619,6 +649,7 @@ export default function App() {
         const mv = (e) => {
             // Relative to grab point so the panel doesn't jump on first move (precise drag).
             if (splitter.type === 'right') setRightW(Math.max(200, Math.min(600, splitter.startW + (splitter.startX - e.clientX))));
+            else if (splitter.type === 'left') setLeftW(Math.max(72, Math.min(360, splitter.startW + (e.clientX - splitter.startX))));
             else if (splitter.type === 'bottom') setTimelineH(Math.max(100, Math.min(600, splitter.startH + (splitter.startY - e.clientY))));
         };
         const up = () => setSplitter(null);
@@ -1362,6 +1393,8 @@ export default function App() {
         setCuts(p => p.map(c => c.id === cutId ? { ...c, activeLayerId: layerId } : c));
     };
     const handleToggleFolder = (e, cutId, fid) => { e.stopPropagation(); updLayers(cutId, c => ({ layers: c.layers.map(l => l.id === fid ? { ...l, collapsed: !l.collapsed } : l) })); };
+    // 자글자글 효과: 레이어의 이미 그려진 선들을 흔들어줌. 클릭마다 끔→약→강 순환 (비파괴적).
+    const cycleRoughen = (e, cutId, layerId) => { e.stopPropagation(); updLayers(cutId, c => ({ layers: c.layers.map(l => l.id === layerId ? { ...l, roughen: !l.roughen ? 2.4 : (l.roughen < 4 ? 5 : 0) } : l) })); };
 
     const onLayerDragStart = (e, cutId, layerId) => { e.stopPropagation(); setDragLayerInfo({ cutId, layerId }); e.dataTransfer.effectAllowed = 'move'; };
     const onLayerDragOver = (e, targetId, targetType) => {
@@ -1380,7 +1413,12 @@ export default function App() {
             const dragged = { ...layers[di] }; layers.splice(di, 1);
             const tl = layers.find(l => l.id === targetId); if (!tl) return c;
             if (position === 'inside' && tl.type === 'folder') {
-                if (dragged.type === 'folder') return c;
+                // 중첩 허용하되, 폴더를 자기 자신/자손 안으로 넣는 순환은 금지.
+                if (dragged.type === 'folder') {
+                    if (targetId === dragged.id) return c;
+                    let cur = tl;
+                    while (cur && cur.parentId != null) { if (cur.parentId === dragged.id) return c; cur = layers.find(l => l.id === cur.parentId); }
+                }
                 dragged.parentId = targetId;
                 let ii = layers.findIndex(l => l.id === targetId) + 1;
                 for (let i = ii; i < layers.length; i++) { if (layers[i].parentId === targetId) ii = i + 1; else break; }
@@ -1444,10 +1482,9 @@ export default function App() {
         curveAnchorsRef.current = null; curveDraggingRef.current = false; setCurvePts(0);
         if (pts && pts.length >= 2) {
             const st = curveStrokeFromAnchors(pts);
-            updLayers(currentCutId, c => ({ layers: c.layers.map(l => l.id === c.activeLayerId ? { ...l, strokes: [...l.strokes, st] } : l) }));
-            // 레이어가 다시 그려진 뒤 오버레이를 지워 깜빡임 방지.
-            const tok = ++liveClearTokRef.current;
-            setTimeout(() => { if (liveClearTokRef.current === tok) { const lc = liveCanvasRef.current; if (lc) lc.getContext('2d').clearRect(0, 0, lc.width, lc.height); } }, 90);
+            const mc = canvasRef.current; if (mc) drawStrokesOnCtx(mc.getContext('2d'), [st], false, bitmapStoreRef.current);
+            const lc = liveCanvasRef.current; if (lc) lc.getContext('2d').clearRect(0, 0, lc.width, lc.height);
+            commitStrokeToLayer(currentCutId, drawTargetLayerRef.current || (cuts.find(c => c.id === currentCutId)?.activeLayerId), st);
         } else {
             const lc = liveCanvasRef.current; if (lc) lc.getContext('2d').clearRect(0, 0, lc.width, lc.height);
         }
@@ -1693,8 +1730,10 @@ export default function App() {
             return;
         }
         const currentCut = cuts.find(c => c.id === currentCutId);
-        const activeLayer = currentCut?.layers.find(l => l.id === currentCut.activeLayerId);
+        // 활성 레이어가 폴더/숨김/무효여도 그릴 수 있는 실제 레이어로 대체 → 그린 선이 반드시 남고 보임.
+        const activeLayer = resolveDrawLayer(currentCut);
         if (!activeLayer) return;
+        drawTargetLayerRef.current = activeLayer.id;
 
         if (textEdit) return;
 
@@ -1827,7 +1866,7 @@ export default function App() {
                 // Eraser must composite against the layer, so it stays on the layer-write path.
                 const newStroke = { id: Date.now(), tool, color, opacity, size: eraserSize, points: [pos] };
                 updLayers(currentCutId, c => ({
-                    layers: c.layers.map(l => l.id === c.activeLayerId ? { ...l, strokes: [...l.strokes, newStroke] } : l)
+                    layers: c.layers.map(l => l.id === drawTargetLayerRef.current ? { ...l, strokes: [...l.strokes, newStroke] } : l)
                 }));
                 break;
             }
@@ -1951,7 +1990,7 @@ export default function App() {
                 // Eraser: layer-write path (needs to composite against the layer).
                 updLayers(currentCutId, c => ({
                     layers: c.layers.map(l => {
-                        if (l.id !== c.activeLayerId) return l;
+                        if (l.id !== drawTargetLayerRef.current) return l;
                         const newStrokes = [...l.strokes];
                         const currentStroke = newStrokes[newStrokes.length - 1];
                         if (currentStroke && currentStroke.tool !== 'paste' && currentStroke.tool !== 'fill') {
@@ -1982,8 +2021,7 @@ export default function App() {
             try { if (activePointerIdRef.current !== null) canvasRef.current?.releasePointerCapture(activePointerIdRef.current); } catch { }
             activePointerIdRef.current = null;
             applyMosaic(r);
-            const tok = ++liveClearTokRef.current;
-            setTimeout(() => { if (liveClearTokRef.current === tok) { const lc = liveCanvasRef.current; if (lc) lc.getContext('2d').clearRect(0, 0, lc.width, lc.height); } }, 90);
+            liveClearPendingRef.current = true;
             return;
         }
         // Finish recording a motion path → store it on the target layer's animation.
@@ -2006,9 +2044,13 @@ export default function App() {
             isDrawing.current = false;
             try { if (activePointerIdRef.current !== null) canvasRef.current?.releasePointerCapture(activePointerIdRef.current); } catch { }
             activePointerIdRef.current = null;
-            if (st.points.length) updLayers(currentCutId, c => ({ layers: c.layers.map(l => l.id === c.activeLayerId ? { ...l, strokes: [...l.strokes, st] } : l) }));
-            const tok = ++liveClearTokRef.current;
-            setTimeout(() => { if (liveClearTokRef.current === tok && !liveStrokeRef.current) { const lc = liveCanvasRef.current; if (lc) lc.getContext('2d').clearRect(0, 0, lc.width, lc.height); } }, 90);
+            if (st.points.length) {
+                // 그린 선을 메인 캔버스에 즉시 굽고(overlay와 동일 좌표) 오버레이를 바로 지움 →
+                // 상태 반영/리페인트 타이밍과 무관하게 선이 절대 사라지지 않음. 이후 정상 리페인트가 덮어씀(동일 결과).
+                const mc = canvasRef.current; if (mc) drawStrokesOnCtx(mc.getContext('2d'), [st], false, bitmapStoreRef.current);
+                const lc = liveCanvasRef.current; if (lc) lc.getContext('2d').clearRect(0, 0, lc.width, lc.height);
+                commitStrokeToLayer(currentCutId, drawTargetLayerRef.current, st);
+            } else { const lc = liveCanvasRef.current; if (lc) lc.getContext('2d').clearRect(0, 0, lc.width, lc.height); }
             return;
         }
         selectionDragRef.current = null;
@@ -2223,7 +2265,7 @@ export default function App() {
                 // Cheap change signature instead of JSON.stringify(strokes): strokes are only
                 // appended/replaced in this app, so length + last-stroke id/points/tool is enough.
                 // Avoids O(n) stringify of a growing stroke on every drawing frame.
-                const layerStrokes = strokeSig(layer.strokes);
+                const layerStrokes = strokeSig(layer.strokes) + '|r' + (layer.roughen || 0);
                 if (!canvas || canvas.dataset.strokes !== layerStrokes) {
                     // Skip (don't cache a blank) if a frame isn't decoded yet — the prefetch effect
                     // decodes it and repaints. Do NOT request a decode here (would loop with tick).
@@ -2233,7 +2275,7 @@ export default function App() {
                     const newCanvas = canvas || document.createElement('canvas');
                     newCanvas.width = CANVAS_W;
                     newCanvas.height = CANVAS_H;
-                    drawStrokesOnCtx(newCanvas.getContext('2d'), layer.strokes, true, bitmapStoreRef.current);
+                    drawStrokesOnCtx(newCanvas.getContext('2d'), layer.strokes, true, bitmapStoreRef.current, { roughen: layer.roughen || 0 });
                     newCanvas.dataset.strokes = layerStrokes;
                     newCache[key] = newCanvas;
                     changed = true;
@@ -2321,7 +2363,7 @@ export default function App() {
     // Build it synchronously here instead of skipping; the ref map keeps it bounded.
     const ensureLayerCanvas = (cutId, layer) => {
         const key = layerKey(cutId, layer.id);
-        const sig = strokeSig(layer.strokes);
+        const sig = strokeSig(layer.strokes) + '|r' + (layer.roughen || 0);
         const cached = layerCanvasCache[key];
         if (cached && cached.dataset.strokes === sig) return cached;
         const map = fallbackCanvasRef.current;
@@ -2336,10 +2378,23 @@ export default function App() {
         const store = bitmapStoreRef.current;
         const missing = [];
         for (const st of safeArray(layer.strokes)) { if (st.tool === 'paste' && st.bitmapId) { const e = store.get(st.bitmapId); if (e && e.blob) { if (!e.imageBitmap && !e.imageData) missing.push(st.bitmapId); else if (e.imageBitmap) touchDecoded(st.bitmapId); } } }
-        if (missing.length) { if (isPlayingRef.current) requestFrameDecode(missing); return cached || hit || null; }
+        if (missing.length) {
+            if (isPlayingRef.current) requestFrameDecode(missing);
+            if (cached || hit) return cached || hit;
+            // 비트맵(영상 프레임 등)이 아직/영영 안 풀려도 레이어를 통째로 건너뛰지 않는다.
+            // 통째로 건너뛰면 같은 레이어에 그린 펜 선까지 사라지고 화면이 하얘짐(서버 asset 불가 시 특히).
+            // 가능한 스트로크만 먼저 그려두고, sig를 '미완성'으로 표시해 디코드 후 다시 그리게 함.
+            const part = document.createElement('canvas');
+            part.width = CANVAS_W; part.height = CANVAS_H;
+            drawStrokesOnCtx(part.getContext('2d'), layer.strokes, true, store, { roughen: layer.roughen || 0 });
+            part.dataset.strokes = sig + '|miss' + missing.length;
+            map.delete(key); map.set(key, part);
+            while (map.size > 24) map.delete(map.keys().next().value);
+            return part;
+        }
         const cnv = hit || document.createElement('canvas');
         cnv.width = CANVAS_W; cnv.height = CANVAS_H;
-        drawStrokesOnCtx(cnv.getContext('2d'), layer.strokes, true, bitmapStoreRef.current);
+        drawStrokesOnCtx(cnv.getContext('2d'), layer.strokes, true, bitmapStoreRef.current, { roughen: layer.roughen || 0 });
         cnv.dataset.strokes = sig;
         map.delete(key); map.set(key, cnv); // re-insert = most recently used
         while (map.size > 24) map.delete(map.keys().next().value);
@@ -2628,6 +2683,15 @@ export default function App() {
             ctx.setLineDash([]);
         }
     }, [paintFrame, cuts, currentCutId, isPlaying, currentTime, lassoPoints, selection, selectedText, animLayer]);
+
+    // 라이브 오버레이 클리어를 타이머가 아니라 "레이어 캐시가 갱신된 뒤"로 확정 → 커밋한 선이
+    // 메인 캔버스에 그려진 다음에만 오버레이를 지워, 컴퓨터/속도와 무관하게 선이 사라지지 않음.
+    useEffect(() => {
+        if (liveClearPendingRef.current && !isDrawing.current && !liveStrokeRef.current) {
+            liveClearPendingRef.current = false;
+            const lc = liveCanvasRef.current; if (lc) lc.getContext('2d').clearRect(0, 0, lc.width, lc.height);
+        }
+    }, [layerCanvasCache]);
 
     const seekToClientX = (clientX) => {
         const el = timelineRef.current; if (!el) return;
@@ -3061,6 +3125,12 @@ export default function App() {
                         </button>
                         <span className="layer-name">{layer.name}</span>
                         {!isFolder && (
+                            <button className="icon-btn" style={{ color: layer.roughen ? '#e0a84e' : undefined }} title={layer.roughen ? `자글자글 효과 ${layer.roughen < 4 ? '약' : '강'} (클릭: 순환)` : '자글자글 효과 주기 (이미 그린 선)'}
+                                onClick={e => cycleRoughen(e, cut.id, layer.id)}>
+                                <Waves size={11} />
+                            </button>
+                        )}
+                        {!isFolder && (
                             <button className="icon-btn" style={{ color: layer.anim ? '#7c8cff' : undefined }} title="파츠 애니메이션"
                                 onClick={e => { e.stopPropagation(); setAnimLayer(a => (a && a.cutId === cut.id && a.layerId === layer.id) ? null : { cutId: cut.id, layerId: layer.id }); }}>
                                 <Film size={11} />
@@ -3086,19 +3156,6 @@ export default function App() {
         <div className="app-container">
             <audio ref={audioRef} style={{ display: 'none' }} />
             <video ref={videoElRef} muted playsInline style={{ display: 'none' }} />
-            <div className="doc-tabs" style={{ display: 'flex', alignItems: 'stretch', gap: 2, background: '#141422', borderBottom: '1px solid #2a2a3a', padding: '3px 6px 0', overflowX: 'auto', flexShrink: 0 }}>
-                {tabs.map(t => (
-                    <div key={t.id} onClick={() => switchTab(t.id)}
-                        onDoubleClick={() => { const n = window.prompt('탭 이름', t.name); if (n != null) setTabs(p => p.map(x => x.id === t.id ? { ...x, name: n || x.name } : x)); }}
-                        title="클릭: 전환 · 더블클릭: 이름변경"
-                        style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: '6px 6px 0 0', cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap', maxWidth: 180, background: t.id === activeTabId ? '#1e1e2e' : 'transparent', color: t.id === activeTabId ? '#fff' : '#9a9ab0', borderBottom: t.id === activeTabId ? '2px solid #7c8cff' : '2px solid transparent' }}>
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.name}</span>
-                        <span onClick={e => { e.stopPropagation(); closeTab(t.id); }} title="탭 닫기" style={{ opacity: 0.6, fontSize: 13, lineHeight: 1 }}>✕</span>
-                    </div>
-                ))}
-                <button className="icon-btn" onClick={newTab} title="새 탭(프로젝트)" style={{ alignSelf: 'center', marginLeft: 2 }}><Plus size={14} /></button>
-            </div>
-
             {serverProjects !== null && <ProjectPicker title="서버에서 열기" items={serverProjects} onOpen={doServerOpen} onDelete={doServerDelete} onClose={() => setServerProjects(null)} />}
             {localProjects !== null && <ProjectPicker title="로컬에서 열기" items={localProjects} onOpen={doLocalOpen} onDelete={doLocalDelete} onClose={() => setLocalProjects(null)} />}
             {videoBusy?.fetching && (
@@ -3368,9 +3425,23 @@ export default function App() {
                 <button className="button button-primary" onClick={handleExport} style={{ display: 'flex', alignItems: 'center', gap: 5, height: 30 }}><Download size={15} /> Export</button>
             </div>
 
+            {/* 프로젝트(문서) 탭 바 — 파일/미디어 메뉴 아래 */}
+            <div className="doc-tabs" style={{ display: 'flex', alignItems: 'stretch', gap: 2, background: '#141422', borderBottom: '1px solid #2a2a3a', padding: '3px 6px 0', overflowX: 'auto', flexShrink: 0 }}>
+                {tabs.map(t => (
+                    <div key={t.id} onClick={() => switchTab(t.id)}
+                        onDoubleClick={() => { const n = window.prompt('탭 이름', t.name); if (n != null) setTabs(p => p.map(x => x.id === t.id ? { ...x, name: n || x.name } : x)); }}
+                        title="클릭: 전환 · 더블클릭: 이름변경"
+                        style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: '6px 6px 0 0', cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap', maxWidth: 180, background: t.id === activeTabId ? '#1e1e2e' : 'transparent', color: t.id === activeTabId ? '#fff' : '#9a9ab0', borderBottom: t.id === activeTabId ? '2px solid #7c8cff' : '2px solid transparent' }}>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.name}</span>
+                        <span onClick={e => { e.stopPropagation(); closeTab(t.id); }} title="탭 닫기" style={{ opacity: 0.6, fontSize: 13, lineHeight: 1 }}>✕</span>
+                    </div>
+                ))}
+                <button className="icon-btn" onClick={newTab} title="새 탭(프로젝트)" style={{ alignSelf: 'center', marginLeft: 2 }}><Plus size={14} /></button>
+            </div>
+
             <div className="main-content">
                 {showLeft && (
-                    <div className="toolbar" style={{ width: 96, flexShrink: 0 }}>
+                    <div className="toolbar" style={{ width: leftW, flexShrink: 0 }}>
                         <button onClick={() => setShowLeft(false)} className="icon-btn" style={{ width: '100%', padding: '4px 0', marginBottom: 4 }}><ChevronLeft size={14} /></button>
                         <div className="tool-grid">
                             {TOOL_TYPES.map(pt => (
@@ -3468,6 +3539,7 @@ export default function App() {
                         </div>
                     </div>
                 )}
+                {showLeft && <div className="splitter-v" style={{ touchAction: 'none' }} title="드래그로 도구 패널 너비 조절" onPointerDown={e => { e.currentTarget.setPointerCapture?.(e.pointerId); setSplitter({ type: 'left', startX: e.clientX, startW: leftW }); }} />}
                 {!showLeft && <button onClick={() => setShowLeft(true)} className="icon-btn" style={{ width: 24, alignSelf: 'stretch', padding: 0, borderRadius: 0, background: '#1e1e2e', border: 'none', borderRight: '1px solid #333' }}><ChevronRight size={14} /></button>}
 
                 <div className="canvas-area" ref={canvasAreaRef} style={{ touchAction: 'none', position: 'relative' }}
@@ -3495,7 +3567,9 @@ export default function App() {
                         <canvas ref={canvasRef} width={CANVAS_W} height={CANVAS_H}
                             onPointerDown={startDraw} onPointerMove={onDraw} onPointerUp={stopDraw} onPointerCancel={stopDraw} onPointerLeave={onPointerLeaveCanvas}
                             style={{ cursor: selection ? 'move' : tool === 'fill' ? 'cell' : tool === 'lasso' ? 'crosshair' : 'crosshair', touchAction: 'none' }} />
-                        <canvas ref={liveCanvasRef} width={CANVAS_W} height={CANVAS_H} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }} />
+                        {/* 라이브 오버레이는 반드시 투명해야 함. 전역 `canvas { background:#fff }` 규칙을
+                            그대로 받으면 메인 캔버스를 흰색으로 덮어 그림이 안 보이고, 커밋 시 선이 사라진 것처럼 보임. */}
+                        <canvas ref={liveCanvasRef} width={CANVAS_W} height={CANVAS_H} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', background: 'transparent', boxShadow: 'none' }} />
                         {selection && (
                             <div className="selection-actions">
                                 <button className="button button-primary" onClick={extractSelectionToPart} style={{ height: 30, padding: '0 10px' }} title="선택 영역을 별도 레이어(파츠)로 분리해 애니메이션">파츠로 분리</button>

@@ -365,10 +365,12 @@ function softStamp(r, g, b, radius) {
     return c;
 }
 
-export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null) {
+export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null, opts = {}) {
     if (clear) {
         ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
     }
+    // 레이어 자글 효과: 이미 그려진 선들을 렌더 시점에 흔들어줌 (비파괴적).
+    const layerRough = opts.roughen ? (typeof opts.roughen === 'number' ? opts.roughen : 2.4) : 0;
     strokes.forEach(s => {
         if (s.tool === 'text') {
             const fontSize = Math.max(6, Math.min(220, s.fontSize ?? 32));
@@ -466,6 +468,9 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null)
         const hasPressure = s.points.some(p => p.pressure !== undefined && p.pressure !== 0.5);
         const baseColor = s.color;
         const baseOpacity = s.opacity ?? 1;
+        // 자글: 'rough' 펜(개별) 또는 레이어 효과(layerRough)로 매끈한 경로를 흔든다.
+        const roughAmp = (s.tool === 'rough') ? (s.roughAmp ?? Math.max(1.5, s.size * 0.35)) : ((layerRough && s.tool !== 'eraser') ? layerRough : 0);
+        const smooth = (p) => { let sp = smoothPoints(p); if (roughAmp) sp = roughenPoints(sp, roughAmp, s.id || 0); return sp; };
         // Marker: draw the whole stroke opaque on a temp canvas, then composite once.
         // Compositing per-segment with a translucent multiply darkens every overlap,
         // which showed up as black dots at the joints under pressure rendering.
@@ -474,7 +479,7 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null)
             tmp.width = ctx.canvas.width; tmp.height = ctx.canvas.height;
             const tctx = tmp.getContext('2d');
             tctx.lineCap = 'round'; tctx.lineJoin = 'round'; tctx.strokeStyle = baseColor; tctx.fillStyle = baseColor;
-            const mp = smoothPoints(s.points);
+            const mp = smooth(s.points);
             const mw = mp.map((_, i) => hasPressure && mp.length > 1 ? s.size * pressureAt(mp, Math.max(1, i)) * 2 : s.size);
             smoothStroke(tctx, mp, mw, () => { });
             ctx.save();
@@ -491,7 +496,7 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null)
             const tmp = document.createElement('canvas'); tmp.width = ctx.canvas.width; tmp.height = ctx.canvas.height;
             const tctx = tmp.getContext('2d');
             tctx.lineCap = 'round'; tctx.lineJoin = 'round'; tctx.strokeStyle = baseColor; tctx.fillStyle = baseColor;
-            const pp = smoothPoints(s.points), pn = pp.length;
+            const pp = smooth(s.points), pn = pp.length;
             const pw = pp.map((_, idx) => { const i = Math.max(1, idx); const pr = hasPressure && pn > 1 ? pressureAt(pp, i) : 0.5; return s.size * (0.65 + 0.35 * Math.min(1, pr * 2)); });
             smoothStroke(tctx, pp, pw, (i) => { const pr = hasPressure && pn > 1 ? pressureAt(pp, Math.max(1, i)) : 0.5; tctx.globalAlpha = 0.5 + 0.5 * Math.min(1, pr * 2); });
             tctx.globalAlpha = 1; tctx.globalCompositeOperation = 'destination-in';
@@ -511,7 +516,7 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null)
             ctx.save();
             ctx.globalAlpha = baseOpacity;
             const put = (x, y) => ctx.drawImage(stamp, x - half, y - half);
-            const P = s.points;
+            const P = roughAmp ? roughenPoints(smoothPoints(s.points), roughAmp, s.id || 0) : s.points;
             if (P.length === 1) put(P[0].x, P[0].y);
             for (let i = 1; i < P.length; i++) {
                 const a = P[i - 1], c = P[i], d = Math.hypot(c.x - a.x, c.y - a.y);
@@ -527,9 +532,7 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null)
         ctx.globalCompositeOperation = isEraser ? 'destination-out' : 'source-over';
         ctx.strokeStyle = isEraser ? 'rgba(0,0,0,1)' : baseColor;
         ctx.fillStyle = ctx.strokeStyle;
-        let pts = smoothPoints(s.points);
-        // 자글 펜: 매끈한 경로를 흔들어 손그림 떨림. s.roughAmp/roughSeed로 세기·시드 조절.
-        if (s.tool === 'rough') pts = roughenPoints(pts, s.roughAmp ?? Math.max(1.5, s.size * 0.35), s.roughSeed ?? s.id ?? 0);
+        let pts = smooth(s.points);
         const n = pts.length;
         const widths = pts.map((_, idx) => {
             const i = Math.max(1, idx);
@@ -840,6 +843,7 @@ export function flattenLayersInUiOrder(layers, parentId = null, out = []) {
     const list = layers.filter(l => (l.parentId ?? null) === pid);
     for (const layer of list) {
         if (layer.type === 'folder') {
+            if (layer.visible === false) continue; // 숨긴 폴더는 하위 전체를 숨김 (중첩 포함)
             flattenLayersInUiOrder(layers, layer.id, out);
         } else {
             out.push(layer);

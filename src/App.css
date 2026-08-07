@@ -34,8 +34,9 @@ body {
     gap: 6px;
     border-bottom: 1px solid #2a2a3a;
     flex-shrink: 0;
-    overflow-x: auto;
-    overflow-y: hidden;
+    overflow: visible;
+    /* 드롭다운(파일/미디어)이 잘리지 않도록 overflow는 visible 유지.
+       항목은 미디어 메뉴로 묶어 짧으므로 가로 넘침은 거의 없음. */
 }
 
 /* 상단바 항목은 좁아져도 찌그러지지 않고, 넘치면 가로 스크롤 (글씨 깨짐 방지) */
