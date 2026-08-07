@@ -11,6 +11,11 @@ const ROT_OPTS = [-180, -135, -90, -45, -20, 0, 20, 45, 90, 135, 180];
 const SCALE_OPTS = [-80, -50, -30, -20, 0, 20, 30, 50, 100, 150, 200];
 const EASE_OPTS = [['linear', '일정'], ['in', '천천히→빠르게'], ['out', '빠르게→천천히'], ['inout', '천천-빠-천천']];
 const optionList = (vals, fmt) => vals.map(v => <option key={v} value={v}>{fmt ? fmt(v) : v}</option>);
+// Free numeric input (any value the user types), replacing the old fixed-value dropdowns.
+const NumIn = ({ value, onChange, step = 1, min, max, w = 56, title }) => (
+    <input type="number" className="time-input" title={title} value={value} step={step} min={min} max={max} style={{ width: w }}
+        onChange={e => { let v = parseFloat(e.target.value); if (isNaN(v)) v = 0; if (min != null) v = Math.max(min, v); if (max != null) v = Math.min(max, v); onChange(v); }} />
+);
 
 // Per-cut animation (in/out, deform, move, easing).
 export function CutAnimPanel({ cut, updCutAnim }) {
@@ -24,7 +29,7 @@ export function CutAnimPanel({ cut, updCutAnim }) {
                     <option value="none">없음</option><option value="fade">페이드</option><option value="scale">확대</option><option value="slide">슬라이드</option>
                 </select>
                 {a.inType === 'slide' && <select value={a.inDir} onChange={e => updCutAnim(cut.id, { inDir: e.target.value })} className="time-input" style={{ width: 50 }}><option value="up">↑</option><option value="down">↓</option><option value="left">←</option><option value="right">→</option></select>}
-                <select value={a.inDur} onChange={e => updCutAnim(cut.id, { inDur: +e.target.value })} className="time-input" style={{ width: 56 }} title="지속(초)">{optionList(DUR_OPTS, v => `${v}s`)}</select>
+                <NumIn value={a.inDur} onChange={v => updCutAnim(cut.id, { inDur: v })} step={0.1} min={0} title="지속(초)" />
             </div>
             <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                 <span style={{ fontSize: 10, width: 28, color: '#aaa', flexShrink: 0 }}>진출</span>
@@ -32,7 +37,7 @@ export function CutAnimPanel({ cut, updCutAnim }) {
                     <option value="none">없음</option><option value="fade">페이드</option><option value="scale">축소</option><option value="slide">슬라이드</option>
                 </select>
                 {a.outType === 'slide' && <select value={a.outDir} onChange={e => updCutAnim(cut.id, { outDir: e.target.value })} className="time-input" style={{ width: 50 }}><option value="up">↑</option><option value="down">↓</option><option value="left">←</option><option value="right">→</option></select>}
-                <select value={a.outDur} onChange={e => updCutAnim(cut.id, { outDur: +e.target.value })} className="time-input" style={{ width: 56 }} title="지속(초)">{optionList(DUR_OPTS, v => `${v}s`)}</select>
+                <NumIn value={a.outDur} onChange={v => updCutAnim(cut.id, { outDur: v })} step={0.1} min={0} title="지속(초)" />
             </div>
             <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                 <span style={{ fontSize: 10, width: 28, color: '#aaa', flexShrink: 0 }}>변형</span>
@@ -48,12 +53,12 @@ export function CutAnimPanel({ cut, updCutAnim }) {
                 <input type="range" min="0.2" max="6" step="0.1" value={a.deformSpeed} disabled={!a.deformReturn} onChange={e => updCutAnim(cut.id, { deformSpeed: +e.target.value })} style={{ flex: 1, minWidth: 0 }} />
                 <span style={{ fontSize: 10, width: 28, color: a.deformReturn ? '#aaa' : '#555', textAlign: 'right' }}>{(+a.deformSpeed).toFixed(1)}x</span>
                 <span style={{ fontSize: 10, color: a.deformReturn ? '#aaa' : '#555' }}>횟수</span>
-                <select value={a.deformCount} disabled={!a.deformReturn} onChange={e => updCutAnim(cut.id, { deformCount: +e.target.value })} className="time-input" style={{ width: 44 }} title="0 = 컷 내내">{optionList(COUNT_OPTS, v => v === 0 ? '∞' : v)}</select>
+                <NumIn value={a.deformCount} onChange={v => updCutAnim(cut.id, { deformCount: Math.round(v) })} min={0} w={44} title="횟수 (0 = 컷 내내)" />
             </div>
             <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                 <span style={{ fontSize: 10, width: 28, color: '#aaa', flexShrink: 0 }}>이동</span>
-                X<select value={a.moveX} onChange={e => updCutAnim(cut.id, { moveX: +e.target.value })} className="time-input" style={{ width: 60 }}>{optionList(MOVE_OPTS)}</select>
-                Y<select value={a.moveY} onChange={e => updCutAnim(cut.id, { moveY: +e.target.value })} className="time-input" style={{ width: 60 }}>{optionList(MOVE_OPTS)}</select>
+                X<NumIn value={a.moveX} onChange={v => updCutAnim(cut.id, { moveX: v })} w={62} title="가로 이동(px)" />
+                Y<NumIn value={a.moveY} onChange={v => updCutAnim(cut.id, { moveY: v })} w={62} title="세로 이동(px)" />
             </div>
             <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                 <label style={{ fontSize: 10, color: '#aaa', display: 'flex', alignItems: 'center', gap: 3 }}>
@@ -62,7 +67,7 @@ export function CutAnimPanel({ cut, updCutAnim }) {
                 <span style={{ fontSize: 10, color: a.moveReturn ? '#aaa' : '#555', marginLeft: 4 }}>속도</span>
                 <input type="range" min="0.2" max="6" step="0.1" value={a.moveSpeed} disabled={!a.moveReturn} onChange={e => updCutAnim(cut.id, { moveSpeed: +e.target.value })} style={{ flex: 1, minWidth: 0 }} />
                 <span style={{ fontSize: 10, color: a.moveReturn ? '#aaa' : '#555' }}>횟수</span>
-                <select value={a.moveCount} disabled={!a.moveReturn} onChange={e => updCutAnim(cut.id, { moveCount: +e.target.value })} className="time-input" style={{ width: 44 }} title="0 = 컷 내내">{optionList(COUNT_OPTS, v => v === 0 ? '∞' : v)}</select>
+                <NumIn value={a.moveCount} onChange={v => updCutAnim(cut.id, { moveCount: Math.round(v) })} min={0} w={44} title="횟수 (0 = 컷 내내)" />
             </div>
             <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                 <span style={{ fontSize: 10, width: 28, color: '#aaa', flexShrink: 0 }}>속도감</span>
@@ -85,14 +90,14 @@ export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCaptur
             </div>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 10, color: '#aaa' }}>
                 <span style={{ width: 24 }}>이동</span>
-                X<select value={a.tx} onChange={e => updLayerAnim(cut.id, layer.id, { tx: +e.target.value })} className="time-input" style={{ width: 58 }}>{optionList(MOVE_OPTS)}</select>
-                Y<select value={a.ty} onChange={e => updLayerAnim(cut.id, layer.id, { ty: +e.target.value })} className="time-input" style={{ width: 58 }}>{optionList(MOVE_OPTS)}</select>
+                X<NumIn value={a.tx} onChange={v => updLayerAnim(cut.id, layer.id, { tx: v })} title="가로 이동(px)" />
+                Y<NumIn value={a.ty} onChange={v => updLayerAnim(cut.id, layer.id, { ty: v })} title="세로 이동(px)" />
             </div>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 10, color: '#aaa' }}>
                 <span style={{ width: 24 }}>회전</span>
-                <select value={a.rot} onChange={e => updLayerAnim(cut.id, layer.id, { rot: +e.target.value })} className="time-input" style={{ width: 60 }}>{optionList(ROT_OPTS, v => `${v}°`)}</select>
+                <NumIn value={a.rot} onChange={v => updLayerAnim(cut.id, layer.id, { rot: v })} step={5} w={60} title="회전(도)" />
                 <span style={{ marginLeft: 6 }}>크기</span>
-                <select value={Math.round(a.scale * 100)} onChange={e => updLayerAnim(cut.id, layer.id, { scale: (+e.target.value) / 100 })} className="time-input" style={{ width: 64 }}>{optionList(SCALE_OPTS, v => `${v > 0 ? '+' : ''}${v}%`)}</select>
+                <NumIn value={Math.round(a.scale * 100)} onChange={v => updLayerAnim(cut.id, layer.id, { scale: v / 100 })} step={5} w={64} title="크기 변화(%)" />
             </div>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 10, color: '#aaa' }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
@@ -102,7 +107,7 @@ export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCaptur
                 <input type="range" min="0.2" max="6" step="0.1" value={a.speed} disabled={a.mode !== 'return'} onChange={e => updLayerAnim(cut.id, layer.id, { speed: +e.target.value })} style={{ flex: 1, minWidth: 0 }} />
                 <span style={{ width: 26, textAlign: 'right', color: a.mode === 'return' ? '#aaa' : '#555' }}>{(+a.speed).toFixed(1)}x</span>
                 <span style={{ color: a.mode === 'return' ? '#aaa' : '#555' }}>횟수</span>
-                <select value={a.count} disabled={a.mode !== 'return'} onChange={e => updLayerAnim(cut.id, layer.id, { count: +e.target.value })} className="time-input" style={{ width: 42 }} title="0 = 컷 내내">{optionList(COUNT_OPTS, v => v === 0 ? '∞' : v)}</select>
+                <NumIn value={a.count} onChange={v => updLayerAnim(cut.id, layer.id, { count: Math.round(v) })} min={0} w={44} title="횟수 (0 = 컷 내내)" />
             </div>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 10, color: '#aaa' }}>
                 <span style={{ width: 24 }}>속도감</span>
@@ -117,8 +122,8 @@ export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCaptur
             </div>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 10, color: '#8bd' }} title="머리카락·천처럼 계속 흔들리는 효과. 기준점 Y를 위(0)로 두면 아래가 크게 흔들립니다.">
                 <span style={{ width: 24 }}>흔들</span>
-                <span>강도</span><input type="range" min="0" max="40" step="1" value={a.swayAmount || 0} onChange={e => updLayerAnim(cut.id, layer.id, { swayAmount: +e.target.value })} style={{ width: 60 }} />
-                <span>속도</span><input type="range" min="0.2" max="4" step="0.1" value={a.swaySpeed || 1} disabled={!(a.swayAmount > 0)} onChange={e => updLayerAnim(cut.id, layer.id, { swaySpeed: +e.target.value })} style={{ width: 54 }} />
+                <span>강도</span><NumIn value={a.swayAmount || 0} onChange={v => updLayerAnim(cut.id, layer.id, { swayAmount: v })} min={0} w={50} title="흔들림 강도" />
+                <span>속도</span><NumIn value={a.swaySpeed || 1} onChange={v => updLayerAnim(cut.id, layer.id, { swaySpeed: v })} step={0.1} min={0.1} w={50} title="흔들림 속도" />
             </div>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 10, color: '#aaa' }}>
                 <span style={{ width: 24 }}>경로</span>

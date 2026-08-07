@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
-import { Play, Pause, Square, Plus, Trash2, Download, Upload, PenLine, Pen, Feather, Eraser, Droplets, Undo, Redo, Layers, Trash, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, FolderPlus, Folder, FolderOpen, Settings, Eye, EyeOff, Copy, CopyPlus, ClipboardPaste, GitBranch, Move, Type, Server, Cloud, CloudDownload, Film, Repeat } from 'lucide-react';
+import { Play, Pause, Square, Plus, Trash2, Download, Upload, PenLine, Pen, Feather, Eraser, Droplets, Undo, Redo, Layers, Trash, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, FolderPlus, Folder, FolderOpen, Settings, Eye, EyeOff, Copy, CopyPlus, ClipboardPaste, GitBranch, Move, Type, Server, Cloud, CloudDownload, Film, Repeat, Minus, Spline } from 'lucide-react';
 import './App.css';
 import { saveAutosave, loadAutosave, saveProject, loadProject, listProjects, deleteProject, autosaveKey } from './db';
 import { CutAnimPanel, LayerAnimPanel } from './AnimPanels';
@@ -17,6 +17,8 @@ const PEN_TYPES = [
     { id: 'pencil', label: '연필', Icon: PenLine },
     { id: 'soft', label: '에어', Icon: Cloud },
     { id: 'marker', label: 'Marker', Icon: Pen },
+    { id: 'line', label: '직선', Icon: Minus },
+    { id: 'curve', label: '곡선', Icon: Spline },
     { id: 'eraser', label: 'Eraser', Icon: Eraser },
     { id: 'fill', label: 'Fill', Icon: Droplets },
 ];
@@ -141,6 +143,10 @@ export default function App() {
     const liveCanvasRef = useRef(null);   // overlay for the in-progress stroke (drawn without touching layer state)
     const liveStrokeRef = useRef(null);   // the stroke currently being drawn
     const liveClearTokRef = useRef(0);
+    const lineStartRef = useRef(null);    // 직선 도구 시작점
+    const curveAnchorsRef = useRef(null); // 곡선 도구: 탭으로 찍은 앵커점들
+    const curveDraggingRef = useRef(false); // 곡선 앵커를 방금 찍고 드래그로 미세조정 중
+    const [curvePts, setCurvePts] = useState(0); // 곡선 앵커 개수 (완료/취소 바 표시용)
     const isDrawing = useRef(false);
     const reqRef = useRef(null);
     const isPlayingRef = useRef(false);
@@ -390,6 +396,8 @@ export default function App() {
     const handleSetTool = (newTool) => {
         if (selection) return;
         if (textEdit) return;
+        // 곡선 작성 중 다른 도구로 바꾸면 자동 확정.
+        if (curveAnchorsRef.current && newTool !== 'curve') commitCurve();
         setTool(newTool);
     };
 
@@ -1369,6 +1377,58 @@ export default function App() {
         ctx.clearRect(0, 0, lc.width, lc.height);
         if (liveStrokeRef.current) drawStrokesOnCtx(ctx, [liveStrokeRef.current], false, bitmapStoreRef.current);
     };
+    // 곡선 도구: 찍은 앵커들을 지나는 Catmull-Rom 스플라인으로 촘촘히 샘플링.
+    const catmullThrough = (pts, seg = 16) => {
+        if (!pts || pts.length < 3) return (pts || []).slice();
+        const at = i => pts[Math.max(0, Math.min(pts.length - 1, i))];
+        const out = [];
+        for (let i = 0; i < pts.length - 1; i++) {
+            const p0 = at(i - 1), p1 = at(i), p2 = at(i + 1), p3 = at(i + 2);
+            for (let t = 0; t < seg; t++) {
+                const s = t / seg, s2 = s * s, s3 = s2 * s;
+                const x = 0.5 * ((2 * p1.x) + (-p0.x + p2.x) * s + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * s2 + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * s3);
+                const y = 0.5 * ((2 * p1.y) + (-p0.y + p2.y) * s + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * s2 + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * s3);
+                const pr = (p1.pressure ?? 0.5) + ((p2.pressure ?? 0.5) - (p1.pressure ?? 0.5)) * s;
+                out.push({ x, y, pressure: pr });
+            }
+        }
+        out.push(at(pts.length - 1));
+        return out;
+    };
+    const curveStrokeFromAnchors = (pts) => ({ id: Date.now(), tool: 'brush', color, opacity, size: brushSize, points: catmullThrough(pts) });
+    const renderCurvePreview = () => {
+        const lc = liveCanvasRef.current; if (!lc) return;
+        const ctx = lc.getContext('2d');
+        ctx.clearRect(0, 0, lc.width, lc.height);
+        const pts = curveAnchorsRef.current || [];
+        if (pts.length >= 2) drawStrokesOnCtx(ctx, [curveStrokeFromAnchors(pts)], false, bitmapStoreRef.current);
+        ctx.save();
+        for (let i = 0; i < pts.length; i++) {
+            ctx.beginPath();
+            ctx.arc(pts[i].x, pts[i].y, 5, 0, Math.PI * 2);
+            ctx.fillStyle = i === 0 ? '#4ea1ff' : '#fff';
+            ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5;
+            ctx.fill(); ctx.stroke();
+        }
+        ctx.restore();
+    };
+    const commitCurve = () => {
+        const pts = curveAnchorsRef.current;
+        curveAnchorsRef.current = null; curveDraggingRef.current = false; setCurvePts(0);
+        if (pts && pts.length >= 2) {
+            const st = curveStrokeFromAnchors(pts);
+            updLayers(currentCutId, c => ({ layers: c.layers.map(l => l.id === c.activeLayerId ? { ...l, strokes: [...l.strokes, st] } : l) }));
+            // 레이어가 다시 그려진 뒤 오버레이를 지워 깜빡임 방지.
+            const tok = ++liveClearTokRef.current;
+            setTimeout(() => { if (liveClearTokRef.current === tok) { const lc = liveCanvasRef.current; if (lc) lc.getContext('2d').clearRect(0, 0, lc.width, lc.height); } }, 90);
+        } else {
+            const lc = liveCanvasRef.current; if (lc) lc.getContext('2d').clearRect(0, 0, lc.width, lc.height);
+        }
+    };
+    const cancelCurve = () => {
+        curveAnchorsRef.current = null; curveDraggingRef.current = false; setCurvePts(0);
+        const lc = liveCanvasRef.current; if (lc) lc.getContext('2d').clearRect(0, 0, lc.width, lc.height);
+    };
 
     // Touch navigation on the canvas (fingers never draw — palm rejection):
     //   1 finger  = pan the view,  2 fingers = pinch zoom (+ pan).
@@ -1653,6 +1713,20 @@ export default function App() {
             }
         }
 
+        if (tool === 'curve') {
+            // 곡선자: 탭으로 앵커를 찍고(누른 채 끌면 미세조정), 완료 버튼으로 확정.
+            activePointerIdRef.current = e.pointerId;
+            try { canvasRef.current?.setPointerCapture(e.pointerId); } catch { }
+            if (!curveAnchorsRef.current) curveAnchorsRef.current = [];
+            curveAnchorsRef.current.push({ x: pos.x, y: pos.y, pressure: pos.pressure });
+            curveDraggingRef.current = true;
+            isDrawing.current = true;
+            setCurvePts(curveAnchorsRef.current.length);
+            renderCurvePreview();
+            e.preventDefault();
+            return;
+        }
+
         activePointerIdRef.current = e.pointerId;
         try { canvasRef.current?.setPointerCapture(e.pointerId); } catch { }
         if (tool !== 'move' && tool !== 'text' && selectedText) setSelectedText(null);
@@ -1670,6 +1744,13 @@ export default function App() {
             case 'calligraphy': {
                 // Draw on the live overlay only — no layer-state writes per move (that was the lag).
                 liveStrokeRef.current = { id: Date.now(), tool, color, opacity, size: brushSize, points: [pos] };
+                renderLiveStroke();
+                break;
+            }
+            case 'line': {
+                // 직선자: 시작점을 고정하고 끝점만 따라옴 → 2점 직선.
+                lineStartRef.current = pos;
+                liveStrokeRef.current = { id: Date.now(), tool: 'brush', color, opacity, size: brushSize, points: [pos, { ...pos }] };
                 renderLiveStroke();
                 break;
             }
@@ -1730,6 +1811,12 @@ export default function App() {
 
         if (pathPtsRef.current) { pathPtsRef.current.push(pos); return; }
 
+        if (tool === 'curve' && curveDraggingRef.current && curveAnchorsRef.current) {
+            const a = curveAnchorsRef.current; a[a.length - 1] = { x: pos.x, y: pos.y, pressure: pos.pressure };
+            renderCurvePreview();
+            return;
+        }
+
         if (textDragRef.current) {
             const { cutId, textId, startPos, startText, clickToEdit } = textDragRef.current;
             const dx = pos.x - startPos.x;
@@ -1763,6 +1850,13 @@ export default function App() {
                 break;
             case 'move':
                 break;
+            case 'line': {
+                if (liveStrokeRef.current && lineStartRef.current) {
+                    liveStrokeRef.current.points = [lineStartRef.current, pos];
+                    renderLiveStroke();
+                }
+                break;
+            }
             case 'pen':
             case 'brush':
             case 'pencil':
@@ -1798,6 +1892,15 @@ export default function App() {
     };
 
     const stopDraw = () => {
+        // 곡선자: 앵커 하나 찍기/미세조정 끝 — 확정은 완료 버튼에서.
+        if (tool === 'curve' && curveDraggingRef.current) {
+            curveDraggingRef.current = false;
+            isDrawing.current = false;
+            try { if (activePointerIdRef.current !== null) canvasRef.current?.releasePointerCapture(activePointerIdRef.current); } catch { }
+            activePointerIdRef.current = null;
+            renderCurvePreview();
+            return;
+        }
         // Finish recording a motion path → store it on the target layer's animation.
         if (pathPtsRef.current) {
             const pts = pathPtsRef.current;
@@ -3210,6 +3313,13 @@ export default function App() {
                         <div style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', zIndex: 31, background: '#7c8cff', color: '#fff', fontSize: 12, padding: '6px 12px', borderRadius: 6, display: 'flex', gap: 8, alignItems: 'center' }}>
                             펜으로 이동 경로를 그리세요
                             <button className="button" style={{ height: 24, padding: '0 8px' }} onClick={() => setPathCapture(null)}>취소</button>
+                        </div>
+                    )}
+                    {tool === 'curve' && (
+                        <div style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', zIndex: 31, background: '#2a2a3a', color: '#fff', fontSize: 12, padding: '6px 12px', borderRadius: 6, display: 'flex', gap: 8, alignItems: 'center', border: '1px solid #444' }}>
+                            {curvePts === 0 ? '점을 찍어 곡선을 만드세요' : `앵커 ${curvePts}개 (누른 채 끌어 미세조정)`}
+                            <button className="button" style={{ height: 24, padding: '0 10px', background: '#4ea1ff' }} disabled={curvePts < 2} onClick={commitCurve}>완료</button>
+                            <button className="button" style={{ height: 24, padding: '0 8px' }} disabled={curvePts === 0} onClick={cancelCurve}>취소</button>
                         </div>
                     )}
                     {(view.zoom !== 1 || view.x !== 0 || view.y !== 0) && (
