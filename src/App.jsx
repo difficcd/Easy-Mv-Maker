@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useLayoutEffect } from
 import { Play, Pause, Square, Plus, Trash2, Download, Upload, PenLine, Pen, Feather, Eraser, Droplets, Undo, Redo, Layers, Trash, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, FolderPlus, Folder, FolderOpen, Settings, Eye, EyeOff, Copy, CopyPlus, ClipboardPaste, GitBranch, Move, Type, Server, Cloud, CloudDownload, Film, Repeat, Minus, Spline, Waves, Grid3x3 } from 'lucide-react';
 import './App.css';
 import { saveAutosave, loadAutosave, saveProject, loadProject, listProjects, deleteProject, autosaveKey } from './db';
-import { CutAnimPanel, LayerAnimPanel } from './AnimPanels';
+import { CutAnimPanel, LayerAnimPanel, JitterPanel } from './AnimPanels';
 import {
     DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT, FONT_PRESETS,
     pointInPolygon, dist, safeArray, hexToRgb, bucketFillTransparentRegion,
@@ -168,7 +168,7 @@ export default function App() {
     const liveClearPendingRef = useRef(false); // 커밋 후, 레이어 캐시가 새 선을 그린 뒤 오버레이를 지움 (깜빡임/사라짐 방지)
     const lineStartRef = useRef(null);    // 직선 도구 시작점
     const drawTargetLayerRef = useRef(null); // 이번 스트로크를 커밋할 실제 레이어 id (활성 레이어 무효화 대비)
-    const boilFrameRef = useRef(0);       // 자글자글 "모션" 위상 — 시간에 따라 바뀌며 선이 제자리에서 부글거림
+    const boilPhaseRef = useRef(0);       // 자글자글 "모션" 위상 — 시간에 따라 바뀌며 선이 제자리에서 부글거림
     const [boilTick, setBoilTick] = useState(0); // 정지(편집) 중에도 자글 모션을 미리보기 위한 위상 티커
     const curveAnchorsRef = useRef(null); // 곡선 도구: 탭으로 찍은 앵커점들
     const curveDraggingRef = useRef(false); // 곡선 앵커를 방금 찍고 드래그로 미세조정 중
@@ -238,6 +238,7 @@ export default function App() {
     const cutDragArmedRef = useRef(false); // long-press must arm before a touch can drag a cut
     const cutDragTimerRef = useRef(null);
     const [animLayer, setAnimLayer] = useState(null); // {cutId, layerId} whose part-anim panel is open
+    const [jitterLayer, setJitterLayer] = useState(null); // {cutId, layerId} whose 자글자글 settings panel is open
     const [pathCapture, setPathCapture] = useState(null); // {cutId, layerId} while recording a motion path
     const pathPtsRef = useRef(null);
 
@@ -1397,7 +1398,9 @@ export default function App() {
     };
     const handleToggleFolder = (e, cutId, fid) => { e.stopPropagation(); updLayers(cutId, c => ({ layers: c.layers.map(l => l.id === fid ? { ...l, collapsed: !l.collapsed } : l) })); };
     // 자글자글 효과: 레이어의 이미 그려진 선들을 흔들어줌. 클릭마다 끔→약→강 순환 (비파괴적).
-    const cycleRoughen = (e, cutId, layerId) => { e.stopPropagation(); updLayers(cutId, c => ({ layers: c.layers.map(l => l.id === layerId ? { ...l, roughen: !l.roughen ? 2.4 : (l.roughen < 4 ? 5 : 0) } : l) })); };
+    // 자글자글 설정 패널 열기/닫기 (강도·파장·속도·최소굵기는 패널에서 직접 입력)
+    const updLayerProps = (cutId, layerId, obj) => updLayers(cutId, c => ({ layers: c.layers.map(l => l.id === layerId ? { ...l, ...obj } : l) }));
+    const toggleJitterPanel = (e, cutId, layerId) => { e.stopPropagation(); setJitterLayer(j => (j && j.cutId === cutId && j.layerId === layerId) ? null : { cutId, layerId }); };
 
     const onLayerDragStart = (e, cutId, layerId) => { e.stopPropagation(); setDragLayerInfo({ cutId, layerId }); e.dataTransfer.effectAllowed = 'move'; };
     const onLayerDragOver = (e, targetId, targetType) => {
@@ -2268,6 +2271,8 @@ export default function App() {
                 // Cheap change signature instead of JSON.stringify(strokes): strokes are only
                 // appended/replaced in this app, so length + last-stroke id/points/tool is enough.
                 // Avoids O(n) stringify of a growing stroke on every drawing frame.
+                // 자글 레이어는 위상이 계속 바뀌므로 여기서 미리 굽지 않는다 (ensureLayerCanvas가 매 위상마다 그림).
+                // 썸네일용으로 정지 상태(위상 0) 한 장만 유지.
                 const layerStrokes = strokeSig(layer.strokes) + '|r' + (layer.roughen || 0);
                 if (!canvas || canvas.dataset.strokes !== layerStrokes) {
                     // Skip (don't cache a blank) if a frame isn't decoded yet — the prefetch effect
@@ -2368,8 +2373,10 @@ export default function App() {
         const key = layerKey(cutId, layer.id);
         // 자글 레이어는 시간 위상(boil)을 sig에 포함 → 위상이 바뀔 때마다 다시 그려져 "떨리는 모션"이 됨.
         // 효과가 꺼진 레이어는 sig 형태가 그대로라 기존 캐시가 정상 히트(성능 영향 없음).
-        const boil = layer.roughen ? boilFrameRef.current : 0;
-        const sig = strokeSig(layer.strokes) + '|r' + (layer.roughen || 0) + (layer.roughen ? '|b' + boil : '');
+        // 레이어별 속도 배수를 적용한 위상 (속도 0 = 떨림 정지)
+        const boil = layer.roughen ? Math.floor(boilPhaseRef.current * (layer.roughSpeed ?? 1)) : 0;
+        const rOpts = { roughen: layer.roughen || 0, roughPhase: boil, roughWave: layer.roughWave ?? 1, roughMinSize: layer.roughMinSize ?? 0 };
+        const sig = strokeSig(layer.strokes) + '|r' + (layer.roughen || 0) + (layer.roughen ? `|b${boil}|w${rOpts.roughWave}|m${rOpts.roughMinSize}` : '');
         const cached = layerCanvasCache[key];
         if (cached && cached.dataset.strokes === sig) return cached;
         const map = fallbackCanvasRef.current;
@@ -2392,7 +2399,7 @@ export default function App() {
             // 가능한 스트로크만 먼저 그려두고, sig를 '미완성'으로 표시해 디코드 후 다시 그리게 함.
             const part = document.createElement('canvas');
             part.width = CANVAS_W; part.height = CANVAS_H;
-            drawStrokesOnCtx(part.getContext('2d'), layer.strokes, true, store, { roughen: layer.roughen || 0, roughPhase: boil });
+            drawStrokesOnCtx(part.getContext('2d'), layer.strokes, true, store, rOpts);
             part.dataset.strokes = sig + '|miss' + missing.length;
             map.delete(key); map.set(key, part);
             while (map.size > 24) map.delete(map.keys().next().value);
@@ -2400,7 +2407,7 @@ export default function App() {
         }
         const cnv = hit || document.createElement('canvas');
         cnv.width = CANVAS_W; cnv.height = CANVAS_H;
-        drawStrokesOnCtx(cnv.getContext('2d'), layer.strokes, true, bitmapStoreRef.current, { roughen: layer.roughen || 0, roughPhase: boil });
+        drawStrokesOnCtx(cnv.getContext('2d'), layer.strokes, true, bitmapStoreRef.current, rOpts);
         cnv.dataset.strokes = sig;
         map.delete(key); map.set(key, cnv); // re-insert = most recently used
         while (map.size > 24) map.delete(map.keys().next().value);
@@ -2412,7 +2419,7 @@ export default function App() {
         const ctx = canvas.getContext('2d');
         // 자글자글 모션 위상: 전통 애니의 boiling line처럼 초당 ~10회만 바뀌게 양자화.
         // 매 프레임 바꾸면 노이즈처럼 보이고, 이 정도가 '손그림이 살아 움직이는' 느낌을 냄.
-        boilFrameRef.current = Math.floor(t * BOIL_FPS) + boilTick;
+        boilPhaseRef.current = t * BOIL_FPS + boilTick;
         const primary = cuts.find(c => c.id === currentCutId);
         let activeCuts = cuts.filter(c => t >= c.startTime && t < c.endTime);
         if (!activeCuts.find(c => c.id === currentCutId) && primary && !playing) activeCuts.push(primary);
@@ -3144,8 +3151,9 @@ export default function App() {
                         </button>
                         <span className="layer-name">{layer.name}</span>
                         {!isFolder && (
-                            <button className="icon-btn" style={{ color: layer.roughen ? '#e0a84e' : undefined }} title={layer.roughen ? `자글자글 모션 ${layer.roughen < 4 ? '약' : '강'} — 선이 제자리에서 떨림 (클릭: 순환)` : '자글자글 모션 주기 (이미 그린 선이 제자리에서 부글거림)'}
-                                onClick={e => cycleRoughen(e, cut.id, layer.id)}>
+                            <button className="icon-btn" style={{ color: layer.roughen ? '#e0a84e' : undefined }}
+                                title={layer.roughen ? `자글자글 모션 (강도 ${layer.roughen}) — 클릭: 설정 열기` : '자글자글 모션 설정 (이미 그린 선이 제자리에서 부글거림)'}
+                                onClick={e => toggleJitterPanel(e, cut.id, layer.id)}>
                                 <Waves size={11} />
                             </button>
                         )}
@@ -3157,6 +3165,9 @@ export default function App() {
                         )}
                         <button className="icon-btn del-btn" onClick={e => handleDeleteLayer(e, cut.id, layer.id)}><Trash2 size={11} /></button>
                     </div>
+                    {!isFolder && jitterLayer && jitterLayer.cutId === cut.id && jitterLayer.layerId === layer.id && (
+                        <JitterPanel cut={cut} layer={layer} updLayer={updLayerProps} />
+                    )}
                     {!isFolder && animLayer && animLayer.cutId === cut.id && animLayer.layerId === layer.id && (
                         <LayerAnimPanel cut={cut} layer={layer} updLayerAnim={updLayerAnim} updLayers={updLayers} pathCapture={pathCapture} setPathCapture={setPathCapture} />
                     )}

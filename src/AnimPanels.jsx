@@ -137,3 +137,36 @@ export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCaptur
         </div>
     );
 }
+
+// 자글자글(boiling line) 효과 설정 — 레이어 단위. 가는 선까지 과하게 떨리는 걸 막기 위해
+// 강도/파장/속도와 '최소 굵기' 문턱값을 직접 조절한다.
+export function JitterPanel({ cut, layer, updLayer }) {
+    const on = !!layer.roughen;
+    const set = (o) => updLayer(cut.id, layer.id, o);
+    return (
+        <div style={{ marginTop: 6, padding: '6px 8px', background: '#1b1b28', border: '1px solid #2a2a3a', borderRadius: 6, display: 'flex', flexDirection: 'column', gap: 5 }}>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 10, color: '#e0a84e' }}>
+                <span style={{ fontWeight: 700 }}>자글자글</span>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 3, color: '#aaa' }}>
+                    <input type="checkbox" checked={on} onChange={e => set({ roughen: e.target.checked ? 2.4 : 0 })} /> 켜기
+                </label>
+                {on && <span style={{ color: '#666' }}>선이 제자리에서 떨림</span>}
+            </div>
+            {on && <>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 10, color: '#aaa' }}>
+                    <span style={{ width: 34 }}>강도</span>
+                    <NumIn value={layer.roughen} onChange={v => set({ roughen: Math.max(0.1, v) })} step={0.2} min={0.1} w={52} title="흔들리는 폭(px)" />
+                    <span style={{ width: 34 }}>파장</span>
+                    <NumIn value={layer.roughWave ?? 1} onChange={v => set({ roughWave: v })} step={0.1} min={0.2} w={52} title="물결 길이 배수 — 크게 하면 더 완만하고 둥글게" />
+                </div>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 10, color: '#aaa' }}>
+                    <span style={{ width: 34 }}>속도</span>
+                    <NumIn value={layer.roughSpeed ?? 1} onChange={v => set({ roughSpeed: v })} step={0.1} min={0} w={52} title="떨리는 속도 배수 (0 = 정지)" />
+                    <span style={{ width: 34 }}>최소굵기</span>
+                    <NumIn value={layer.roughMinSize ?? 0} onChange={v => set({ roughMinSize: Math.max(0, v) })} step={1} min={0} w={52} title="이 굵기(px) 미만인 가는 선에는 효과를 주지 않음 — 0이면 전부 적용" />
+                </div>
+                <div style={{ fontSize: 9, color: '#666' }}>가는 선까지 떨리면 '최소굵기'를 올리세요.</div>
+            </>}
+        </div>
+    );
+}

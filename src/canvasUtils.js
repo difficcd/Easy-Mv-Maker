@@ -261,21 +261,52 @@ function smoothPoints(pts, passes) {
 
 // 선 자글자글 효과: 매끄러운 경로를 법선 방향으로 흔들어 손그림 같은 떨림을 줌.
 // seed로 결정론적(리페인트마다 동일) — timeSeed를 더하면 재생 중 프레임마다 boil.
-function roughenPoints(pts, amp = 2.2, seed = 0) {
+//
+// 둥근 자글거림의 핵심 두 가지:
+//  1) 파장을 '점 개수'가 아니라 '실제 길이(px)' 기준으로 잡는다. 스무딩을 거친 경로는 점 간격이
+//     1px 미만이라, 인덱스 기준 주파수를 쓰면 초고주파가 되어 뾰족뾰족해진다.
+//  2) 점마다 독립적인 백색잡음을 더하지 않는다. 굵은 간격의 제어값을 smoothstep으로 보간한
+//     value noise만 쓰면 각지지 않고 둥글게 물결친다.
+function roughenPoints(pts, amp = 2.2, seed = 0, wave = 1) {
     const n = pts && pts.length;
     if (!n || n < 3) return pts || [];
     let s = (seed * 2654435761) >>> 0;
     const rnd = () => { s ^= s << 13; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; };
-    const freq = 0.14; // 파형 밀도
-    const phase = rnd() * Math.PI * 2;
+
+    // 경로를 따라간 누적 길이 — 노이즈 좌표이자 끝단 taper 기준.
+    const arc = new Float64Array(n);
+    for (let i = 1; i < n; i++) arc[i] = arc[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+    const total = arc[n - 1] || 1;
+
+    // wl(px)마다 제어값을 하나씩 두고 smoothstep 보간 → 부드러운 물결.
+    const makeOctave = (wl) => {
+        const m = Math.max(2, Math.ceil(total / wl) + 2);
+        const ctrl = new Array(m);
+        for (let i = 0; i < m; i++) ctrl[i] = rnd() * 2 - 1;
+        return (d) => {
+            const u = d / wl, k = Math.floor(u), f = u - k;
+            const t = f * f * (3 - 2 * f);
+            const a = ctrl[Math.min(k, m - 1)], b = ctrl[Math.min(k + 1, m - 1)];
+            return a + (b - a) * t;
+        };
+    };
+    const wl = Math.max(0.2, wave);
+    const big = makeOctave(95 * wl);   // 큰 물결
+    const small = makeOctave(38 * wl); // 잔물결 (약하게만)
+
+    // 법선은 넓은 창으로 추정해야 방향이 흔들리지 않아 결과가 매끈하다.
+    const span = Math.max(1, Math.round(n / Math.max(8, total / 6)));
     const out = new Array(n);
     for (let i = 0; i < n; i++) {
-        const a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)];
+        const a = pts[Math.max(0, i - span)], b = pts[Math.min(n - 1, i + span)];
         let nx = -(b.y - a.y), ny = b.x - a.x;
         const len = Math.hypot(nx, ny) || 1; nx /= len; ny /= len;
-        // 두 옥타브 사인 + 약간의 난수 → 자연스러운 자글거림, 양 끝은 0으로 수렴.
-        const taper = Math.min(1, Math.min(i, n - 1 - i) / 6);
-        const w = (Math.sin(i * freq + phase) + 0.5 * Math.sin(i * freq * 2.7 + phase * 1.7) + (rnd() - 0.5) * 0.6) * amp * taper;
+        // 양 끝 12px은 0으로 수렴시켜 선 끝이 튀지 않게. 램프 자체도 smoothstep이라
+        // 경계에서 꺾이지 않는다(선형 램프는 그 지점에 눈에 띄는 각을 남김).
+        const d = arc[i];
+        const tr = Math.min(1, Math.min(d, total - d) / 12);
+        const taper = tr * tr * (3 - 2 * tr);
+        const w = (big(d) + 0.3 * small(d)) * amp * taper;
         out[i] = { x: pts[i].x + nx * w, y: pts[i].y + ny * w, pressure: pts[i].pressure };
     }
     return out;
@@ -373,6 +404,8 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null,
     // roughPhase가 시간에 따라 바뀌면 선이 제자리에서 부글거리는 "모션"이 된다 (boiling line).
     const layerRough = opts.roughen ? (typeof opts.roughen === 'number' ? opts.roughen : 2.4) : 0;
     const roughPhase = opts.roughPhase || 0;
+    const roughWave = opts.roughWave || 1;
+    const roughMinSize = opts.roughMinSize || 0; // 이보다 가는 선은 떨지 않음
     strokes.forEach(s => {
         if (s.tool === 'text') {
             const fontSize = Math.max(6, Math.min(220, s.fontSize ?? 32));
@@ -445,10 +478,12 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null,
         if (!s.points?.length) return;
         // 자글: 'rough' 펜(개별) 또는 레이어 효과(layerRough)로 매끈한 경로를 흔든다.
         // 도트펜(pen)도 아래에서 쓰므로 반드시 pen 분기보다 먼저 계산해야 한다.
-        const roughAmp = (s.tool === 'rough') ? (s.roughAmp ?? Math.max(1.5, s.size * 0.35)) : ((layerRough && s.tool !== 'eraser') ? layerRough : 0);
+        // 가는 선(최소 굵기 미만)은 제외 — 얇은 선일수록 같은 진폭이 과하게 요동쳐 보임.
+        const tooThin = roughMinSize > 0 && (s.size || 0) < roughMinSize;
+        const roughAmp = (s.tool === 'rough') ? (s.roughAmp ?? Math.max(1.5, s.size * 0.35)) : ((layerRough && s.tool !== 'eraser' && !tooThin) ? layerRough : 0);
         // 시드 = 스트로크 고유값 + 시간 위상 → 프레임마다 다른 떨림, 스트로크끼리는 독립적.
         const roughSeed = (s.id || 0) + roughPhase * 7919;
-        const smooth = (p) => { let sp = smoothPoints(p); if (roughAmp) sp = roughenPoints(sp, roughAmp, roughSeed); return sp; };
+        const smooth = (p) => { let sp = smoothPoints(p); if (roughAmp) sp = roughenPoints(sp, roughAmp, roughSeed, roughWave); return sp; };
         // Dot pen: hard square stamps (pixel-art look), no anti-aliased round stroke.
         if (s.tool === 'pen') {
             const size = Math.max(1, Math.round(s.size));
@@ -457,7 +492,7 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null,
             ctx.globalAlpha = s.opacity ?? 1;
             ctx.fillStyle = s.color;
             const stamp = (x, y) => ctx.fillRect(Math.round(x - half), Math.round(y - half), size, size);
-            const P = roughAmp ? roughenPoints(smoothPoints(s.points), roughAmp, roughSeed) : s.points;
+            const P = roughAmp ? roughenPoints(smoothPoints(s.points), roughAmp, roughSeed, roughWave) : s.points;
             if (P.length === 1) {
                 stamp(P[0].x, P[0].y);
             } else {
@@ -522,7 +557,7 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null,
             ctx.save();
             ctx.globalAlpha = baseOpacity;
             const put = (x, y) => ctx.drawImage(stamp, x - half, y - half);
-            const P = roughAmp ? roughenPoints(smoothPoints(s.points), roughAmp, roughSeed) : s.points;
+            const P = roughAmp ? roughenPoints(smoothPoints(s.points), roughAmp, roughSeed, roughWave) : s.points;
             if (P.length === 1) put(P[0].x, P[0].y);
             for (let i = 1; i < P.length; i++) {
                 const a = P[i - 1], c = P[i], d = Math.hypot(c.x - a.x, c.y - a.y);
