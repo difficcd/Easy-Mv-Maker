@@ -79,6 +79,18 @@ export function CutAnimPanel({ cut, updCutAnim }) {
     );
 }
 
+// #14 이동 효과 프리셋: 값을 하나씩 맞추지 않고 자주 쓰는 '부드러운 모션'을 한 번에 넣는다.
+// 각 프리셋은 이동/회전/크기 + 왕복 여부 + 가감속을 한 세트로 채운다.
+const MOVE_PRESETS = [
+    { id: 'floatY', label: '둥실둥실', v: { mode: 'return', tx: 0, ty: -24, rot: 0, scale: 0, speed: 0.6, count: 0, ease: 'inout', easePower: 2 } },
+    { id: 'driftX', label: '좌우 흐름', v: { mode: 'return', tx: 40, ty: 0, rot: 0, scale: 0, speed: 0.5, count: 0, ease: 'inout', easePower: 2 } },
+    { id: 'breathe', label: '숨쉬기', v: { mode: 'return', tx: 0, ty: 0, rot: 0, scale: 0.06, speed: 0.8, count: 0, ease: 'inout', easePower: 2 } },
+    { id: 'tilt', label: '갸우뚱', v: { mode: 'return', tx: 0, ty: 0, rot: 6, scale: 0, speed: 0.7, count: 0, ease: 'inout', easePower: 2 } },
+    { id: 'slideIn', label: '미끄러져 등장', v: { mode: 'progress', tx: -120, ty: 0, rot: 0, scale: 0, speed: 1, count: 0, ease: 'out', easePower: 3 } },
+    { id: 'popIn', label: '톡 튀어나오기', v: { mode: 'progress', tx: 0, ty: 0, rot: 0, scale: -0.35, speed: 1, count: 0, ease: 'out', easePower: 3 } },
+    { id: 'bob', label: '통통 튀기', v: { mode: 'return', tx: 0, ty: -40, rot: 0, scale: 0, speed: 2, count: 0, ease: 'out', easePower: 2 } },
+];
+
 // Per-layer ("part") animation (move/rotate/scale/path + ping-pong/speed/count/easing).
 export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCapture, setPathCapture }) {
     const a = { ...LAYER_ANIM_DEFAULT, ...layer.anim };
@@ -87,6 +99,13 @@ export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCaptur
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: 10, color: '#888' }}>파츠 애니메이션 (재생 시 적용)</span>
                 {layer.anim && <button className="small-btn" onClick={() => updLayers(cut.id, c => ({ layers: c.layers.map(l => l.id === layer.id ? { ...l, anim: undefined } : l) }))}>끄기</button>}
+            </div>
+            {/* 부드러운 모션 프리셋 — 누르면 아래 값들이 한 번에 채워지고, 이후 자유롭게 손볼 수 있다 */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }} title="자주 쓰는 움직임을 한 번에 적용합니다. 적용 후 값은 직접 수정할 수 있습니다.">
+                {MOVE_PRESETS.map(p => (
+                    <button key={p.id} className="small-btn" style={{ fontSize: 9, padding: '2px 6px' }}
+                        onClick={() => updLayerAnim(cut.id, layer.id, p.v)}>{p.label}</button>
+                ))}
             </div>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 10, color: '#aaa' }}>
                 <span style={{ width: 24 }}>이동</span>
