@@ -243,6 +243,7 @@ export default function App() {
     const [backupBusy, setBackupBusy] = useState(false);
     const [backupList, setBackupList] = useState(null);  // null = 목록 닫힘
     const [storageInfo, setStorageInfo] = useState(null); // 로컬 저장 용량 사용률
+    const [autosaveErr, setAutosaveErr] = useState(null); // 자동저장 실패 사유 (조용히 삼키지 않음)
     const backupKeyRef = useRef(null);
     const backupBusyRef = useRef(false);
     const lastBackupSigRef = useRef('');
@@ -1338,8 +1339,10 @@ export default function App() {
             try {
                 gcBitmaps(); // reclaim orphaned bitmaps before encoding the save
                 const data = await buildData(false, null, true); // IDB stores frame Blobs → cheap, low-memory
-                saveAutosave(data).then(() => setAutoSavedAt(Date.now())).catch(() => { });
-            } catch { }
+                // 자동저장 실패를 조용히 삼키면 사용자는 저장되고 있다고 믿다가 통째로 잃는다.
+                saveAutosave(data).then(() => { setAutoSavedAt(Date.now()); setAutosaveErr(null); })
+                    .catch(e => setAutosaveErr(String(e?.message || e)));
+            } catch (e) { setAutosaveErr(String(e?.message || e)); }
         }, 1500);
         return () => clearTimeout(autosaveTimerRef.current);
     }, [cuts, numTracks, onionPrev, onionNext, pps]);
@@ -3372,6 +3375,14 @@ export default function App() {
             <video ref={videoElRef} muted playsInline style={{ display: 'none' }} />
             {serverProjects !== null && <ProjectPicker title="서버에서 열기" items={serverProjects} onOpen={doServerOpen} onDelete={doServerDelete} onClose={() => setServerProjects(null)} />}
             {localProjects !== null && <ProjectPicker title="로컬에서 열기" items={localProjects} onOpen={doLocalOpen} onDelete={doLocalDelete} onClose={() => setLocalProjects(null)} />}
+            {backupList !== null && (
+                <ProjectPicker
+                    title="백업에서 되돌리기 (최근 12개 보관)"
+                    items={backupList.map(b => ({ id: b.stamp, name: `${b.name}${b.size ? ` · ${(b.size / 1048576).toFixed(1)}MB` : ''}`, savedAt: b.savedAt }))}
+                    onOpen={(stamp) => doBackupRestore(stamp)}
+                    onDelete={(stamp) => doBackupDelete(stamp)}
+                    onClose={() => setBackupList(null)} />
+            )}
             {videoBusy?.fetching && (
                 <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <div style={{ background: '#1e1e2e', border: '1px solid #333', borderRadius: 8, padding: 20, color: '#ccc', fontSize: 13 }}>영상을 받는 중…</div>
@@ -3582,6 +3593,12 @@ export default function App() {
                                 <button className="file-menu-item" onClick={() => { doServerSave(false); setShowFileMenu(false); }}>서버에 저장</button>
                                 <button className="file-menu-item" onClick={() => { doServerSave(true); setShowFileMenu(false); }}>서버에 새 이름으로 저장...</button>
                                 <button className="file-menu-item" onClick={() => { openServerList(); setShowFileMenu(false); }}>서버에서 열기...</button>
+                                <div className="file-menu-sep" />
+                                <div style={{ fontSize: 10, color: '#777', padding: '4px 12px 2px' }}>자동 백업 (되돌리기용)</div>
+                                <button className="file-menu-item" onClick={() => { doServerBackup(false); setShowFileMenu(false); }} disabled={backupBusy}>
+                                    {backupBusy ? '백업 중…' : '지금 서버에 백업'}
+                                </button>
+                                <button className="file-menu-item" onClick={() => { openBackupList(); setShowFileMenu(false); }}>백업에서 되돌리기...</button>
                             </>}
                         </div>
                     )}
@@ -3637,7 +3654,19 @@ export default function App() {
                 <button className="icon-btn" onClick={() => setShowHelp(true)} title="단축키 · 도움말" style={{ fontSize: 13, fontWeight: 700, width: 24, height: 24 }}>?</button>
                 <div className="menu-spacer" />
                 {audioFile && <span style={{ fontSize: 11, color: '#8ab', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={audioFile.name}>♪ {audioFile.name}</span>}
-                {autoSavedAt && <span style={{ fontSize: 11, color: '#5a8' }} title="브라우저에 자동저장됨">● 자동저장 {new Date(autoSavedAt).toLocaleTimeString()}</span>}
+                {autosaveErr
+                    ? <span style={{ fontSize: 11, color: '#f66', fontWeight: 700 }} title={`자동저장 실패: ${autosaveErr}\n저장공간이 가득 찼을 수 있습니다. 파일로 내보내기 또는 서버 저장을 권장합니다.`}>⚠ 자동저장 실패</span>
+                    : autoSavedAt && <span style={{ fontSize: 11, color: '#5a8' }} title="브라우저에 자동저장됨">● 자동저장 {new Date(autoSavedAt).toLocaleTimeString()}</span>}
+                {/* 서버가 없으면 로컬에만 남는다는 걸 분명히 알린다 — 모르고 작업하다 날리는 게 가장 위험 */}
+                {!serverAvailable
+                    ? <span style={{ fontSize: 11, color: '#e0a84e' }} title="API 서버에 연결할 수 없어 서버 저장/백업이 비활성화됩니다. 작업은 이 브라우저에만 저장됩니다.">⚠ 로컬 전용</span>
+                    : backupAt && <span style={{ fontSize: 11, color: '#6ab' }} title="서버에 백업된 시각 (파일 > 백업에서 되돌리기)">⛁ 백업 {new Date(backupAt).toLocaleTimeString()}</span>}
+                {storageInfo && storageInfo.pct > 0.8 && (
+                    <span style={{ fontSize: 11, color: storageInfo.pct > 0.92 ? '#f66' : '#e0a84e' }}
+                        title={`브라우저 저장공간 ${(storageInfo.usage / 1073741824).toFixed(2)}GB / ${(storageInfo.quota / 1073741824).toFixed(2)}GB 사용 중. 가득 차면 자동저장이 실패할 수 있으니 서버 저장 또는 파일로 내보내기를 권장합니다.`}>
+                        ⚠ 저장공간 {Math.round(storageInfo.pct * 100)}%
+                    </span>
+                )}
                 <button className="button button-primary" onClick={handleExport} style={{ display: 'flex', alignItems: 'center', gap: 5, height: 30 }}><Download size={15} /> Export</button>
             </div>
 
