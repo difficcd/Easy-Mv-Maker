@@ -2718,22 +2718,25 @@ export default function App() {
                 const mi = maskEntry?.imageData;
 
                 if (la?.swayProfile && (!shouldMask || (!mb && !mi))) {
-                    // 지점별 흔들림: 축을 따라 얇게 잘라 각 구간을 다른 양만큼 밀어준다.
-                    // 단일 shear는 한 방향 기울임만 되지만, 이렇게 하면 위는 유지하고 가운데는
-                    // 왼쪽, 아래는 오른쪽으로 꺾는 식의 변형이 가능하다(비-어파인).
-                    const SLICES = 48;
+                    // 지점별 흔들림: 축을 따라 잘라 구간마다 다른 양으로 휜다(비-어파인이라 단일 shear로는 불가).
+                    // 핵심: 각 조각을 통째로 '옮기면' 경계에서 어긋나 찢어진다. 조각마다 기울기(shear)를 줘
+                    // 변위가 조각 안에서 연속으로 변하게 하고, 경계값을 이웃과 정확히 같게 맞춘다 → 이음매 없음.
+                    const SLICES = 64;
                     const vertical = la.swayAxis === 'y';
                     const span = vertical ? CANVAS_H : CANVAS_W;
+                    const dispAt = (pos) => la.swayDisp * swayWeightAt(la.swayProfile, pos / span);
                     for (let sIdx = 0; sIdx < SLICES; sIdx++) {
-                        const a0 = Math.floor(sIdx * span / SLICES);
-                        const a1 = Math.floor((sIdx + 1) * span / SLICES);
+                        const a0 = Math.round(sIdx * span / SLICES);
+                        const a1 = Math.round((sIdx + 1) * span / SLICES);
                         const len = a1 - a0; if (len <= 0) continue;
-                        const p = (a0 + len / 2) / span;
-                        const d = la.swayDisp * swayWeightAt(la.swayProfile, p);
-                        // 슬라이스 경계의 미세한 틈을 막으려고 1px 겹쳐 그린다.
-                        const ov = sIdx < SLICES - 1 ? 1 : 0;
-                        if (vertical) ctx.drawImage(layerCanvas, 0, a0, CANVAS_W, len + ov, d, a0, CANVAS_W, len + ov);
-                        else ctx.drawImage(layerCanvas, a0, 0, len + ov, CANVAS_H, a0, d, len + ov, CANVAS_H);
+                        const d0 = dispAt(a0), d1 = dispAt(a1);
+                        const k = (d1 - d0) / len;  // 조각 내부 기울기
+                        const m = d0 - k * a0;      // a0에서 정확히 d0이 되도록
+                        ctx.save();
+                        // 축 방향 좌표는 그대로 두므로(대각 성분 1, 해당 비대각 0) 조각들이 빈틈 없이 붙는다.
+                        if (vertical) { ctx.transform(1, 0, k, 1, m, 0); ctx.drawImage(layerCanvas, 0, a0, CANVAS_W, len, 0, a0, CANVAS_W, len); }
+                        else { ctx.transform(1, k, 0, 1, 0, m); ctx.drawImage(layerCanvas, a0, 0, len, CANVAS_H, a0, 0, len, CANVAS_H); }
+                        ctx.restore();
                     }
                 } else if (!shouldMask || (!mb && !mi)) {
                     ctx.drawImage(layerCanvas, 0, 0);
