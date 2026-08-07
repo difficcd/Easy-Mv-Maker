@@ -931,6 +931,54 @@ export function sampleWave(wave, u) {
     return a + (b - a) * f;
 }
 
+// 텍스트 애니메이션 (MV 자막용). 컷 내 진행도를 받아 그리기에 필요한 값만 돌려준다.
+//  - in/out: 등장·퇴장 (fade/up/down/scale/blur)
+//  - typing: 글자수를 잘라서 타이핑처럼
+//  - emphasis: 계속 반복되는 강조 (pulse/shake/wave)
+export const TEXT_ANIM_DEFAULT = {
+    inType: 'none', inDur: 0.4, outType: 'none', outDur: 0.4,
+    typing: false, typeSpeed: 18, emphasis: 'none', emAmount: 20, emSpeed: 2,
+};
+export function computeTextAnim(t, ac, time) {
+    const a = t.anim;
+    if (!a) return null;
+    const local = time - ac.startTime;
+    const dur = Math.max(0.0001, ac.endTime - ac.startTime);
+    let alpha = 1, dx = 0, dy = 0, scale = 1, blur = 0, rot = 0;
+
+    const inDur = Math.max(0.0001, a.inDur ?? 0.4);
+    if (a.inType && a.inType !== 'none' && local < inDur) {
+        const u = Math.max(0, Math.min(1, local / inDur));
+        const e = 1 - Math.pow(1 - u, 3); // ease-out
+        if (a.inType === 'fade') alpha *= e;
+        else if (a.inType === 'up') { alpha *= e; dy += (1 - e) * 40; }
+        else if (a.inType === 'down') { alpha *= e; dy -= (1 - e) * 40; }
+        else if (a.inType === 'scale') { alpha *= e; scale *= 0.6 + 0.4 * e; }
+        else if (a.inType === 'blur') { alpha *= e; blur = (1 - e) * 10; }
+    }
+    const outDur = Math.max(0.0001, a.outDur ?? 0.4);
+    const tailStart = dur - outDur;
+    if (a.outType && a.outType !== 'none' && local > tailStart) {
+        const u = Math.max(0, Math.min(1, (local - tailStart) / outDur));
+        const e = u * u; // ease-in
+        if (a.outType === 'fade') alpha *= (1 - e);
+        else if (a.outType === 'up') { alpha *= (1 - e); dy -= e * 40; }
+        else if (a.outType === 'down') { alpha *= (1 - e); dy += e * 40; }
+        else if (a.outType === 'scale') { alpha *= (1 - e); scale *= 1 - 0.4 * e; }
+        else if (a.outType === 'blur') { alpha *= (1 - e); blur = e * 10; }
+    }
+    // 강조: 절대 시간 기준이라 컷 길이와 무관하게 일정한 리듬을 유지한다.
+    const em = a.emAmount ?? 20, es = a.emSpeed ?? 2;
+    if (a.emphasis === 'pulse') scale *= 1 + (em / 100) * 0.5 * Math.sin(2 * Math.PI * es * time);
+    else if (a.emphasis === 'shake') { dx += (em / 10) * Math.sin(2 * Math.PI * es * 3.1 * time); dy += (em / 14) * Math.sin(2 * Math.PI * es * 2.3 * time + 1.1); }
+    else if (a.emphasis === 'swing') rot += (em / 10) * Math.sin(2 * Math.PI * es * time);
+
+    // 타이핑: 초당 typeSpeed 글자씩 드러낸다 (null = 자르지 않음).
+    let chars = null;
+    if (a.typing) chars = Math.max(0, Math.floor(Math.max(0, local) * (a.typeSpeed || 18)));
+    return { alpha, dx, dy, scale, blur, rot, chars };
+}
+
 export function computeLayerAnim(layer, ac, time, cw = CANVAS_W, ch = CANVAS_H) {
     const a = layer.anim;
     if (!a) return null;

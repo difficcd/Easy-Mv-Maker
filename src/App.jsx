@@ -8,7 +8,7 @@ import {
     pointInPolygon, dist, safeArray, hexToRgb, bucketFillTransparentRegion,
     layerKey, imageDataToDataURL, dataURLToImageData, drawStrokesOnCtx,
     flattenForCanvas, flattenLayersInUiOrder, strokeSig, extractVideoFrames, fitRect, detectSceneCuts, curveToWave, swayWeightAt,
-    ANIM_DEFAULT, computeCutAnim, LAYER_ANIM_DEFAULT, computeLayerAnim,
+    ANIM_DEFAULT, computeCutAnim, LAYER_ANIM_DEFAULT, computeLayerAnim, TEXT_ANIM_DEFAULT, computeTextAnim,
 } from './canvasUtils';
 
 const PEN_TYPES = [
@@ -2390,6 +2390,7 @@ export default function App() {
             color2: textEdit.color2 || '#ffffff',
             bgColor: textEdit.bgColor || '',
             rotation: textEdit.rotation ?? 0,
+            anim: textEdit.anim || null,
         };
         setCuts(p => p.map(c => {
             if (c.id !== textEdit.cutId) return c;
@@ -2438,6 +2439,7 @@ export default function App() {
             color2: t.color2 || '#ffffff',
             bgColor: t.bgColor || '',
             rotation: t.rotation ?? 0,
+            anim: t.anim || null,
         });
     };
 
@@ -2773,15 +2775,28 @@ export default function App() {
                 ctx.scale(anim.sx, anim.sy);
                 ctx.translate(-CANVAS_W / 2, -CANVAS_H / 2);
             }
+            const t2 = t; // 아래 루프의 t는 '텍스트'라 시간 t를 가린다 → 미리 잡아둔다
             for (const t of safeArray(ac.texts)) {
                 if (!t || t.visible === false) continue;
+                // 텍스트 애니메이션은 컷 애니메이션과 같이 재생 중에만 적용한다.
+                const ta = playing ? computeTextAnim(t, ac, t2) : null;
+                if (ta && ta.alpha <= 0.001) continue;
                 const fontSize = Math.max(6, Math.min(400, t.fontSize ?? 32));
                 const lineHeight = Math.round(fontSize * (t.lineHeight ?? 1.25));
-                const needBox = t.gradient || t.bgColor || t.rotation;
+                const needBox = t.gradient || t.bgColor || t.rotation || ta;
                 const box = needBox ? measureTextBox(t) : null;
                 ctx.save();
                 ctx.globalCompositeOperation = 'source-over';
-                ctx.globalAlpha = (t.opacity ?? 1) * (anim ? anim.alpha : 1);
+                ctx.globalAlpha = (t.opacity ?? 1) * (anim ? anim.alpha : 1) * (ta ? ta.alpha : 1);
+                if (ta && box) {
+                    // 이동·확대·회전은 텍스트 박스 중심 기준으로 건다.
+                    const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
+                    ctx.translate(cx + ta.dx, cy + ta.dy);
+                    if (ta.scale !== 1) ctx.scale(ta.scale, ta.scale);
+                    if (ta.rot) ctx.rotate(ta.rot * Math.PI / 180);
+                    ctx.translate(-cx, -cy);
+                    if (ta.blur > 0.05) ctx.filter = `blur(${ta.blur.toFixed(1)}px)`;
+                }
                 // 회전: 텍스트 박스 중심 기준.
                 if (t.rotation && box) {
                     const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
@@ -2800,7 +2815,12 @@ export default function App() {
                 ctx.textAlign = t.align || 'left';
                 ctx.font = textFontOf(t);
                 try { ctx.letterSpacing = `${t.letterSpacing || 0}px`; } catch { }
-                const lines = String(t.text ?? '').split('\n');
+                let lines = String(t.text ?? '').split('\n');
+                // 타이핑: 전체 글자수 기준으로 잘라 한 글자씩 드러낸다(줄바꿈 유지).
+                if (ta && ta.chars != null) {
+                    let left = ta.chars;
+                    lines = lines.map(ln => { const take = Math.max(0, Math.min(ln.length, left)); left -= ln.length; return ln.slice(0, take); });
+                }
                 // 그라데이션 채우기 (세로 2색) 또는 단색.
                 let fillStyle = t.color ?? '#000';
                 if (t.gradient && box) {
@@ -4009,6 +4029,43 @@ export default function App() {
                                     {textEdit.bgColor && <input type="color" value={textEdit.bgColor.startsWith('#') ? textEdit.bgColor : '#ffffff'} onChange={e => setTextEdit(te => te ? ({ ...te, bgColor: e.target.value }) : te)} className="text-editor-color" title="배경 색" />}
                                     <input type="number" className="time-input" style={{ width: 54 }} title="회전(도)" value={textEdit.rotation ?? 0} step={5}
                                         onChange={e => { let v = parseFloat(e.target.value); if (isNaN(v)) v = 0; setTextEdit(te => te ? ({ ...te, rotation: v }) : te); }} />
+                                    {/* 텍스트 애니메이션 (재생 시에만 보임) */}
+                                    {(() => {
+                                        const an = { ...TEXT_ANIM_DEFAULT, ...(textEdit.anim || {}) };
+                                        const on = !!textEdit.anim;
+                                        const set = (o) => setTextEdit(te => te ? ({ ...te, anim: { ...an, ...o } }) : te);
+                                        return (<>
+                                            <span style={{ width: '100%', height: 1, background: '#ffffff14', margin: '2px 0' }} />
+                                            <label style={{ fontSize: 11, color: '#aaa', display: 'flex', alignItems: 'center', gap: 3 }} title="재생할 때만 적용됩니다">
+                                                <input type="checkbox" checked={on}
+                                                    onChange={e => setTextEdit(te => te ? ({ ...te, anim: e.target.checked ? { ...TEXT_ANIM_DEFAULT } : null }) : te)} />애니메이션
+                                            </label>
+                                            {on && <>
+                                                <select className="time-input" style={{ width: 74 }} title="등장" value={an.inType} onChange={e => set({ inType: e.target.value })}>
+                                                    <option value="none">등장없음</option><option value="fade">페이드</option><option value="up">아래→위</option>
+                                                    <option value="down">위→아래</option><option value="scale">확대</option><option value="blur">흐림</option>
+                                                </select>
+                                                <select className="time-input" style={{ width: 74 }} title="퇴장" value={an.outType} onChange={e => set({ outType: e.target.value })}>
+                                                    <option value="none">퇴장없음</option><option value="fade">페이드</option><option value="up">위로</option>
+                                                    <option value="down">아래로</option><option value="scale">축소</option><option value="blur">흐림</option>
+                                                </select>
+                                                <select className="time-input" style={{ width: 74 }} title="계속 반복되는 강조" value={an.emphasis} onChange={e => set({ emphasis: e.target.value })}>
+                                                    <option value="none">강조없음</option><option value="pulse">두근두근</option><option value="shake">흔들기</option><option value="swing">갸우뚱</option>
+                                                </select>
+                                                {an.emphasis !== 'none' && <>
+                                                    <input type="number" className="time-input" style={{ width: 50 }} title="강조 세기" value={an.emAmount} step={5} min={0}
+                                                        onChange={e => set({ emAmount: Math.max(0, +e.target.value || 0) })} />
+                                                    <input type="number" className="time-input" style={{ width: 50 }} title="강조 속도" value={an.emSpeed} step={0.5} min={0}
+                                                        onChange={e => set({ emSpeed: Math.max(0, +e.target.value || 0) })} />
+                                                </>}
+                                                <label style={{ fontSize: 11, color: '#aaa', display: 'flex', alignItems: 'center', gap: 3 }} title="한 글자씩 나타남">
+                                                    <input type="checkbox" checked={!!an.typing} onChange={e => set({ typing: e.target.checked })} />타이핑
+                                                </label>
+                                                {an.typing && <input type="number" className="time-input" style={{ width: 56 }} title="초당 글자수" value={an.typeSpeed} step={2} min={1}
+                                                    onChange={e => set({ typeSpeed: Math.max(1, +e.target.value || 1) })} />}
+                                            </>}
+                                        </>);
+                                    })()}
                                     <div style={{ flex: 1 }} />
                                     <button className="button button-primary" onClick={commitText} style={{ height: 28, padding: '0 10px' }}>완료</button>
                                     <button className="button" onClick={cancelText} style={{ height: 28, padding: '0 10px' }}>취소</button>
