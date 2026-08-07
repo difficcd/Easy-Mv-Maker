@@ -845,7 +845,7 @@ export function computeCutAnim(ac, time, cw = CANVAS_W, ch = CANVAS_H) {
     return { alpha: Math.max(0, alpha), sx, sy, tx, ty };
 }
 
-export const LAYER_ANIM_DEFAULT = { mode: 'progress', speed: 1, count: 0, tx: 0, ty: 0, rot: 0, scale: 0, pivotX: 0.5, pivotY: 0.5, path: null, ease: 'linear', easePower: 2, swayAmount: 0, swaySpeed: 1 };
+export const LAYER_ANIM_DEFAULT = { mode: 'progress', speed: 1, count: 0, tx: 0, ty: 0, rot: 0, scale: 0, pivotX: 0.5, pivotY: 0.5, path: null, ease: 'linear', easePower: 2, swayAmount: 0, swaySpeed: 1, swayCurve: null };
 
 // Easing applied to a 0..1 progress. type: linear | in (slow→fast) | out (fast→slow)
 // | inout. power (>=1) is the user-adjustable strength/weight.
@@ -874,6 +874,51 @@ export function samplePath(path, s) {
 // Per-layer ("part") transform animated across the cut's local time. Enables cutout /
 // puppet-style motion: move/rotate/scale a part, optionally along a drawn path, with
 // one-way or ping-pong(왕복) playback at a given speed and (optional) repeat count.
+// 흔들림2: 사용자가 그린 곡선을 흔들림 파형으로 변환한다.
+// 진행도는 '그린 순서(누적 길이)', 값은 시작~끝 기준선에 대한 법선 방향 편차 →
+// 되짚어 그린 낙서든 완만한 물결이든 그린 모양 그대로 흔들리게 된다.
+// 반환 amp(px)는 '그 곡선이 얼마나 크게 흔들렸는지'라서 기본 강도로 쓴다.
+export function curveToWave(pts, samples = 64) {
+    if (!pts || pts.length < 3) return null;
+    const a = pts[0], b = pts[pts.length - 1];
+    let ux = b.x - a.x, uy = b.y - a.y;
+    const blen = Math.hypot(ux, uy);
+    if (blen < 1) { ux = 1; uy = 0; } else { ux /= blen; uy /= blen; }
+    const nx = -uy, ny = ux; // 기준선의 법선
+    const arc = [0];
+    for (let i = 1; i < pts.length; i++) arc.push(arc[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
+    const total = arc[arc.length - 1] || 1;
+    const out = new Array(samples);
+    let j = 0;
+    for (let k = 0; k < samples; k++) {
+        const target = (k / (samples - 1)) * total;
+        while (j < pts.length - 2 && arc[j + 1] < target) j++;
+        const seg = Math.max(1e-6, arc[j + 1] - arc[j]);
+        const f = Math.min(1, Math.max(0, (target - arc[j]) / seg));
+        const x = pts[j].x + (pts[j + 1].x - pts[j].x) * f - a.x;
+        const y = pts[j].y + (pts[j + 1].y - pts[j].y) * f - a.y;
+        out[k] = x * nx + y * ny;
+    }
+    const mean = out.reduce((s, v) => s + v, 0) / samples;
+    let amp = 0;
+    for (let k = 0; k < samples; k++) { out[k] -= mean; amp = Math.max(amp, Math.abs(out[k])); }
+    if (amp < 0.5) return null; // 사실상 직선 → 흔들 것이 없음
+    for (let k = 0; k < samples; k++) out[k] /= amp;
+    // 끝과 시작을 맞춰 루프 재생 시 툭 튀지 않게 한다.
+    const drift = out[samples - 1] - out[0];
+    for (let k = 0; k < samples; k++) out[k] -= drift * (k / (samples - 1));
+    return { wave: out.map(v => Math.round(v * 1000) / 1000), amp: Math.round(amp) };
+}
+// 파형을 0..1 구간에서 순환 샘플링 (선형 보간).
+export function sampleWave(wave, u) {
+    const n = wave.length;
+    if (!n) return 0;
+    const x = (((u % 1) + 1) % 1) * n;
+    const i = Math.floor(x), f = x - i;
+    const a = wave[i % n], b = wave[(i + 1) % n];
+    return a + (b - a) * f;
+}
+
 export function computeLayerAnim(layer, ac, time, cw = CANVAS_W, ch = CANVAS_H) {
     const a = layer.anim;
     if (!a) return null;
@@ -895,8 +940,12 @@ export function computeLayerAnim(layer, ac, time, cw = CANVAS_W, ch = CANVAS_H) 
     }
     // Continuous sway (hair/cloth): a horizontal shear that oscillates by absolute time and grows
     // toward the far end from the pivot — anchor the pivot at the top of the hair for a natural swing.
+    // 흔들림1 = 사인파(기본), 흔들림2 = 사용자가 그린 곡선을 따라가는 파형.
     const sway = a.swayAmount || 0;
-    const shear = sway ? (sway / 100) * Math.sin(2 * Math.PI * (a.swaySpeed || 1) * time) : 0;
+    const shear = !sway ? 0
+        : (a.swayCurve && a.swayCurve.length > 1)
+            ? (sway / 100) * sampleWave(a.swayCurve, (a.swaySpeed || 1) * time)
+            : (sway / 100) * Math.sin(2 * Math.PI * (a.swaySpeed || 1) * time);
     if (tx === 0 && ty === 0 && rot === 0 && sc === 1 && shear === 0) return null;
     return { tx, ty, rot, sc, shear, px: (a.pivotX ?? 0.5) * cw, py: (a.pivotY ?? 0.5) * ch };
 }

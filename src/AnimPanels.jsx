@@ -125,6 +125,17 @@ export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCaptur
                 <span>강도</span><NumIn value={a.swayAmount || 0} onChange={v => updLayerAnim(cut.id, layer.id, { swayAmount: v })} min={0} w={50} title="흔들림 강도" />
                 <span>속도</span><NumIn value={a.swaySpeed || 1} onChange={v => updLayerAnim(cut.id, layer.id, { swaySpeed: v })} step={0.1} min={0.1} w={50} title="흔들림 속도" />
             </div>
+            {/* 흔들림2: 곡선을 그려서 흔들리는 '모양'을 직접 정한다 (없으면 기본 사인파) */}
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 10, color: '#8bd' }}
+                title="물결치듯 곡선을 그리면 그 곡선의 모양과 크기대로 흔들립니다. 그리지 않으면 기본 사인파로 흔들립니다.">
+                <span style={{ width: 24 }}>모양</span>
+                <button className="small-btn" style={{ background: pathCapture && pathCapture.mode === 'sway' && pathCapture.layerId === layer.id ? '#7c8cff' : undefined }}
+                    onClick={() => setPathCapture(pc => (pc && pc.mode === 'sway' && pc.cutId === cut.id && pc.layerId === layer.id) ? null : { cutId: cut.id, layerId: layer.id, mode: 'sway' })}>
+                    {pathCapture && pathCapture.mode === 'sway' && pathCapture.layerId === layer.id ? '그리는 중…' : (a.swayCurve ? '곡선 다시 그리기' : '흔들림 곡선 그리기')}
+                </button>
+                {a.swayCurve && <button className="small-btn" onClick={() => updLayerAnim(cut.id, layer.id, { swayCurve: null })}>기본 파형</button>}
+                {a.swayCurve && <span style={{ color: '#5a8' }}>● 곡선</span>}
+            </div>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 10, color: '#aaa' }}>
                 <span style={{ width: 24 }}>경로</span>
                 <button className="small-btn" style={{ background: pathCapture && pathCapture.layerId === layer.id ? '#7c8cff' : undefined }}

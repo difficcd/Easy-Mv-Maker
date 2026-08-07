@@ -7,7 +7,7 @@ import {
     DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT, FONT_PRESETS,
     pointInPolygon, dist, safeArray, hexToRgb, bucketFillTransparentRegion,
     layerKey, imageDataToDataURL, dataURLToImageData, drawStrokesOnCtx,
-    flattenForCanvas, flattenLayersInUiOrder, strokeSig, extractVideoFrames, fitRect, detectSceneCuts,
+    flattenForCanvas, flattenLayersInUiOrder, strokeSig, extractVideoFrames, fitRect, detectSceneCuts, curveToWave,
     ANIM_DEFAULT, computeCutAnim, LAYER_ANIM_DEFAULT, computeLayerAnim,
 } from './canvasUtils';
 
@@ -2243,7 +2243,14 @@ export default function App() {
             try { if (activePointerIdRef.current !== null) canvasRef.current?.releasePointerCapture(activePointerIdRef.current); } catch { }
             activePointerIdRef.current = null;
             if (pathCapture && pts.length > 1) {
-                updLayerAnim(pathCapture.cutId, pathCapture.layerId, { path: pts.map(p => ({ x: Math.round(p.x), y: Math.round(p.y) })) });
+                if (pathCapture.mode === 'sway') {
+                    // 흔들림2: 그린 곡선을 파형으로 바꿔 저장. 강도는 그린 곡선의 실제 크기를 기본값으로.
+                    const w = curveToWave(pts);
+                    if (w) updLayerAnim(pathCapture.cutId, pathCapture.layerId, { swayCurve: w.wave, swayAmount: Math.max(1, Math.round(w.amp / 4)) });
+                    else alert('거의 직선이라 흔들림을 만들 수 없습니다. 물결치듯 그려보세요.');
+                } else {
+                    updLayerAnim(pathCapture.cutId, pathCapture.layerId, { path: pts.map(p => ({ x: Math.round(p.x), y: Math.round(p.y) })) });
+                }
             }
             setPathCapture(null);
             return;
@@ -3859,7 +3866,7 @@ export default function App() {
                     onPointerDown={onAreaPointerDown} onPointerMove={onAreaPointerMove} onPointerUp={onAreaPointerUp} onPointerCancel={onAreaPointerUp}>
                     {pathCapture && (
                         <div style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', zIndex: 31, background: '#7c8cff', color: '#fff', fontSize: 12, padding: '6px 12px', borderRadius: 6, display: 'flex', gap: 8, alignItems: 'center' }}>
-                            펜으로 이동 경로를 그리세요
+                            {pathCapture.mode === 'sway' ? '물결치듯 곡선을 그리세요 — 그 모양·크기대로 흔들립니다' : '펜으로 이동 경로를 그리세요'}
                             <button className="button" style={{ height: 24, padding: '0 8px' }} onClick={() => setPathCapture(null)}>취소</button>
                         </div>
                     )}
