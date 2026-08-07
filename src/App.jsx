@@ -138,6 +138,9 @@ export default function App() {
     const [dragLayerInfo, setDragLayerInfo] = useState(null);
     const [dropInfo, setDropInfo] = useState(null);
     const canvasRef = useRef(null);
+    const liveCanvasRef = useRef(null);   // overlay for the in-progress stroke (drawn without touching layer state)
+    const liveStrokeRef = useRef(null);   // the stroke currently being drawn
+    const liveClearTokRef = useRef(0);
     const isDrawing = useRef(false);
     const reqRef = useRef(null);
     const isPlayingRef = useRef(false);
@@ -1359,6 +1362,13 @@ export default function App() {
     const onLayerDragEnd = () => { setDragLayerInfo(null); setDropInfo(null); };
 
     const getPos = (e) => { const c = canvasRef.current, r = c.getBoundingClientRect(); return { x: (e.clientX - r.left) * (c.width / r.width), y: (e.clientY - r.top) * (c.height / r.height), pressure: e.pressure > 0 ? e.pressure : 0.5 }; };
+    // Render only the in-progress stroke on the overlay canvas — one stroke, no full-layer rebuild.
+    const renderLiveStroke = () => {
+        const lc = liveCanvasRef.current; if (!lc) return;
+        const ctx = lc.getContext('2d');
+        ctx.clearRect(0, 0, lc.width, lc.height);
+        if (liveStrokeRef.current) drawStrokesOnCtx(ctx, [liveStrokeRef.current], false, bitmapStoreRef.current);
+    };
 
     // Touch navigation on the canvas (fingers never draw — palm rejection):
     //   1 finger  = pan the view,  2 fingers = pinch zoom (+ pan).
@@ -1657,15 +1667,20 @@ export default function App() {
             case 'pencil':
             case 'soft':
             case 'marker':
-            case 'calligraphy':
-            case 'eraser':
-                {
-                    const newStroke = { id: Date.now(), tool, color, opacity, size: tool === 'eraser' ? eraserSize : brushSize, points: [pos] };
-                    updLayers(currentCutId, c => ({
-                        layers: c.layers.map(l => l.id === c.activeLayerId ? { ...l, strokes: [...l.strokes, newStroke] } : l)
-                    }));
-                    break;
-                }
+            case 'calligraphy': {
+                // Draw on the live overlay only — no layer-state writes per move (that was the lag).
+                liveStrokeRef.current = { id: Date.now(), tool, color, opacity, size: brushSize, points: [pos] };
+                renderLiveStroke();
+                break;
+            }
+            case 'eraser': {
+                // Eraser must composite against the layer, so it stays on the layer-write path.
+                const newStroke = { id: Date.now(), tool, color, opacity, size: eraserSize, points: [pos] };
+                updLayers(currentCutId, c => ({
+                    layers: c.layers.map(l => l.id === c.activeLayerId ? { ...l, strokes: [...l.strokes, newStroke] } : l)
+                }));
+                break;
+            }
             case 'fill':
                 {
                     isDrawing.current = false;
@@ -1759,6 +1774,13 @@ export default function App() {
                 // intermediate sample so quick curves stay curved instead of going polygonal.
                 const raw = e.getCoalescedEvents ? e.getCoalescedEvents() : null;
                 const positions = raw && raw.length > 1 ? raw.map(getPos) : [pos];
+                if (liveStrokeRef.current) {
+                    // Brush tools: append + repaint just the overlay (no React, no full-layer rebuild).
+                    for (const p of positions) liveStrokeRef.current.points.push(p);
+                    renderLiveStroke();
+                    break;
+                }
+                // Eraser: layer-write path (needs to composite against the layer).
                 updLayers(currentCutId, c => ({
                     layers: c.layers.map(l => {
                         if (l.id !== c.activeLayerId) return l;
@@ -1787,6 +1809,18 @@ export default function App() {
                 updLayerAnim(pathCapture.cutId, pathCapture.layerId, { path: pts.map(p => ({ x: Math.round(p.x), y: Math.round(p.y) })) });
             }
             setPathCapture(null);
+            return;
+        }
+        // Commit the live overlay stroke into the layer data (one write), then clear the overlay
+        // after the layer has repainted so there's no flicker.
+        if (liveStrokeRef.current) {
+            const st = liveStrokeRef.current; liveStrokeRef.current = null;
+            isDrawing.current = false;
+            try { if (activePointerIdRef.current !== null) canvasRef.current?.releasePointerCapture(activePointerIdRef.current); } catch { }
+            activePointerIdRef.current = null;
+            if (st.points.length) updLayers(currentCutId, c => ({ layers: c.layers.map(l => l.id === c.activeLayerId ? { ...l, strokes: [...l.strokes, st] } : l) }));
+            const tok = ++liveClearTokRef.current;
+            setTimeout(() => { if (liveClearTokRef.current === tok && !liveStrokeRef.current) { const lc = liveCanvasRef.current; if (lc) lc.getContext('2d').clearRect(0, 0, lc.width, lc.height); } }, 90);
             return;
         }
         selectionDragRef.current = null;
@@ -3184,10 +3218,11 @@ export default function App() {
                             {Math.round(view.zoom * 100)}% ⟲
                         </button>
                     )}
-                    <div className="canvas-stage" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})`, aspectRatio: `${CANVAS_W} / ${CANVAS_H}`, maxWidth: '100%', maxHeight: '100%' }}>
+                    <div className="canvas-stage" style={{ position: 'relative', transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})`, aspectRatio: `${CANVAS_W} / ${CANVAS_H}`, maxWidth: '100%', maxHeight: '100%' }}>
                         <canvas ref={canvasRef} width={CANVAS_W} height={CANVAS_H}
                             onPointerDown={startDraw} onPointerMove={onDraw} onPointerUp={stopDraw} onPointerCancel={stopDraw} onPointerLeave={onPointerLeaveCanvas}
                             style={{ cursor: selection ? 'move' : tool === 'fill' ? 'cell' : tool === 'lasso' ? 'crosshair' : 'crosshair', touchAction: 'none' }} />
+                        <canvas ref={liveCanvasRef} width={CANVAS_W} height={CANVAS_H} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }} />
                         {selection && (
                             <div className="selection-actions">
                                 <button className="button button-primary" onClick={extractSelectionToPart} style={{ height: 30, padding: '0 10px' }} title="선택 영역을 별도 레이어(파츠)로 분리해 애니메이션">파츠로 분리</button>
