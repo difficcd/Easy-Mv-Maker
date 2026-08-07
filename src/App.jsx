@@ -244,6 +244,7 @@ export default function App() {
     const [backupList, setBackupList] = useState(null);  // null = 목록 닫힘
     const [storageInfo, setStorageInfo] = useState(null); // 로컬 저장 용량 사용률
     const [autosaveErr, setAutosaveErr] = useState(null); // 자동저장 실패 사유 (조용히 삼키지 않음)
+    const [loadProgress, setLoadProgress] = useState(null); // {label, done, total} · total 0 = 진행률 미상
     const backupKeyRef = useRef(null);
     const backupBusyRef = useRef(false);
     const lastBackupSigRef = useRef('');
@@ -941,11 +942,26 @@ export default function App() {
         }
         return out;
     };
-    const restore = async (data, assetBase = null) => {
+    const restore = async (data, assetBase = null, label = '프로젝트 여는 중') => {
         if (data.appName !== 'EasyMVMaker') { alert('올바른 .emv 파일이 아닙니다.'); return; }
         // Rebuild the bitmap store before swapping cuts in, so fill/lasso/paste render correctly.
         const store = bitmapStoreRef.current;
         store.clear();
+        // 진행률: 프레임이 많은 프로젝트는 여는 데 한참 걸리므로 게이지로 보여준다.
+        // 작은 프로젝트에서 깜빡이기만 하는 걸 막으려고 일정 개수 이상일 때만 띄운다.
+        const assetCount = (assetBase && Array.isArray(data.assets)) ? data.assets.length : 0;
+        const bmpCount = data.bitmaps ? Object.keys(data.bitmaps).length : 0;
+        const total = assetCount + bmpCount;
+        const heavy = total > 12;
+        let done = 0, lastPaint = 0;
+        const step = Math.max(1, Math.floor(total / 100)); // 렌더 폭주 방지: 최대 100번만 갱신
+        const tick = () => {
+            done++;
+            if (!heavy) return;
+            if (done - lastPaint >= step || done === total) { lastPaint = done; setLoadProgress({ label, done, total }); }
+        };
+        if (heavy) setLoadProgress({ label, done: 0, total });
+        try {
         // Externalized frame assets (server projects): fetch one at a time and keep as a Blob
         // (off-heap). Bounded memory — one frame in flight.
         if (assetBase && Array.isArray(data.assets)) {
@@ -955,6 +971,7 @@ export default function App() {
                     // Don't decode here — lazy decode on display keeps opening a big project from OOMing.
                     store.set(a.id, { imageData: null, imageBitmap: null, blob, ext: a.ext, w: a.w || 0, h: a.h || 0 });
                 } catch { }
+                tick();
             }
         }
         if (data.bitmaps) {
@@ -975,7 +992,7 @@ export default function App() {
                     let imageBitmap = null;
                     try { imageBitmap = await createImageBitmap(imageData); } catch { }
                     return [id, { imageData, imageBitmap }];
-                } catch { return null; }
+                } catch { return null; } finally { tick(); }
             }));
             entries.forEach(e => { if (e) store.set(e[0], e[1]); });
         }
@@ -1028,6 +1045,7 @@ export default function App() {
             videoBlobRef.current = null; setVideoOverlay(null);
             if (videoElRef.current) { try { videoElRef.current.pause(); videoElRef.current.removeAttribute('src'); videoElRef.current.load(); } catch { } }
         }
+        } finally { setLoadProgress(null); }
     };
     const doSave = async (asNew = false) => {
         const json = JSON.stringify(await buildData(), null, 2);
@@ -1039,12 +1057,36 @@ export default function App() {
         const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([json], { type: 'application/json' })), download: 'project.emv' });
         a.click();
     };
+    // 큰 .emv는 읽기·파싱만으로도 한참 멈춘 것처럼 보인다 → 진행률을 알 수 없는 구간은
+    // 라벨만 띄우고(총량 0 = 무한 게이지), 이후 restore가 실제 진행률을 이어받는다.
+    const readAndRestore = async (getText) => {
+        setLoadProgress({ label: '파일 읽는 중', done: 0, total: 0 });
+        try {
+            const text = await getText();
+            setLoadProgress({ label: '파일 분석 중', done: 0, total: 0 });
+            await new Promise(r => setTimeout(r, 0)); // 게이지가 한 번 그려질 틈을 준다
+            const data = JSON.parse(text);
+            await restore(data);
+        } catch (err) {
+            setLoadProgress(null);
+            alert('파일 오류: ' + err.message);
+        }
+    };
     const doOpen = async () => {
         if ('showOpenFilePicker' in window) {
-            try { const [h] = await window.showOpenFilePicker({ types: [{ description: 'Easy MV Project', accept: { 'application/json': ['.emv'] } }] }); fileHandleRef.current = h; await restore(JSON.parse(await (await h.getFile()).text())); return; } catch (e) { if (e.name === 'AbortError') return; }
+            try {
+                const [h] = await window.showOpenFilePicker({ types: [{ description: 'Easy MV Project', accept: { 'application/json': ['.emv'] } }] });
+                fileHandleRef.current = h;
+                await readAndRestore(async () => (await h.getFile()).text());
+                return;
+            } catch (e) { if (e.name === 'AbortError') return; }
         }
         const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.emv';
-        inp.onchange = e => { const f = e.target.files[0]; if (!f) return; const r = new FileReader(); r.onload = ev => { try { restore(JSON.parse(ev.target.result)) } catch (err) { alert('파일 오류: ' + err.message) } }; r.readAsText(f); }; inp.click();
+        inp.onchange = e => {
+            const f = e.target.files[0]; if (!f) return;
+            readAndRestore(() => new Promise((res, rej) => { const r = new FileReader(); r.onload = ev => res(ev.target.result); r.onerror = rej; r.readAsText(f); }));
+        };
+        inp.click();
     };
     const resetToEmpty = () => {
         fileHandleRef.current = null;
@@ -1116,14 +1158,16 @@ export default function App() {
     // Upload externalized frame assets one at a time (binary, no base64) so peak memory is a
     // single frame — this is what keeps big/original-quality projects from OOMing on save.
     const uploadAssets = async (id, assetSink) => {
-        for (let i = 0; i < assetSink.length; i++) {
+        const total = assetSink.length;
+        for (let i = 0; i < total; i++) {
             const a = assetSink[i];
             // Prefer the Blob (uploads directly, no decode); fall back to a legacy dataURL.
             const blob = a.blob || await (await fetch(a.url)).blob();
             const res = await fetch(`/api/projects/${id}/asset/${a.id}?ext=${encodeURIComponent(a.ext)}`, {
                 method: 'PUT', headers: { 'Content-Type': blob.type || 'application/octet-stream' }, body: blob,
             });
-            if (!res.ok) throw new Error(`프레임 업로드 실패 (${i + 1}/${assetSink.length})`);
+            if (!res.ok) throw new Error(`프레임 업로드 실패 (${i + 1}/${total})`);
+            if (total > 12) setLoadProgress({ label: '서버에 올리는 중', done: i + 1, total });
         }
     };
     const doServerSave = async (forceNew = false) => {
@@ -1153,7 +1197,7 @@ export default function App() {
             alert('서버에 저장했습니다.');
         } catch (e) {
             alert('서버 저장 실패: ' + e.message + '\n(API 서버가 실행 중인지 확인하세요. 큰 프로젝트는 저장에 시간이 걸립니다.)');
-        } finally { setServerBusy(false); }
+        } finally { setServerBusy(false); setLoadProgress(null); }
     };
     const openServerList = async () => {
         try { setServerProjects(await apiFetch('/api/projects')); }
@@ -1206,6 +1250,7 @@ export default function App() {
                 method: 'PUT', headers: { 'Content-Type': blob.type || 'application/octet-stream' }, body: blob,
             });
             if (!res.ok) throw new Error(`에셋 업로드 실패 (${i + 1}/${todo.length})`);
+            if (todo.length > 12) setLoadProgress({ label: '서버에 백업 중', done: i + 1, total: todo.length });
             onProgress?.(i + 1, todo.length);
         }
         return todo.length;
@@ -1226,7 +1271,7 @@ export default function App() {
             if (!silent) alert('서버에 백업했습니다.');
         } catch (e) {
             if (!silent) alert('서버 백업 실패: ' + e.message);
-        } finally { backupBusyRef.current = false; setBackupBusy(false); }
+        } finally { backupBusyRef.current = false; setBackupBusy(false); setLoadProgress(null); }
     };
     const openBackupList = async () => {
         try { setBackupList(await apiFetch(`/api/backups/${getBackupKey()}`)); }
@@ -3373,6 +3418,27 @@ export default function App() {
         <div className="app-container">
             <audio ref={audioRef} style={{ display: 'none' }} />
             <video ref={videoElRef} muted playsInline style={{ display: 'none' }} />
+            {/* 큰 프로젝트 열기/업로드 진행률. total 0이면 진행률을 알 수 없는 구간(무한 게이지). */}
+            {loadProgress && (() => {
+                const { label, done, total } = loadProgress;
+                const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : null;
+                return (
+                    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <div style={{ width: 340, background: '#1e1e2e', border: '1px solid #333', borderRadius: 10, padding: 18, boxShadow: '0 12px 40px rgba(0,0,0,.5)' }}>
+                            <div style={{ fontSize: 13, color: '#ddd', marginBottom: 10 }}>{label}…</div>
+                            <div style={{ height: 8, background: '#2a2a3a', borderRadius: 99, overflow: 'hidden' }}>
+                                <div style={pct == null
+                                    ? { height: '100%', width: '40%', borderRadius: 99, background: 'linear-gradient(90deg,#6d28d9,#818cf8)', animation: 'mvIndet 1.1s ease-in-out infinite' }
+                                    : { height: '100%', width: `${pct}%`, borderRadius: 99, background: 'linear-gradient(90deg,#6d28d9,#818cf8)', transition: 'width .12s linear' }} />
+                            </div>
+                            <div style={{ fontSize: 11, color: '#888', marginTop: 8, display: 'flex', justifyContent: 'space-between' }}>
+                                <span>{pct == null ? '잠시만 기다려 주세요' : `${done} / ${total}`}</span>
+                                <span>{pct == null ? '' : `${pct}%`}</span>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
             {serverProjects !== null && <ProjectPicker title="서버에서 열기" items={serverProjects} onOpen={doServerOpen} onDelete={doServerDelete} onClose={() => setServerProjects(null)} />}
             {localProjects !== null && <ProjectPicker title="로컬에서 열기" items={localProjects} onOpen={doLocalOpen} onDelete={doLocalDelete} onClose={() => setLocalProjects(null)} />}
             {backupList !== null && (
