@@ -7,7 +7,7 @@ import {
     DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT, FONT_PRESETS,
     pointInPolygon, dist, safeArray, hexToRgb, bucketFillTransparentRegion,
     layerKey, imageDataToDataURL, dataURLToImageData, drawStrokesOnCtx,
-    flattenForCanvas, flattenLayersInUiOrder, strokeSig, extractVideoFrames, fitRect, detectSceneCuts, curveToWave, swayWeightAt,
+    flattenForCanvas, flattenLayersInUiOrder, strokeSig, extractVideoFrames, fitRect, detectSceneCuts, curveToWave, swayWeightAt, morphPrepare,
     ANIM_DEFAULT, computeCutAnim, LAYER_ANIM_DEFAULT, computeLayerAnim, TEXT_ANIM_DEFAULT, computeTextAnim,
 } from './canvasUtils';
 
@@ -1520,6 +1520,52 @@ export default function App() {
     };
     // Duplicate a cut as the *next frame*: clone it right after itself and push any
     // later cuts on the same track to make room. This is the core frame-by-frame flow.
+    // #11 트위닝: 현재 컷과 다음 컷 사이를 자동 생성한 중간 프레임으로 채운다.
+    // 단순 크로스페이드가 아니라 거리장 기반 모핑이라 '형태 자체'가 이동/변형된다.
+    const flattenCutToImageData = (cut) => {
+        const cnv = document.createElement('canvas'); cnv.width = CANVAS_W; cnv.height = CANVAS_H;
+        const c2 = cnv.getContext('2d');
+        const order = flattenLayersInUiOrder(cut.layers || []).filter(l => l.type === 'layer' && l.visible !== false);
+        for (let i = order.length - 1; i >= 0; i--) { const lc = ensureLayerCanvas(cut.id, order[i]); if (lc) c2.drawImage(lc, 0, 0); }
+        return c2.getImageData(0, 0, CANVAS_W, CANVAS_H);
+    };
+    const doTween = async () => {
+        const A = cuts.find(c => c.id === currentCutId);
+        if (!A) return;
+        const B = cuts.filter(c => c.track === A.track && c.startTime > A.startTime).sort((a, b) => a.startTime - b.startTime)[0];
+        if (!B) { alert('다음 컷이 없습니다. 트위닝은 현재 컷과 다음 컷 사이를 채웁니다.'); return; }
+        const s = window.prompt(`"${A.name}" → "${B.name}" 사이에 넣을 중간 프레임 개수 (1~12)`, '3');
+        if (!s) return;
+        const n = Math.max(1, Math.min(12, Math.round(+s) || 3));
+        setLoadProgress({ label: '중간 프레임 만드는 중', done: 0, total: n });
+        await new Promise(r => setTimeout(r, 30)); // 게이지를 한 번 그리고 시작
+        try {
+            const make = morphPrepare(flattenCutToImageData(A), flattenCutToImageData(B));
+            const dur = A.endTime - A.startTime;
+            const base = Date.now();
+            const newCuts = [];
+            for (let i = 0; i < n; i++) {
+                const img = make((i + 1) / (n + 1));
+                const bitmapId = storeBitmap(img);
+                const st = A.endTime + i * dur;
+                newCuts.push({
+                    id: base + i + 1, name: `${A.name}~${i + 1}`, startTime: st, endTime: st + dur, track: A.track,
+                    layers: [{ id: 1, name: 'L1', type: 'layer', parentId: null, visible: true, redoStrokes: [], strokes: [{ id: base + 1000 + i, tool: 'paste', bitmapId, x: 0, y: 0 }] }],
+                    activeLayerId: 1, texts: [],
+                });
+                setLoadProgress({ label: '중간 프레임 만드는 중', done: i + 1, total: n });
+                await new Promise(r => setTimeout(r, 0)); // 각 장마다 UI에 양보 (멈춘 것처럼 보이지 않게)
+            }
+            const shift = n * dur;
+            setCuts(prev => [
+                ...prev.map(c => (c.track === A.track && c.startTime >= A.endTime - 1e-9)
+                    ? { ...c, startTime: c.startTime + shift, endTime: c.endTime + shift } : c),
+                ...newCuts,
+            ]);
+        } catch (e) { alert('트위닝 실패: ' + e.message); }
+        finally { setLoadProgress(null); }
+    };
+
     const handleDuplicateCut = (id) => {
         const cut = cuts.find(c => c.id === (id ?? currentCutId));
         if (!cut) return;
@@ -3814,6 +3860,7 @@ export default function App() {
                             <button className="tool-btn" onClick={globalUndo} title="Undo"><Undo size={15} /><span className="tool-label">Undo</span></button>
                             <button className="tool-btn" onClick={globalRedo} title="Redo"><Redo size={15} /><span className="tool-label">Redo</span></button>
                             <button className="tool-btn" onClick={handleClearCut} title="현재 컷 전체 비우기"><Trash size={15} /><span className="tool-label">비우기</span></button>
+                            <button className="tool-btn" onClick={doTween} title="현재 컷과 다음 컷 사이를 자동 중간 프레임으로 채웁니다 (형태 모핑)"><Repeat size={15} /><span className="tool-label">트위닝</span></button>
                             {hasLassoClip && <button className="tool-btn" onClick={pasteLassoSelection} title="복사한 올가미 선택을 현재 레이어에 붙여넣기"><ClipboardPaste size={15} /><span className="tool-label">올가미↓</span></button>}
                         </div>
                         <div className="tool-divider" />
