@@ -845,7 +845,7 @@ export function computeCutAnim(ac, time, cw = CANVAS_W, ch = CANVAS_H) {
     return { alpha: Math.max(0, alpha), sx, sy, tx, ty };
 }
 
-export const LAYER_ANIM_DEFAULT = { mode: 'progress', speed: 1, count: 0, tx: 0, ty: 0, rot: 0, scale: 0, pivotX: 0.5, pivotY: 0.5, path: null, ease: 'linear', easePower: 2, swayAmount: 0, swaySpeed: 1, swayCurve: null };
+export const LAYER_ANIM_DEFAULT = { mode: 'progress', speed: 1, count: 0, tx: 0, ty: 0, rot: 0, scale: 0, pivotX: 0.5, pivotY: 0.5, path: null, ease: 'linear', easePower: 2, swayAmount: 0, swaySpeed: 1, swayCurve: null, swayProfile: null, swayAxis: 'y' };
 
 // Easing applied to a 0..1 progress. type: linear | in (slow→fast) | out (fast→slow)
 // | inout. power (>=1) is the user-adjustable strength/weight.
@@ -909,6 +909,18 @@ export function curveToWave(pts, samples = 64) {
     for (let k = 0; k < samples; k++) out[k] -= drift * (k / (samples - 1));
     return { wave: out.map(v => Math.round(v * 1000) / 1000), amp: Math.round(amp) };
 }
+// 흔들림 프로파일: 축을 따라 놓인 제어점들의 가중치(-1..1)를 부드럽게 보간한다.
+// 0이면 그 지점은 '유지'(안 흔들림), 부호가 반대면 반대쪽으로 꺾인다 → 일로 꺾고 절로 꺾기.
+export function swayWeightAt(profile, p) {
+    const n = profile?.length || 0;
+    if (!n) return 1;
+    if (n === 1) return profile[0];
+    const x = Math.min(1, Math.max(0, p)) * (n - 1);
+    const i = Math.min(n - 2, Math.floor(x));
+    const f = x - i;
+    const t = f * f * (3 - 2 * f); // smoothstep → 제어점 사이가 각지지 않게
+    return profile[i] + (profile[i + 1] - profile[i]) * t;
+}
 // 파형을 0..1 구간에서 순환 샘플링 (선형 보간).
 export function sampleWave(wave, u) {
     const n = wave.length;
@@ -942,12 +954,22 @@ export function computeLayerAnim(layer, ac, time, cw = CANVAS_W, ch = CANVAS_H) 
     // toward the far end from the pivot — anchor the pivot at the top of the hair for a natural swing.
     // 흔들림1 = 사인파(기본), 흔들림2 = 사용자가 그린 곡선을 따라가는 파형.
     const sway = a.swayAmount || 0;
-    const shear = !sway ? 0
+    const wave = !sway ? 0
         : (a.swayCurve && a.swayCurve.length > 1)
-            ? (sway / 100) * sampleWave(a.swayCurve, (a.swaySpeed || 1) * time)
-            : (sway / 100) * Math.sin(2 * Math.PI * (a.swaySpeed || 1) * time);
-    if (tx === 0 && ty === 0 && rot === 0 && sc === 1 && shear === 0) return null;
-    return { tx, ty, rot, sc, shear, px: (a.pivotX ?? 0.5) * cw, py: (a.pivotY ?? 0.5) * ch };
+            ? sampleWave(a.swayCurve, (a.swaySpeed || 1) * time)
+            : Math.sin(2 * Math.PI * (a.swaySpeed || 1) * time);
+    const shear = (sway / 100) * wave;
+    // 지점별 프로파일이 있으면 단순 기울임(shear) 대신 축을 따라 구간마다 다르게 꺾는다.
+    // 렌더러가 슬라이스 워프로 처리하므로 여기서는 필요한 값만 넘긴다.
+    const prof = (sway && Array.isArray(a.swayProfile) && a.swayProfile.length > 1) ? a.swayProfile : null;
+    const axis = a.swayAxis === 'x' ? 'x' : 'y';
+    // 프로파일 가중치 1 = 기존 shear가 축 끝에서 만들던 변위와 같은 크기 (감각 유지)
+    const swayDisp = prof ? (sway / 100) * wave * (axis === 'y' ? ch : cw) : 0;
+    if (tx === 0 && ty === 0 && rot === 0 && sc === 1 && shear === 0 && !prof) return null;
+    return {
+        tx, ty, rot, sc, shear: prof ? 0 : shear, px: (a.pivotX ?? 0.5) * cw, py: (a.pivotY ?? 0.5) * ch,
+        swayProfile: prof, swayAxis: axis, swayDisp,
+    };
 }
 
 export function flattenLayersInUiOrder(layers, parentId = null, out = []) {

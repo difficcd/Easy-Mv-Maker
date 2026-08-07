@@ -7,7 +7,7 @@ import {
     DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT, FONT_PRESETS,
     pointInPolygon, dist, safeArray, hexToRgb, bucketFillTransparentRegion,
     layerKey, imageDataToDataURL, dataURLToImageData, drawStrokesOnCtx,
-    flattenForCanvas, flattenLayersInUiOrder, strokeSig, extractVideoFrames, fitRect, detectSceneCuts, curveToWave,
+    flattenForCanvas, flattenLayersInUiOrder, strokeSig, extractVideoFrames, fitRect, detectSceneCuts, curveToWave, swayWeightAt,
     ANIM_DEFAULT, computeCutAnim, LAYER_ANIM_DEFAULT, computeLayerAnim,
 } from './canvasUtils';
 
@@ -2715,7 +2715,25 @@ export default function App() {
                 const mb = maskEntry?.imageBitmap;
                 const mi = maskEntry?.imageData;
 
-                if (!shouldMask || (!mb && !mi)) {
+                if (la?.swayProfile && (!shouldMask || (!mb && !mi))) {
+                    // 지점별 흔들림: 축을 따라 얇게 잘라 각 구간을 다른 양만큼 밀어준다.
+                    // 단일 shear는 한 방향 기울임만 되지만, 이렇게 하면 위는 유지하고 가운데는
+                    // 왼쪽, 아래는 오른쪽으로 꺾는 식의 변형이 가능하다(비-어파인).
+                    const SLICES = 48;
+                    const vertical = la.swayAxis === 'y';
+                    const span = vertical ? CANVAS_H : CANVAS_W;
+                    for (let sIdx = 0; sIdx < SLICES; sIdx++) {
+                        const a0 = Math.floor(sIdx * span / SLICES);
+                        const a1 = Math.floor((sIdx + 1) * span / SLICES);
+                        const len = a1 - a0; if (len <= 0) continue;
+                        const p = (a0 + len / 2) / span;
+                        const d = la.swayDisp * swayWeightAt(la.swayProfile, p);
+                        // 슬라이스 경계의 미세한 틈을 막으려고 1px 겹쳐 그린다.
+                        const ov = sIdx < SLICES - 1 ? 1 : 0;
+                        if (vertical) ctx.drawImage(layerCanvas, 0, a0, CANVAS_W, len + ov, d, a0, CANVAS_W, len + ov);
+                        else ctx.drawImage(layerCanvas, a0, 0, len + ov, CANVAS_H, a0, d, len + ov, CANVAS_H);
+                    }
+                } else if (!shouldMask || (!mb && !mi)) {
                     ctx.drawImage(layerCanvas, 0, 0);
                 } else {
                     const mx = Math.round(selection.x);

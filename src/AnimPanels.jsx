@@ -136,6 +136,52 @@ export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCaptur
                 {a.swayCurve && <button className="small-btn" onClick={() => updLayerAnim(cut.id, layer.id, { swayCurve: null })}>기본 파형</button>}
                 {a.swayCurve && <span style={{ color: '#5a8' }}>● 곡선</span>}
             </div>
+            {/* 지점별 꺾임: 축을 따라 놓인 각 지점의 흔들림 정도(-100~100%).
+                0 = 그 지점은 고정, 부호를 반대로 주면 반대쪽으로 꺾인다. */}
+            {(() => {
+                const prof = Array.isArray(a.swayProfile) ? a.swayProfile : null;
+                const setProf = (arr) => updLayerAnim(cut.id, layer.id, { swayProfile: arr });
+                const resize = (n) => {
+                    const cur = prof || [0, 1];
+                    const next = Array.from({ length: n }, (_, i) => {
+                        const p = i / (n - 1);
+                        const x = p * (cur.length - 1), lo = Math.floor(x), f = x - lo;
+                        return Math.round(((cur[lo] ?? 0) + ((cur[Math.min(lo + 1, cur.length - 1)] ?? 0) - (cur[lo] ?? 0)) * f) * 100) / 100;
+                    });
+                    setProf(next);
+                };
+                return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 10, color: '#8bd' }}>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}
+                            title="축을 따라 지점마다 얼마나 흔들릴지 정합니다. 0 = 고정(유지), 음수 = 반대쪽으로 꺾임.">
+                            <span style={{ width: 24 }}>꺾임</span>
+                            {!prof
+                                ? <button className="small-btn" onClick={() => setProf([0, 0.5, 1])}>지점별 꺾임 켜기</button>
+                                : <>
+                                    <select className="time-input" style={{ width: 52, height: 20, fontSize: 10 }} value={a.swayAxis || 'y'}
+                                        onChange={e => updLayerAnim(cut.id, layer.id, { swayAxis: e.target.value })} title="변형 중심축">
+                                        <option value="y">세로축</option><option value="x">가로축</option>
+                                    </select>
+                                    <span>지점</span>
+                                    <NumIn value={prof.length} onChange={v => resize(Math.max(2, Math.min(8, Math.round(v))))} min={2} max={8} w={40} title="제어 지점 개수 (2~8)" />
+                                    <button className="small-btn" onClick={() => setProf(null)}>끄기</button>
+                                </>}
+                        </div>
+                        {prof && (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, paddingLeft: 26 }}>
+                                {prof.map((w, i) => (
+                                    <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 2 }}
+                                        title={`${(a.swayAxis === 'x' ? '왼쪽→오른쪽' : '위→아래')} ${Math.round(i / (prof.length - 1) * 100)}% 지점의 흔들림 정도(%)`}>
+                                        <span style={{ color: '#667' }}>{Math.round(i / (prof.length - 1) * 100)}%</span>
+                                        <NumIn value={Math.round(w * 100)} step={10} min={-100} max={100} w={46}
+                                            onChange={v => setProf(prof.map((x, j) => j === i ? v / 100 : x))} />
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                );
+            })()}
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 10, color: '#aaa' }}>
                 <span style={{ width: 24 }}>경로</span>
                 <button className="small-btn" style={{ background: pathCapture && pathCapture.layerId === layer.id ? '#7c8cff' : undefined }}
