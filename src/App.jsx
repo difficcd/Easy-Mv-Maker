@@ -239,6 +239,9 @@ export default function App() {
     const cutDragTimerRef = useRef(null);
     const [animLayer, setAnimLayer] = useState(null); // {cutId, layerId} whose part-anim panel is open
     const [jitterLayer, setJitterLayer] = useState(null); // {cutId, layerId} whose 자글자글 settings panel is open
+    const [spaceDown, setSpaceDown] = useState(false); // 스페이스바 = 화면 이동(손바닥) 모드
+    const spaceDownRef = useRef(false);
+    const panningRef = useRef(false);
     const [pathCapture, setPathCapture] = useState(null); // {cutId, layerId} while recording a motion path
     const pathPtsRef = useRef(null);
 
@@ -1542,8 +1545,21 @@ export default function App() {
         const [a] = [...touchPtsRef.current.values()];
         pinchRef.current = { mode: 'pan', startPt: { x: a.x, y: a.y }, startView: { ...view } };
     };
+    // PC 화면 이동: 스페이스바를 누른 채 드래그(그림판 공통 관습) 또는 휠(가운데) 버튼 드래그.
+    // 스페이스 중에는 startDraw가 막히므로 그림이 그려지지 않는다.
+    const startMousePan = (e) => {
+        const sx = e.clientX, sy = e.clientY, sv = { ...view };
+        panningRef.current = true;
+        const mv = (ev) => { setView({ zoom: sv.zoom, x: sv.x + (ev.clientX - sx), y: sv.y + (ev.clientY - sy) }); ev.preventDefault(); };
+        const up = () => { panningRef.current = false; window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); };
+        window.addEventListener('pointermove', mv);
+        window.addEventListener('pointerup', up);
+    };
     const onAreaPointerDown = (e) => {
-        if (e.pointerType !== 'touch') return;
+        if (e.pointerType !== 'touch') {
+            if (spaceDownRef.current || e.button === 1) { e.preventDefault(); startMousePan(e); }
+            return;
+        }
         touchPtsRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
         if (touchPtsRef.current.size === 2) {
             const [a, b] = [...touchPtsRef.current.values()];
@@ -1582,6 +1598,30 @@ export default function App() {
         else if (touchPtsRef.current.size === 0) pinchRef.current = null;
     };
     const resetView = () => setView({ zoom: 1, x: 0, y: 0 });
+
+    // 스페이스바 = 손바닥(화면 이동) 모드. 입력창에 타이핑 중일 땐 무시하고,
+    // 페이지가 스크롤되지 않도록 기본 동작만 막는다.
+    useEffect(() => {
+        const isTyping = () => {
+            const a = document.activeElement;
+            return a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.isContentEditable);
+        };
+        const down = (e) => {
+            if (e.code !== 'Space' || e.repeat || isTyping()) return;
+            e.preventDefault();
+            spaceDownRef.current = true; setSpaceDown(true);
+        };
+        const up = (e) => {
+            if (e.code !== 'Space') return;
+            spaceDownRef.current = false; setSpaceDown(false);
+        };
+        // 창을 벗어났다 돌아오면 눌린 상태로 남지 않게 초기화
+        const blur = () => { spaceDownRef.current = false; setSpaceDown(false); };
+        window.addEventListener('keydown', down);
+        window.addEventListener('keyup', up);
+        window.addEventListener('blur', blur);
+        return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); window.removeEventListener('blur', blur); };
+    }, []);
 
     // Wheel zoom on the canvas (PC): anchored at the cursor so the point under it stays put.
     // Shift/Ctrl not required — plain wheel zooms, since the stage never scrolls.
@@ -1718,6 +1758,8 @@ export default function App() {
     };
 
     const startDraw = (e) => {
+        // 스페이스바 패닝 / 휠버튼 패닝 중에는 그리지 않는다 (canvas-area가 패닝을 처리).
+        if (spaceDownRef.current || e.button === 1 || panningRef.current) return;
         // Palm rejection: only a stylus (S Pen) or mouse may draw — ignore finger/touch.
         if (e.pointerType === 'touch') return;
         const pos = getPos(e);
@@ -2749,6 +2791,27 @@ export default function App() {
         const target = dir > 0 ? times.find(t => t > cur + 0.02) : [...times].reverse().find(t => t < cur - 0.02);
         if (target != null) seekToTime(target);
     };
+    // 마우스 휠(가운데) 클릭 드래그 = 타임라인 패닝. 어디를 눌러도(컷 위 포함) 동작하도록
+    // 캡처 단계에서 처리하고, 브라우저 기본 auto-scroll은 막는다.
+    const startTimelinePan = (e) => {
+        if (e.button !== 1) return;
+        const el = timelineRef.current; if (!el) return;
+        e.preventDefault(); e.stopPropagation();
+        const sx = e.clientX, sy = e.clientY, sl = el.scrollLeft, st = el.scrollTop;
+        el.style.cursor = 'grabbing';
+        const mv = (ev) => {
+            el.scrollLeft = Math.max(0, sl - (ev.clientX - sx));
+            el.scrollTop = Math.max(0, st - (ev.clientY - sy));
+            ev.preventDefault();
+        };
+        const up = () => {
+            el.style.cursor = '';
+            window.removeEventListener('pointermove', mv);
+            window.removeEventListener('pointerup', up);
+        };
+        window.addEventListener('pointermove', mv);
+        window.addEventListener('pointerup', up);
+    };
     // Drag-to-scrub the playhead. Clicking a cut/handle stops propagation, so this
     // only fires on the ruler and empty track space.
     const startTimelineScrub = (e) => {
@@ -3362,8 +3425,10 @@ export default function App() {
                         <div style={{ marginTop: 8 }}><b style={{ color: '#9aa' }}>펜 / 손가락</b></div>
                         <div>펜(S펜)·마우스 = 그리기 / 손가락은 그려지지 않음(팜 리젝션)</div>
                         <div>캔버스: 손가락 1개 = 이동, 2개 = 핀치 줌 (우상단 ⟲ 초기화)</div>
+                        <div>PC: <b>스페이스바 + 드래그 = 화면 이동</b> · 휠 클릭 드래그도 이동 · 휠 = 줌</div>
                         <div style={{ marginTop: 8 }}><b style={{ color: '#9aa' }}>타임라인</b></div>
                         <div>1손가락 드래그 = 이동, 탭 = 재생위치 / 2손가락 = 확대·축소</div>
+                        <div>PC: <b>휠(가운데) 클릭 드래그 = 타임라인 이동</b></div>
                         <div>컷: 길게 눌러 이동 · 가장자리 드래그로 길이조절 · 더블클릭 이름변경 · Ctrl/Shift+클릭 다중선택</div>
                         <div style={{ marginTop: 8 }}><b style={{ color: '#9aa' }}>팁</b></div>
                         <div>애니메이션(컷·파츠)은 ▶ 재생 시에만 보입니다. 올가미 → "파츠로 분리"로 부분 애니메이션.</div>
@@ -3572,7 +3637,9 @@ export default function App() {
                 {showLeft && <div className="splitter-v" style={{ touchAction: 'none' }} title="드래그로 도구 패널 너비 조절" onPointerDown={e => { e.currentTarget.setPointerCapture?.(e.pointerId); setSplitter({ type: 'left', startX: e.clientX, startW: leftW }); }} />}
                 {!showLeft && <button onClick={() => setShowLeft(true)} className="icon-btn" style={{ width: 24, alignSelf: 'stretch', padding: 0, borderRadius: 0, background: '#1e1e2e', border: 'none', borderRight: '1px solid #333' }}><ChevronRight size={14} /></button>}
 
-                <div className="canvas-area" ref={canvasAreaRef} style={{ touchAction: 'none', position: 'relative' }}
+                <div className="canvas-area" ref={canvasAreaRef} style={{ touchAction: 'none', position: 'relative', cursor: spaceDown ? 'grab' : undefined }}
+                    onMouseDown={e => { if (e.button === 1) e.preventDefault(); }} /* 가운데클릭 자동스크롤 방지 */
+                    onAuxClick={e => { if (e.button === 1) e.preventDefault(); }}
                     onPointerDown={onAreaPointerDown} onPointerMove={onAreaPointerMove} onPointerUp={onAreaPointerUp} onPointerCancel={onAreaPointerUp}>
                     {pathCapture && (
                         <div style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', zIndex: 31, background: '#7c8cff', color: '#fff', fontSize: 12, padding: '6px 12px', borderRadius: 6, display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -3596,7 +3663,7 @@ export default function App() {
                     <div className="canvas-stage" style={{ position: 'relative', transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})`, aspectRatio: `${CANVAS_W} / ${CANVAS_H}`, maxWidth: '100%', maxHeight: '100%' }}>
                         <canvas ref={canvasRef} width={CANVAS_W} height={CANVAS_H}
                             onPointerDown={startDraw} onPointerMove={onDraw} onPointerUp={stopDraw} onPointerCancel={stopDraw} onPointerLeave={onPointerLeaveCanvas}
-                            style={{ cursor: selection ? 'move' : tool === 'fill' ? 'cell' : tool === 'lasso' ? 'crosshair' : 'crosshair', touchAction: 'none' }} />
+                            style={{ cursor: spaceDown ? 'grab' : selection ? 'move' : tool === 'fill' ? 'cell' : tool === 'lasso' ? 'crosshair' : 'crosshair', touchAction: 'none' }} />
                         {/* 라이브 오버레이는 반드시 투명해야 함. 전역 `canvas { background:#fff }` 규칙을
                             그대로 받으면 메인 캔버스를 흰색으로 덮어 그림이 안 보이고, 커밋 시 선이 사라진 것처럼 보임. */}
                         <canvas ref={liveCanvasRef} width={CANVAS_W} height={CANVAS_H} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', background: 'transparent', boxShadow: 'none' }} />
@@ -3857,7 +3924,11 @@ export default function App() {
                     </div>
                 )}
                 {showBottom && (
-                    <div className="tl-tracks" ref={timelineRef} onPointerDown={onTimelinePointerDown} onPointerMove={onTimelinePointerMove} onPointerUp={onTimelinePointerUp} onPointerCancel={onTimelinePointerUp} style={{ position: 'relative', touchAction: 'none' }}>
+                    <div className="tl-tracks" ref={timelineRef}
+                        onPointerDownCapture={startTimelinePan}
+                        onMouseDown={e => { if (e.button === 1) e.preventDefault(); }} /* 브라우저 가운데클릭 자동스크롤 방지 */
+                        onAuxClick={e => { if (e.button === 1) e.preventDefault(); }}
+                        onPointerDown={onTimelinePointerDown} onPointerMove={onTimelinePointerMove} onPointerUp={onTimelinePointerUp} onPointerCancel={onTimelinePointerUp} style={{ position: 'relative', touchAction: 'none' }}>
                         <div style={{ minWidth: '100%', width: `${Math.max(100, maxTime * pps + 150)}px`, position: 'relative' }}>
                             <div className="ruler" style={{ position: 'sticky', top: 0, left: 0, right: 0, height: 20, background: '#1a1a2e', borderBottom: '1px solid #2e2e4a', zIndex: 20 }}>
                                 <div style={{ position: 'sticky', left: 0, width: 60, height: '100%', background: '#1a1a2e', zIndex: 21, float: 'left' }} />
