@@ -370,7 +370,9 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null,
         ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
     }
     // 레이어 자글 효과: 이미 그려진 선들을 렌더 시점에 흔들어줌 (비파괴적).
+    // roughPhase가 시간에 따라 바뀌면 선이 제자리에서 부글거리는 "모션"이 된다 (boiling line).
     const layerRough = opts.roughen ? (typeof opts.roughen === 'number' ? opts.roughen : 2.4) : 0;
+    const roughPhase = opts.roughPhase || 0;
     strokes.forEach(s => {
         if (s.tool === 'text') {
             const fontSize = Math.max(6, Math.min(220, s.fontSize ?? 32));
@@ -441,6 +443,12 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null,
             ctx.globalAlpha = 1.0; return;
         }
         if (!s.points?.length) return;
+        // 자글: 'rough' 펜(개별) 또는 레이어 효과(layerRough)로 매끈한 경로를 흔든다.
+        // 도트펜(pen)도 아래에서 쓰므로 반드시 pen 분기보다 먼저 계산해야 한다.
+        const roughAmp = (s.tool === 'rough') ? (s.roughAmp ?? Math.max(1.5, s.size * 0.35)) : ((layerRough && s.tool !== 'eraser') ? layerRough : 0);
+        // 시드 = 스트로크 고유값 + 시간 위상 → 프레임마다 다른 떨림, 스트로크끼리는 독립적.
+        const roughSeed = (s.id || 0) + roughPhase * 7919;
+        const smooth = (p) => { let sp = smoothPoints(p); if (roughAmp) sp = roughenPoints(sp, roughAmp, roughSeed); return sp; };
         // Dot pen: hard square stamps (pixel-art look), no anti-aliased round stroke.
         if (s.tool === 'pen') {
             const size = Math.max(1, Math.round(s.size));
@@ -449,11 +457,12 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null,
             ctx.globalAlpha = s.opacity ?? 1;
             ctx.fillStyle = s.color;
             const stamp = (x, y) => ctx.fillRect(Math.round(x - half), Math.round(y - half), size, size);
-            if (s.points.length === 1) {
-                stamp(s.points[0].x, s.points[0].y);
+            const P = roughAmp ? roughenPoints(smoothPoints(s.points), roughAmp, roughSeed) : s.points;
+            if (P.length === 1) {
+                stamp(P[0].x, P[0].y);
             } else {
-                for (let i = 1; i < s.points.length; i++) {
-                    const a = s.points[i - 1], b = s.points[i];
+                for (let i = 1; i < P.length; i++) {
+                    const a = P[i - 1], b = P[i];
                     const d = Math.hypot(b.x - a.x, b.y - a.y);
                     const steps = Math.max(1, Math.ceil(d / Math.max(1, size / 2)));
                     for (let t = 0; t <= steps; t++) {
@@ -468,9 +477,6 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null,
         const hasPressure = s.points.some(p => p.pressure !== undefined && p.pressure !== 0.5);
         const baseColor = s.color;
         const baseOpacity = s.opacity ?? 1;
-        // 자글: 'rough' 펜(개별) 또는 레이어 효과(layerRough)로 매끈한 경로를 흔든다.
-        const roughAmp = (s.tool === 'rough') ? (s.roughAmp ?? Math.max(1.5, s.size * 0.35)) : ((layerRough && s.tool !== 'eraser') ? layerRough : 0);
-        const smooth = (p) => { let sp = smoothPoints(p); if (roughAmp) sp = roughenPoints(sp, roughAmp, s.id || 0); return sp; };
         // Marker: draw the whole stroke opaque on a temp canvas, then composite once.
         // Compositing per-segment with a translucent multiply darkens every overlap,
         // which showed up as black dots at the joints under pressure rendering.
@@ -516,7 +522,7 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null,
             ctx.save();
             ctx.globalAlpha = baseOpacity;
             const put = (x, y) => ctx.drawImage(stamp, x - half, y - half);
-            const P = roughAmp ? roughenPoints(smoothPoints(s.points), roughAmp, s.id || 0) : s.points;
+            const P = roughAmp ? roughenPoints(smoothPoints(s.points), roughAmp, roughSeed) : s.points;
             if (P.length === 1) put(P[0].x, P[0].y);
             for (let i = 1; i < P.length; i++) {
                 const a = P[i - 1], c = P[i], d = Math.hypot(c.x - a.x, c.y - a.y);

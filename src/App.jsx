@@ -23,6 +23,7 @@ const PEN_TYPES = [
     { id: 'eraser', label: 'Eraser', Icon: Eraser },
     { id: 'fill', label: 'Fill', Icon: Droplets },
 ];
+const BOIL_FPS = 10; // 자글자글(boiling line) 모션이 바뀌는 초당 횟수
 const TOOL_TYPES = [
     { id: 'lasso', label: 'Lasso', Icon: GitBranch },
     { id: 'move', label: 'Move', Icon: Move },
@@ -167,6 +168,8 @@ export default function App() {
     const liveClearPendingRef = useRef(false); // 커밋 후, 레이어 캐시가 새 선을 그린 뒤 오버레이를 지움 (깜빡임/사라짐 방지)
     const lineStartRef = useRef(null);    // 직선 도구 시작점
     const drawTargetLayerRef = useRef(null); // 이번 스트로크를 커밋할 실제 레이어 id (활성 레이어 무효화 대비)
+    const boilFrameRef = useRef(0);       // 자글자글 "모션" 위상 — 시간에 따라 바뀌며 선이 제자리에서 부글거림
+    const [boilTick, setBoilTick] = useState(0); // 정지(편집) 중에도 자글 모션을 미리보기 위한 위상 티커
     const curveAnchorsRef = useRef(null); // 곡선 도구: 탭으로 찍은 앵커점들
     const curveDraggingRef = useRef(false); // 곡선 앵커를 방금 찍고 드래그로 미세조정 중
     const [curvePts, setCurvePts] = useState(0); // 곡선 앵커 개수 (완료/취소 바 표시용)
@@ -2363,7 +2366,10 @@ export default function App() {
     // Build it synchronously here instead of skipping; the ref map keeps it bounded.
     const ensureLayerCanvas = (cutId, layer) => {
         const key = layerKey(cutId, layer.id);
-        const sig = strokeSig(layer.strokes) + '|r' + (layer.roughen || 0);
+        // 자글 레이어는 시간 위상(boil)을 sig에 포함 → 위상이 바뀔 때마다 다시 그려져 "떨리는 모션"이 됨.
+        // 효과가 꺼진 레이어는 sig 형태가 그대로라 기존 캐시가 정상 히트(성능 영향 없음).
+        const boil = layer.roughen ? boilFrameRef.current : 0;
+        const sig = strokeSig(layer.strokes) + '|r' + (layer.roughen || 0) + (layer.roughen ? '|b' + boil : '');
         const cached = layerCanvasCache[key];
         if (cached && cached.dataset.strokes === sig) return cached;
         const map = fallbackCanvasRef.current;
@@ -2386,7 +2392,7 @@ export default function App() {
             // 가능한 스트로크만 먼저 그려두고, sig를 '미완성'으로 표시해 디코드 후 다시 그리게 함.
             const part = document.createElement('canvas');
             part.width = CANVAS_W; part.height = CANVAS_H;
-            drawStrokesOnCtx(part.getContext('2d'), layer.strokes, true, store, { roughen: layer.roughen || 0 });
+            drawStrokesOnCtx(part.getContext('2d'), layer.strokes, true, store, { roughen: layer.roughen || 0, roughPhase: boil });
             part.dataset.strokes = sig + '|miss' + missing.length;
             map.delete(key); map.set(key, part);
             while (map.size > 24) map.delete(map.keys().next().value);
@@ -2394,7 +2400,7 @@ export default function App() {
         }
         const cnv = hit || document.createElement('canvas');
         cnv.width = CANVAS_W; cnv.height = CANVAS_H;
-        drawStrokesOnCtx(cnv.getContext('2d'), layer.strokes, true, bitmapStoreRef.current, { roughen: layer.roughen || 0 });
+        drawStrokesOnCtx(cnv.getContext('2d'), layer.strokes, true, bitmapStoreRef.current, { roughen: layer.roughen || 0, roughPhase: boil });
         cnv.dataset.strokes = sig;
         map.delete(key); map.set(key, cnv); // re-insert = most recently used
         while (map.size > 24) map.delete(map.keys().next().value);
@@ -2404,6 +2410,9 @@ export default function App() {
     const paintFrame = useCallback((t, playing) => {
         const canvas = canvasRef.current; if (!canvas) return;
         const ctx = canvas.getContext('2d');
+        // 자글자글 모션 위상: 전통 애니의 boiling line처럼 초당 ~10회만 바뀌게 양자화.
+        // 매 프레임 바꾸면 노이즈처럼 보이고, 이 정도가 '손그림이 살아 움직이는' 느낌을 냄.
+        boilFrameRef.current = Math.floor(t * BOIL_FPS) + boilTick;
         const primary = cuts.find(c => c.id === currentCutId);
         let activeCuts = cuts.filter(c => t >= c.startTime && t < c.endTime);
         if (!activeCuts.find(c => c.id === currentCutId) && primary && !playing) activeCuts.push(primary);
@@ -2579,7 +2588,7 @@ export default function App() {
             }
             ctx.restore();
         });
-    }, [cuts, currentCutId, onionPrev, onionNext, selection, layerCanvasCache, frameDecodeTick, videoOverlay]);
+    }, [cuts, currentCutId, onionPrev, onionNext, selection, layerCanvasCache, frameDecodeTick, videoOverlay, boilTick]);
 
     const paintFrameRef = useRef(null);
     paintFrameRef.current = paintFrame;
@@ -2683,6 +2692,16 @@ export default function App() {
             ctx.setLineDash([]);
         }
     }, [paintFrame, cuts, currentCutId, isPlaying, currentTime, lassoPoints, selection, selectedText, animLayer]);
+
+    // 자글자글은 '모션'이라 정지 화면에선 안 보인다 → 편집 중에도 위상만 천천히 돌려 미리보기.
+    // 효과가 켜진 보이는 레이어가 있을 때만 동작하므로 평소 성능에는 영향 없음.
+    useEffect(() => {
+        if (isPlaying) return;
+        const cut = cuts.find(c => c.id === currentCutId);
+        if (!cut || !safeArray(cut.layers).some(l => l.roughen && l.visible !== false)) return;
+        const id = setInterval(() => setBoilTick(v => (v + 1) % 100000), Math.round(1000 / BOIL_FPS));
+        return () => clearInterval(id);
+    }, [isPlaying, cuts, currentCutId]);
 
     // 라이브 오버레이 클리어를 타이머가 아니라 "레이어 캐시가 갱신된 뒤"로 확정 → 커밋한 선이
     // 메인 캔버스에 그려진 다음에만 오버레이를 지워, 컴퓨터/속도와 무관하게 선이 사라지지 않음.
@@ -3125,7 +3144,7 @@ export default function App() {
                         </button>
                         <span className="layer-name">{layer.name}</span>
                         {!isFolder && (
-                            <button className="icon-btn" style={{ color: layer.roughen ? '#e0a84e' : undefined }} title={layer.roughen ? `자글자글 효과 ${layer.roughen < 4 ? '약' : '강'} (클릭: 순환)` : '자글자글 효과 주기 (이미 그린 선)'}
+                            <button className="icon-btn" style={{ color: layer.roughen ? '#e0a84e' : undefined }} title={layer.roughen ? `자글자글 모션 ${layer.roughen < 4 ? '약' : '강'} — 선이 제자리에서 떨림 (클릭: 순환)` : '자글자글 모션 주기 (이미 그린 선이 제자리에서 부글거림)'}
                                 onClick={e => cycleRoughen(e, cut.id, layer.id)}>
                                 <Waves size={11} />
                             </button>
