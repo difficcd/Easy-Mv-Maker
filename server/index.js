@@ -99,6 +99,78 @@ app.get('/api/projects/:id/asset/:assetId', async (req, res) => {
     } catch { res.status(404).json({ error: 'not found' }); }
 });
 
+// Which assets are already stored for this id. Lets the client skip re-uploading frames it
+// has already sent — without this, every autosave of a video-heavy project would re-push
+// hundreds of MB. Assets are content-keyed by bitmapId, so presence is enough.
+app.get('/api/projects/:id/assets', async (req, res) => {
+    try {
+        const dir = assetsDirFor(req.params.id);
+        const files = await fs.readdir(dir).catch(() => []);
+        res.json(files.map(f => f.replace(/\.[^.]+$/, '')));
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// --- Autosave backups -------------------------------------------------------------------
+// Rotating, timestamped snapshots kept as separate files on disk, so a corrupted or
+// mistakenly overwritten project can be rolled back. Binary assets are NOT copied per
+// snapshot; they live in the shared asset dir for the same key and are referenced by id.
+const BACKUP_KEEP = 12;
+const backupDirFor = (key) => path.join(DATA_DIR, `${safeId(key)}.backups`);
+const safeStamp = (s) => String(s).replace(/[^0-9A-Za-z_-]/g, '').slice(0, 40);
+
+app.post('/api/backups/:key', async (req, res) => {
+    try {
+        const dir = backupDirFor(req.params.key);
+        await fs.mkdir(dir, { recursive: true });
+        const savedAt = new Date().toISOString();
+        const stamp = savedAt.replace(/[:.]/g, '-');
+        const name = req.body?.name || 'Untitled';
+        const data = req.body?.data ?? req.body;
+        // Write to a temp file then rename: a crash mid-write can never leave a half-written
+        // snapshot that would fail to parse on restore.
+        const target = path.join(dir, `${stamp}.json`);
+        const tmp = `${target}.tmp`;
+        await fs.writeFile(tmp, JSON.stringify({ key: safeId(req.params.key), name, savedAt, data }));
+        await fs.rename(tmp, target);
+        // Rotate: keep only the newest BACKUP_KEEP snapshots.
+        const files = (await fs.readdir(dir)).filter(f => f.endsWith('.json')).sort();
+        for (const f of files.slice(0, Math.max(0, files.length - BACKUP_KEEP))) {
+            await fs.unlink(path.join(dir, f)).catch(() => { });
+        }
+        res.json({ ok: true, stamp, savedAt, kept: Math.min(files.length, BACKUP_KEEP) });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+app.get('/api/backups/:key', async (_req, res) => {
+    try {
+        const dir = backupDirFor(_req.params.key);
+        const files = (await fs.readdir(dir).catch(() => [])).filter(f => f.endsWith('.json'));
+        const items = await Promise.all(files.map(async f => {
+            try {
+                const st = await fs.stat(path.join(dir, f));
+                const head = JSON.parse(await fs.readFile(path.join(dir, f), 'utf8'));
+                return { stamp: f.replace(/\.json$/, ''), name: head.name || 'Untitled', savedAt: head.savedAt || st.mtime.toISOString(), size: st.size };
+            } catch { return null; }
+        }));
+        res.json(items.filter(Boolean).sort((a, b) => String(b.savedAt).localeCompare(String(a.savedAt))));
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+app.get('/api/backups/:key/:stamp', async (req, res) => {
+    try {
+        const f = path.join(backupDirFor(req.params.key), `${safeStamp(req.params.stamp)}.json`);
+        const raw = JSON.parse(await fs.readFile(f, 'utf8'));
+        res.json(raw.data ?? raw);
+    } catch { res.status(404).json({ error: 'not found' }); }
+});
+
+app.delete('/api/backups/:key/:stamp', async (req, res) => {
+    try {
+        await fs.unlink(path.join(backupDirFor(req.params.key), `${safeStamp(req.params.stamp)}.json`));
+        res.json({ ok: true });
+    } catch { res.status(404).json({ error: 'not found' }); }
+});
+
 app.delete('/api/projects/:id', async (req, res) => {
     try {
         await fs.unlink(fileFor(req.params.id)).catch(() => { });

@@ -312,6 +312,23 @@ function roughenPoints(pts, amp = 2.2, seed = 0, wave = 1) {
     return out;
 }
 
+// 자글자글은 위상이 바뀔 때마다 레이어를 다시 그리는데, smoothPoints(리샘플 + 체이킨 3회로
+// 점이 약 8배)는 위상과 무관하게 항상 같은 결과다. 스트로크별로 캐시해 두면 매 위상마다
+// 재계산하는 비용이 사라진다(자글 레이어 렌더의 대부분을 차지하던 부분).
+// WeakMap이라 스트로크가 사라지면 캐시도 함께 회수된다.
+// 게다가 자글용 경로는 촘촘할 필요가 없다. 떨림 파장은 수십 px인데 스무딩된 경로는 점 간격이
+// 1px 미만이라 15~20배 과표본이다. 6px 간격으로 성기게 만든 뒤 흔들고, 렌더러의 Catmull-Rom
+// 스플라인이 다시 매끄럽게 이어주게 한다 — 결과는 오히려 더 둥글고 비용은 20배 이상 싸다.
+const JITTER_SPACING = 6;
+const _smoothCache = new WeakMap();
+function jitterBasePoints(stroke) {
+    const hit = _smoothCache.get(stroke);
+    if (hit && hit.n === stroke.points.length) return hit.pts;
+    const pts = resamplePts(smoothPoints(stroke.points), JITTER_SPACING);
+    _smoothCache.set(stroke, { n: stroke.points.length, pts });
+    return pts;
+}
+
 // Catmull-Rom control points for the segment p1->p2 (converted to a cubic Bezier). The
 // curve passes exactly through every sample and stays smooth across segment joins, which
 // quadratic-through-midpoints does not (it flattens when samples are far apart).
@@ -483,7 +500,12 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null,
         const roughAmp = (s.tool === 'rough') ? (s.roughAmp ?? Math.max(1.5, s.size * 0.35)) : ((layerRough && s.tool !== 'eraser' && !tooThin) ? layerRough : 0);
         // 시드 = 스트로크 고유값 + 시간 위상 → 프레임마다 다른 떨림, 스트로크끼리는 독립적.
         const roughSeed = (s.id || 0) + roughPhase * 7919;
-        const smooth = (p) => { let sp = smoothPoints(p); if (roughAmp) sp = roughenPoints(sp, roughAmp, roughSeed, roughWave); return sp; };
+        // 자글 적용 시에만 캐시를 쓴다: 일반 레이어는 레이어 캔버스가 캐시되어 변경 시 1회만
+        // 그리므로 이득이 없고, 캐시 메모리만 늘어난다.
+        const smooth = (p) => {
+            if (!roughAmp) return smoothPoints(p);
+            return roughenPoints(jitterBasePoints(s), roughAmp, roughSeed, roughWave);
+        };
         // Dot pen: hard square stamps (pixel-art look), no anti-aliased round stroke.
         if (s.tool === 'pen') {
             const size = Math.max(1, Math.round(s.size));
@@ -492,7 +514,7 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null,
             ctx.globalAlpha = s.opacity ?? 1;
             ctx.fillStyle = s.color;
             const stamp = (x, y) => ctx.fillRect(Math.round(x - half), Math.round(y - half), size, size);
-            const P = roughAmp ? roughenPoints(smoothPoints(s.points), roughAmp, roughSeed, roughWave) : s.points;
+            const P = roughAmp ? roughenPoints(jitterBasePoints(s), roughAmp, roughSeed, roughWave) : s.points;
             if (P.length === 1) {
                 stamp(P[0].x, P[0].y);
             } else {
@@ -557,7 +579,7 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null,
             ctx.save();
             ctx.globalAlpha = baseOpacity;
             const put = (x, y) => ctx.drawImage(stamp, x - half, y - half);
-            const P = roughAmp ? roughenPoints(smoothPoints(s.points), roughAmp, roughSeed, roughWave) : s.points;
+            const P = roughAmp ? roughenPoints(jitterBasePoints(s), roughAmp, roughSeed, roughWave) : s.points;
             if (P.length === 1) put(P[0].x, P[0].y);
             for (let i = 1; i < P.length; i++) {
                 const a = P[i - 1], c = P[i], d = Math.hypot(c.x - a.x, c.y - a.y);

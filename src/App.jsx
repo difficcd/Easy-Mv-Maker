@@ -239,9 +239,17 @@ export default function App() {
     const cutDragTimerRef = useRef(null);
     const [animLayer, setAnimLayer] = useState(null); // {cutId, layerId} whose part-anim panel is open
     const [jitterLayer, setJitterLayer] = useState(null); // {cutId, layerId} whose 자글자글 settings panel is open
+    const [backupAt, setBackupAt] = useState(null);      // 마지막 서버 백업 시각
+    const [backupBusy, setBackupBusy] = useState(false);
+    const [backupList, setBackupList] = useState(null);  // null = 목록 닫힘
+    const [storageInfo, setStorageInfo] = useState(null); // 로컬 저장 용량 사용률
+    const backupKeyRef = useRef(null);
+    const backupBusyRef = useRef(false);
+    const lastBackupSigRef = useRef('');
     const [spaceDown, setSpaceDown] = useState(false); // 스페이스바 = 화면 이동(손바닥) 모드
     const spaceDownRef = useRef(false);
     const panningRef = useRef(false);
+    const lastInteractRef = useRef(0); // 마지막 확대/이동 시각 — 자글 미리보기를 잠깐 양보시키는 데 사용
     const [pathCapture, setPathCapture] = useState(null); // {cutId, layerId} while recording a motion path
     const pathPtsRef = useRef(null);
 
@@ -1167,6 +1175,110 @@ export default function App() {
         } catch (e) { alert('삭제 실패: ' + e.message); }
     };
 
+    // --- Rotating server backups of the autosave (safety net separate from "저장") ---------
+    // The local IndexedDB autosave protects against a crash/refresh; this protects against the
+    // browser profile itself being lost or a project being overwritten. Snapshots are kept as
+    // separate timestamped files server-side and rotated, so you can roll back.
+    const getBackupKey = () => {
+        if (serverIdRef.current) return serverIdRef.current; // 서버 프로젝트가 있으면 그 아래로 묶는다
+        if (!backupKeyRef.current) {
+            let k = null;
+            try { k = localStorage.getItem('mv_backup_key'); } catch { }
+            if (!k) {
+                k = 'bk_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+                try { localStorage.setItem('mv_backup_key', k); } catch { }
+            }
+            backupKeyRef.current = k;
+        }
+        return backupKeyRef.current;
+    };
+    // Skip frames the server already has — otherwise every backup of a video project would
+    // re-upload hundreds of MB. Assets are keyed by bitmapId, so presence means identical.
+    const uploadAssetsDeduped = async (key, assetSink, onProgress) => {
+        let have = new Set();
+        try { have = new Set((await apiFetch(`/api/projects/${key}/assets`)).map(String)); } catch { }
+        const todo = assetSink.filter(a => !have.has(String(a.id)));
+        for (let i = 0; i < todo.length; i++) {
+            const a = todo[i];
+            const blob = a.blob || await (await fetch(a.url)).blob();
+            const res = await fetch(`/api/projects/${key}/asset/${a.id}?ext=${encodeURIComponent(a.ext)}`, {
+                method: 'PUT', headers: { 'Content-Type': blob.type || 'application/octet-stream' }, body: blob,
+            });
+            if (!res.ok) throw new Error(`에셋 업로드 실패 (${i + 1}/${todo.length})`);
+            onProgress?.(i + 1, todo.length);
+        }
+        return todo.length;
+    };
+    const doServerBackup = async (silent = true) => {
+        if (!serverAvailable || backupBusyRef.current) return;
+        backupBusyRef.current = true; setBackupBusy(true);
+        try {
+            const key = getBackupKey();
+            const assetSink = [];
+            const data = await buildData(true, assetSink); // 프레임/오디오는 별도 에셋으로 → JSON은 작게
+            if (assetSink.length) await uploadAssetsDeduped(key, assetSink);
+            await apiFetch(`/api/backups/${key}`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: serverNameRef.current || localNameRef.current || '자동 백업', data }),
+            });
+            setBackupAt(Date.now());
+            if (!silent) alert('서버에 백업했습니다.');
+        } catch (e) {
+            if (!silent) alert('서버 백업 실패: ' + e.message);
+        } finally { backupBusyRef.current = false; setBackupBusy(false); }
+    };
+    const openBackupList = async () => {
+        try { setBackupList(await apiFetch(`/api/backups/${getBackupKey()}`)); }
+        catch (e) { alert('백업 목록을 불러오지 못했습니다: ' + e.message); }
+    };
+    const doBackupRestore = async (stamp) => {
+        if (!window.confirm('이 백업으로 되돌릴까요? 현재 작업 내용은 사라집니다.')) return;
+        try {
+            const key = getBackupKey();
+            const data = await apiFetch(`/api/backups/${key}/${stamp}`);
+            await restore(data, `/api/projects/${key}`); // 에셋은 같은 키의 저장소에서
+            setBackupList(null);
+        } catch (e) { alert('백업 복구 실패: ' + e.message); }
+    };
+    const doBackupDelete = async (stamp) => {
+        if (!window.confirm('이 백업을 삭제할까요?')) return;
+        try { await apiFetch(`/api/backups/${getBackupKey()}/${stamp}`, { method: 'DELETE' }); openBackupList(); }
+        catch (e) { alert('삭제 실패: ' + e.message); }
+    };
+    // Periodic backup. Reads the newest state through a ref: putting `cuts` in the deps would
+    // restart the timer on every stroke, so it would never actually fire while you draw.
+    const backupFnRef = useRef(null);
+    backupFnRef.current = doServerBackup;
+    useEffect(() => {
+        if (!serverAvailable) return;
+        const id = setInterval(() => {
+            const cs = liveRef.current?.cuts || [];
+            const sig = cs.length + ':' + cs.map(c => safeArray(c.layers).reduce((n, l) => n + safeArray(l.strokes).length, 0)).join(',');
+            if (sig === lastBackupSigRef.current) return; // 바뀐 게 없으면 건너뜀
+            lastBackupSigRef.current = sig;
+            backupFnRef.current?.(true);
+        }, 5 * 60 * 1000);
+        return () => clearInterval(id);
+    }, [serverAvailable]);
+
+    // Ask the browser to make local storage persistent, so the IndexedDB autosave isn't
+    // silently evicted under storage pressure (the main way local-only work gets lost).
+    useEffect(() => { navigator.storage?.persist?.().catch(() => { }); }, []);
+    // Warn before the local quota runs out — a failed autosave is otherwise invisible.
+    useEffect(() => {
+        let alive = true;
+        const check = async () => {
+            try {
+                const est = await navigator.storage?.estimate?.();
+                if (!est || !alive || !est.quota) return;
+                setStorageInfo({ usage: est.usage || 0, quota: est.quota, pct: (est.usage || 0) / est.quota });
+            } catch { }
+        };
+        check();
+        const id = setInterval(check, 60000);
+        return () => { alive = false; clearInterval(id); };
+    }, []);
+
     // --- Local (IndexedDB) named projects — works offline / in the deployed build too ---
     const doLocalSave = async (forceNew = false) => {
         try {
@@ -1550,7 +1662,7 @@ export default function App() {
     const startMousePan = (e) => {
         const sx = e.clientX, sy = e.clientY, sv = { ...view };
         panningRef.current = true;
-        const mv = (ev) => { setView({ zoom: sv.zoom, x: sv.x + (ev.clientX - sx), y: sv.y + (ev.clientY - sy) }); ev.preventDefault(); };
+        const mv = (ev) => { lastInteractRef.current = Date.now(); setView({ zoom: sv.zoom, x: sv.x + (ev.clientX - sx), y: sv.y + (ev.clientY - sy) }); ev.preventDefault(); };
         const up = () => { panningRef.current = false; window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); };
         window.addEventListener('pointermove', mv);
         window.addEventListener('pointerup', up);
@@ -1583,10 +1695,12 @@ export default function App() {
             const dist = Math.hypot(a.x - b.x, a.y - b.y);
             const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
             const zoom = Math.max(0.25, Math.min(8, p.startView.zoom * (dist / p.startDist)));
+            lastInteractRef.current = Date.now();
             setView({ zoom, x: p.startView.x + (mid.x - p.startMid.x), y: p.startView.y + (mid.y - p.startMid.y) });
             e.preventDefault();
         } else if (touchPtsRef.current.size === 1 && p?.mode === 'pan') {
             const [a] = [...touchPtsRef.current.values()];
+            lastInteractRef.current = Date.now();
             setView({ zoom: p.startView.zoom, x: p.startView.x + (a.x - p.startPt.x), y: p.startView.y + (a.y - p.startPt.y) });
             e.preventDefault();
         }
@@ -1629,6 +1743,7 @@ export default function App() {
         const el = canvasAreaRef.current; if (!el) return;
         const h = (e) => {
             e.preventDefault();
+            lastInteractRef.current = Date.now(); // 확대 중에는 자글 미리보기가 끼어들지 않게
             const r = el.getBoundingClientRect();
             const cx = e.clientX - r.left - r.width / 2;
             const cy = e.clientY - r.top - r.height / 2;
@@ -2743,12 +2858,18 @@ export default function App() {
     }, [paintFrame, cuts, currentCutId, isPlaying, currentTime, lassoPoints, selection, selectedText, animLayer]);
 
     // 자글자글은 '모션'이라 정지 화면에선 안 보인다 → 편집 중에도 위상만 천천히 돌려 미리보기.
-    // 효과가 켜진 보이는 레이어가 있을 때만 동작하므로 평소 성능에는 영향 없음.
+    // 다만 이 미리보기는 전체 레이어를 다시 그리므로, 사용자가 실제로 조작 중일 때는 멈춘다.
+    // (그리는 중·화면 이동/확대 직후에 같이 돌면 조작이 뚝뚝 끊겨 체감이 매우 나빠짐)
     useEffect(() => {
         if (isPlaying) return;
         const cut = cuts.find(c => c.id === currentCutId);
         if (!cut || !safeArray(cut.layers).some(l => l.roughen && l.visible !== false)) return;
-        const id = setInterval(() => setBoilTick(v => (v + 1) % 100000), Math.round(1000 / BOIL_FPS));
+        const id = setInterval(() => {
+            if (document.hidden) return;                      // 탭이 안 보이면 낭비
+            if (isDrawing.current || panningRef.current) return; // 그리는 중/화면 이동 중
+            if (Date.now() - lastInteractRef.current < 400) return; // 확대·축소 직후 잠깐 양보
+            setBoilTick(v => (v + 1) % 100000);
+        }, Math.round(1000 / BOIL_FPS));
         return () => clearInterval(id);
     }, [isPlaying, cuts, currentCutId]);
 
