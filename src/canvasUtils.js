@@ -259,6 +259,28 @@ function smoothPoints(pts, passes) {
     return cur;
 }
 
+// 선 자글자글 효과: 매끄러운 경로를 법선 방향으로 흔들어 손그림 같은 떨림을 줌.
+// seed로 결정론적(리페인트마다 동일) — timeSeed를 더하면 재생 중 프레임마다 boil.
+function roughenPoints(pts, amp = 2.2, seed = 0) {
+    const n = pts && pts.length;
+    if (!n || n < 3) return pts || [];
+    let s = (seed * 2654435761) >>> 0;
+    const rnd = () => { s ^= s << 13; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; };
+    const freq = 0.14; // 파형 밀도
+    const phase = rnd() * Math.PI * 2;
+    const out = new Array(n);
+    for (let i = 0; i < n; i++) {
+        const a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)];
+        let nx = -(b.y - a.y), ny = b.x - a.x;
+        const len = Math.hypot(nx, ny) || 1; nx /= len; ny /= len;
+        // 두 옥타브 사인 + 약간의 난수 → 자연스러운 자글거림, 양 끝은 0으로 수렴.
+        const taper = Math.min(1, Math.min(i, n - 1 - i) / 6);
+        const w = (Math.sin(i * freq + phase) + 0.5 * Math.sin(i * freq * 2.7 + phase * 1.7) + (rnd() - 0.5) * 0.6) * amp * taper;
+        out[i] = { x: pts[i].x + nx * w, y: pts[i].y + ny * w, pressure: pts[i].pressure };
+    }
+    return out;
+}
+
 // Catmull-Rom control points for the segment p1->p2 (converted to a cubic Bezier). The
 // curve passes exactly through every sample and stays smooth across segment joins, which
 // quadratic-through-midpoints does not (it flattens when samples are far apart).
@@ -505,7 +527,9 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null)
         ctx.globalCompositeOperation = isEraser ? 'destination-out' : 'source-over';
         ctx.strokeStyle = isEraser ? 'rgba(0,0,0,1)' : baseColor;
         ctx.fillStyle = ctx.strokeStyle;
-        const pts = smoothPoints(s.points);
+        let pts = smoothPoints(s.points);
+        // 자글 펜: 매끈한 경로를 흔들어 손그림 떨림. s.roughAmp/roughSeed로 세기·시드 조절.
+        if (s.tool === 'rough') pts = roughenPoints(pts, s.roughAmp ?? Math.max(1.5, s.size * 0.35), s.roughSeed ?? s.id ?? 0);
         const n = pts.length;
         const widths = pts.map((_, idx) => {
             const i = Math.max(1, idx);

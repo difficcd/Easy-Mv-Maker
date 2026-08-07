@@ -30,20 +30,70 @@ body {
     background: #1c1c2a;
     display: flex;
     align-items: center;
-    padding: 0 16px;
-    justify-content: space-between;
+    padding: 0 12px;
+    gap: 6px;
     border-bottom: 1px solid #2a2a3a;
     flex-shrink: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+/* 상단바 항목은 좁아져도 찌그러지지 않고, 넘치면 가로 스크롤 (글씨 깨짐 방지) */
+.top-bar>* {
+    flex-shrink: 0;
+}
+
+.menu-divider {
+    width: 1px;
+    height: 22px;
+    background: #3a3a4c;
+    margin: 0 2px;
+}
+
+.menu-spacer {
+    flex: 1 1 auto;
+    min-width: 8px;
+}
+
+/* 팔레트 미니 버튼 */
+.pal-btn {
+    flex: 1;
+    min-width: 0;
+    height: 20px;
+    padding: 0;
+    font-size: 10px;
+    background: #222233;
+    border: 1px solid #3a3a50;
+    color: #bbb;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.pal-btn:hover {
+    background: #2d2d42;
+}
+
+.pal-btn.active {
+    background: #6d28d9;
+    border-color: #7c3aed;
+    color: #fff;
 }
 
 .title {
     margin: 0;
     font-size: 16px;
     font-weight: 700;
+    white-space: nowrap;
     background: linear-gradient(90deg, #c084fc, #818cf8);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
+}
+
+/* 상단바 버튼/드롭다운은 한 줄 유지 */
+.top-bar .button,
+.top-bar .time-input {
+    white-space: nowrap;
 }
 
 .button {

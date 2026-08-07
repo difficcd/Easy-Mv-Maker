@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
-import { Play, Pause, Square, Plus, Trash2, Download, Upload, PenLine, Pen, Feather, Eraser, Droplets, Undo, Redo, Layers, Trash, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, FolderPlus, Folder, FolderOpen, Settings, Eye, EyeOff, Copy, CopyPlus, ClipboardPaste, GitBranch, Move, Type, Server, Cloud, CloudDownload, Film, Repeat, Minus, Spline } from 'lucide-react';
+import { Play, Pause, Square, Plus, Trash2, Download, Upload, PenLine, Pen, Feather, Eraser, Droplets, Undo, Redo, Layers, Trash, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, FolderPlus, Folder, FolderOpen, Settings, Eye, EyeOff, Copy, CopyPlus, ClipboardPaste, GitBranch, Move, Type, Server, Cloud, CloudDownload, Film, Repeat, Minus, Spline, Waves, Grid3x3 } from 'lucide-react';
 import './App.css';
 import { saveAutosave, loadAutosave, saveProject, loadProject, listProjects, deleteProject, autosaveKey } from './db';
 import { CutAnimPanel, LayerAnimPanel } from './AnimPanels';
@@ -17,8 +17,10 @@ const PEN_TYPES = [
     { id: 'pencil', label: '연필', Icon: PenLine },
     { id: 'soft', label: '에어', Icon: Cloud },
     { id: 'marker', label: 'Marker', Icon: Pen },
+    { id: 'rough', label: '자글', Icon: Waves },
     { id: 'line', label: '직선', Icon: Minus },
     { id: 'curve', label: '곡선', Icon: Spline },
+    { id: 'mosaic', label: '모자이크', Icon: Grid3x3 },
     { id: 'eraser', label: 'Eraser', Icon: Eraser },
     { id: 'fill', label: 'Fill', Icon: Droplets },
 ];
@@ -117,6 +119,24 @@ export default function App() {
     const [color, setColor] = useState('#000000');
     const [recentColors, setRecentColors] = useState(['#000000', '#ffffff', '#ff3b30', '#ff9500', '#ffcc00', '#34c759', '#007aff', '#5856d6', '#ff2d55', '#8e8e93']);
     const [pickingColor, setPickingColor] = useState(false); // eyedropper: next canvas click samples a pixel
+    // 팔레트: 클튜/사이툴처럼 여러 탭으로 색을 저장·관리. localStorage에 유지.
+    const PALETTE_PRESETS = [
+        { name: '기본', colors: ['#000000', '#404040', '#808080', '#c0c0c0', '#ffffff', '#ff3b30', '#ff9500', '#ffcc00', '#34c759', '#007aff', '#5856d6', '#ff2d55'] },
+        { name: '피부톤', colors: ['#fce9dc', '#f8d5c2', '#f0b79e', '#e39a7d', '#c97b5c', '#a55b3e', '#7d3f28', '#5a2c1b', '#ffe0cf', '#d98e6a', '#b26a45', '#8a4a2c'] },
+        { name: '파스텔', colors: ['#ffd1dc', '#ffe4b5', '#fff3b0', '#d0f0c0', '#b0e0e6', '#c9c9ff', '#e0bbe4', '#f7cac9', '#c1e1c1', '#bde0fe', '#ffc8dd', '#cdb4db'] },
+    ];
+    const [palettes, setPalettes] = useState(() => {
+        try { const s = JSON.parse(localStorage.getItem('mv_palettes')); if (Array.isArray(s) && s.length) return s; } catch { }
+        return PALETTE_PRESETS;
+    });
+    const [activePalette, setActivePalette] = useState(0);
+    const [paletteEdit, setPaletteEdit] = useState(false); // on: 스와치 탭 = 삭제 (태블릿용)
+    useEffect(() => { try { localStorage.setItem('mv_palettes', JSON.stringify(palettes)); } catch { } }, [palettes]);
+    const addToPalette = (c) => setPalettes(ps => ps.map((p, i) => i === activePalette && !p.colors.some(x => x.toLowerCase() === c.toLowerCase()) ? { ...p, colors: [...p.colors, c] } : p));
+    const removeFromPalette = (ci) => setPalettes(ps => ps.map((p, i) => i === activePalette ? { ...p, colors: p.colors.filter((_, j) => j !== ci) } : p));
+    const addPalette = () => { setPalettes(ps => [...ps, { name: `팔레트 ${ps.length + 1}`, colors: [] }]); setActivePalette(palettes.length); };
+    const deletePalette = () => { if (palettes.length <= 1) return; setPalettes(ps => ps.filter((_, i) => i !== activePalette)); setActivePalette(i => Math.max(0, i - 1)); };
+    const renamePalette = () => { const n = window.prompt('팔레트 이름', palettes[activePalette]?.name); if (n) setPalettes(ps => ps.map((p, i) => i === activePalette ? { ...p, name: n } : p)); };
     const useColor = (c) => { if (!c) return; setColor(c); setRecentColors(p => [c, ...p.filter(x => x.toLowerCase() !== c.toLowerCase())].slice(0, 12)); };
     // Eyedropper: native picker where available, else sample the canvas on the next click.
     const pickColor = async () => {
@@ -135,6 +155,7 @@ export default function App() {
     const lassoClipRef = useRef(null); // copied lasso pixels: { bitmapId, w, h }
     const [hasLassoClip, setHasLassoClip] = useState(false);
     const [showFileMenu, setShowFileMenu] = useState(false);
+    const [showMediaMenu, setShowMediaMenu] = useState(false);
     const [showHelp, setShowHelp] = useState(false);
     const fileHandleRef = useRef(null);
     const [dragLayerInfo, setDragLayerInfo] = useState(null);
@@ -147,10 +168,13 @@ export default function App() {
     const curveAnchorsRef = useRef(null); // 곡선 도구: 탭으로 찍은 앵커점들
     const curveDraggingRef = useRef(false); // 곡선 앵커를 방금 찍고 드래그로 미세조정 중
     const [curvePts, setCurvePts] = useState(0); // 곡선 앵커 개수 (완료/취소 바 표시용)
+    const mosaicRectRef = useRef(null);   // 모자이크 드래그 사각형
+    const [mosaicBlock, setMosaicBlock] = useState(14); // 모자이크 블록 크기(px)
     const isDrawing = useRef(false);
     const reqRef = useRef(null);
     const isPlayingRef = useRef(false);
     const fileMenuRef = useRef(null);
+    const mediaMenuRef = useRef(null);
     const timelineRef = useRef(null);
     const [pps, setPps] = useState(50);
     // Visible px window of the horizontally-scrolled timeline, so only on-screen cut blocks and
@@ -453,7 +477,10 @@ export default function App() {
     const playEnd = activePart ? activePart.end : contentEnd;
 
     useEffect(() => {
-        const h = (e) => { if (fileMenuRef.current && !fileMenuRef.current.contains(e.target)) setShowFileMenu(false); };
+        const h = (e) => {
+            if (fileMenuRef.current && !fileMenuRef.current.contains(e.target)) setShowFileMenu(false);
+            if (mediaMenuRef.current && !mediaMenuRef.current.contains(e.target)) setShowMediaMenu(false);
+        };
         document.addEventListener('mousedown', h);
         return () => document.removeEventListener('mousedown', h);
     }, []);
@@ -1429,6 +1456,42 @@ export default function App() {
         curveAnchorsRef.current = null; curveDraggingRef.current = false; setCurvePts(0);
         const lc = liveCanvasRef.current; if (lc) lc.getContext('2d').clearRect(0, 0, lc.width, lc.height);
     };
+    // 모자이크: 드래그 사각형을 점선으로 미리보기.
+    const renderMosaicMarquee = () => {
+        const lc = liveCanvasRef.current; if (!lc) return;
+        const ctx = lc.getContext('2d');
+        ctx.clearRect(0, 0, lc.width, lc.height);
+        const r = mosaicRectRef.current; if (!r) return;
+        const x = Math.min(r.x0, r.x1), y = Math.min(r.y0, r.y1), w = Math.abs(r.x1 - r.x0), h = Math.abs(r.y1 - r.y0);
+        ctx.save();
+        ctx.fillStyle = 'rgba(120,140,255,0.15)'; ctx.fillRect(x, y, w, h);
+        ctx.setLineDash([8, 6]); ctx.lineWidth = 2; ctx.strokeStyle = '#7c8cff';
+        ctx.strokeRect(x, y, w, h);
+        ctx.restore();
+    };
+    // 사각 영역을 현재 화면(합성 캔버스)에서 읽어 블록 단위로 픽셀화 → 활성 레이어에 붙임.
+    const applyMosaic = (rect) => {
+        const bx = Math.max(0, Math.floor(Math.min(rect.x0, rect.x1)));
+        const by = Math.max(0, Math.floor(Math.min(rect.y0, rect.y1)));
+        const bw = Math.min(CANVAS_W - bx, Math.ceil(Math.abs(rect.x1 - rect.x0)));
+        const bh = Math.min(CANVAS_H - by, Math.ceil(Math.abs(rect.y1 - rect.y0)));
+        if (bw < 2 || bh < 2) return;
+        const src = canvasRef.current.getContext('2d').getImageData(bx, by, bw, bh);
+        const d = src.data;
+        const block = Math.max(2, Math.round(mosaicBlock));
+        for (let y0 = 0; y0 < bh; y0 += block) {
+            for (let x0 = 0; x0 < bw; x0 += block) {
+                let r = 0, g = 0, b = 0, a = 0, cnt = 0;
+                const xe = Math.min(bw, x0 + block), ye = Math.min(bh, y0 + block);
+                for (let y = y0; y < ye; y++) for (let x = x0; x < xe; x++) { const i = (y * bw + x) * 4; r += d[i]; g += d[i + 1]; b += d[i + 2]; a += d[i + 3]; cnt++; }
+                r = r / cnt; g = g / cnt; b = b / cnt; a = a / cnt;
+                for (let y = y0; y < ye; y++) for (let x = x0; x < xe; x++) { const i = (y * bw + x) * 4; d[i] = r; d[i + 1] = g; d[i + 2] = b; d[i + 3] = a; }
+            }
+        }
+        const bitmapId = storeBitmap(src);
+        const stroke = { id: Date.now(), tool: 'paste', bitmapId, x: bx, y: by, w: bw, h: bh };
+        updLayers(currentCutId, c => ({ layers: c.layers.map(l => l.id === c.activeLayerId ? { ...l, strokes: [...l.strokes, stroke] } : l) }));
+    };
 
     // Touch navigation on the canvas (fingers never draw — palm rejection):
     //   1 finger  = pan the view,  2 fingers = pinch zoom (+ pan).
@@ -1741,6 +1804,7 @@ export default function App() {
             case 'pencil':
             case 'soft':
             case 'marker':
+            case 'rough':
             case 'calligraphy': {
                 // Draw on the live overlay only — no layer-state writes per move (that was the lag).
                 liveStrokeRef.current = { id: Date.now(), tool, color, opacity, size: brushSize, points: [pos] };
@@ -1752,6 +1816,11 @@ export default function App() {
                 lineStartRef.current = pos;
                 liveStrokeRef.current = { id: Date.now(), tool: 'brush', color, opacity, size: brushSize, points: [pos, { ...pos }] };
                 renderLiveStroke();
+                break;
+            }
+            case 'mosaic': {
+                mosaicRectRef.current = { x0: pos.x, y0: pos.y, x1: pos.x, y1: pos.y };
+                renderMosaicMarquee();
                 break;
             }
             case 'eraser': {
@@ -1857,11 +1926,16 @@ export default function App() {
                 }
                 break;
             }
+            case 'mosaic': {
+                if (mosaicRectRef.current) { mosaicRectRef.current.x1 = pos.x; mosaicRectRef.current.y1 = pos.y; renderMosaicMarquee(); }
+                break;
+            }
             case 'pen':
             case 'brush':
             case 'pencil':
             case 'soft':
             case 'marker':
+            case 'rough':
             case 'calligraphy':
             case 'eraser': {
                 // Fast strokes get coalesced by the browser into one event; recover every
@@ -1899,6 +1973,17 @@ export default function App() {
             try { if (activePointerIdRef.current !== null) canvasRef.current?.releasePointerCapture(activePointerIdRef.current); } catch { }
             activePointerIdRef.current = null;
             renderCurvePreview();
+            return;
+        }
+        // 모자이크: 드래그한 사각 영역을 픽셀화해 붙임.
+        if (mosaicRectRef.current) {
+            const r = mosaicRectRef.current; mosaicRectRef.current = null;
+            isDrawing.current = false;
+            try { if (activePointerIdRef.current !== null) canvasRef.current?.releasePointerCapture(activePointerIdRef.current); } catch { }
+            activePointerIdRef.current = null;
+            applyMosaic(r);
+            const tok = ++liveClearTokRef.current;
+            setTimeout(() => { if (liveClearTokRef.current === tok) { const lc = liveCanvasRef.current; if (lc) lc.getContext('2d').clearRect(0, 0, lc.width, lc.height); } }, 90);
             return;
         }
         // Finish recording a motion path → store it on the target layer's animation.
@@ -2041,6 +2126,10 @@ export default function App() {
             shadow: !!textEdit.shadow,
             shadowColor: textEdit.shadowColor || 'rgba(0,0,0,0.5)',
             shadowBlur: textEdit.shadowBlur ?? 6,
+            gradient: !!textEdit.gradient,
+            color2: textEdit.color2 || '#ffffff',
+            bgColor: textEdit.bgColor || '',
+            rotation: textEdit.rotation ?? 0,
         };
         setCuts(p => p.map(c => {
             if (c.id !== textEdit.cutId) return c;
@@ -2085,6 +2174,10 @@ export default function App() {
             shadow: !!t.shadow,
             shadowColor: t.shadowColor || 'rgba(0,0,0,0.5)',
             shadowBlur: t.shadowBlur ?? 6,
+            gradient: !!t.gradient,
+            color2: t.color2 || '#ffffff',
+            bgColor: t.bgColor || '',
+            rotation: t.rotation ?? 0,
         });
     };
 
@@ -2383,28 +2476,51 @@ export default function App() {
                 if (!t || t.visible === false) continue;
                 const fontSize = Math.max(6, Math.min(400, t.fontSize ?? 32));
                 const lineHeight = Math.round(fontSize * (t.lineHeight ?? 1.25));
+                const needBox = t.gradient || t.bgColor || t.rotation;
+                const box = needBox ? measureTextBox(t) : null;
+                ctx.save();
                 ctx.globalCompositeOperation = 'source-over';
                 ctx.globalAlpha = (t.opacity ?? 1) * (anim ? anim.alpha : 1);
-                ctx.fillStyle = t.color ?? '#000';
+                // 회전: 텍스트 박스 중심 기준.
+                if (t.rotation && box) {
+                    const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
+                    ctx.translate(cx, cy); ctx.rotate((t.rotation * Math.PI) / 180); ctx.translate(-cx, -cy);
+                }
+                // 배경 박스 (하이라이트).
+                if (t.bgColor && box) {
+                    const pad = Math.round(fontSize * 0.22);
+                    ctx.fillStyle = t.bgColor;
+                    const bx = box.x - pad, by = box.y - pad, bw = box.w + pad * 2, bh = box.h + pad * 2, r = Math.min(bh / 2, 12);
+                    ctx.beginPath();
+                    if (ctx.roundRect) ctx.roundRect(bx, by, bw, bh, r); else ctx.rect(bx, by, bw, bh);
+                    ctx.fill();
+                }
                 ctx.textBaseline = 'top';
                 ctx.textAlign = t.align || 'left';
                 ctx.font = textFontOf(t);
                 try { ctx.letterSpacing = `${t.letterSpacing || 0}px`; } catch { }
                 const lines = String(t.text ?? '').split('\n');
+                // 그라데이션 채우기 (세로 2색) 또는 단색.
+                let fillStyle = t.color ?? '#000';
+                if (t.gradient && box) {
+                    const g = ctx.createLinearGradient(0, box.y, 0, box.y + box.h);
+                    g.addColorStop(0, t.color ?? '#000');
+                    g.addColorStop(1, t.color2 || '#ffffff');
+                    fillStyle = g;
+                }
                 if (t.shadow) { ctx.shadowColor = t.shadowColor || 'rgba(0,0,0,0.5)'; ctx.shadowBlur = t.shadowBlur ?? 6; ctx.shadowOffsetX = t.shadowDX ?? 2; ctx.shadowOffsetY = t.shadowDY ?? 2; }
                 if (t.outline) {
                     ctx.lineJoin = 'round'; ctx.lineWidth = Math.max(2, fontSize / 6);
                     ctx.strokeStyle = t.outlineColor || '#ffffff';
                     for (let i = 0; i < lines.length; i++) ctx.strokeText(lines[i], t.x ?? 0, (t.y ?? 0) + i * lineHeight);
                 }
+                ctx.fillStyle = fillStyle;
                 for (let i = 0; i < lines.length; i++) {
                     ctx.fillText(lines[i], t.x ?? 0, (t.y ?? 0) + i * lineHeight);
                     if (i === 0 && t.shadow) { ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0; } // shadow once, not per line stack
                 }
                 try { ctx.letterSpacing = '0px'; } catch { }
-                ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
-                ctx.textAlign = 'left';
-                ctx.globalAlpha = 1.0;
+                ctx.restore();
             }
             ctx.restore();
         });
@@ -3170,74 +3286,86 @@ export default function App() {
 
             <div className="top-bar">
                 <h1 className="title">Easy MV Maker</h1>
-                <button className="icon-btn" onClick={() => setShowHelp(true)} title="단축키 · 도움말" style={{ fontSize: 13, fontWeight: 700, width: 22, height: 22 }}>?</button>
-                {autoSavedAt && <span style={{ fontSize: 11, color: '#5a8', marginLeft: 4 }} title="브라우저에 자동저장됨">● 자동저장 {new Date(autoSavedAt).toLocaleTimeString()}</span>}
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <div style={{ position: 'relative' }} ref={fileMenuRef}>
-                        <button className="button" onClick={() => setShowFileMenu(v => !v)}>파일 <ChevronDown size={12} /></button>
-                        {showFileMenu && (
-                            <div className="file-menu">
-                                <button className="file-menu-item" onClick={() => { doNew(); setShowFileMenu(false); }}>새 프로젝트</button>
+                <div className="menu-divider" />
+                {/* 파일 메뉴 */}
+                <div style={{ position: 'relative' }} ref={fileMenuRef}>
+                    <button className="button" onClick={() => setShowFileMenu(v => !v)}>파일 <ChevronDown size={12} /></button>
+                    {showFileMenu && (
+                        <div className="file-menu">
+                            <button className="file-menu-item" onClick={() => { doNew(); setShowFileMenu(false); }}>새 프로젝트</button>
+                            <div className="file-menu-sep" />
+                            <button className="file-menu-item" onClick={() => { doSave(false); setShowFileMenu(false); }}>저장 (Ctrl+S)</button>
+                            <button className="file-menu-item" onClick={() => { doSave(true); setShowFileMenu(false); }}>다른 이름으로 저장...</button>
+                            <div className="file-menu-sep" />
+                            <button className="file-menu-item" onClick={() => { doOpen(); setShowFileMenu(false); }}>로컬 파일 열기...</button>
+                            <div className="file-menu-sep" />
+                            <div style={{ fontSize: 10, color: '#777', padding: '4px 12px 2px' }}>로컬 (브라우저 저장)</div>
+                            <button className="file-menu-item" onClick={() => { doLocalSave(false); setShowFileMenu(false); }}>로컬에 저장</button>
+                            <button className="file-menu-item" onClick={() => { doLocalSave(true); setShowFileMenu(false); }}>로컬에 새 이름으로 저장...</button>
+                            <button className="file-menu-item" onClick={() => { openLocalList(); setShowFileMenu(false); }}>로컬에서 열기...</button>
+                            {serverAvailable && <>
                                 <div className="file-menu-sep" />
-                                <button className="file-menu-item" onClick={() => { doSave(false); setShowFileMenu(false); }}>저장 (Ctrl+S)</button>
-                                <button className="file-menu-item" onClick={() => { doSave(true); setShowFileMenu(false); }}>다른 이름으로 저장...</button>
-                                <div className="file-menu-sep" />
-                                <button className="file-menu-item" onClick={() => { doOpen(); setShowFileMenu(false); }}>로컬 파일 열기...</button>
-                                <div className="file-menu-sep" />
-                                <div style={{ fontSize: 10, color: '#777', padding: '4px 12px 2px' }}>로컬 (브라우저 저장)</div>
-                                <button className="file-menu-item" onClick={() => { doLocalSave(false); setShowFileMenu(false); }}>로컬에 저장</button>
-                                <button className="file-menu-item" onClick={() => { doLocalSave(true); setShowFileMenu(false); }}>로컬에 새 이름으로 저장...</button>
-                                <button className="file-menu-item" onClick={() => { openLocalList(); setShowFileMenu(false); }}>로컬에서 열기...</button>
-                                {serverAvailable && <>
-                                    <div className="file-menu-sep" />
-                                    <div style={{ fontSize: 10, color: '#777', padding: '4px 12px 2px' }}>서버 (DB)</div>
-                                    <button className="file-menu-item" onClick={() => { doServerSave(false); setShowFileMenu(false); }}>서버에 저장</button>
-                                    <button className="file-menu-item" onClick={() => { doServerSave(true); setShowFileMenu(false); }}>서버에 새 이름으로 저장...</button>
-                                    <button className="file-menu-item" onClick={() => { openServerList(); setShowFileMenu(false); }}>서버에서 열기...</button>
-                                </>}
-                            </div>
-                        )}
-                    </div>
-                    <div style={{ width: 1, height: 24, background: '#444' }} />
-                    <select className="time-input" style={{ height: 34, width: 116 }} title="캔버스 해상도"
-                        value={`${CANVAS_W}x${CANVAS_H}`}
-                        onChange={e => {
-                            if (e.target.value === 'custom') {
-                                const s = window.prompt('캔버스 크기 (가로x세로)', `${CANVAS_W}x${CANVAS_H}`);
-                                if (!s) return;
-                                const m = s.match(/(\d+)\s*[xX*,\s]\s*(\d+)/);
-                                if (!m) { alert('예: 1920x1080'); return; }
-                                setCanvasSize({ w: Math.max(64, Math.min(8192, +m[1])), h: Math.max(64, Math.min(8192, +m[2])) });
-                            } else {
-                                const [w, h] = e.target.value.split('x').map(Number);
-                                setCanvasSize({ w, h });
-                            }
-                        }}>
-                        {['1280x720', '1920x1080', '2560x1440', '3840x2160', '1080x1080', '2048x2048', '1080x1920', '2160x3840'].map(v => <option key={v} value={v}>{v}{v === '3840x2160' ? ' (4K)' : ''}</option>)}
-                        {!['1280x720', '1920x1080', '2560x1440', '3840x2160', '1080x1080', '2048x2048', '1080x1920', '2160x3840'].includes(`${CANVAS_W}x${CANVAS_H}`) && <option value={`${CANVAS_W}x${CANVAS_H}`}>{CANVAS_W}x{CANVAS_H}</option>}
-                        <option value="custom">직접 입력…</option>
-                    </select>
-                    <button className="button button-primary" onClick={handleExport} style={{ display: 'flex', alignItems: 'center', gap: 5, height: 34 }}><Download size={15} /> Export</button>
-                    <label className="audio-input-label">
-                        <Upload size={14} />{audioFile ? audioFile.name : 'Load Audio...'}
-                        <input type="file" accept="audio/*" onChange={handleAudioUpload} style={{ display: 'none' }} />
-                    </label>
-                    {serverAvailable && <button className="button" onClick={loadYoutubeAudio} title="유튜브 링크에서 음원 추출 (로컬 서버, yt-dlp 필요)" style={{ height: 34 }}>YT 음원</button>}
-                    {audioFile && <button className="icon-btn del-btn" onClick={handleDeleteAudio} title="오디오 삭제" style={{ height: 34, width: 30 }}><Trash2 size={14} /></button>}
-                    <label className="audio-input-label" title="영상을 프레임별 컷으로 가져오기">
-                        <Film size={14} /> 영상 프레임
-                        <input type="file" accept="video/*" ref={videoFileRef} style={{ display: 'none' }}
-                            onChange={e => { const f = e.target.files[0]; e.target.value = ''; if (f) openVideoImport(f); }} />
-                    </label>
-                    {serverAvailable && <button className="button" onClick={loadYoutubeVideo} title="유튜브 링크에서 영상을 받아 프레임 추출 (로컬 서버, yt-dlp 필요)" style={{ height: 34 }}>YT 영상</button>}
-                    {recentVideos.length > 0 && (
-                        <select className="time-input" style={{ height: 34, width: 120 }} value="" title="같은 출처에서 다시 가져오기 (기존 프레임은 교체됨)"
-                            onChange={e => { const v = recentVideos.find(x => x.id === e.target.value); e.target.value = ''; if (v) reimportRecent(v); }}>
-                            <option value="">다시 가져오기…</option>
-                            {recentVideos.map(v => <option key={v.id} value={v.id}>{v.name.slice(0, 20)}</option>)}
-                        </select>
+                                <div style={{ fontSize: 10, color: '#777', padding: '4px 12px 2px' }}>서버 (DB)</div>
+                                <button className="file-menu-item" onClick={() => { doServerSave(false); setShowFileMenu(false); }}>서버에 저장</button>
+                                <button className="file-menu-item" onClick={() => { doServerSave(true); setShowFileMenu(false); }}>서버에 새 이름으로 저장...</button>
+                                <button className="file-menu-item" onClick={() => { openServerList(); setShowFileMenu(false); }}>서버에서 열기...</button>
+                            </>}
+                        </div>
                     )}
                 </div>
+                {/* 미디어 메뉴 (음원 / 영상 / 유튜브) */}
+                <div style={{ position: 'relative' }} ref={mediaMenuRef}>
+                    <button className="button" onClick={() => setShowMediaMenu(v => !v)}>미디어 <ChevronDown size={12} /></button>
+                    {showMediaMenu && (
+                        <div className="file-menu" style={{ minWidth: 220 }}>
+                            <div style={{ fontSize: 10, color: '#777', padding: '4px 12px 2px' }}>음원</div>
+                            <label className="file-menu-item" style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                                <Upload size={14} /> {audioFile ? audioFile.name : '음원 불러오기...'}
+                                <input type="file" accept="audio/*" onChange={e => { handleAudioUpload(e); setShowMediaMenu(false); }} style={{ display: 'none' }} />
+                            </label>
+                            {serverAvailable && <button className="file-menu-item" onClick={() => { loadYoutubeAudio(); setShowMediaMenu(false); }}>유튜브에서 음원 추출</button>}
+                            {audioFile && <button className="file-menu-item" onClick={() => { handleDeleteAudio(); setShowMediaMenu(false); }}>음원 삭제</button>}
+                            <div className="file-menu-sep" />
+                            <div style={{ fontSize: 10, color: '#777', padding: '4px 12px 2px' }}>영상</div>
+                            <label className="file-menu-item" style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }} title="영상을 프레임별 컷으로 가져오기">
+                                <Film size={14} /> 영상 프레임 가져오기...
+                                <input type="file" accept="video/*" ref={videoFileRef} style={{ display: 'none' }}
+                                    onChange={e => { const f = e.target.files[0]; e.target.value = ''; if (f) { openVideoImport(f); setShowMediaMenu(false); } }} />
+                            </label>
+                            {serverAvailable && <button className="file-menu-item" onClick={() => { loadYoutubeVideo(); setShowMediaMenu(false); }}>유튜브 영상 프레임 추출</button>}
+                            {recentVideos.length > 0 && <>
+                                <div className="file-menu-sep" />
+                                <div style={{ fontSize: 10, color: '#777', padding: '4px 12px 2px' }}>다시 가져오기 (프레임 교체)</div>
+                                {recentVideos.map(v => <button key={v.id} className="file-menu-item" style={{ fontSize: 11 }} onClick={() => { reimportRecent(v); setShowMediaMenu(false); }}>↻ {v.name.slice(0, 26)}</button>)}
+                            </>}
+                        </div>
+                    )}
+                </div>
+                <div className="menu-divider" />
+                {/* 해상도 */}
+                <select className="time-input" style={{ height: 30, width: 116 }} title="캔버스 해상도"
+                    value={`${CANVAS_W}x${CANVAS_H}`}
+                    onChange={e => {
+                        if (e.target.value === 'custom') {
+                            const s = window.prompt('캔버스 크기 (가로x세로)', `${CANVAS_W}x${CANVAS_H}`);
+                            if (!s) return;
+                            const m = s.match(/(\d+)\s*[xX*,\s]\s*(\d+)/);
+                            if (!m) { alert('예: 1920x1080'); return; }
+                            setCanvasSize({ w: Math.max(64, Math.min(8192, +m[1])), h: Math.max(64, Math.min(8192, +m[2])) });
+                        } else {
+                            const [w, h] = e.target.value.split('x').map(Number);
+                            setCanvasSize({ w, h });
+                        }
+                    }}>
+                    {['1280x720', '1920x1080', '2560x1440', '3840x2160', '1080x1080', '2048x2048', '1080x1920', '2160x3840'].map(v => <option key={v} value={v}>{v}{v === '3840x2160' ? ' (4K)' : ''}</option>)}
+                    {!['1280x720', '1920x1080', '2560x1440', '3840x2160', '1080x1080', '2048x2048', '1080x1920', '2160x3840'].includes(`${CANVAS_W}x${CANVAS_H}`) && <option value={`${CANVAS_W}x${CANVAS_H}`}>{CANVAS_W}x{CANVAS_H}</option>}
+                    <option value="custom">직접 입력…</option>
+                </select>
+                <button className="icon-btn" onClick={() => setShowHelp(true)} title="단축키 · 도움말" style={{ fontSize: 13, fontWeight: 700, width: 24, height: 24 }}>?</button>
+                <div className="menu-spacer" />
+                {audioFile && <span style={{ fontSize: 11, color: '#8ab', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={audioFile.name}>♪ {audioFile.name}</span>}
+                {autoSavedAt && <span style={{ fontSize: 11, color: '#5a8' }} title="브라우저에 자동저장됨">● 자동저장 {new Date(autoSavedAt).toLocaleTimeString()}</span>}
+                <button className="button button-primary" onClick={handleExport} style={{ display: 'flex', alignItems: 'center', gap: 5, height: 30 }}><Download size={15} /> Export</button>
             </div>
 
             <div className="main-content">
@@ -3261,14 +3389,49 @@ export default function App() {
                         <div className="tool-divider" />
                         <input type="color" className="color-picker" value={color} onChange={e => useColor(e.target.value)} title="색상" disabled={isSelectionTool} />
                         <button className={`tool-btn${pickingColor ? ' active' : ''}`} onClick={pickColor} title="스포이드 (화면에서 색 추출)" disabled={isSelectionTool} style={{ padding: '0 6px' }}><Droplets size={15} /><span className="tool-label">스포이드</span></button>
+                        <div style={{ fontSize: 9, color: '#777', width: 92, textAlign: 'left' }}>최근</div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, width: 92, alignContent: 'center' }} title="최근 색상">
                             {recentColors.slice(0, 12).map((c, i) => (
                                 <button key={i} onClick={() => useColor(c)} title={c}
                                     style={{ width: 14, height: 14, borderRadius: 3, background: c, border: c.toLowerCase() === color.toLowerCase() ? '2px solid #7c8cff' : '1px solid #0004', padding: 0, cursor: 'pointer' }} />
                             ))}
                         </div>
+                        <div className="tool-divider" />
+                        {/* 팔레트: 탭으로 여러 색 세트 관리 (클튜/사이툴식) */}
+                        <div style={{ width: 92, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                            <select value={activePalette} onChange={e => setActivePalette(+e.target.value)} className="time-input" style={{ width: '100%', height: 22, fontSize: 10 }} title="팔레트 선택">
+                                {palettes.map((p, i) => <option key={i} value={i}>{p.name}</option>)}
+                            </select>
+                            <div style={{ display: 'flex', gap: 2 }}>
+                                <button className="pal-btn" title="현재 색을 이 팔레트에 추가" onClick={() => addToPalette(color)}>+색</button>
+                                <button className="pal-btn" title="새 팔레트 탭" onClick={addPalette}>+탭</button>
+                                <button className="pal-btn" title="이름 변경" onClick={renamePalette}>✎</button>
+                                <button className={`pal-btn${paletteEdit ? ' active' : ''}`} title={paletteEdit ? '삭제모드 (색 눌러 삭제) — 끄기' : '삭제모드: 스와치 눌러 삭제'} onClick={() => setPaletteEdit(v => !v)}>🗑</button>
+                            </div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, alignContent: 'flex-start', maxHeight: 132, overflowY: 'auto' }} title={paletteEdit ? '눌러서 삭제' : '팔레트 색 (우클릭/삭제모드로 제거)'}>
+                                {(palettes[activePalette]?.colors || []).map((c, i) => (
+                                    <button key={i}
+                                        onClick={() => paletteEdit ? removeFromPalette(i) : useColor(c)}
+                                        onContextMenu={e => { e.preventDefault(); removeFromPalette(i); }}
+                                        title={c}
+                                        style={{ width: 16, height: 16, borderRadius: 3, background: c, border: c.toLowerCase() === color.toLowerCase() ? '2px solid #7c8cff' : '1px solid #0004', padding: 0, cursor: 'pointer', outline: paletteEdit ? '1px dashed #f66' : 'none' }} />
+                                ))}
+                                {(palettes[activePalette]?.colors || []).length === 0 && <span style={{ fontSize: 9, color: '#666' }}>+색 으로 추가</span>}
+                            </div>
+                        </div>
                         <div className="slider-wrap">
-                            {(() => {
+                            {tool === 'mosaic' ? (
+                                <>
+                                    <span className="slider-label">모자이크</span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 2, justifyContent: 'center' }}>
+                                        <input type="number" min="2" max="120" value={mosaicBlock}
+                                            onChange={e => setMosaicBlock(Math.max(2, Math.min(120, Math.round(+e.target.value) || 2)))} style={{ width: 46, textAlign: 'center' }} className="time-input" />
+                                        <span style={{ fontSize: 10, color: '#888' }}>px</span>
+                                    </div>
+                                    <input type="range" min="2" max="80" value={Math.min(80, mosaicBlock)} onChange={e => setMosaicBlock(+e.target.value)} className="v-slider" />
+                                    <span style={{ fontSize: 9, color: '#888', textAlign: 'center' }}>화면 위를 드래그</span>
+                                </>
+                            ) : (() => {
                                 const curSize = tool === 'eraser' ? eraserSize : brushSize;
                                 const setSize = (v) => { const n = Math.max(1, Math.min(200, Math.round(v) || 1)); tool === 'eraser' ? setEraserSize(n) : setBrushSize(n); };
                                 return (<>
@@ -3424,6 +3587,16 @@ export default function App() {
                                         <input type="checkbox" checked={!!textEdit.shadow} onChange={e => setTextEdit(te => te ? ({ ...te, shadow: e.target.checked }) : te)} />그림자
                                     </label>
                                     {textEdit.shadow && <input type="color" value={(textEdit.shadowColor || '#000000').startsWith('#') ? textEdit.shadowColor : '#000000'} onChange={e => setTextEdit(te => te ? ({ ...te, shadowColor: e.target.value }) : te)} className="text-editor-color" title="그림자 색" />}
+                                    <label style={{ fontSize: 11, color: '#aaa', display: 'flex', alignItems: 'center', gap: 3 }} title="위→아래 2색 그라데이션">
+                                        <input type="checkbox" checked={!!textEdit.gradient} onChange={e => setTextEdit(te => te ? ({ ...te, gradient: e.target.checked }) : te)} />그라데이션
+                                    </label>
+                                    {textEdit.gradient && <input type="color" value={textEdit.color2 || '#ffffff'} onChange={e => setTextEdit(te => te ? ({ ...te, color2: e.target.value }) : te)} className="text-editor-color" title="그라데이션 끝 색" />}
+                                    <label style={{ fontSize: 11, color: '#aaa', display: 'flex', alignItems: 'center', gap: 3 }} title="글자 뒤 배경 박스">
+                                        <input type="checkbox" checked={!!textEdit.bgColor} onChange={e => setTextEdit(te => te ? ({ ...te, bgColor: e.target.checked ? (te.bgColor || '#ffffff') : '' }) : te)} />배경
+                                    </label>
+                                    {textEdit.bgColor && <input type="color" value={textEdit.bgColor.startsWith('#') ? textEdit.bgColor : '#ffffff'} onChange={e => setTextEdit(te => te ? ({ ...te, bgColor: e.target.value }) : te)} className="text-editor-color" title="배경 색" />}
+                                    <input type="number" className="time-input" style={{ width: 54 }} title="회전(도)" value={textEdit.rotation ?? 0} step={5}
+                                        onChange={e => { let v = parseFloat(e.target.value); if (isNaN(v)) v = 0; setTextEdit(te => te ? ({ ...te, rotation: v }) : te); }} />
                                     <div style={{ flex: 1 }} />
                                     <button className="button button-primary" onClick={commitText} style={{ height: 28, padding: '0 10px' }}>완료</button>
                                     <button className="button" onClick={cancelText} style={{ height: 28, padding: '0 10px' }}>취소</button>
