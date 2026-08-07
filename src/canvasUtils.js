@@ -896,7 +896,7 @@ export function computeCutAnim(ac, time, cw = CANVAS_W, ch = CANVAS_H) {
     return { alpha: Math.max(0, alpha), sx, sy, tx, ty };
 }
 
-export const LAYER_ANIM_DEFAULT = { mode: 'progress', speed: 1, count: 0, tx: 0, ty: 0, rot: 0, scale: 0, pivotX: 0.5, pivotY: 0.5, path: null, ease: 'linear', easePower: 2, swayAmount: 0, swaySpeed: 1, swayCurve: null, swayProfile: null, swayAxis: 'y' };
+export const LAYER_ANIM_DEFAULT = { mode: 'progress', speed: 1, count: 0, tx: 0, ty: 0, rot: 0, scale: 0, pivotX: 0.5, pivotY: 0.5, path: null, ease: 'linear', easePower: 2, swayAmount: 0, swaySpeed: 1, swayCurve: null, swayProfile: null, swayAxis: 'y', keys: null };
 
 // Easing applied to a 0..1 progress. type: linear | in (slow→fast) | out (fast→slow)
 // | inout. power (>=1) is the user-adjustable strength/weight.
@@ -1030,19 +1030,51 @@ export function computeTextAnim(t, ac, time) {
     return { alpha, dx, dy, scale, blur, rot, chars };
 }
 
+// 키프레임 트위닝: 지정한 시점들 사이를 보간한다 (구간마다 가감속을 따로 줄 수 있음).
+// 이게 애니메이션에서 말하는 본래의 '트위닝'이다.
+export function sampleKeys(keys, p) {
+    const n = keys.length;
+    if (p <= keys[0].p) return keys[0];
+    if (p >= keys[n - 1].p) return keys[n - 1];
+    for (let i = 0; i < n - 1; i++) {
+        const k0 = keys[i], k1 = keys[i + 1];
+        if (p >= k0.p && p <= k1.p) {
+            const span = Math.max(1e-6, k1.p - k0.p);
+            const u = applyEase((p - k0.p) / span, k0.ease || 'linear', k0.easePower ?? 2);
+            const mix = (x, y) => (x ?? 0) + ((y ?? 0) - (x ?? 0)) * u;
+            return {
+                tx: mix(k0.tx, k1.tx), ty: mix(k0.ty, k1.ty), rot: mix(k0.rot, k1.rot),
+                scale: mix(k0.scale, k1.scale), op: mix(k0.op ?? 1, k1.op ?? 1),
+            };
+        }
+    }
+    return keys[n - 1];
+}
+
 export function computeLayerAnim(layer, ac, time, cw = CANVAS_W, ch = CANVAS_H) {
     const a = layer.anim;
     if (!a) return null;
     const dur = Math.max(0.0001, ac.endTime - ac.startTime);
     const t = Math.max(0, Math.min(1, (time - ac.startTime) / dur));
     const speed = a.speed || 1, count = a.count || 0;
-    let prog;
-    if (a.mode === 'return') { const cyc = speed * t; prog = (count > 0 && cyc >= count) ? 0 : Math.sin(2 * Math.PI * cyc); }
-    else prog = applyEase(t, a.ease, a.easePower);
-    let tx = (a.tx || 0) * prog, ty = (a.ty || 0) * prog;
-    const rot = (a.rot || 0) * prog * Math.PI / 180;
-    const sc = 1 + (a.scale || 0) * prog;
-    if (a.path && a.path.length > 1) {
+    const keys = Array.isArray(a.keys) && a.keys.length >= 2 ? a.keys : null;
+    let tx, ty, rot, sc, alpha = 1, prog;
+    if (keys) {
+        // 키프레임이 있으면 그것이 이동/회전/크기/투명도를 지배한다 (속도 배수로 재생 빠르기 조절).
+        const k = sampleKeys(keys, Math.max(0, Math.min(1, t * speed)));
+        tx = k.tx || 0; ty = k.ty || 0;
+        rot = (k.rot || 0) * Math.PI / 180;
+        sc = 1 + (k.scale || 0);
+        alpha = Math.max(0, Math.min(1, k.op ?? 1));
+        prog = t;
+    } else {
+        if (a.mode === 'return') { const cyc = speed * t; prog = (count > 0 && cyc >= count) ? 0 : Math.sin(2 * Math.PI * cyc); }
+        else prog = applyEase(t, a.ease, a.easePower);
+        tx = (a.tx || 0) * prog; ty = (a.ty || 0) * prog;
+        rot = (a.rot || 0) * prog * Math.PI / 180;
+        sc = 1 + (a.scale || 0) * prog;
+    }
+    if (!keys && a.path && a.path.length > 1) {
         let s;
         if (a.mode === 'return') { let x = 2 * speed * t; if (count > 0 && x >= 2 * count) x = 0; s = triwave(x); }
         else s = applyEase(t, a.ease, a.easePower);
@@ -1064,9 +1096,9 @@ export function computeLayerAnim(layer, ac, time, cw = CANVAS_W, ch = CANVAS_H) 
     const axis = a.swayAxis === 'x' ? 'x' : 'y';
     // 프로파일 가중치 1 = 기존 shear가 축 끝에서 만들던 변위와 같은 크기 (감각 유지)
     const swayDisp = prof ? (sway / 100) * wave * (axis === 'y' ? ch : cw) : 0;
-    if (tx === 0 && ty === 0 && rot === 0 && sc === 1 && shear === 0 && !prof) return null;
+    if (tx === 0 && ty === 0 && rot === 0 && sc === 1 && shear === 0 && !prof && alpha === 1) return null;
     return {
-        tx, ty, rot, sc, shear: prof ? 0 : shear, px: (a.pivotX ?? 0.5) * cw, py: (a.pivotY ?? 0.5) * ch,
+        tx, ty, rot, sc, alpha, shear: prof ? 0 : shear, px: (a.pivotX ?? 0.5) * cw, py: (a.pivotY ?? 0.5) * ch,
         swayProfile: prof, swayAxis: axis, swayDisp,
     };
 }

@@ -2751,6 +2751,7 @@ export default function App() {
                 const la = playing ? computeLayerAnim(l, ac, t, CANVAS_W, CANVAS_H) : null;
                 ctx.save();
                 if (la) {
+                    if (la.alpha != null && la.alpha < 1) ctx.globalAlpha *= la.alpha; // 키프레임 투명도
                     ctx.translate(la.px + la.tx, la.py + la.ty);
                     ctx.rotate(la.rot);
                     ctx.scale(la.sc, la.sc);
@@ -3495,7 +3496,8 @@ export default function App() {
                         <JitterPanel cut={cut} layer={layer} updLayer={updLayerProps} />
                     )}
                     {!isFolder && animLayer && animLayer.cutId === cut.id && animLayer.layerId === layer.id && (
-                        <LayerAnimPanel cut={cut} layer={layer} updLayerAnim={updLayerAnim} updLayers={updLayers} pathCapture={pathCapture} setPathCapture={setPathCapture} />
+                        <LayerAnimPanel cut={cut} layer={layer} updLayerAnim={updLayerAnim} updLayers={updLayers} pathCapture={pathCapture} setPathCapture={setPathCapture}
+                            cutProgress={(currentTime - cut.startTime) / Math.max(0.0001, cut.endTime - cut.startTime)} />
                     )}
                     {dt === 'after' && <div className="drop-line" />}
                     {isFolder && !layer.collapsed && renderLayers(cut, layer.id, depth + 1)}
