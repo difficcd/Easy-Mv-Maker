@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
-import { Play, Pause, Square, Plus, Trash2, Download, Upload, PenLine, Pen, Feather, Eraser, Droplets, Undo, Redo, Layers, Trash, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, FolderPlus, Folder, FolderOpen, Settings, Eye, EyeOff, Copy, CopyPlus, ClipboardPaste, GitBranch, Move, Type, Server, Cloud, CloudDownload, Film, Repeat, Minus, Spline, Waves, Grid3x3 } from 'lucide-react';
+import { Play, Pause, Square, Plus, Trash2, Download, Upload, PenLine, Pen, Feather, Eraser, Droplets, Undo, Redo, Layers, Trash, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, FolderPlus, Folder, FolderOpen, Settings, Eye, EyeOff, Copy, CopyPlus, ClipboardPaste, GitBranch, Move, Type, Server, Cloud, CloudDownload, Film, Repeat, Minus, Spline, Waves, Grid3x3, Palette, Menu } from 'lucide-react';
 import './App.css';
 import { saveAutosave, loadAutosave, saveProject, loadProject, listProjects, deleteProject, autosaveKey } from './db';
 import { CutAnimPanel, LayerAnimPanel, JitterPanel } from './AnimPanels';
+import ColorPanel from './ColorPanel';
 import {
     DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT, FONT_PRESETS,
     pointInPolygon, dist, safeArray, hexToRgb, bucketFillTransparentRegion,
@@ -26,6 +27,55 @@ const PEN_TYPES = [
 const BOIL_FPS = 10; // 자글자글(boiling line) 모션이 바뀌는 초당 횟수
 
 // 단축키: 기본값 + 사용자가 바꾼 값(브라우저 보관). 표기는 'ctrl+[' 처럼 소문자 조합.
+// 테마색: 고른 색 하나에서 밝기/채도를 조절해 파생 색들을 만들고 CSS 변수로 심는다.
+// 이렇게 해야 버튼·활성 탭·글로우까지 전부 한 번에 따라 바뀐다.
+const hexToHsl = (hex) => {
+    const h = String(hex).replace('#', '');
+    const r = parseInt(h.slice(0, 2), 16) / 255, g = parseInt(h.slice(2, 4), 16) / 255, b = parseInt(h.slice(4, 6), 16) / 255;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+    let hh = 0;
+    if (d) {
+        if (mx === r) hh = ((g - b) / d) % 6;
+        else if (mx === g) hh = (b - r) / d + 2;
+        else hh = (r - g) / d + 4;
+    }
+    hh = (hh * 60 + 360) % 360;
+    const l = (mx + mn) / 2;
+    const sat = d ? d / (1 - Math.abs(2 * l - 1)) : 0;
+    return { h: hh, s: sat, l };
+};
+const hsl = (h, s, l) => `hsl(${h.toFixed(0)} ${Math.max(0, Math.min(100, s * 100)).toFixed(0)}% ${Math.max(0, Math.min(100, l * 100)).toFixed(0)}%)`;
+const applyTheme = (base, uiSat = 18) => {
+    const { h, s, l } = hexToHsl(base);
+    const S = Math.max(0.35, Math.min(0.95, s || 0.6));
+    const root = document.documentElement.style;
+    root.setProperty('--accent', hsl(h, S, Math.min(0.55, Math.max(0.36, l))));
+    root.setProperty('--accent-lo', hsl(h, S, 0.30));
+    root.setProperty('--accent-hi', hsl(h, S, 0.52));
+    root.setProperty('--accent-deep', hsl(h, S, 0.24));
+    root.setProperty('--accent-deeper', hsl(h, S, 0.18));
+    root.setProperty('--accent-mut', hsl(h, S * 0.6, 0.39));
+    root.setProperty('--accent-mut2', hsl(h, S * 0.6, 0.31));
+    root.setProperty('--accent-soft', hsl(h + 6, Math.min(1, S + 0.15), 0.74));
+    root.setProperty('--accent-soft2', hsl(h + 6, Math.min(1, S + 0.10), 0.72));
+    root.setProperty('--accent-bright', hsl(h - 8, Math.min(1, S + 0.20), 0.75));
+    root.setProperty('--accent-pale', hsl(h, Math.min(1, S + 0.10), 0.85));
+    root.setProperty('--accent-pale2', hsl(h, Math.min(1, S + 0.10), 0.90));
+    root.setProperty('--accent-pale3', hsl(h, Math.min(1, S + 0.10), 0.88));
+    root.setProperty('--accent-glow', `hsl(${h.toFixed(0)} ${(S * 100).toFixed(0)}% 45% / .55)`);
+    // 패널·버튼 같은 중성 배경도 같은 색조를 쓰되 채도는 사용자가 정한다(0 = 완전 무채색).
+    root.setProperty('--ui-h', h.toFixed(0));
+    root.setProperty('--ui-s', `${Math.max(0, Math.min(60, uiSat)).toFixed(0)}%`);
+};
+const DEFAULT_THEME = '#6d28d9';
+// 캔버스(2D 컨텍스트)는 CSS 변수를 못 쓰므로 계산된 값을 읽어 쓴다 → 선택틀·경로 같은
+// 캔버스 위 표시도 테마색을 따라간다.
+const accentSoft = (alpha = 1) => {
+    const v = getComputedStyle(document.documentElement).getPropertyValue('--accent-soft').trim() || '#7c8cff';
+    if (alpha >= 1) return v;
+    return v.startsWith('hsl(') ? v.replace(/\)$/, ` / ${alpha})`) : v;
+};
+
 const DEFAULT_KEYS = {
     undo: 'j', redo: 'k',
     brushDown: '[', brushUp: ']',
@@ -70,20 +120,20 @@ function LayerThumbnail({ layer, cutId, layerCanvasCache }) {
             ctx.drawImage(layerCanvas, 0, 0, 56, 31);
         }
     }, [layer, layerCanvasCache[key]]);
-    return <canvas ref={ref} width={56} height={31} style={{ width: 42, height: 23, borderRadius: 3, background: '#fff', flexShrink: 0, border: '1px solid #2e2e40' }} />;
+    return <canvas ref={ref} width={56} height={31} style={{ width: 42, height: 23, borderRadius: 3, background: '#fff', flexShrink: 0, border: '1px solid hsl(var(--ui-h) var(--ui-s) 22%)' }} />;
 }
 
 function ProjectPicker({ title, items, onOpen, onDelete, onClose }) {
     return (
         <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <div onClick={e => e.stopPropagation()} style={{ width: 420, maxHeight: '70vh', overflow: 'auto', background: '#1e1e2e', border: '1px solid #333', borderRadius: 8, padding: 16 }}>
+            <div onClick={e => e.stopPropagation()} style={{ width: 420, maxHeight: '70vh', overflow: 'auto', background: 'hsl(var(--ui-h) var(--ui-s) 15%)', border: '1px solid #333', borderRadius: 8, padding: 16 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                     <span className="panel-title">{title}</span>
                     <button className="icon-btn" onClick={onClose}>✕</button>
                 </div>
                 {items.length === 0 && <div style={{ fontSize: 12, color: '#888', padding: '12px 2px' }}>저장된 프로젝트가 없습니다.</div>}
                 {items.map(p => (
-                    <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 6px', borderBottom: '1px solid #2a2a3a' }}>
+                    <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 6px', borderBottom: '1px solid hsl(var(--ui-h) var(--ui-s) 20%)' }}>
                         <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => onOpen(p.id, p.name)}>
                             <div style={{ fontSize: 13, color: '#ddd', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
                             <div style={{ fontSize: 10, color: '#777' }}>{p.savedAt ? new Date(p.savedAt).toLocaleString() : ''}</div>
@@ -145,17 +195,17 @@ export default function App() {
     const exportEndRef = useRef(0);
     const [tool, setTool] = useState('pen');
     const [color, setColor] = useState('#000000');
-    const [recentColors, setRecentColors] = useState(['#000000', '#ffffff', '#ff3b30', '#ff9500', '#ffcc00', '#34c759', '#007aff', '#5856d6', '#ff2d55', '#8e8e93']);
+    // 최근 색은 '실제로 사용한' 색만 쌓인다(고르기만 한 색은 안 들어감) — 아래 noteColorUsed 참고.
+    const [recentColors, setRecentColors] = useState(() => {
+        try { const v = JSON.parse(localStorage.getItem('mv_recent_colors')); if (Array.isArray(v)) return v; } catch { }
+        return [];
+    });
+    useEffect(() => { try { localStorage.setItem('mv_recent_colors', JSON.stringify(recentColors)); } catch { } }, [recentColors]);
     const [pickingColor, setPickingColor] = useState(false); // eyedropper: next canvas click samples a pixel
-    // 팔레트: 클튜/사이툴처럼 여러 탭으로 색을 저장·관리. localStorage에 유지.
-    const PALETTE_PRESETS = [
-        { name: '기본', colors: ['#000000', '#404040', '#808080', '#c0c0c0', '#ffffff', '#ff3b30', '#ff9500', '#ffcc00', '#34c759', '#007aff', '#5856d6', '#ff2d55'] },
-        { name: '피부톤', colors: ['#fce9dc', '#f8d5c2', '#f0b79e', '#e39a7d', '#c97b5c', '#a55b3e', '#7d3f28', '#5a2c1b', '#ffe0cf', '#d98e6a', '#b26a45', '#8a4a2c'] },
-        { name: '파스텔', colors: ['#ffd1dc', '#ffe4b5', '#fff3b0', '#d0f0c0', '#b0e0e6', '#c9c9ff', '#e0bbe4', '#f7cac9', '#c1e1c1', '#bde0fe', '#ffc8dd', '#cdb4db'] },
-    ];
+    // 팔레트: 빈 상태로 시작한다(기본 프리셋 없음). 사용자가 직접 담는다.
     const [palettes, setPalettes] = useState(() => {
         try { const s = JSON.parse(localStorage.getItem('mv_palettes')); if (Array.isArray(s) && s.length) return s; } catch { }
-        return PALETTE_PRESETS;
+        return [{ name: '내 팔레트', colors: [] }];
     });
     const [activePalette, setActivePalette] = useState(0);
     const [paletteEdit, setPaletteEdit] = useState(false); // on: 스와치 탭 = 삭제 (태블릿용)
@@ -165,7 +215,14 @@ export default function App() {
     const addPalette = () => { setPalettes(ps => [...ps, { name: `팔레트 ${ps.length + 1}`, colors: [] }]); setActivePalette(palettes.length); };
     const deletePalette = () => { if (palettes.length <= 1) return; setPalettes(ps => ps.filter((_, i) => i !== activePalette)); setActivePalette(i => Math.max(0, i - 1)); };
     const renamePalette = () => { const n = window.prompt('팔레트 이름', palettes[activePalette]?.name); if (n) setPalettes(ps => ps.map((p, i) => i === activePalette ? { ...p, name: n } : p)); };
-    const useColor = (c) => { if (!c) return; setColor(c); setRecentColors(p => [c, ...p.filter(x => x.toLowerCase() !== c.toLowerCase())].slice(0, 12)); };
+    const useColor = (c) => { if (!c) return; setColor(c); };
+    // '사용됨' 기준: 실제로 그 색으로 무언가를 그렸을 때만 최근 색에 올린다.
+    const noteColorUsed = (c) => {
+        if (!c) return;
+        setRecentColors(p => (p[0] && p[0].toLowerCase() === c.toLowerCase())
+            ? p
+            : [c, ...p.filter(x => x.toLowerCase() !== c.toLowerCase())].slice(0, 24));
+    };
     // Eyedropper: native picker where available, else sample the canvas on the next click.
     const pickColor = async () => {
         if (window.EyeDropper) { try { const r = await new window.EyeDropper().open(); useColor(r.sRGBHex); } catch { } }
@@ -279,8 +336,16 @@ export default function App() {
     const backupKeyRef = useRef(null);
     const backupBusyRef = useRef(false);
     const lastBackupSigRef = useRef('');
+    const [themeColor, setThemeColor] = useState(() => { try { return localStorage.getItem('mv_theme') || DEFAULT_THEME; } catch { return DEFAULT_THEME; } });
+    const [uiSat, setUiSat] = useState(() => { const v = parseFloat(localStorage.getItem('mv_ui_sat')); return isNaN(v) ? 18 : v; });
+    useEffect(() => {
+        applyTheme(themeColor, uiSat);
+        try { localStorage.setItem('mv_theme', themeColor); localStorage.setItem('mv_ui_sat', String(uiSat)); } catch { }
+    }, [themeColor, uiSat]);
+    const [leftDock, setLeftDock] = useState('color'); // 왼쪽 독에 열린 패널 (null이면 닫힘) — 아이콘으로 전환
     const [keymap, setKeymap] = useState(loadKeymap);
-    const [showKeys, setShowKeys] = useState(false);   // 단축키 설정 창
+    const [showSettings, setShowSettings] = useState(false); // 설정 창 (단축키 · 테마)
+    const [settingsTab, setSettingsTab] = useState('keys');
     const [rebinding, setRebinding] = useState(null);  // 재지정 대기 중인 액션 id
     const [spaceDown, setSpaceDown] = useState(false); // 스페이스바 = 화면 이동(손바닥) 모드
     const spaceDownRef = useRef(false);
@@ -1787,6 +1852,7 @@ export default function App() {
             const mc = canvasRef.current; if (mc) drawStrokesOnCtx(mc.getContext('2d'), [st], false, bitmapStoreRef.current);
             const lc = liveCanvasRef.current; if (lc) lc.getContext('2d').clearRect(0, 0, lc.width, lc.height);
             commitStrokeToLayer(currentCutId, drawTargetLayerRef.current || (cuts.find(c => c.id === currentCutId)?.activeLayerId), st);
+            noteColorUsed(st.color);
         } else {
             const lc = liveCanvasRef.current; if (lc) lc.getContext('2d').clearRect(0, 0, lc.width, lc.height);
         }
@@ -1804,7 +1870,7 @@ export default function App() {
         const x = Math.min(r.x0, r.x1), y = Math.min(r.y0, r.y1), w = Math.abs(r.x1 - r.x0), h = Math.abs(r.y1 - r.y0);
         ctx.save();
         ctx.fillStyle = 'rgba(120,140,255,0.15)'; ctx.fillRect(x, y, w, h);
-        ctx.setLineDash([8, 6]); ctx.lineWidth = 2; ctx.strokeStyle = '#7c8cff';
+        ctx.setLineDash([8, 6]); ctx.lineWidth = 2; ctx.strokeStyle = 'var(--accent-soft)';
         ctx.strokeRect(x, y, w, h);
         ctx.restore();
     };
@@ -2295,6 +2361,7 @@ export default function App() {
 
                     const bitmapId = storeBitmap(region.imageData);
                     const stroke = { id: Date.now(), tool: 'paste', bitmapId, x: region.x, y: region.y };
+                    noteColorUsed(color);
                     updLayers(currentCutId, c => ({
                         layers: c.layers.map(l => l.id === activeLayer.id ? { ...l, strokes: [...l.strokes, stroke] } : l)
                     }));
@@ -2484,6 +2551,7 @@ export default function App() {
                 const mc = canvasRef.current; if (mc) drawStrokesOnCtx(mc.getContext('2d'), [st], false, bitmapStoreRef.current);
                 const lc = liveCanvasRef.current; if (lc) lc.getContext('2d').clearRect(0, 0, lc.width, lc.height);
                 commitStrokeToLayer(currentCutId, drawTargetLayerRef.current, st);
+                if (st.tool !== 'eraser') noteColorUsed(st.color);
             } else { const lc = liveCanvasRef.current; if (lc) lc.getContext('2d').clearRect(0, 0, lc.width, lc.height); }
             return;
         }
@@ -3089,7 +3157,7 @@ export default function App() {
             if (t) {
                 const b = measureTextBox(t);
                 ctx.save();
-                ctx.strokeStyle = 'rgba(99, 102, 241, 0.9)';
+                ctx.strokeStyle = accentSoft();
                 ctx.lineWidth = 1;
                 ctx.setLineDash([6, 4]);
                 ctx.strokeRect(Math.round(b.x) + 0.5, Math.round(b.y) + 0.5, Math.round(b.w), Math.round(b.h));
@@ -3119,7 +3187,7 @@ export default function App() {
             }
 
             ctx.save();
-            ctx.strokeStyle = 'rgba(99, 102, 241, 0.9)';
+            ctx.strokeStyle = accentSoft();
             ctx.lineWidth = 1;
             ctx.setLineDash([6, 4]);
             ctx.strokeRect(tx + 0.5, ty + 0.5, tw, th);
@@ -3151,21 +3219,21 @@ export default function App() {
                 if (!path || path.length < 2) continue;
                 const editing = animLayer && animLayer.cutId === cc.id && animLayer.layerId === l.id;
                 ctx.save();
-                ctx.strokeStyle = editing ? 'rgba(124,140,255,0.95)' : 'rgba(124,140,255,0.4)';
+                ctx.strokeStyle = editing ? accentSoft() : accentSoft(0.4);
                 ctx.lineWidth = 2;
                 ctx.setLineDash([6, 4]);
                 ctx.beginPath();
                 path.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
                 ctx.stroke();
                 ctx.setLineDash([]);
-                ctx.fillStyle = editing ? '#7c8cff' : 'rgba(124,140,255,0.5)';
+                ctx.fillStyle = editing ? accentSoft() : accentSoft(0.5);
                 ctx.beginPath(); ctx.arc(path[0].x, path[0].y, 4, 0, Math.PI * 2); ctx.fill();
                 ctx.restore();
             }
         }
 
         if (lassoPoints.length > 0) {
-            ctx.strokeStyle = 'rgba(99, 102, 241, 0.8)';
+            ctx.strokeStyle = accentSoft();
             ctx.lineWidth = 1;
             ctx.setLineDash([3, 3]);
             ctx.beginPath();
@@ -3660,7 +3728,7 @@ export default function App() {
                             </button>
                         )}
                         {!isFolder && (
-                            <button className="icon-btn" style={{ color: layer.anim ? '#7c8cff' : undefined }} title="파츠 애니메이션"
+                            <button className="icon-btn" style={{ color: layer.anim ? 'var(--accent-soft)' : undefined }} title="파츠 애니메이션"
                                 onClick={e => { e.stopPropagation(); setAnimLayer(a => (a && a.cutId === cut.id && a.layerId === layer.id) ? null : { cutId: cut.id, layerId: layer.id }); }}>
                                 <Film size={11} />
                             </button>
@@ -3695,12 +3763,12 @@ export default function App() {
                 const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : null;
                 return (
                     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <div style={{ width: 340, background: '#1e1e2e', border: '1px solid #333', borderRadius: 10, padding: 18, boxShadow: '0 12px 40px rgba(0,0,0,.5)' }}>
+                        <div style={{ width: 340, background: 'hsl(var(--ui-h) var(--ui-s) 15%)', border: '1px solid #333', borderRadius: 10, padding: 18, boxShadow: '0 12px 40px rgba(0,0,0,.5)' }}>
                             <div style={{ fontSize: 13, color: '#ddd', marginBottom: 10 }}>{label}…</div>
-                            <div style={{ height: 8, background: '#2a2a3a', borderRadius: 99, overflow: 'hidden' }}>
+                            <div style={{ height: 8, background: 'hsl(var(--ui-h) var(--ui-s) 20%)', borderRadius: 99, overflow: 'hidden' }}>
                                 <div style={pct == null
-                                    ? { height: '100%', width: '40%', borderRadius: 99, background: 'linear-gradient(90deg,#6d28d9,#818cf8)', animation: 'mvIndet 1.1s ease-in-out infinite' }
-                                    : { height: '100%', width: `${pct}%`, borderRadius: 99, background: 'linear-gradient(90deg,#6d28d9,#818cf8)', transition: 'width .12s linear' }} />
+                                    ? { height: '100%', width: '40%', borderRadius: 99, background: 'var(--accent)', animation: 'mvIndet 1.1s ease-in-out infinite' }
+                                    : { height: '100%', width: `${pct}%`, borderRadius: 99, background: 'var(--accent)', transition: 'width .12s linear' }} />
                             </div>
                             <div style={{ fontSize: 11, color: '#888', marginTop: 8, display: 'flex', justifyContent: 'space-between' }}>
                                 <span>{pct == null ? '잠시만 기다려 주세요' : `${done} / ${total}`}</span>
@@ -3711,20 +3779,49 @@ export default function App() {
                 );
             })()}
             {/* 단축키 직접 설정: 항목을 누르고 원하는 키를 누르면 그 조합으로 바뀐다 */}
-            {showKeys && (
-                <div onClick={() => { setShowKeys(false); setRebinding(null); }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <div onClick={e => e.stopPropagation()} style={{ width: 420, maxHeight: '75vh', overflow: 'auto', background: '#1e1e2e', border: '1px solid #333', borderRadius: 8, padding: 16 }}>
+            {showSettings && (
+                <div onClick={() => { setShowSettings(false); setRebinding(null); }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div onClick={e => e.stopPropagation()} style={{ width: 420, maxHeight: '75vh', overflow: 'auto', background: 'hsl(var(--ui-h) var(--ui-s) 15%)', border: '1px solid #333', borderRadius: 8, padding: 16 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                            <span className="panel-title">단축키 설정</span>
-                            <button className="icon-btn" onClick={() => { setShowKeys(false); setRebinding(null); }}>✕</button>
+                            <span className="panel-title">설정</span>
+                            <button className="icon-btn" onClick={() => { setShowSettings(false); setRebinding(null); }}>✕</button>
                         </div>
+                        <div className="pal-tabs" style={{ marginBottom: 10 }}>
+                            <button className={`pal-tab${settingsTab === 'keys' ? ' active' : ''}`} onClick={() => setSettingsTab('keys')}>단축키</button>
+                            <button className={`pal-tab${settingsTab === 'theme' ? ' active' : ''}`} onClick={() => { setSettingsTab('theme'); setRebinding(null); }}>테마</button>
+                        </div>
+                        {settingsTab === 'theme' ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                <div>
+                                    <div className="color-section-label" style={{ marginBottom: 6 }}>테마색</div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                        <input type="color" className="color-swatch-lg" value={themeColor} onChange={e => setThemeColor(e.target.value)} title="테마색 직접 선택" />
+                                        {['#6d28d9', '#2563eb', '#0d9488', '#16a34a', '#ca8a04', '#dc2626', '#db2777', '#475569'].map(c => (
+                                            <button key={c} onClick={() => setThemeColor(c)} title={c}
+                                                style={{ width: 22, height: 22, borderRadius: '50%', background: c, padding: 0, cursor: 'pointer', border: c.toLowerCase() === String(themeColor).toLowerCase() ? '2px solid #fff' : '1px solid #0005' }} />
+                                        ))}
+                                        <button className="button" style={{ height: 26, padding: '0 10px' }} onClick={() => setThemeColor(DEFAULT_THEME)}>기본</button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div className="color-section-label" style={{ marginBottom: 6 }}>UI 채도 — 패널·버튼 배경에 테마색이 섞이는 정도</div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        <input type="range" min="0" max="60" step="1" value={uiSat} onChange={e => setUiSat(+e.target.value)} style={{ flex: 1 }} />
+                                        <input type="number" className="time-input" style={{ width: 60 }} min="0" max="60" value={uiSat}
+                                            onChange={e => setUiSat(Math.max(0, Math.min(60, +e.target.value || 0)))} />
+                                        <span style={{ fontSize: 11, color: '#888' }}>%</span>
+                                    </div>
+                                    <div style={{ fontSize: 10, color: '#777', marginTop: 4 }}>0%로 두면 완전한 무채색 회색 UI가 됩니다.</div>
+                                </div>
+                            </div>
+                        ) : (<>
                         <div style={{ fontSize: 11, color: '#888', marginBottom: 10 }}>
                             {rebinding ? '원하는 키를 누르세요 (Esc = 취소)' : '바꿀 항목을 누른 뒤 새 키를 누르세요.'}
                         </div>
                         {Object.keys(DEFAULT_KEYS).map(id => (
-                            <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 4px', borderBottom: '1px solid #2a2a3a' }}>
+                            <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 4px', borderBottom: '1px solid hsl(var(--ui-h) var(--ui-s) 20%)' }}>
                                 <span style={{ flex: 1, fontSize: 12, color: '#ddd' }}>{KEY_LABELS[id]}</span>
-                                <button className="button" style={{ height: 26, minWidth: 96, justifyContent: 'center', background: rebinding === id ? '#6d28d9' : undefined }}
+                                <button className="button" style={{ height: 26, minWidth: 96, justifyContent: 'center', background: rebinding === id ? 'var(--accent)' : undefined }}
                                     onClick={() => setRebinding(rebinding === id ? null : id)}>
                                     {rebinding === id ? '키 입력 대기…' : (keymap[id] || '(없음)')}
                                 </button>
@@ -3737,6 +3834,7 @@ export default function App() {
                             <span style={{ fontSize: 10, color: '#777' }}>Ctrl+S 저장 · Ctrl+Z/Y 등 기본 조합은 항상 동작합니다</span>
                             <button className="button" onClick={() => { setKeymap({ ...DEFAULT_KEYS }); try { localStorage.setItem('mv_keymap', JSON.stringify(DEFAULT_KEYS)); } catch { } }}>전체 기본값</button>
                         </div>
+                        </>)}
                     </div>
                 </div>
             )}
@@ -3752,20 +3850,20 @@ export default function App() {
             )}
             {videoBusy?.fetching && (
                 <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <div style={{ background: '#1e1e2e', border: '1px solid #333', borderRadius: 8, padding: 20, color: '#ccc', fontSize: 13 }}>영상을 받는 중…</div>
+                    <div style={{ background: 'hsl(var(--ui-h) var(--ui-s) 15%)', border: '1px solid #333', borderRadius: 8, padding: 20, color: '#ccc', fontSize: 13 }}>영상을 받는 중…</div>
                 </div>
             )}
             {videoBusy && videoBusyBg && !videoBusy.fetching && (
-                <div style={{ position: 'fixed', right: 16, bottom: 16, zIndex: 1000, background: '#1e1e2e', border: '1px solid #333', borderRadius: 8, padding: '10px 14px', color: '#ccc', fontSize: 12, display: 'flex', gap: 10, alignItems: 'center', boxShadow: '0 4px 16px rgba(0,0,0,.4)' }}>
+                <div style={{ position: 'fixed', right: 16, bottom: 16, zIndex: 1000, background: 'hsl(var(--ui-h) var(--ui-s) 15%)', border: '1px solid #333', borderRadius: 8, padding: '10px 14px', color: '#ccc', fontSize: 12, display: 'flex', gap: 10, alignItems: 'center', boxShadow: '0 4px 16px rgba(0,0,0,.4)' }}>
                     <span>프레임 추출 {videoBusy.done}/{videoBusy.total || '?'}</span>
-                    <div style={{ width: 80, height: 6, background: '#2a2a3a', borderRadius: 3, overflow: 'hidden' }}><div style={{ height: '100%', width: `${videoBusy.total ? (videoBusy.done / videoBusy.total * 100) : 0}%`, background: '#7c8cff' }} /></div>
+                    <div style={{ width: 80, height: 6, background: 'hsl(var(--ui-h) var(--ui-s) 20%)', borderRadius: 3, overflow: 'hidden' }}><div style={{ height: '100%', width: `${videoBusy.total ? (videoBusy.done / videoBusy.total * 100) : 0}%`, background: 'var(--accent-soft)' }} /></div>
                     <button className="button" style={{ height: 26, padding: '0 8px' }} onClick={() => setVideoBusyBg(false)}>열기</button>
                     <button className="button" style={{ height: 26, padding: '0 8px' }} onClick={() => { videoStopRef.current = true; }}>중지</button>
                 </div>
             )}
             {videoImport && !videoBusyBg && (
                 <div onClick={() => { if (!videoBusy) setVideoImport(null); }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <div onClick={e => e.stopPropagation()} style={{ width: 420, background: '#1e1e2e', border: '1px solid #333', borderRadius: 8, padding: 18, color: '#ccc', fontSize: 12.5 }}>
+                    <div onClick={e => e.stopPropagation()} style={{ width: 420, background: 'hsl(var(--ui-h) var(--ui-s) 15%)', border: '1px solid #333', borderRadius: 8, padding: 18, color: '#ccc', fontSize: 12.5 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                             <span className="panel-title">영상 → 프레임 컷</span>
                             {!videoBusy && <button className="icon-btn" onClick={() => setVideoImport(null)}>✕</button>}
@@ -3774,8 +3872,8 @@ export default function App() {
                         {videoBusy ? (
                             <>
                                 <div style={{ marginBottom: 8 }}>프레임 추출 중… {videoBusy.done}/{videoBusy.total || '?'}{videoBusy.skipped ? ` (중복 ${videoBusy.skipped}컷 통합)` : ''}</div>
-                                <div style={{ height: 8, background: '#2a2a3a', borderRadius: 4, overflow: 'hidden' }}>
-                                    <div style={{ height: '100%', width: `${videoBusy.total ? (videoBusy.done / videoBusy.total * 100) : 0}%`, background: '#7c8cff' }} />
+                                <div style={{ height: 8, background: 'hsl(var(--ui-h) var(--ui-s) 20%)', borderRadius: 4, overflow: 'hidden' }}>
+                                    <div style={{ height: '100%', width: `${videoBusy.total ? (videoBusy.done / videoBusy.total * 100) : 0}%`, background: 'var(--accent-soft)' }} />
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
                                     <span style={{ color: '#888', fontSize: 11 }}>백그라운드로 두고 다른 작업을 계속할 수 있어요.</span>
@@ -3856,7 +3954,7 @@ export default function App() {
                                     {videoImport.parts > 1 && <><br /><b style={{ color: '#9cf' }}>{videoImport.parts}개 파트</b>로 나눠 가져옵니다 — 재생 시 파트별 또는 전체로 볼 수 있습니다.</>}
                                     {videoImport.whole && <><br /><span style={{ color: '#c99' }}>전체 추출: 길이가 길면 컷이 매우 많아집니다. fps를 낮게(1~4) 두는 것을 권장합니다.</span></>}
                                 </div>
-                                <div style={{ background: '#12202b', border: '1px solid #1c3a4a', borderRadius: 6, padding: '8px 10px', marginBottom: 10, color: '#9cc', fontSize: 11.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                                <div style={{ background: 'hsl(var(--ui-h) var(--ui-s) 12%)', border: '1px solid hsl(var(--ui-h) var(--ui-s) 20%)', borderRadius: 6, padding: '8px 10px', marginBottom: 10, color: '#9cc', fontSize: 11.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                                     <span><b style={{ color: '#8de' }}>영상 위에 덧그리기</b> — 프레임으로 쪼개지 않고 원본 영상을 트랙으로 깔고 그 위에 그림·텍스트. 24fps 장편도 매끄럽게 재생. <b style={{ color: '#8de' }}>음원도 함께</b> 들어갑니다.</span>
                                     <button className="button" style={{ whiteSpace: 'nowrap' }} onClick={() => {
                                         const useRange = videoImport.rangeOn && parseClock(videoImport.endText) > parseClock(videoImport.startText);
@@ -3879,7 +3977,7 @@ export default function App() {
             )}
             {sceneCfg && videoOverlay && (
                 <div onClick={() => setSceneCfg(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <div onClick={e => e.stopPropagation()} style={{ width: 360, background: '#1e1e2e', border: '1px solid #333', borderRadius: 8, padding: 18, color: '#ccc', fontSize: 12.5 }}>
+                    <div onClick={e => e.stopPropagation()} style={{ width: 360, background: 'hsl(var(--ui-h) var(--ui-s) 15%)', border: '1px solid #333', borderRadius: 8, padding: 18, color: '#ccc', fontSize: 12.5 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                             <span className="panel-title">🎯 장면(컷) 감지</span>
                             <button className="icon-btn" onClick={() => setSceneCfg(null)}>✕</button>
@@ -3912,7 +4010,7 @@ export default function App() {
             )}
             {showHelp && (
                 <div onClick={() => setShowHelp(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <div onClick={e => e.stopPropagation()} style={{ width: 460, maxHeight: '80vh', overflow: 'auto', background: '#1e1e2e', border: '1px solid #333', borderRadius: 8, padding: 18, fontSize: 12.5, color: '#ccc', lineHeight: 1.7 }}>
+                    <div onClick={e => e.stopPropagation()} style={{ width: 460, maxHeight: '80vh', overflow: 'auto', background: 'hsl(var(--ui-h) var(--ui-s) 15%)', border: '1px solid #333', borderRadius: 8, padding: 18, fontSize: 12.5, color: '#ccc', lineHeight: 1.7 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                             <span className="panel-title">단축키 · 제스처</span>
                             <button className="icon-btn" onClick={() => setShowHelp(false)}>✕</button>
@@ -4028,16 +4126,16 @@ export default function App() {
                         onClick={resetView} title="클릭하면 100%로">{Math.round(view.zoom * 100)}%</button>
                     <button className="icon-btn" style={{ width: 24, height: 24, fontSize: 15 }} onClick={() => zoomCanvas(1.25)}>＋</button>
                 </div>
-                <button className="icon-btn" onClick={() => setShowKeys(true)} title="단축키 직접 설정" style={{ width: 24, height: 24 }}><Settings size={13} /></button>
+                <button className="icon-btn" onClick={() => setShowSettings(true)} title="단축키 직접 설정" style={{ width: 24, height: 24 }}><Settings size={13} /></button>
                 <div className="menu-spacer" />
                 {audioFile && <span style={{ fontSize: 11, color: '#8ab', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={audioFile.name}>♪ {audioFile.name}</span>}
                 {autosaveErr
                     ? <span style={{ fontSize: 11, color: '#f66', fontWeight: 700 }} title={`자동저장 실패: ${autosaveErr}\n저장공간이 가득 찼을 수 있습니다. 파일로 내보내기 또는 서버 저장을 권장합니다.`}>⚠ 자동저장 실패</span>
-                    : autoSavedAt && <span style={{ fontSize: 11, color: '#5a8' }} title="브라우저에 자동저장됨">● 자동저장 {new Date(autoSavedAt).toLocaleTimeString()}</span>}
+                    : autoSavedAt && <span style={{ fontSize: 11, color: 'var(--accent-soft)' }} title="브라우저에 자동저장됨">● 자동저장 {new Date(autoSavedAt).toLocaleTimeString()}</span>}
                 {/* 서버가 없으면 로컬에만 남는다는 걸 분명히 알린다 — 모르고 작업하다 날리는 게 가장 위험 */}
                 {!serverAvailable
                     ? <span style={{ fontSize: 11, color: '#e0a84e' }} title="API 서버에 연결할 수 없어 서버 저장/백업이 비활성화됩니다. 작업은 이 브라우저에만 저장됩니다.">⚠ 로컬 전용</span>
-                    : backupAt && <span style={{ fontSize: 11, color: '#6ab' }} title="서버에 백업된 시각 (파일 > 백업에서 되돌리기)">⛁ 백업 {new Date(backupAt).toLocaleTimeString()}</span>}
+                    : backupAt && <span style={{ fontSize: 11, color: 'var(--accent-pale)' }} title="서버에 백업된 시각 (파일 > 백업에서 되돌리기)">⛁ 백업 {new Date(backupAt).toLocaleTimeString()}</span>}
                 {storageInfo && storageInfo.pct > 0.8 && (
                     <span style={{ fontSize: 11, color: storageInfo.pct > 0.92 ? '#f66' : '#e0a84e' }}
                         title={`브라우저 저장공간 ${(storageInfo.usage / 1073741824).toFixed(2)}GB / ${(storageInfo.quota / 1073741824).toFixed(2)}GB 사용 중. 가득 차면 자동저장이 실패할 수 있으니 서버 저장 또는 파일로 내보내기를 권장합니다.`}>
@@ -4048,12 +4146,12 @@ export default function App() {
             </div>
 
             {/* 프로젝트(문서) 탭 바 — 파일/미디어 메뉴 아래 */}
-            <div className="doc-tabs" style={{ display: 'flex', alignItems: 'stretch', gap: 2, background: '#141422', borderBottom: '1px solid #2a2a3a', padding: '3px 6px 0', overflowX: 'auto', flexShrink: 0 }}>
+            <div className="doc-tabs" style={{ display: 'flex', alignItems: 'stretch', gap: 2, background: 'hsl(var(--ui-h) var(--ui-s) 11%)', borderBottom: '1px solid hsl(var(--ui-h) var(--ui-s) 20%)', padding: '3px 6px 0', overflowX: 'auto', flexShrink: 0 }}>
                 {tabs.map(t => (
                     <div key={t.id} onClick={() => switchTab(t.id)}
                         onDoubleClick={() => { const n = window.prompt('탭 이름', t.name); if (n != null) setTabs(p => p.map(x => x.id === t.id ? { ...x, name: n || x.name } : x)); }}
                         title="클릭: 전환 · 더블클릭: 이름변경"
-                        style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: '6px 6px 0 0', cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap', maxWidth: 180, background: t.id === activeTabId ? '#1e1e2e' : 'transparent', color: t.id === activeTabId ? '#fff' : '#9a9ab0', borderBottom: t.id === activeTabId ? '2px solid #7c8cff' : '2px solid transparent' }}>
+                        style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: '6px 6px 0 0', cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap', maxWidth: 180, background: t.id === activeTabId ? 'hsl(var(--ui-h) var(--ui-s) 15%)' : 'transparent', color: t.id === activeTabId ? '#fff' : '#9a9ab0', borderBottom: t.id === activeTabId ? '2px solid var(--accent-soft)' : '2px solid transparent' }}>
                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.name}</span>
                         <span onClick={e => { e.stopPropagation(); closeTab(t.id); }} title="탭 닫기" style={{ opacity: 0.6, fontSize: 13, lineHeight: 1 }}>✕</span>
                     </div>
@@ -4062,6 +4160,23 @@ export default function App() {
             </div>
 
             <div className="main-content">
+                {/* 맨 왼쪽 아이콘 바: 창 전환 (클립스튜디오식). 위=메인 설정, 아래=색상 창. */}
+                <div className="dock-rail">
+                    <button className={`dock-icon${showLeft ? ' active' : ''}`} title="도구 창 (펜 · 지우개 · 스포이드 등)"
+                        onClick={() => setShowLeft(v => !v)}><Menu size={16} /></button>
+                    <button className={`dock-icon${leftDock === 'color' ? ' active' : ''}`} title="색상 창 (COLOR)"
+                        onClick={() => setLeftDock(v => v === 'color' ? null : 'color')}><Palette size={16} /></button>
+                </div>
+                {leftDock === 'color' && (
+                    <ColorPanel
+                        color={color} useColor={useColor} pickColor={pickColor} pickingColor={pickingColor}
+                        recentColors={recentColors}
+                        palettes={palettes} activePalette={activePalette} setActivePalette={setActivePalette}
+                        addToPalette={addToPalette} removeFromPalette={removeFromPalette}
+                        addPalette={addPalette} renamePalette={renamePalette} deletePalette={deletePalette}
+                        paletteEdit={paletteEdit} setPaletteEdit={setPaletteEdit}
+                        onClose={() => setLeftDock(null)} />
+                )}
                 {showLeft && (
                     <div className="toolbar" style={{ width: leftW, flexShrink: 0 }}>
                         <button onClick={() => setShowLeft(false)} className="icon-btn" style={{ width: '100%', padding: '4px 0', marginBottom: 4 }}><ChevronLeft size={14} /></button>
@@ -4083,36 +4198,7 @@ export default function App() {
                         <div className="tool-divider" />
                         <input type="color" className="color-picker" value={color} onChange={e => useColor(e.target.value)} title="색상" disabled={isSelectionTool} />
                         <button className={`tool-btn${pickingColor ? ' active' : ''}`} onClick={pickColor} title="스포이드 (화면에서 색 추출)" disabled={isSelectionTool} style={{ padding: '0 6px' }}><Droplets size={15} /><span className="tool-label">스포이드</span></button>
-                        <div style={{ fontSize: 9, color: '#777', width: 92, textAlign: 'left' }}>최근</div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, width: 92, alignContent: 'center' }} title="최근 색상">
-                            {recentColors.slice(0, 12).map((c, i) => (
-                                <button key={i} onClick={() => useColor(c)} title={c}
-                                    style={{ width: 14, height: 14, borderRadius: 3, background: c, border: c.toLowerCase() === color.toLowerCase() ? '2px solid #7c8cff' : '1px solid #0004', padding: 0, cursor: 'pointer' }} />
-                            ))}
-                        </div>
-                        <div className="tool-divider" />
-                        {/* 팔레트: 탭으로 여러 색 세트 관리 (클튜/사이툴식) */}
-                        <div style={{ width: 92, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                            <select value={activePalette} onChange={e => setActivePalette(+e.target.value)} className="time-input" style={{ width: '100%', height: 22, fontSize: 10 }} title="팔레트 선택">
-                                {palettes.map((p, i) => <option key={i} value={i}>{p.name}</option>)}
-                            </select>
-                            <div style={{ display: 'flex', gap: 2 }}>
-                                <button className="pal-btn" title="현재 색을 이 팔레트에 추가" onClick={() => addToPalette(color)}>+색</button>
-                                <button className="pal-btn" title="새 팔레트 탭" onClick={addPalette}>+탭</button>
-                                <button className="pal-btn" title="이름 변경" onClick={renamePalette}>✎</button>
-                                <button className={`pal-btn${paletteEdit ? ' active' : ''}`} title={paletteEdit ? '삭제모드 (색 눌러 삭제) — 끄기' : '삭제모드: 스와치 눌러 삭제'} onClick={() => setPaletteEdit(v => !v)}>🗑</button>
-                            </div>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, alignContent: 'flex-start', maxHeight: 132, overflowY: 'auto' }} title={paletteEdit ? '눌러서 삭제' : '팔레트 색 (우클릭/삭제모드로 제거)'}>
-                                {(palettes[activePalette]?.colors || []).map((c, i) => (
-                                    <button key={i}
-                                        onClick={() => paletteEdit ? removeFromPalette(i) : useColor(c)}
-                                        onContextMenu={e => { e.preventDefault(); removeFromPalette(i); }}
-                                        title={c}
-                                        style={{ width: 16, height: 16, borderRadius: 3, background: c, border: c.toLowerCase() === color.toLowerCase() ? '2px solid #7c8cff' : '1px solid #0004', padding: 0, cursor: 'pointer', outline: paletteEdit ? '1px dashed #f66' : 'none' }} />
-                                ))}
-                                {(palettes[activePalette]?.colors || []).length === 0 && <span style={{ fontSize: 9, color: '#666' }}>+색 으로 추가</span>}
-                            </div>
-                        </div>
+                        <button className={`tool-btn${leftDock === 'color' ? ' active' : ''}`} onClick={() => setLeftDock(v => v === 'color' ? null : 'color')} title="색상 창 열기/닫기" style={{ padding: '0 6px' }}><Palette size={15} /><span className="tool-label">색상창</span></button>
                         <div className="slider-wrap">
                             {tool === 'mosaic' ? (
                                 <>
@@ -4140,7 +4226,7 @@ export default function App() {
                                             const d = Math.max(2, Math.min(18, s));
                                             return (
                                                 <button key={s} onClick={() => setSize(s)} disabled={isSelectionTool} title={`${s}px`}
-                                                    style={{ width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, borderRadius: 4, background: curSize === s ? '#3a3a5c' : '#222', border: curSize === s ? '1px solid #7c8cff' : '1px solid #333', cursor: 'pointer' }}>
+                                                    style={{ width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, borderRadius: 4, background: curSize === s ? 'hsl(var(--ui-h) var(--ui-s) 29%)' : '#222', border: curSize === s ? '1px solid var(--accent-soft)' : '1px solid #333', cursor: 'pointer' }}>
                                                     <span style={{ width: d, height: d, borderRadius: '50%', background: '#ddd', display: 'block' }} />
                                                 </button>
                                             );
@@ -4163,7 +4249,6 @@ export default function App() {
                     </div>
                 )}
                 {showLeft && <div className="splitter-v" style={{ touchAction: 'none' }} title="드래그로 도구 패널 너비 조절" onPointerDown={e => { e.currentTarget.setPointerCapture?.(e.pointerId); setSplitter({ type: 'left', startX: e.clientX, startW: leftW }); }} />}
-                {!showLeft && <button onClick={() => setShowLeft(true)} className="icon-btn" style={{ width: 24, alignSelf: 'stretch', padding: 0, borderRadius: 0, background: '#1e1e2e', border: 'none', borderRight: '1px solid #333' }}><ChevronRight size={14} /></button>}
 
                 {/* 스페이스 이동 중에는 이 영역의 스크롤을 잠근다. 열어두면 스페이스/드래그가
                     화면을 아래로 스크롤시켜 '이동'이 아니라 그냥 내려가 버린다. */}
@@ -4172,13 +4257,13 @@ export default function App() {
                     onAuxClick={e => { if (e.button === 1) e.preventDefault(); }}
                     onPointerDown={onAreaPointerDown} onPointerMove={onAreaPointerMove} onPointerUp={onAreaPointerUp} onPointerCancel={onAreaPointerUp}>
                     {pathCapture && (
-                        <div style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', zIndex: 31, background: '#7c8cff', color: '#fff', fontSize: 12, padding: '6px 12px', borderRadius: 6, display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <div style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', zIndex: 31, background: 'var(--accent-soft)', color: '#fff', fontSize: 12, padding: '6px 12px', borderRadius: 6, display: 'flex', gap: 8, alignItems: 'center' }}>
                             {pathCapture.mode === 'sway' ? '물결치듯 곡선을 그리세요 — 그 모양·크기대로 흔들립니다' : '펜으로 이동 경로를 그리세요'}
                             <button className="button" style={{ height: 24, padding: '0 8px' }} onClick={() => setPathCapture(null)}>취소</button>
                         </div>
                     )}
                     {tool === 'curve' && (
-                        <div style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', zIndex: 31, background: '#2a2a3a', color: '#fff', fontSize: 12, padding: '6px 12px', borderRadius: 6, display: 'flex', gap: 8, alignItems: 'center', border: '1px solid #444' }}>
+                        <div style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', zIndex: 31, background: 'hsl(var(--ui-h) var(--ui-s) 20%)', color: '#fff', fontSize: 12, padding: '6px 12px', borderRadius: 6, display: 'flex', gap: 8, alignItems: 'center', border: '1px solid #444' }}>
                             {curvePts === 0 ? '점을 찍어 곡선을 만드세요' : `앵커 ${curvePts}개 (누른 채 끌어 미세조정)`}
                             <button className="button" style={{ height: 24, padding: '0 10px', background: '#4ea1ff' }} disabled={curvePts < 2} onClick={commitCurve}>완료</button>
                             <button className="button" style={{ height: 24, padding: '0 8px' }} disabled={curvePts === 0} onClick={cancelCurve}>취소</button>
@@ -4265,9 +4350,9 @@ export default function App() {
                                         title="색상"
                                     />
                                     <button className="button" title="굵게" onClick={() => setTextEdit(te => te ? ({ ...te, bold: !te.bold }) : te)}
-                                        style={{ height: 26, width: 28, padding: 0, fontWeight: 800, background: textEdit.bold ? '#3a3a5c' : undefined }}>B</button>
+                                        style={{ height: 26, width: 28, padding: 0, fontWeight: 800, background: textEdit.bold ? 'hsl(var(--ui-h) var(--ui-s) 29%)' : undefined }}>B</button>
                                     <button className="button" title="기울임" onClick={() => setTextEdit(te => te ? ({ ...te, italic: !te.italic }) : te)}
-                                        style={{ height: 26, width: 28, padding: 0, fontStyle: 'italic', background: textEdit.italic ? '#3a3a5c' : undefined }}>I</button>
+                                        style={{ height: 26, width: 28, padding: 0, fontStyle: 'italic', background: textEdit.italic ? 'hsl(var(--ui-h) var(--ui-s) 29%)' : undefined }}>I</button>
                                     <select className="time-input" style={{ width: 52 }} title="정렬" value={textEdit.align || 'left'}
                                         onChange={e => setTextEdit(te => te ? ({ ...te, align: e.target.value }) : te)}>
                                         <option value="left">◧</option><option value="center">▣</option><option value="right">◨</option>
@@ -4432,7 +4517,7 @@ export default function App() {
                             </button>
                         )}
                         {videoBatches.length > 0 && (
-                            <div style={{ marginTop: 10, borderTop: '1px solid #2a2a3a', paddingTop: 8 }}>
+                            <div style={{ marginTop: 10, borderTop: '1px solid hsl(var(--ui-h) var(--ui-s) 20%)', paddingTop: 8 }}>
                                 <div style={{ fontSize: 10, color: '#888', marginBottom: 4 }}>가져온 영상 프레임</div>
                                 {videoBatches.map(b => (
                                     <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#bbb', padding: '3px 0' }}>
@@ -4445,7 +4530,7 @@ export default function App() {
                         )}
                     </div>
                 )}
-                {!showRight && <button onClick={() => setShowRight(true)} className="icon-btn" style={{ width: 24, alignSelf: 'stretch', padding: 0, borderRadius: 0, background: '#1e1e2e', border: 'none', borderLeft: '1px solid #333' }}><ChevronRight size={14} /></button>}
+                {!showRight && <button onClick={() => setShowRight(true)} className="icon-btn" style={{ width: 24, alignSelf: 'stretch', padding: 0, borderRadius: 0, background: 'hsl(var(--ui-h) var(--ui-s) 15%)', border: 'none', borderLeft: '1px solid #333' }}><ChevronRight size={14} /></button>}
             </div>
 
             {showBottom && <div className="splitter-h" style={{ touchAction: 'none' }} onPointerDown={e => { e.currentTarget.setPointerCapture?.(e.pointerId); setSplitter({ type: 'bottom', startY: e.clientY, startH: timelineH }); }} />}
@@ -4474,7 +4559,7 @@ export default function App() {
                     </>}
                 </div>
                 {showBottom && (parts.length > 0 || selectedCutIds.size > 0) && (
-                    <div className="parts-bar" style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', borderBottom: '1px solid #2a2a3a', overflowX: 'auto', flexShrink: 0 }}>
+                    <div className="parts-bar" style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', borderBottom: '1px solid hsl(var(--ui-h) var(--ui-s) 20%)', overflowX: 'auto', flexShrink: 0 }}>
                         <span style={{ fontSize: 10, color: '#777', marginRight: 2, flexShrink: 0 }}>파트</span>
                         <button className={`chip${!activePartId ? ' chip-active' : ''}`} onClick={() => selectPart(null)} title="전체 재생" style={{ flexShrink: 0 }}>전체</button>
                         {parts.map((p, i) => (
@@ -4497,8 +4582,8 @@ export default function App() {
                         onAuxClick={e => { if (e.button === 1) e.preventDefault(); }}
                         onPointerDown={onTimelinePointerDown} onPointerMove={onTimelinePointerMove} onPointerUp={onTimelinePointerUp} onPointerCancel={onTimelinePointerUp} style={{ position: 'relative', touchAction: 'none' }}>
                         <div style={{ minWidth: '100%', width: `${Math.max(100, maxTime * pps + 150)}px`, position: 'relative' }}>
-                            <div className="ruler" style={{ position: 'sticky', top: 0, left: 0, right: 0, height: 20, background: '#1a1a2e', borderBottom: '1px solid #2e2e4a', zIndex: 20 }}>
-                                <div style={{ position: 'sticky', left: 0, width: 60, height: '100%', background: '#1a1a2e', zIndex: 21, float: 'left' }} />
+                            <div className="ruler" style={{ position: 'sticky', top: 0, left: 0, right: 0, height: 20, background: 'hsl(var(--ui-h) var(--ui-s) 14%)', borderBottom: '1px solid hsl(var(--ui-h) var(--ui-s) 24%)', zIndex: 20 }}>
+                                <div style={{ position: 'sticky', left: 0, width: 60, height: '100%', background: 'hsl(var(--ui-h) var(--ui-s) 14%)', zIndex: 21, float: 'left' }} />
                                 {(() => {
                                     const iMin = Math.max(0, Math.floor((tlWin.left - 60) / pps));
                                     const iMax = Math.min(Math.ceil(maxTime), Math.ceil((tlWin.right - 60) / pps));
@@ -4565,8 +4650,8 @@ export default function App() {
                                 ))}
                             </div>
                             {audioFile && audioData && (
-                                <div className="tl-track" style={{ background: '#161628' }}>
-                                    <div className="tl-track-label" style={{ background: '#161628' }}><span>Audio</span><button className="icon-btn del-btn" onClick={e => { e.stopPropagation(); handleDeleteAudio(); }} title="오디오 삭제"><Trash2 size={9} /></button></div>
+                                <div className="tl-track" style={{ background: 'hsl(var(--ui-h) var(--ui-s) 12%)' }}>
+                                    <div className="tl-track-label" style={{ background: 'hsl(var(--ui-h) var(--ui-s) 12%)' }}><span>Audio</span><button className="icon-btn del-btn" onClick={e => { e.stopPropagation(); handleDeleteAudio(); }} title="오디오 삭제"><Trash2 size={9} /></button></div>
                                     <div className="cut-block" style={{ left: `${audioData.startTime * pps + 60}px`, width: `${(audioData.endTime - audioData.startTime) * pps}px`, background: '#374151', borderColor: '#4b5563', cursor: draggingCutData?.cutId === 'audio' ? 'grabbing' : 'grab', touchAction: 'none' }}
                                         onPointerDown={e => { e.stopPropagation(); cutDragMovedRef.current = false; clearTimeout(cutDragTimerRef.current); cutDragArmedRef.current = e.pointerType !== 'touch'; if (e.pointerType === 'touch') cutDragTimerRef.current = setTimeout(() => { cutDragArmedRef.current = true; }, 350); e.currentTarget.setPointerCapture(e.pointerId); setDraggingCutData({ cutId: 'audio', startX: e.clientX, startY: e.clientY, initialStart: audioData.startTime, initialTrack: 0 }); }}>
                                         <div className="rh rh-left" style={{ touchAction: 'none' }} onPointerDown={e => { e.stopPropagation(); e.target.setPointerCapture(e.pointerId); setResizingData({ cutId: 'audio', edge: 'left', startX: e.clientX, initialStart: audioData.startTime, initialEnd: audioData.endTime, initialOffset: audioData.offset }); }} />
@@ -4601,7 +4686,7 @@ export default function App() {
                                 <button className="small-btn" onClick={handleAddTrack}><Plus size={11} /> Add Track</button>
                             </div>
                             {marquee && (
-                                <div style={{ position: 'absolute', left: marquee.x, top: marquee.y, width: marquee.w, height: marquee.h, background: 'rgba(124,140,255,0.15)', border: '1px solid rgba(124,140,255,0.8)', zIndex: 16, pointerEvents: 'none' }} />
+                                <div style={{ position: 'absolute', left: marquee.x, top: marquee.y, width: marquee.w, height: marquee.h, background: accentSoft(0.15), border: `1px solid ${accentSoft(0.8)}`, zIndex: 16, pointerEvents: 'none' }} />
                             )}
                             <div className="playhead" ref={playheadRef} style={{ left: `${currentTime * pps + 60}px` }}><div className="playhead-dot" /></div>
                             {snapLinePos !== null && (

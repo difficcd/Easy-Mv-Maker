@@ -21,7 +21,7 @@ const NumIn = ({ value, onChange, step = 1, min, max, w = 56, title }) => (
 export function CutAnimPanel({ cut, updCutAnim }) {
     const a = { ...ANIM_DEFAULT, ...cut.anim };
     return (
-        <div style={{ marginTop: 8, borderTop: '1px solid #2a2a3a', paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ marginTop: 8, borderTop: '1px solid hsl(var(--ui-h) var(--ui-s) 20%)', paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
             <div style={{ fontSize: 10, color: '#888' }}>컷 애니메이션 (재생 시 적용)</div>
             <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                 <span style={{ fontSize: 10, width: 28, color: '#aaa', flexShrink: 0 }}>진입</span>
@@ -109,7 +109,7 @@ export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCaptur
     };
     const updKey = (i, o) => setKeys(keys.map((k, j) => j === i ? { ...k, ...o } : k));
     return (
-        <div style={{ padding: '6px 8px', background: '#15151f', borderTop: '1px solid #2a2a3a', display: 'flex', flexDirection: 'column', gap: 5 }} onClick={e => e.stopPropagation()}>
+        <div style={{ padding: '6px 8px', background: 'hsl(var(--ui-h) var(--ui-s) 10%)', borderTop: '1px solid hsl(var(--ui-h) var(--ui-s) 20%)', display: 'flex', flexDirection: 'column', gap: 5 }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: 10, color: '#888' }}>파츠 애니메이션 (재생 시 적용)</span>
                 {layer.anim && <button className="small-btn" onClick={() => updLayers(cut.id, c => ({ layers: c.layers.map(l => l.id === layer.id ? { ...l, anim: undefined } : l) }))}>끄기</button>}
@@ -122,7 +122,7 @@ export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCaptur
                         onClick={() => updLayerAnim(cut.id, layer.id, p.v)}>{p.label}</button>
                 ))}
                 {custom.map((p, i) => (
-                    <button key={'c' + i} className="small-btn" style={{ fontSize: 9, padding: '2px 6px', borderColor: '#7c8cff' }}
+                    <button key={'c' + i} className="small-btn" style={{ fontSize: 9, padding: '2px 6px', borderColor: 'var(--accent-soft)' }}
                         title="내 프리셋 · 우클릭으로 삭제"
                         onContextMenu={e => { e.preventDefault(); const next = custom.filter((_, j) => j !== i); setCustom(next); saveCustomPresets(next); }}
                         onClick={() => updLayerAnim(cut.id, layer.id, p.v)}>{p.label}</button>
@@ -138,7 +138,7 @@ export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCaptur
                     }}>+ 저장</button>
             </div>
             {/* 키프레임 트위닝: 시점마다 값을 찍어두면 그 사이를 자동으로 이어준다 */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 3, borderTop: '1px solid #2a2a3a', paddingTop: 4 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3, borderTop: '1px solid hsl(var(--ui-h) var(--ui-s) 20%)', paddingTop: 4 }}>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 10, color: '#c9a' }}
                     title="재생 위치를 옮겨가며 '키 추가'를 누르면 그 사이가 자동으로 보간됩니다(트위닝). 키가 2개 이상이면 위의 이동/회전/크기 대신 키프레임이 적용됩니다.">
                     <span style={{ width: 34, fontWeight: 700 }}>키프레임</span>
@@ -203,7 +203,7 @@ export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCaptur
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 10, color: '#8bd' }}
                 title="물결치듯 곡선을 그리면 그 곡선의 모양과 크기대로 흔들립니다. 그리지 않으면 기본 사인파로 흔들립니다.">
                 <span style={{ width: 24 }}>모양</span>
-                <button className="small-btn" style={{ background: pathCapture && pathCapture.mode === 'sway' && pathCapture.layerId === layer.id ? '#7c8cff' : undefined }}
+                <button className="small-btn" style={{ background: pathCapture && pathCapture.mode === 'sway' && pathCapture.layerId === layer.id ? 'var(--accent-soft)' : undefined }}
                     onClick={() => setPathCapture(pc => (pc && pc.mode === 'sway' && pc.cutId === cut.id && pc.layerId === layer.id) ? null : { cutId: cut.id, layerId: layer.id, mode: 'sway' })}>
                     {pathCapture && pathCapture.mode === 'sway' && pathCapture.layerId === layer.id ? '그리는 중…' : (a.swayCurve ? '곡선 다시 그리기' : '흔들림 곡선 그리기')}
                 </button>
@@ -258,7 +258,7 @@ export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCaptur
             })()}
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 10, color: '#aaa' }}>
                 <span style={{ width: 24 }}>경로</span>
-                <button className="small-btn" style={{ background: pathCapture && pathCapture.layerId === layer.id ? '#7c8cff' : undefined }}
+                <button className="small-btn" style={{ background: pathCapture && pathCapture.layerId === layer.id ? 'var(--accent-soft)' : undefined }}
                     onClick={() => setPathCapture(pc => (pc && pc.cutId === cut.id && pc.layerId === layer.id) ? null : { cutId: cut.id, layerId: layer.id })}>
                     {pathCapture && pathCapture.layerId === layer.id ? '그리는 중…' : (a.path ? '경로 다시 그리기' : '경로 그리기')}
                 </button>
@@ -275,7 +275,7 @@ export function JitterPanel({ cut, layer, updLayer }) {
     const on = !!layer.roughen;
     const set = (o) => updLayer(cut.id, layer.id, o);
     return (
-        <div style={{ marginTop: 6, padding: '6px 8px', background: '#1b1b28', border: '1px solid #2a2a3a', borderRadius: 6, display: 'flex', flexDirection: 'column', gap: 5 }}>
+        <div style={{ marginTop: 6, padding: '6px 8px', background: 'hsl(var(--ui-h) var(--ui-s) 13%)', border: '1px solid hsl(var(--ui-h) var(--ui-s) 20%)', borderRadius: 6, display: 'flex', flexDirection: 'column', gap: 5 }}>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 10, color: '#e0a84e' }}>
                 <span style={{ fontWeight: 700 }}>자글자글</span>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 3, color: '#aaa' }}>
