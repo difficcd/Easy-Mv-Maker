@@ -1309,22 +1309,16 @@ html {
 
 /* 색상환 */
 .wheel-wrap {
-    position: relative;
     align-self: center;
+    max-width: 100%;
     touch-action: none;
 }
 
 .wheel-ring {
-    position: absolute;
-    inset: 0;
     cursor: crosshair;
 }
 
 .wheel-sq {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
     border-radius: 3px;
     cursor: crosshair;
 }

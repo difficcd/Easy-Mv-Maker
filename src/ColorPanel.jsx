@@ -96,19 +96,21 @@ function ColorWheel({ color, onPick, size = 168 }) {
     const endDrag = () => { dragRef.current = null; };
 
     const ang = h * Math.PI / 180, rMid = (R_OUT + R_IN) / 2;
+    // 위치는 전부 인라인으로 계산한다. CSS의 % + translate 조합에 기대면
+    // 부모 크기가 예상과 달라질 때 사각형이 고리 밖으로 튀어나간다.
+    const sqLeft = (WHEEL - SQ) / 2, sqTop = (WHEEL - SQ) / 2;
     return (
-        <div className="wheel-wrap" style={{ width: WHEEL, height: WHEEL }}>
+        <div className="wheel-wrap" style={{ position: 'relative', width: WHEEL, height: WHEEL, flex: '0 0 auto', margin: '0 auto' }}>
             <canvas ref={ringRef} width={WHEEL} height={WHEEL} className="wheel-ring"
+                style={{ position: 'absolute', left: 0, top: 0, width: WHEEL, height: WHEEL }}
                 onPointerDown={startDrag('ring')} onPointerMove={onMove('ring')} onPointerUp={endDrag} onPointerCancel={endDrag} />
             {/* 색조 위치 표시 */}
             <div className="wheel-mark" style={{ left: WHEEL / 2 + Math.cos(ang) * rMid, top: WHEEL / 2 + Math.sin(ang) * rMid }} />
-            <canvas ref={sqRef} width={SQ} height={SQ} className="wheel-sq" style={{ width: SQ, height: SQ }}
+            <canvas ref={sqRef} width={SQ} height={SQ} className="wheel-sq"
+                style={{ position: 'absolute', left: sqLeft, top: sqTop, width: SQ, height: SQ, transform: 'none' }}
                 onPointerDown={startDrag('sq')} onPointerMove={onMove('sq')} onPointerUp={endDrag} onPointerCancel={endDrag} />
             {/* 채도·명도 위치 표시 */}
-            <div className="wheel-mark" style={{
-                left: (WHEEL - SQ) / 2 + s * SQ,
-                top: (WHEEL - SQ) / 2 + (1 - v) * SQ,
-            }} />
+            <div className="wheel-mark" style={{ left: sqLeft + s * SQ, top: sqTop + (1 - v) * SQ }} />
         </div>
     );
 }
