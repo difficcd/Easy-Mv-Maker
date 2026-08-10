@@ -1131,3 +1131,12 @@ export function flattenLayersInUiOrder(layers, parentId = null, out = []) {
     }
     return out;
 }
+
+// 캔버스(2D 컨텍스트)는 CSS 변수를 못 쓰므로 계산된 값을 읽어 쓴다 → 선택틀·경로 같은
+// 캔버스 위 표시도 테마색을 따라간다.
+export const accentSoft = (alpha = 1) => {
+    const v = getComputedStyle(document.documentElement).getPropertyValue('--accent-soft').trim() || '#7c8cff';
+    if (alpha >= 1) return v;
+    return v.startsWith('hsl(') ? v.replace(/\)$/, ` / ${alpha})`) : v;
+};
+
