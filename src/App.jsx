@@ -7,7 +7,7 @@ import ColorPanel, { RECENT_SLOTS } from './ColorPanel';
 import { TopBar } from './TopBar';
 import { CutLayerPanel } from './CutLayerPanel';
 import { Timeline } from './Timeline';
-import { ProjectPicker, ProgressOverlay, SettingsModal, HelpModal, VideoImportModal, SceneDetectModal } from './Modals';
+import { ProjectPicker, ProgressOverlay, SettingsModal, HelpModal, VideoImportModal, SceneDetectModal, LinkPromptModal } from './Modals';
 import {
     DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT, FONT_PRESETS,
     pointInPolygon, dist, safeArray, hexToRgb, bucketFillTransparentRegion,
@@ -170,6 +170,14 @@ export default function App() {
     const [recentVideos, setRecentVideos] = useState([]); // fetched/opened videos, reusable without re-downloading
     const [videoBusy, setVideoBusy] = useState(null); // {done, total} while extracting
     const [videoBusyBg, setVideoBusyBg] = useState(false); // extraction moved to a background chip
+    // 유튜브 링크 입력: 네이티브 prompt가 차단되면 조용히 실패하므로 앱 내부 창으로 받는다.
+    const [linkPrompt, setLinkPrompt] = useState(null); // {kind:'video'|'audio'}
+    // 실패를 눈에 보이게. alert는 브라우저가 대화상자를 막으면 조용히 삼켜져
+    // '아무 일도 안 일어난 것'처럼 보인다 — 실제로 그래서 원인을 한참 못 찾았다.
+    const [appError, setAppError] = useState(null);
+    const [toast, setToast] = useState(null);            // 방해 없는 알림
+    const [backupProg, setBackupProg] = useState(null);  // 자동 백업 진행률 (구석 표시)
+    useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 3000); return () => clearTimeout(t); }, [toast]);
     const videoStopRef = useRef(false);
     const isExporting = useRef(false);
     const mediaRecorderRef = useRef(null);
@@ -1313,7 +1321,8 @@ export default function App() {
             });
             alert('서버에 저장했습니다.');
         } catch (e) {
-            alert('서버 저장 실패: ' + e.message + '\n(API 서버가 실행 중인지 확인하세요. 큰 프로젝트는 저장에 시간이 걸립니다.)');
+            console.error('[import]', e);
+            setAppError('서버 저장 실패: ' + e.message + '\n(API 서버가 실행 중인지 확인하세요. 큰 프로젝트는 저장에 시간이 걸립니다.)');
         } finally { setServerBusy(false); setLoadProgress(null); }
     };
     const openServerList = async () => {
@@ -1367,14 +1376,16 @@ export default function App() {
                 method: 'PUT', headers: { 'Content-Type': blob.type || 'application/octet-stream' }, body: blob,
             });
             if (!res.ok) throw new Error(`에셋 업로드 실패 (${i + 1}/${todo.length})`);
-            if (todo.length > 12) setLoadProgress({ label: '서버에 백업 중', done: i + 1, total: todo.length });
+            setBackupProg({ done: i + 1, total: todo.length });
             onProgress?.(i + 1, todo.length);
         }
         return todo.length;
     };
+    // 자동 백업은 5분마다 알아서 도는 작업이라 절대 화면을 막으면 안 된다.
+    // 예전에는 전체 화면 진행률 오버레이를 띄워 백업 동안 아무것도 못 했다.
     const doServerBackup = async (silent = true) => {
         if (!serverAvailable || backupBusyRef.current) return;
-        backupBusyRef.current = true; setBackupBusy(true);
+        backupBusyRef.current = true; setBackupBusy(true); setBackupProg(null);
         try {
             const key = getBackupKey();
             const assetSink = [];
@@ -1385,10 +1396,10 @@ export default function App() {
                 body: JSON.stringify({ name: serverNameRef.current || localNameRef.current || '자동 백업', data }),
             });
             setBackupAt(Date.now());
-            if (!silent) alert('서버에 백업했습니다.');
+            if (!silent) setToast('서버에 백업했습니다.');
         } catch (e) {
-            if (!silent) alert('서버 백업 실패: ' + e.message);
-        } finally { backupBusyRef.current = false; setBackupBusy(false); setLoadProgress(null); }
+            if (!silent) setAppError('서버 백업 실패: ' + e.message);
+        } finally { backupBusyRef.current = false; setBackupBusy(false); setBackupProg(null); }
     };
     const openBackupList = async () => {
         try { setBackupList(await apiFetch(`/api/backups/${getBackupKey()}`)); }
@@ -1488,8 +1499,18 @@ export default function App() {
     // Probe the project-storage API once; hide server menu when absent (static host / APK).
     useEffect(() => {
         let alive = true;
-        fetch('/api/projects', { method: 'GET' }).then(r => { if (alive) setServerAvailable(r.ok); }).catch(() => { if (alive) setServerAvailable(false); });
-        return () => { alive = false; };
+        // 한 번만 확인하면, 페이지를 열 때 서버가 죽어 있었을 경우 그 세션 내내 '서버 없음'으로 굳는다.
+        // 그러면 유튜브 메뉴 항목이 아예 렌더링되지 않아 눌러도 아무 일이 없고 콘솔에도 안 남는다
+        // (실제로 이것 때문에 원인을 한참 못 찾았다). 서버가 나중에 살아나면 스스로 붙도록 주기적으로 확인한다.
+        const probe = () => fetch('/api/projects', { method: 'GET' })
+            .then(r => { if (alive) setServerAvailable(r.ok); })
+            .catch(() => { if (alive) setServerAvailable(false); });
+        probe();
+        const id = setInterval(probe, 10000);
+        // 탭으로 돌아오면 즉시 다시 확인 (서버를 켜고 돌아오는 흔한 흐름)
+        const onFocus = () => probe();
+        window.addEventListener('focus', onFocus);
+        return () => { alive = false; clearInterval(id); window.removeEventListener('focus', onFocus); };
     }, []);
 
     // Debounced autosave to IndexedDB so a refresh/crash never loses work.
@@ -3628,8 +3649,8 @@ export default function App() {
 
     // Local-only: pull a video by URL through the API, then reuse the frame-import dialog.
     const loadYoutubeVideo = async (presetUrl) => {
-        const url = typeof presetUrl === 'string' ? presetUrl : window.prompt('유튜브(또는 영상) 링크:');
-        if (!url) return;
+        const url = typeof presetUrl === 'string' ? presetUrl : null;
+        if (!url) { setLinkPrompt({ kind: 'video' }); return; } // 입력창을 띄우고 여기서 끝낸다
         setVideoBusy({ done: 0, total: 0, fetching: true });
         try {
             const res = await fetch('/api/youtube-video?url=' + encodeURIComponent(url) + '&maxHeight=1080');
@@ -3638,7 +3659,8 @@ export default function App() {
             const file = new File([blob], 'youtube.mp4', { type: blob.type || 'video/mp4' });
             openVideoImport(file, 'YT ' + (url.match(/(?:v=|youtu\.be\/|shorts\/)([\w-]{6,})/)?.[1] || '영상'), { url, key: 'yt:' + url });
         } catch (e) {
-            alert('영상 가져오기 실패: ' + e.message + '\n(서버에 yt-dlp 설치 필요)');
+            console.error('[import]', e);
+            setAppError('영상 가져오기 실패: ' + e.message + '\n(서버에 yt-dlp 설치 필요)');
         } finally { setVideoBusy(null); }
     };
 
@@ -3707,7 +3729,8 @@ export default function App() {
             setVideoImport(null);
             setTimeout(gcBitmaps, 0); // replaced frames' bitmaps go too
         } catch (e) {
-            alert('영상 가져오기 실패: ' + e.message);
+            console.error('[import]', e);
+            setAppError('영상 가져오기 실패: ' + e.message);
         } finally {
             videoStopRef.current = false;
             setVideoBusy(null);
@@ -3720,9 +3743,9 @@ export default function App() {
         audioB64Ref.current = null;
         setAudioFile(null); setAudioUrl(null); setAudioData(null);
     };
-    const loadYoutubeAudio = async () => {
-        const url = window.prompt('유튜브(또는 음원) 링크:');
-        if (!url) return;
+    const loadYoutubeAudio = async (presetUrl) => {
+        const url = typeof presetUrl === 'string' ? presetUrl : null;
+        if (!url) { setLinkPrompt({ kind: 'audio' }); return; }
         try {
             const res = await fetch('/api/youtube-audio?url=' + encodeURIComponent(url));
             if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || ('HTTP ' + res.status)); }
@@ -3842,9 +3865,26 @@ export default function App() {
                     onDelete={(stamp) => doBackupDelete(stamp)}
                     onClose={() => setBackupList(null)} />
             )}
-            {videoBusy?.fetching && (
-                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <div style={{ background: 'hsl(var(--ui-h) var(--ui-s) 15%)', border: '1px solid #333', borderRadius: 8, padding: 20, color: '#ccc', fontSize: 13 }}>영상을 받는 중…</div>
+            {/* 영상 받기·자동 백업은 오래 걸리는 작업이라 화면을 막지 않는다.
+                예전에는 전체 화면 오버레이라 받는 동안 아무 작업도 못 했다. */}
+            {(videoBusy?.fetching || backupProg || toast) && (
+                <div style={{ position: 'fixed', right: 16, bottom: 16, zIndex: 1500, display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
+                    {videoBusy?.fetching && (
+                        <div className="bg-chip">
+                            <span className="bg-spin" /> 영상 받는 중… <span style={{ color: '#888' }}>(작업 계속 가능)</span>
+                        </div>
+                    )}
+                    {backupProg && (
+                        <div className="bg-chip">
+                            <span className="bg-spin" /> 서버 백업 {backupProg.done}/{backupProg.total}
+                        </div>
+                    )}
+                    {toast && (
+                        <div className="bg-chip" style={{ borderColor: 'var(--accent-hi)' }}>
+                            {toast}
+                            <button className="icon-btn" style={{ marginLeft: 4 }} onClick={() => setToast(null)}>✕</button>
+                        </div>
+                    )}
                 </div>
             )}
             {videoBusy && videoBusyBg && !videoBusy.fetching && (
@@ -3855,7 +3895,29 @@ export default function App() {
                     <button className="button" style={{ height: 26, padding: '0 8px' }} onClick={() => { videoStopRef.current = true; }}>중지</button>
                 </div>
             )}
-            {videoImport && !videoBusyBg && (
+            {/* 실패 배너: 오류를 화면에 남긴다. 이번 건처럼 API 서버가 죽어 있으면
+                예전에는 차단된 alert 때문에 '아무 반응 없음'으로만 보였다. */}
+            {appError && (
+                <div style={{ position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', zIndex: 3000,
+                    maxWidth: 640, background: '#3a1414', border: '1px solid #a33', color: '#ffd9d9',
+                    borderRadius: 8, padding: '10px 14px', fontSize: 12.5, display: 'flex', gap: 10, alignItems: 'center',
+                    boxShadow: '0 8px 28px rgba(0,0,0,.5)' }}>
+                    <span style={{ flex: 1 }}>{appError}</span>
+                    <button className="button" style={{ height: 26, padding: '0 10px' }} onClick={() => setAppError(null)}>닫기</button>
+                </div>
+            )}
+            {linkPrompt && (
+                <LinkPromptModal
+                    title={linkPrompt.kind === 'audio' ? '유튜브 음원 가져오기' : '유튜브 영상 프레임 가져오기'}
+                    placeholder="https://www.youtube.com/watch?v=..."
+                    onClose={() => setLinkPrompt(null)}
+                    onSubmit={(url) => {
+                        const kind = linkPrompt.kind;
+                        setLinkPrompt(null);
+                        if (kind === 'audio') loadYoutubeAudio(url); else loadYoutubeVideo(url);
+                    }} />
+            )}
+            {videoImport && !(videoBusyBg && videoBusy) && (
                 <VideoImportModal
                     videoImport={videoImport} setVideoImport={setVideoImport}
                     videoBusy={videoBusy} setVideoBusyBg={setVideoBusyBg} videoStopRef={videoStopRef}

@@ -1548,3 +1548,31 @@ html {
     background-size: 8px 8px;
     background-position: 0 0, 0 4px, 4px -4px, -4px 0;
 }
+
+/* 백그라운드 작업 표시(영상 받기·서버 백업). 화면을 막지 않고 구석에만 뜬다. */
+.bg-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: hsl(var(--ui-h) var(--ui-s) 15%);
+    border: 1px solid hsl(var(--ui-h) var(--ui-s) 26%);
+    color: #ccc;
+    font-size: 12px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, .4);
+}
+
+.bg-spin {
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
+    border: 2px solid hsl(var(--ui-h) var(--ui-s) 30%);
+    border-top-color: var(--accent-soft);
+    border-radius: 50%;
+    animation: mvSpin .8s linear infinite;
+}
+
+@keyframes mvSpin {
+    to { transform: rotate(360deg); }
+}

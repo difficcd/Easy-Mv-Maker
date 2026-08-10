@@ -31,3 +31,4 @@ server/data/
 
 # Claude Code local config
 .claude/
+.playwright-mcp/

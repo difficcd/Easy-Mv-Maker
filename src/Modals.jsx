@@ -168,6 +168,7 @@ export function VideoImportModal({
     videoImport, setVideoImport, videoBusy, setVideoBusyBg, videoStopRef,
     runVideoImport, loadVideoOverlay, loadAudioUrl, parseClock, setShowHelp, canvasW, canvasH,
 }) {
+    return (
         <div onClick={() => { if (!videoBusy) setVideoImport(null); }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div onClick={e => e.stopPropagation()} style={{ width: 420, background: 'hsl(var(--ui-h) var(--ui-s) 15%)', border: '1px solid #333', borderRadius: 8, padding: 18, color: '#ccc', fontSize: 12.5 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
@@ -280,10 +281,12 @@ export function VideoImportModal({
                 )}
             </div>
         </div>
+    );
 }
 
 // 장면(컷) 전환 감지 설정. 영상 오버레이가 있을 때만 열린다.
 export function SceneDetectModal({ sceneCfg, setSceneCfg, sceneDetect, runSceneDetect }) {
+    return (
         <div onClick={() => setSceneCfg(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div onClick={e => e.stopPropagation()} style={{ width: 360, background: 'hsl(var(--ui-h) var(--ui-s) 15%)', border: '1px solid #333', borderRadius: 8, padding: 18, color: '#ccc', fontSize: 12.5 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
@@ -315,4 +318,35 @@ export function SceneDetectModal({ sceneCfg, setSceneCfg, sceneDetect, runSceneD
                 </div>
             </div>
         </div>
+    );
+}
+
+// 링크 입력창. 예전에는 window.prompt로 받았는데, 브라우저가 대화상자를 차단하면
+// (사용자가 '추가 대화상자 차단'을 한 번 체크하면 그 뒤로 계속) prompt가 조용히 null을
+// 반환해 아무 일도 일어나지 않는다 — 눌러도 무반응처럼 보인다. 앱 안에서 직접 받는다.
+export function LinkPromptModal({ title, placeholder, onSubmit, onClose }) {
+    const [url, setUrl] = React.useState('');
+    const inputRef = React.useRef(null);
+    React.useEffect(() => { inputRef.current?.focus(); }, []);
+    const submit = () => { const v = url.trim(); if (v) onSubmit(v); };
+    return (
+        <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div onClick={e => e.stopPropagation()} style={{ width: 460, background: 'hsl(var(--ui-h) var(--ui-s) 15%)', border: '1px solid hsl(var(--ui-h) var(--ui-s) 26%)', borderRadius: 10, padding: 18 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <span className="panel-title">{title}</span>
+                    <button className="icon-btn" onClick={onClose}>✕</button>
+                </div>
+                <input ref={inputRef} className="time-input" style={{ width: '100%', height: 34 }}
+                    placeholder={placeholder} value={url}
+                    onChange={e => setUrl(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); submit(); } if (e.key === 'Escape') onClose(); }} />
+                <div style={{ fontSize: 11, color: '#888', marginTop: 8 }}>유튜브 주소를 붙여넣고 Enter를 누르세요.</div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 12 }}>
+                    <button className="button" onClick={onClose}>취소</button>
+                    <button className="button button-primary" style={{ background: 'var(--accent)', borderColor: 'var(--accent-hi)', color: '#fff' }}
+                        disabled={!url.trim()} onClick={submit}>가져오기</button>
+                </div>
+            </div>
+        </div>
+    );
 }
