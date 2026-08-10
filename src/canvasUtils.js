@@ -694,6 +694,12 @@ export function fitRect(sw, sh, dw, dh) {
 
 // Decode a video file into evenly spaced frames (ImageData at the project resolution) by
 // seeking. Returns { frames, fps, duration }. onProgress(done, total) for UI feedback.
+/**
+ * @param {File|Blob} file
+ * @param {{fps?:number, maxFrames?:number, start?:number, end?:number|null, scale?:number,
+ *   quality?:number, dedupe?:string|number, nativeRes?:boolean, format?:string,
+ *   width?:number, height?:number, onProgress?:Function, shouldStop?:Function}} [opts]
+ */
 export async function extractVideoFrames(file, { fps = 6, maxFrames = 0, start = 0, end = null, width, height, scale = 1, quality = 0.82, dedupe = 'exact', nativeRes = false, format = 'webp', onProgress, shouldStop } = {}) {
     const url = URL.createObjectURL(file);
     const video = document.createElement('video');
@@ -764,8 +770,10 @@ export async function extractVideoFrames(file, { fps = 6, maxFrames = 0, start =
             for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
             return true;
         };
-        const on = dedupe && dedupe !== 0;
-        const exact = dedupe === 'exact'; // skip ONLY pixel-identical frames (default)
+        // dedupe는 'exact'(픽셀 완전 동일만 제거) 또는 숫자 임계값 둘 다 받는다.
+        /** @type {any} */ const dd = dedupe;
+        const on = dd && dd !== 0;
+        const exact = dd === 'exact'; // skip ONLY pixel-identical frames (default)
 
         const frames = [], holds = [];
         let prevSig = null, prevFull = null, skipped = 0;
@@ -789,7 +797,7 @@ export async function extractVideoFrames(file, { fps = 6, maxFrames = 0, start =
                         if (!dup) prevFull = full;
                     }
                 } else {
-                    dup = diff(prevSig, cur) <= dedupe;
+                    dup = diff(prevSig, cur) <= dd;
                 }
             }
             if (dup) {
@@ -814,6 +822,11 @@ export async function extractVideoFrames(file, { fps = 6, maxFrames = 0, start =
 // Detect scene-cut times in a video file by seeking through it and comparing 32x32 grayscale
 // signatures — a big jump = a scene change. Returns sorted times (seconds). Own hidden <video>,
 // so it doesn't disturb the overlay's display element.
+/**
+ * @param {File|Blob} file
+ * @param {{start?:number, end?:number|null, step?:number, threshold?:number,
+ *   refine?:boolean, onProgress?:Function, shouldStop?:Function}} [opts]
+ */
 export async function detectSceneCuts(file, { start = 0, end = null, step = 0.2, threshold = 14, refine = true, onProgress, shouldStop } = {}) {
     const url = URL.createObjectURL(file);
     const video = document.createElement('video');

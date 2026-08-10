@@ -1,0 +1,22 @@
+{
+  // 파일을 .tsx로 바꾸지 않고 '검사만' 켠 설정.
+  // 목적은 타입 완성도가 아니라, 런타임에서야 터지는 실수(없는 이름 참조, 오타,
+  // 잘못된 prop 이름)를 빌드 전에 잡는 것 — 실제로 accentSoft 미바인딩 같은 버그가 그 예다.
+  // 엄격 옵션은 꺼 두어 기존 코드가 통째로 빨개지지 않게 한다.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "strict": false,
+    "noImplicitAny": false,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true
+  },
+  "include": ["src"]
+}

@@ -166,7 +166,7 @@ export function HelpModal({ keymap, onClose }) {
 // '백그라운드로'를 누르면 닫히고 우하단 칩으로 계속 진행된다.
 export function VideoImportModal({
     videoImport, setVideoImport, videoBusy, setVideoBusyBg, videoStopRef,
-    loadVideoOverlay, loadAudioUrl, parseClock, setShowHelp, canvasW, canvasH,
+    runVideoImport, loadVideoOverlay, loadAudioUrl, parseClock, setShowHelp, canvasW, canvasH,
 }) {
         <div onClick={() => { if (!videoBusy) setVideoImport(null); }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div onClick={e => e.stopPropagation()} style={{ width: 420, background: 'hsl(var(--ui-h) var(--ui-s) 15%)', border: '1px solid #333', borderRadius: 8, padding: 18, color: '#ccc', fontSize: 12.5 }}>

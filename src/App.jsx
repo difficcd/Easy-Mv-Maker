@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
-import { Play, Pause, Square, Plus, Trash2, Download, Upload, PenLine, Pen, Feather, Eraser, Droplets, Undo, Redo, Layers, Trash, ChevronRight, ChevronDown, ChevronUp, FolderPlus, Folder, FolderOpen, Settings, Eye, EyeOff, Copy, CopyPlus, ClipboardPaste, GitBranch, Move, Type, Server, Cloud, CloudDownload, Film, Repeat, Minus, Spline, Waves, Grid3x3, Palette, Menu, PaintBucket, Pipette, Wind } from 'lucide-react';
+import { Plus, Trash2, PenLine, Pen, Feather, Eraser, Undo, Redo, Layers, Trash, ChevronRight, ChevronDown, Folder, FolderOpen, Eye, EyeOff, ClipboardPaste, GitBranch, Move, Type, Cloud, Film, Repeat, Minus, Waves, Grid3x3, Palette, Menu, PaintBucket, Pipette } from 'lucide-react';
 import './App.css';
 import { saveAutosave, loadAutosave, saveProject, loadProject, listProjects, deleteProject, autosaveKey } from './db';
 import { CutAnimPanel, LayerAnimPanel, JitterPanel } from './AnimPanels';
@@ -1200,7 +1200,7 @@ export default function App() {
         }
         const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.emv';
         inp.onchange = e => {
-            const f = e.target.files[0]; if (!f) return;
+            const f = /** @type {HTMLInputElement} */ (e.target).files[0]; if (!f) return;
             readAndRestore(() => new Promise((res, rej) => { const r = new FileReader(); r.onload = ev => res(ev.target.result); r.onerror = rej; r.readAsText(f); }));
         };
         inp.click();
@@ -2046,7 +2046,7 @@ export default function App() {
     useEffect(() => {
         const isTyping = () => {
             const a = document.activeElement;
-            return a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.isContentEditable);
+            return a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || /** @type {HTMLElement} */ (a).isContentEditable);
         };
         const down = (e) => {
             if (e.code !== 'Space' || e.repeat || isTyping()) return;
@@ -3855,6 +3855,7 @@ export default function App() {
                 <VideoImportModal
                     videoImport={videoImport} setVideoImport={setVideoImport}
                     videoBusy={videoBusy} setVideoBusyBg={setVideoBusyBg} videoStopRef={videoStopRef}
+                    runVideoImport={runVideoImport}
                     loadVideoOverlay={loadVideoOverlay} loadAudioUrl={loadAudioUrl} parseClock={parseClock}
                     setShowHelp={setShowHelp} canvasW={CANVAS_W} canvasH={CANVAS_H} />
             )}

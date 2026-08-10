@@ -1,6 +1,5 @@
 import React from 'react';
-import { Plus, FolderPlus, Trash2, Copy, CopyPlus, ClipboardPaste, Eye, EyeOff, Settings, Type,
-    ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, FolderPlus, Trash2, Copy, CopyPlus, ClipboardPaste, Eye, EyeOff, Settings, ChevronDown, ChevronRight } from 'lucide-react';
 import { safeArray } from './canvasUtils';
 import { CutAnimPanel } from './AnimPanels';
 

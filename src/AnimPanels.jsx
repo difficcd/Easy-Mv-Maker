@@ -12,7 +12,7 @@ const SCALE_OPTS = [-80, -50, -30, -20, 0, 20, 30, 50, 100, 150, 200];
 const EASE_OPTS = [['linear', '일정'], ['in', '천천히→빠르게'], ['out', '빠르게→천천히'], ['inout', '천천-빠-천천']];
 const optionList = (vals, fmt) => vals.map(v => <option key={v} value={v}>{fmt ? fmt(v) : v}</option>);
 // Free numeric input (any value the user types), replacing the old fixed-value dropdowns.
-const NumIn = ({ value, onChange, step = 1, min, max, w = 56, title }) => (
+const NumIn = ({ value, onChange, step = 1, min = undefined, max = undefined, w = 56, title = '' }) => (
     <input type="number" className="time-input" title={title} value={value} step={step} min={min} max={max} style={{ width: w }}
         onChange={e => { let v = parseFloat(e.target.value); if (isNaN(v)) v = 0; if (min != null) v = Math.max(min, v); if (max != null) v = Math.min(max, v); onChange(v); }} />
 );
