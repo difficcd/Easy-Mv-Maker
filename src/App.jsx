@@ -73,7 +73,9 @@ const applyTheme = (base, uiSat = 18) => {
     root.setProperty('--ui-h', h.toFixed(0));
     root.setProperty('--ui-s', `${Math.max(0, Math.min(60, uiSat)).toFixed(0)}%`);
 };
-const DEFAULT_THEME = '#6d28d9';
+// 차분한 인디고. 원색은 hsl(243 17% 25%)로 어둡고 채도가 낮지만, applyTheme의
+// 하한(채도 0.35 · 명도 0.36)이 걸려 실제 액센트는 hsl(243 35% 36%)로 칠해진다.
+const DEFAULT_THEME = '#36354b';
 // 색조(0~360)를 테마 기준색으로. 채도·명도는 UI에 어울리는 값으로 고정한다.
 const hueToHex = (h) => {
     const s = 0.7, l = 0.45;
@@ -3973,7 +3975,7 @@ export default function App() {
                         onClose={() => setLeftDock(null)} />
                 )}
                 {leftDock === 'color' && <div className="splitter-v" style={{ touchAction: 'none' }} title="드래그로 색상 창 너비 조절"
-                    onPointerDown={e => { e.currentTarget.setPointerCapture?.(e.pointerId); setSplitter({ type: 'color', startX: e.clientX, startW: colorW }); }} />}
+                    onPointerDown={e => { try { e.currentTarget.setPointerCapture(e.pointerId); } catch { } setSplitter({ type: 'color', startX: e.clientX, startW: colorW }); }} />}
                 {showLeft && (
                     <div className="toolbar" style={{ width: toolW, flexShrink: 0 }}>
                         <div className="panel-head">
@@ -4064,7 +4066,7 @@ export default function App() {
                         </div>
                     </div>
                 )}
-                {showLeft && <div className="splitter-v" style={{ touchAction: 'none' }} title="드래그로 도구 패널 너비 조절" onPointerDown={e => { e.currentTarget.setPointerCapture?.(e.pointerId); setSplitter({ type: 'left', startX: e.clientX, startW: leftW }); }} />}
+                {showLeft && <div className="splitter-v" style={{ touchAction: 'none' }} title="드래그로 도구 패널 너비 조절" onPointerDown={e => { try { e.currentTarget.setPointerCapture(e.pointerId); } catch { } setSplitter({ type: 'left', startX: e.clientX, startW: leftW }); }} />}
 
                 {/* 스페이스 이동 중에는 이 영역의 스크롤을 잠근다. 열어두면 스페이스/드래그가
                     화면을 아래로 스크롤시켜 '이동'이 아니라 그냥 내려가 버린다. */}
@@ -4245,7 +4247,7 @@ export default function App() {
                     </div>
                 </div>
 
-                {showRight && <div className="splitter-v" style={{ touchAction: 'none' }} onPointerDown={e => { e.currentTarget.setPointerCapture?.(e.pointerId); setSplitter({ type: 'right', startX: e.clientX, startW: rightW }); }} />}
+                {showRight && <div className="splitter-v" style={{ touchAction: 'none' }} onPointerDown={e => { try { e.currentTarget.setPointerCapture(e.pointerId); } catch { } setSplitter({ type: 'right', startX: e.clientX, startW: rightW }); }} />}
 
                 {showRight && (
                     <CutLayerPanel
@@ -4267,7 +4269,7 @@ export default function App() {
                 {!showRight && <button onClick={() => setShowRight(true)} className="icon-btn" style={{ width: 24, alignSelf: 'stretch', padding: 0, borderRadius: 0, background: 'hsl(var(--ui-h) var(--ui-s) 15%)', border: 'none', borderLeft: '1px solid #333' }}><ChevronRight size={14} /></button>}
             </div>
 
-            {showBottom && <div className="splitter-h" style={{ touchAction: 'none' }} onPointerDown={e => { e.currentTarget.setPointerCapture?.(e.pointerId); setSplitter({ type: 'bottom', startY: e.clientY, startH: timelineH }); }} />}
+            {showBottom && <div className="splitter-h" style={{ touchAction: 'none' }} onPointerDown={e => { try { e.currentTarget.setPointerCapture(e.pointerId); } catch { } setSplitter({ type: 'bottom', startY: e.clientY, startH: timelineH }); }} />}
 
             <Timeline
                 activePartId={activePartId} audioData={audioData} audioFile={audioFile} audioRef={audioRef}

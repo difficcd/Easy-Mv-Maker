@@ -85,7 +85,7 @@ function ColorWheel({ color, onPick, size = 168 }) {
     const startDrag = (kind) => (e) => {
         e.preventDefault();
         const el = e.currentTarget;
-        el.setPointerCapture?.(e.pointerId);
+        try { el.setPointerCapture(e.pointerId); } catch { }
         dragRef.current = kind;
         (kind === 'ring' ? ringFromEvent : sqFromEvent)(e, el);
     };
