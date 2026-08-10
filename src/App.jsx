@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
-import { Play, Pause, Square, Plus, Trash2, Download, Upload, PenLine, Pen, Feather, Eraser, Droplets, Undo, Redo, Layers, Trash, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, FolderPlus, Folder, FolderOpen, Settings, Eye, EyeOff, Copy, CopyPlus, ClipboardPaste, GitBranch, Move, Type, Server, Cloud, CloudDownload, Film, Repeat, Minus, Spline, Waves, Grid3x3, Palette, Menu } from 'lucide-react';
+import { Play, Pause, Square, Plus, Trash2, Download, Upload, PenLine, Pen, Feather, Eraser, Droplets, Undo, Redo, Layers, Trash, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, FolderPlus, Folder, FolderOpen, Settings, Eye, EyeOff, Copy, CopyPlus, ClipboardPaste, GitBranch, Move, Type, Server, Cloud, CloudDownload, Film, Repeat, Minus, Spline, Waves, Grid3x3, Palette, Menu, PaintBucket, Pipette, Wind } from 'lucide-react';
 import './App.css';
 import { saveAutosave, loadAutosave, saveProject, loadProject, listProjects, deleteProject, autosaveKey } from './db';
 import { CutAnimPanel, LayerAnimPanel, JitterPanel } from './AnimPanels';
-import ColorPanel from './ColorPanel';
+import ColorPanel, { RECENT_SLOTS } from './ColorPanel';
 import {
     DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT, FONT_PRESETS,
     pointInPolygon, dist, safeArray, hexToRgb, bucketFillTransparentRegion,
@@ -18,11 +18,11 @@ const PEN_TYPES = [
     { id: 'pencil', label: '연필', Icon: PenLine },
     { id: 'soft', label: '에어', Icon: Cloud },
     { id: 'marker', label: 'Marker', Icon: Pen },
-    { id: 'line', label: '직선', Icon: Minus },
-    { id: 'curve', label: '곡선', Icon: Spline },
+    // 직선/곡선은 자리를 따로 먹지 않게 '자' 하나로 합치고 아래에서 모드로 나눈다.
+    { id: 'ruler', label: '자', Icon: Minus },
     { id: 'mosaic', label: '모자이크', Icon: Grid3x3 },
     { id: 'eraser', label: 'Eraser', Icon: Eraser },
-    { id: 'fill', label: 'Fill', Icon: Droplets },
+    { id: 'fill', label: 'Fill', Icon: PaintBucket },
 ];
 const BOIL_FPS = 10; // 자글자글(boiling line) 모션이 바뀌는 초당 횟수
 
@@ -46,6 +46,8 @@ const hexToHsl = (hex) => {
 };
 const hsl = (h, s, l) => `hsl(${h.toFixed(0)} ${Math.max(0, Math.min(100, s * 100)).toFixed(0)}% ${Math.max(0, Math.min(100, l * 100)).toFixed(0)}%)`;
 const applyTheme = (base, uiSat = 18) => {
+    // 잘못된 값이 들어오면 hsl(NaN ...)이 되어 CSS가 무시되고 기본 보라로 되돌아간다 → 미리 막는다.
+    if (!/^#[0-9a-fA-F]{6}$/.test(String(base))) base = DEFAULT_THEME;
     const { h, s, l } = hexToHsl(base);
     const S = Math.max(0.35, Math.min(0.95, s || 0.6));
     const root = document.documentElement.style;
@@ -68,6 +70,13 @@ const applyTheme = (base, uiSat = 18) => {
     root.setProperty('--ui-s', `${Math.max(0, Math.min(60, uiSat)).toFixed(0)}%`);
 };
 const DEFAULT_THEME = '#6d28d9';
+// 색조(0~360)를 테마 기준색으로. 채도·명도는 UI에 어울리는 값으로 고정한다.
+const hueToHex = (h) => {
+    const s = 0.7, l = 0.45;
+    const c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = l - c / 2;
+    const t = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+    return '#' + t.map(v => Math.round((v + m) * 255).toString(16).padStart(2, '0')).join('');
+};
 // 캔버스(2D 컨텍스트)는 CSS 변수를 못 쓰므로 계산된 값을 읽어 쓴다 → 선택틀·경로 같은
 // 캔버스 위 표시도 테마색을 따라간다.
 const accentSoft = (alpha = 1) => {
@@ -162,6 +171,7 @@ export default function App() {
     const [currentTime, setCurrentTime] = useState(0);
     const [rightW, setRightW] = useState(270);
     const [leftW, setLeftW] = useState(96);
+    const [colorW, setColorW] = useState(200);
     const [timelineH, setTimelineH] = useState(240);
     const [showLeft, setShowLeft] = useState(true);
     const [showRight, setShowRight] = useState(true);
@@ -194,6 +204,10 @@ export default function App() {
     const audioDestRef = useRef(null);
     const exportEndRef = useRef(0);
     const [tool, setTool] = useState('pen');
+    const [rulerMode, setRulerMode] = useState('line'); // '자' 도구의 두 옵션: 직선 / 곡선
+    const [softMode, setSoftMode] = useState('soft');   // '에어' 도구의 두 옵션: 에어브러시 / 블러
+    // 아래 로직은 예전처럼 'line'/'curve'를 그대로 쓰되, '자' 도구는 모드로 갈라준다.
+    const etool = tool === 'ruler' ? rulerMode : tool === 'soft' ? softMode : tool;
     const [color, setColor] = useState('#000000');
     // 최근 색은 '실제로 사용한' 색만 쌓인다(고르기만 한 색은 안 들어감) — 아래 noteColorUsed 참고.
     const [recentColors, setRecentColors] = useState(() => {
@@ -221,7 +235,7 @@ export default function App() {
         if (!c) return;
         setRecentColors(p => (p[0] && p[0].toLowerCase() === c.toLowerCase())
             ? p
-            : [c, ...p.filter(x => x.toLowerCase() !== c.toLowerCase())].slice(0, 24));
+            : [c, ...p.filter(x => x.toLowerCase() !== c.toLowerCase())].slice(0, RECENT_SLOTS));
     };
     // Eyedropper: native picker where available, else sample the canvas on the next click.
     const pickColor = async () => {
@@ -337,15 +351,30 @@ export default function App() {
     const backupBusyRef = useRef(false);
     const lastBackupSigRef = useRef('');
     const [themeColor, setThemeColor] = useState(() => { try { return localStorage.getItem('mv_theme') || DEFAULT_THEME; } catch { return DEFAULT_THEME; } });
+    const [themeRecent, setThemeRecent] = useState(() => {
+        try { const v = JSON.parse(localStorage.getItem('mv_theme_recent')); return Array.isArray(v) ? v : []; } catch { return []; }
+    });
     const [uiSat, setUiSat] = useState(() => { const v = parseFloat(localStorage.getItem('mv_ui_sat')); return isNaN(v) ? 18 : v; });
     useEffect(() => {
         applyTheme(themeColor, uiSat);
         try { localStorage.setItem('mv_theme', themeColor); localStorage.setItem('mv_ui_sat', String(uiSat)); } catch { }
     }, [themeColor, uiSat]);
+    // 고르는 '도중' 값이 계속 바뀌므로, 멈춘 뒤에만 저장고에 넣는다.
+    useEffect(() => {
+        if (!/^#[0-9a-fA-F]{6}$/.test(themeColor)) return;
+        const t = setTimeout(() => {
+            setThemeRecent(p => {
+                const next = [themeColor, ...p.filter(x => x.toLowerCase() !== themeColor.toLowerCase())].slice(0, 10);
+                try { localStorage.setItem('mv_theme_recent', JSON.stringify(next)); } catch { }
+                return next;
+            });
+        }, 800);
+        return () => clearTimeout(t);
+    }, [themeColor]);
     const [leftDock, setLeftDock] = useState('color'); // 왼쪽 독에 열린 패널 (null이면 닫힘) — 아이콘으로 전환
     const [keymap, setKeymap] = useState(loadKeymap);
     const [showSettings, setShowSettings] = useState(false); // 설정 창 (단축키 · 테마)
-    const [settingsTab, setSettingsTab] = useState('keys');
+    const [settingsTab, setSettingsTab] = useState('theme'); // 테마부터 보이게
     const [rebinding, setRebinding] = useState(null);  // 재지정 대기 중인 액션 id
     const [spaceDown, setSpaceDown] = useState(false); // 스페이스바 = 화면 이동(손바닥) 모드
     const spaceDownRef = useRef(false);
@@ -567,7 +596,7 @@ export default function App() {
         if (selection) return;
         if (textEdit) return;
         // 곡선 작성 중 다른 도구로 바꾸면 자동 확정.
-        if (curveAnchorsRef.current && newTool !== 'curve') commitCurve();
+        if (curveAnchorsRef.current && newTool !== 'ruler') commitCurve();
         setTool(newTool);
     };
 
@@ -778,8 +807,9 @@ export default function App() {
         if (!splitter) return;
         const mv = (e) => {
             // Relative to grab point so the panel doesn't jump on first move (precise drag).
-            if (splitter.type === 'right') setRightW(Math.max(200, Math.min(600, splitter.startW + (splitter.startX - e.clientX))));
-            else if (splitter.type === 'left') setLeftW(Math.max(72, Math.min(360, splitter.startW + (e.clientX - splitter.startX))));
+            if (splitter.type === 'right') setRightW(Math.max(150, Math.min(640, splitter.startW + (splitter.startX - e.clientX))));
+            else if (splitter.type === 'left') setLeftW(Math.max(56, Math.min(420, splitter.startW + (e.clientX - splitter.startX))));
+            else if (splitter.type === 'color') setColorW(Math.max(150, Math.min(520, splitter.startW + (e.clientX - splitter.startX))));
             else if (splitter.type === 'bottom') setTimelineH(Math.max(100, Math.min(600, splitter.startH + (splitter.startY - e.clientY))));
         };
         const up = () => setSplitter(null);
@@ -1861,6 +1891,52 @@ export default function App() {
         curveAnchorsRef.current = null; curveDraggingRef.current = false; setCurvePts(0);
         const lc = liveCanvasRef.current; if (lc) lc.getContext('2d').clearRect(0, 0, lc.width, lc.height);
     };
+    // 블러 브러시: 지나간 경로를 마스크로 삼아 그 아래 레이어 픽셀을 흐리게 만든다.
+    // (벡터 스트로크가 아니라 이미 그려진 그림을 '퍼뜨리는' 동작이라 래스터로 처리한다)
+    const applyBlurStroke = (st) => {
+        const cut = cuts.find(c => c.id === currentCutId);
+        const layer = cut?.layers.find(l => l.id === drawTargetLayerRef.current);
+        if (!cut || !layer) return;
+        const src = ensureLayerCanvas(cut.id, layer); if (!src) return;
+        const pts = st.points, rad = Math.max(2, st.size);
+        // 영향 범위만 처리해 큰 캔버스에서도 가볍게.
+        let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+        for (const p of pts) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
+        const pad = rad + 4;
+        x0 = Math.max(0, Math.floor(x0 - pad)); y0 = Math.max(0, Math.floor(y0 - pad));
+        x1 = Math.min(CANVAS_W, Math.ceil(x1 + pad)); y1 = Math.min(CANVAS_H, Math.ceil(y1 + pad));
+        const w = x1 - x0, h = y1 - y0;
+        if (w < 2 || h < 2) return;
+        // 1) 해당 영역을 흐리게 만든 판. 한 번 세게 거는 것보다 여러 번 겹쳐 거는 쪽이
+        //    훨씬 매끄럽다(가우시안에 가까워짐).
+        const blurred = document.createElement('canvas'); blurred.width = w; blurred.height = h;
+        const bctx = blurred.getContext('2d');
+        bctx.drawImage(src, x0, y0, w, h, 0, 0, w, h);
+        const step = Math.max(1, rad / 4);
+        for (let i = 0; i < 3; i++) {
+            bctx.filter = `blur(${step}px)`;
+            bctx.drawImage(blurred, 0, 0);
+        }
+        bctx.filter = 'none';
+        // 2) 붓이 지나간 자리만 남기되, 마스크 가장자리를 부드럽게 흐려 경계가 지지 않게 한다.
+        //    (딱딱한 마스크면 흐린 부분과 원본이 만나는 선이 그대로 보인다)
+        const mask = document.createElement('canvas'); mask.width = w; mask.height = h;
+        const mctx = mask.getContext('2d');
+        mctx.filter = `blur(${Math.max(1, rad / 3)}px)`;
+        mctx.strokeStyle = '#000'; mctx.fillStyle = '#000';
+        mctx.lineCap = 'round'; mctx.lineJoin = 'round'; mctx.lineWidth = rad * 0.8;
+        mctx.beginPath();
+        pts.forEach((p, i) => i ? mctx.lineTo(p.x - x0, p.y - y0) : mctx.moveTo(p.x - x0, p.y - y0));
+        mctx.stroke();
+        if (pts.length === 1) { mctx.beginPath(); mctx.arc(pts[0].x - x0, pts[0].y - y0, rad / 2, 0, Math.PI * 2); mctx.fill(); }
+        mctx.filter = 'none';
+        bctx.globalCompositeOperation = 'destination-in';
+        bctx.drawImage(mask, 0, 0);
+        bctx.globalCompositeOperation = 'source-over';
+        const bitmapId = storeBitmap(bctx.getImageData(0, 0, w, h));
+        commitStrokeToLayer(currentCutId, layer.id, { id: Date.now(), tool: 'paste', bitmapId, x: x0, y: y0, w, h });
+    };
+
     // 모자이크: 드래그 사각형을 점선으로 미리보기.
     const renderMosaicMarquee = () => {
         const lc = liveCanvasRef.current; if (!lc) return;
@@ -2274,7 +2350,7 @@ export default function App() {
             }
         }
 
-        if (tool === 'curve') {
+        if (etool === 'curve') {
             // 곡선자: 탭으로 앵커를 찍고(누른 채 끌면 미세조정), 완료 버튼으로 확정.
             activePointerIdRef.current = e.pointerId;
             try { canvasRef.current?.setPointerCapture(e.pointerId); } catch { }
@@ -2293,7 +2369,7 @@ export default function App() {
         if (tool !== 'move' && tool !== 'text' && selectedText) setSelectedText(null);
 
         isDrawing.current = true;
-        switch (tool) {
+        switch (etool) {
             case 'lasso':
                 setLassoPoints([pos]);
                 break;
@@ -2301,11 +2377,12 @@ export default function App() {
             case 'brush':
             case 'pencil':
             case 'soft':
+            case 'blur':
             case 'marker':
             case 'rough':
             case 'calligraphy': {
                 // Draw on the live overlay only — no layer-state writes per move (that was the lag).
-                liveStrokeRef.current = { id: Date.now(), tool, color, opacity, size: brushSize, points: [pos], pen: e.pointerType === 'pen' };
+                liveStrokeRef.current = { id: Date.now(), tool: etool, color, opacity, size: brushSize, points: [pos], pen: e.pointerType === 'pen' };
                 liveDrawnRef.current = 0; renderLiveStroke(true);
                 break;
             }
@@ -2388,7 +2465,7 @@ export default function App() {
             return;
         }
 
-        if (tool === 'curve' && curveDraggingRef.current && curveAnchorsRef.current) {
+        if (etool === 'curve' && curveDraggingRef.current && curveAnchorsRef.current) {
             const a = curveAnchorsRef.current; a[a.length - 1] = { x: pos.x, y: pos.y, pressure: pos.pressure };
             renderCurvePreview();
             return;
@@ -2421,7 +2498,7 @@ export default function App() {
             return;
         }
 
-        switch (tool) {
+        switch (etool) {
             case 'lasso':
                 setLassoPoints(p => [...p, pos]);
                 break;
@@ -2442,6 +2519,7 @@ export default function App() {
             case 'brush':
             case 'pencil':
             case 'soft':
+            case 'blur':
             case 'marker':
             case 'rough':
             case 'calligraphy':
@@ -2500,7 +2578,7 @@ export default function App() {
             return;
         }
         // 곡선자: 앵커 하나 찍기/미세조정 끝 — 확정은 완료 버튼에서.
-        if (tool === 'curve' && curveDraggingRef.current) {
+        if (etool === 'curve' && curveDraggingRef.current) {
             curveDraggingRef.current = false;
             isDrawing.current = false;
             try { if (activePointerIdRef.current !== null) canvasRef.current?.releasePointerCapture(activePointerIdRef.current); } catch { }
@@ -2545,6 +2623,13 @@ export default function App() {
             isDrawing.current = false;
             try { if (activePointerIdRef.current !== null) canvasRef.current?.releasePointerCapture(activePointerIdRef.current); } catch { }
             activePointerIdRef.current = null;
+            if (st.tool === 'blur') {
+                // 블러는 '잉크를 얹는' 게 아니라 '이미 그려진 걸 퍼뜨리는' 도구다.
+                // 지나간 자리의 레이어 픽셀을 흐리게 만들어 그 위에 덮어 붙인다.
+                const lc0 = liveCanvasRef.current; if (lc0) lc0.getContext('2d').clearRect(0, 0, lc0.width, lc0.height);
+                applyBlurStroke(st);
+                return;
+            }
             if (st.points.length) {
                 // 그린 선을 메인 캔버스에 즉시 굽고(overlay와 동일 좌표) 오버레이를 바로 지움 →
                 // 상태 반영/리페인트 타이밍과 무관하게 선이 절대 사라지지 않음. 이후 정상 리페인트가 덮어씀(동일 결과).
@@ -3749,6 +3834,8 @@ export default function App() {
         });
     };
 
+    // 도구 창: 버튼 크기는 쓰기 좋은 값으로 두고, 폭에 따라 '열 수'가 알아서 바뀌게 한다.
+    const toolW = Math.max(56, leftW || 96);
     const currentCut = cuts.find(c => c.id === currentCutId);
     const isSelectionTool = tool === 'lasso' || !!selection;
     liveRef.current = { cuts, copiedCut, selection, audioData, numTracks }; // current GC + history sources
@@ -3781,26 +3868,34 @@ export default function App() {
             {/* 단축키 직접 설정: 항목을 누르고 원하는 키를 누르면 그 조합으로 바뀐다 */}
             {showSettings && (
                 <div onClick={() => { setShowSettings(false); setRebinding(null); }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <div onClick={e => e.stopPropagation()} style={{ width: 420, maxHeight: '75vh', overflow: 'auto', background: 'hsl(var(--ui-h) var(--ui-s) 15%)', border: '1px solid #333', borderRadius: 8, padding: 16 }}>
+                    <div className="settings-modal" onClick={e => e.stopPropagation()} style={{ width: 520, maxHeight: '80vh', overflow: 'auto', background: 'hsl(var(--ui-h) var(--ui-s) 15%)', border: '1px solid hsl(var(--ui-h) var(--ui-s) 26%)', borderRadius: 10, padding: 20 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                             <span className="panel-title">설정</span>
                             <button className="icon-btn" onClick={() => { setShowSettings(false); setRebinding(null); }}>✕</button>
                         </div>
                         <div className="pal-tabs" style={{ marginBottom: 10 }}>
-                            <button className={`pal-tab${settingsTab === 'keys' ? ' active' : ''}`} onClick={() => setSettingsTab('keys')}>단축키</button>
                             <button className={`pal-tab${settingsTab === 'theme' ? ' active' : ''}`} onClick={() => { setSettingsTab('theme'); setRebinding(null); }}>테마</button>
+                            <button className={`pal-tab${settingsTab === 'keys' ? ' active' : ''}`} onClick={() => setSettingsTab('keys')}>단축키</button>
                         </div>
                         {settingsTab === 'theme' ? (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                                 <div>
                                     <div className="color-section-label" style={{ marginBottom: 6 }}>테마색</div>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                                        <input type="color" className="color-swatch-lg" value={themeColor} onChange={e => setThemeColor(e.target.value)} title="테마색 직접 선택" />
-                                        {['#6d28d9', '#2563eb', '#0d9488', '#16a34a', '#ca8a04', '#dc2626', '#db2777', '#475569'].map(c => (
-                                            <button key={c} onClick={() => setThemeColor(c)} title={c}
-                                                style={{ width: 22, height: 22, borderRadius: '50%', background: c, padding: 0, cursor: 'pointer', border: c.toLowerCase() === String(themeColor).toLowerCase() ? '2px solid #fff' : '1px solid #0005' }} />
-                                        ))}
-                                        <button className="button" style={{ height: 26, padding: '0 10px' }} onClick={() => setThemeColor(DEFAULT_THEME)}>기본</button>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                        <input type="color" className="color-swatch-lg" style={{ width: 46, height: 34 }} value={themeColor} onChange={e => setThemeColor(e.target.value)} title="테마색 직접 선택" />
+                                        <span style={{ fontSize: 12, color: '#aaa', flex: 1 }}>{themeColor}</span>
+                                        <button className="button" style={{ height: 30, padding: '0 12px' }} onClick={() => setThemeColor(DEFAULT_THEME)}>기본</button>
+                                    </div>
+                                    {/* 최근 사용한 테마색 (최대 10개, 처음엔 비어있음) */}
+                                    <div className="color-section-label" style={{ margin: '10px 0 6px' }}>최근 사용한 테마색</div>
+                                    <div className="slot-grid" style={{ gridTemplateColumns: 'repeat(10, 1fr)', maxWidth: 320 }}>
+                                        {Array.from({ length: 10 }, (_, i) => {
+                                            const c = themeRecent[i];
+                                            return c
+                                                ? <button key={i} className={`slot filled${c.toLowerCase() === String(themeColor).toLowerCase() ? ' sel' : ''}`}
+                                                    style={{ background: c }} title={c} onClick={() => setThemeColor(c)} />
+                                                : <span key={i} className="slot empty" />;
+                                        })}
                                     </div>
                                 </div>
                                 <div>
@@ -3819,9 +3914,9 @@ export default function App() {
                             {rebinding ? '원하는 키를 누르세요 (Esc = 취소)' : '바꿀 항목을 누른 뒤 새 키를 누르세요.'}
                         </div>
                         {Object.keys(DEFAULT_KEYS).map(id => (
-                            <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 4px', borderBottom: '1px solid hsl(var(--ui-h) var(--ui-s) 20%)' }}>
-                                <span style={{ flex: 1, fontSize: 12, color: '#ddd' }}>{KEY_LABELS[id]}</span>
-                                <button className="button" style={{ height: 26, minWidth: 96, justifyContent: 'center', background: rebinding === id ? 'var(--accent)' : undefined }}
+                            <div key={id} className="key-row" style={{ display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid hsl(var(--ui-h) var(--ui-s) 20%)' }}>
+                                <span style={{ flex: 1, color: '#ddd' }}>{KEY_LABELS[id]}</span>
+                                <button className="button" style={{ height: 30, minWidth: 110, justifyContent: 'center', background: rebinding === id ? 'var(--accent)' : undefined }}
                                     onClick={() => setRebinding(rebinding === id ? null : id)}>
                                     {rebinding === id ? '키 입력 대기…' : (keymap[id] || '(없음)')}
                                 </button>
@@ -3932,7 +4027,7 @@ export default function App() {
                                     <label style={{ display: 'flex', alignItems: 'center', gap: 4 }} title="긴 영상을 여러 파트로 나눠서 가져오기 (재생 시 파트별/전체 선택 가능)">
                                         <input type="number" className="time-input" style={{ width: 46 }} min={1} max={50} value={videoImport.parts}
                                             onChange={e => setVideoImport(v => ({ ...v, parts: Math.max(1, Math.min(50, Math.floor(+e.target.value) || 1)) }))} />
-                                        <span style={{ color: '#888' }}>파트로 나누기</span>
+                                        <span style={{ color: 'var(--accent-soft)' }}>파트로 나누기</span>
                                     </label>
                                     <span style={{ marginLeft: 'auto' }}>중복 통합</span>
                                     <select className="time-input" style={{ width: 100 }} value={videoImport.dedupe} onChange={e => setVideoImport(v => ({ ...v, dedupe: e.target.value === 'exact' ? 'exact' : +e.target.value }))}>
@@ -3942,19 +4037,19 @@ export default function App() {
                                 <div style={{ color: '#888', lineHeight: 1.6, marginBottom: 12 }}>
                                     캔버스({CANVAS_W}×{CANVAS_H})에 비율 유지로 넣고, 현재 트랙 뒤에 이어서 생성됩니다.<br />
                                     {videoImport.quality === 'lossless'
-                                        ? <><b style={{ color: '#9cf' }}>무손실 PNG</b> — 픽셀 완전 보존, 장당 용량이 큽니다(수 MB). 긴 영상은 <b>고화질 WebP</b>를 권장.</>
+                                        ? <><b style={{ color: 'var(--accent-soft)' }}>무손실 PNG</b> — 픽셀 완전 보존, 장당 용량이 큽니다(수 MB). 긴 영상은 <b>고화질 WebP</b>를 권장.</>
                                         : videoImport.quality === 'high'
-                                            ? <>원본 해상도 <b style={{ color: '#9cf' }}>고화질 WebP(거의 무손실)</b> — 무손실 대비 용량 약 1/5~1/8, 화질 차이는 거의 없음.</>
+                                            ? <>원본 해상도 <b style={{ color: 'var(--accent-soft)' }}>고화질 WebP(거의 무손실)</b> — 무손실 대비 용량 약 1/5~1/8, 화질 차이는 거의 없음.</>
                                             : <>프레임은 <b style={{ color: '#9b9' }}>WebP로 압축 저장</b>되어 원본 대비 용량이 크게 줄어듭니다{videoImport.scale < 1 ? ` (배율 ${Math.round(videoImport.scale * 100)}%로 추가 절감)` : ''}.</>}
                                     {videoImport.dedupe === 'exact'
                                         ? <><br /><b style={{ color: '#9b9' }}>완전히 똑같은 프레임만</b> 한 컷으로 합칩니다 (픽셀 단위 비교).</>
                                         : videoImport.dedupe > 0 && <><br />이어지는 <b style={{ color: '#9b9' }}>비슷한 화면을 한 컷으로 합칩니다</b> — 정지 구간이 길수록 컷 수·용량이 줄어듭니다.</>}
                                     {!videoImport.whole && <><br />지정한 <b>{videoImport.maxFrames}컷</b>은 <b style={{ color: '#9b9' }}>중복 병합을 제외한 실제 컷 수</b>입니다 (합쳐진 프레임은 개수에 안 셉니다).</>}
-                                    {videoImport.rangeOn && <><br /><b style={{ color: '#9cf' }}>{videoImport.startText || '0:00'} ~ {videoImport.endText || '끝'}</b> 구간만 가져옵니다 (mm:ss).</>}
-                                    {videoImport.parts > 1 && <><br /><b style={{ color: '#9cf' }}>{videoImport.parts}개 파트</b>로 나눠 가져옵니다 — 재생 시 파트별 또는 전체로 볼 수 있습니다.</>}
+                                    {videoImport.rangeOn && <><br /><b style={{ color: 'var(--accent-soft)' }}>{videoImport.startText || '0:00'} ~ {videoImport.endText || '끝'}</b> 구간만 가져옵니다 (mm:ss).</>}
+                                    {videoImport.parts > 1 && <><br /><b style={{ color: 'var(--accent-soft)' }}>{videoImport.parts}개 파트</b>로 나눠 가져옵니다 — 재생 시 파트별 또는 전체로 볼 수 있습니다.</>}
                                     {videoImport.whole && <><br /><span style={{ color: '#c99' }}>전체 추출: 길이가 길면 컷이 매우 많아집니다. fps를 낮게(1~4) 두는 것을 권장합니다.</span></>}
                                 </div>
-                                <div style={{ background: 'hsl(var(--ui-h) var(--ui-s) 12%)', border: '1px solid hsl(var(--ui-h) var(--ui-s) 20%)', borderRadius: 6, padding: '8px 10px', marginBottom: 10, color: '#9cc', fontSize: 11.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                                <div style={{ background: 'hsl(var(--ui-h) var(--ui-s) 12%)', border: '1px solid hsl(var(--ui-h) var(--ui-s) 20%)', borderRadius: 6, padding: '8px 10px', marginBottom: 10, color: 'var(--accent-pale)', fontSize: 11.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                                     <span><b style={{ color: '#8de' }}>영상 위에 덧그리기</b> — 프레임으로 쪼개지 않고 원본 영상을 트랙으로 깔고 그 위에 그림·텍스트. 24fps 장편도 매끄럽게 재생. <b style={{ color: '#8de' }}>음원도 함께</b> 들어갑니다.</span>
                                     <button className="button" style={{ whiteSpace: 'nowrap' }} onClick={() => {
                                         const useRange = videoImport.rangeOn && parseClock(videoImport.endText) > parseClock(videoImport.startText);
@@ -3999,7 +4094,7 @@ export default function App() {
                         )}
                         <div style={{ color: '#888', lineHeight: 1.6, marginBottom: 12 }}>
                             장면이 바뀌는 지점을 정밀하게 찾아 <b style={{ color: '#fde047' }}>노란 표시</b>로 타임라인에 찍습니다. 민감도를 올리면 미세한 전환도 잡습니다.
-                            {sceneDetect && <><br /><b style={{ color: '#9cf' }}>감지 중… {sceneDetect.total ? Math.round(sceneDetect.done / sceneDetect.total * 100) : 0}%</b></>}
+                            {sceneDetect && <><br /><b style={{ color: 'var(--accent-soft)' }}>감지 중… {sceneDetect.total ? Math.round(sceneDetect.done / sceneDetect.total * 100) : 0}%</b></>}
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
                             <button className="button" onClick={() => setSceneCfg(null)}>닫기</button>
@@ -4128,7 +4223,7 @@ export default function App() {
                 </div>
                 <button className="icon-btn" onClick={() => setShowSettings(true)} title="단축키 직접 설정" style={{ width: 24, height: 24 }}><Settings size={13} /></button>
                 <div className="menu-spacer" />
-                {audioFile && <span style={{ fontSize: 11, color: '#8ab', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={audioFile.name}>♪ {audioFile.name}</span>}
+                {audioFile && <span style={{ fontSize: 11, color: 'var(--accent-pale)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={audioFile.name}>♪ {audioFile.name}</span>}
                 {autosaveErr
                     ? <span style={{ fontSize: 11, color: '#f66', fontWeight: 700 }} title={`자동저장 실패: ${autosaveErr}\n저장공간이 가득 찼을 수 있습니다. 파일로 내보내기 또는 서버 저장을 권장합니다.`}>⚠ 자동저장 실패</span>
                     : autoSavedAt && <span style={{ fontSize: 11, color: 'var(--accent-soft)' }} title="브라우저에 자동저장됨">● 자동저장 {new Date(autoSavedAt).toLocaleTimeString()}</span>}
@@ -4142,7 +4237,7 @@ export default function App() {
                         ⚠ 저장공간 {Math.round(storageInfo.pct * 100)}%
                     </span>
                 )}
-                <button className="button button-primary" onClick={handleExport} style={{ display: 'flex', alignItems: 'center', gap: 5, height: 30 }}><Download size={15} /> Export</button>
+                <button className="button button-primary" onClick={handleExport} style={{ display: 'flex', alignItems: 'center', gap: 5, height: 30, background: 'var(--accent)', borderColor: 'var(--accent-hi)', color: '#fff' }}><Download size={15} /> Export</button>
             </div>
 
             {/* 프로젝트(문서) 탭 바 — 파일/미디어 메뉴 아래 */}
@@ -4163,23 +4258,25 @@ export default function App() {
                 {/* 맨 왼쪽 아이콘 바: 창 전환 (클립스튜디오식). 위=메인 설정, 아래=색상 창. */}
                 <div className="dock-rail">
                     <button className={`dock-icon${showLeft ? ' active' : ''}`} title="도구 창 (펜 · 지우개 · 스포이드 등)"
-                        onClick={() => setShowLeft(v => !v)}><Menu size={16} /></button>
+                        onClick={() => setShowLeft(v => !v)}><Menu size={20} /></button>
                     <button className={`dock-icon${leftDock === 'color' ? ' active' : ''}`} title="색상 창 (COLOR)"
-                        onClick={() => setLeftDock(v => v === 'color' ? null : 'color')}><Palette size={16} /></button>
+                        onClick={() => setLeftDock(v => v === 'color' ? null : 'color')}><Palette size={20} /></button>
                 </div>
                 {leftDock === 'color' && (
                     <ColorPanel
                         color={color} useColor={useColor} pickColor={pickColor} pickingColor={pickingColor}
                         recentColors={recentColors}
-                        palettes={palettes} activePalette={activePalette} setActivePalette={setActivePalette}
-                        addToPalette={addToPalette} removeFromPalette={removeFromPalette}
-                        addPalette={addPalette} renamePalette={renamePalette} deletePalette={deletePalette}
-                        paletteEdit={paletteEdit} setPaletteEdit={setPaletteEdit}
+                        width={colorW}
                         onClose={() => setLeftDock(null)} />
                 )}
+                {leftDock === 'color' && <div className="splitter-v" style={{ touchAction: 'none' }} title="드래그로 색상 창 너비 조절"
+                    onPointerDown={e => { e.currentTarget.setPointerCapture?.(e.pointerId); setSplitter({ type: 'color', startX: e.clientX, startW: colorW }); }} />}
                 {showLeft && (
-                    <div className="toolbar" style={{ width: leftW, flexShrink: 0 }}>
-                        <button onClick={() => setShowLeft(false)} className="icon-btn" style={{ width: '100%', padding: '4px 0', marginBottom: 4 }}><ChevronLeft size={14} /></button>
+                    <div className="toolbar" style={{ width: toolW, flexShrink: 0 }}>
+                        <div className="panel-head">
+                            <span className="panel-title">TOOLS</span>
+                            <button className="icon-btn" onClick={() => setShowLeft(false)} title="도구 창 닫기">✕</button>
+                        </div>
                         <div className="tool-grid">
                             {TOOL_TYPES.map(pt => (
                                 <button key={pt.id} className={`tool-btn${tool === pt.id ? ' active' : ''}`} onClick={() => handleSetTool(pt.id)} title={pt.label}>
@@ -4197,10 +4294,27 @@ export default function App() {
                         </div>
                         <div className="tool-divider" />
                         <input type="color" className="color-picker" value={color} onChange={e => useColor(e.target.value)} title="색상" disabled={isSelectionTool} />
-                        <button className={`tool-btn${pickingColor ? ' active' : ''}`} onClick={pickColor} title="스포이드 (화면에서 색 추출)" disabled={isSelectionTool} style={{ padding: '0 6px' }}><Droplets size={15} /><span className="tool-label">스포이드</span></button>
-                        <button className={`tool-btn${leftDock === 'color' ? ' active' : ''}`} onClick={() => setLeftDock(v => v === 'color' ? null : 'color')} title="색상 창 열기/닫기" style={{ padding: '0 6px' }}><Palette size={15} /><span className="tool-label">색상창</span></button>
+                        <button className={`tool-btn${pickingColor ? ' active' : ''}`} onClick={pickColor} title="스포이드 (화면에서 색 추출)" disabled={isSelectionTool} style={{ padding: '0 6px' }}><Pipette size={13} /><span className="tool-label">스포이드</span></button>
                         <div className="slider-wrap">
-                            {tool === 'mosaic' ? (
+                            {tool === 'soft' ? (
+                                <>
+                                    <span className="slider-label">에어 모드</span>
+                                    <div style={{ display: 'flex', gap: 3, width: '100%' }}>
+                                        <button className={`pal-btn${softMode === 'soft' ? ' active' : ''}`} onClick={() => setSoftMode('soft')} title="부드럽게 뿌리는 에어브러시">에어</button>
+                                        <button className={`pal-btn${softMode === 'blur' ? ' active' : ''}`} onClick={() => setSoftMode('blur')} title="이미 그린 것을 문질러 퍼뜨림">블러</button>
+                                    </div>
+                                    <span style={{ fontSize: 9, color: '#888', textAlign: 'center' }}>{softMode === 'soft' ? '색을 뿌립니다' : '그려진 걸 퍼뜨립니다'}</span>
+                                </>
+                            ) : tool === 'ruler' ? (
+                                <>
+                                    <span className="slider-label">자 모드</span>
+                                    <div style={{ display: 'flex', gap: 3, width: '100%' }}>
+                                        <button className={`pal-btn${rulerMode === 'line' ? ' active' : ''}`} onClick={() => setRulerMode('line')} title="정확한 직선">직선</button>
+                                        <button className={`pal-btn${rulerMode === 'curve' ? ' active' : ''}`} onClick={() => { commitCurve(); setRulerMode('curve'); }} title="점을 찍어 만드는 곡선">곡선</button>
+                                    </div>
+                                    <span style={{ fontSize: 9, color: '#888', textAlign: 'center' }}>{rulerMode === 'line' ? '드래그로 직선' : '탭으로 점 찍기'}</span>
+                                </>
+                            ) : tool === 'mosaic' ? (
                                 <>
                                     <span className="slider-label">모자이크</span>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 2, justifyContent: 'center' }}>
@@ -4221,13 +4335,12 @@ export default function App() {
                                             onChange={e => setSize(+e.target.value)} style={{ width: 46, textAlign: 'center' }} className="time-input" />
                                         <span style={{ fontSize: 10, color: '#888' }}>px</span>
                                     </div>
-                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, justifyContent: 'center', margin: '4px 0' }}>
-                                        {[2, 4, 8, 12, 20, 32, 48, 70].map(s => {
-                                            const d = Math.max(2, Math.min(18, s));
+                                    <div className="size-grid" style={{ margin: '4px 0' }}>
+                                        {[1, 2, 3, 5, 8, 12, 16, 24, 32, 48, 64, 90, 120, 160].map(s => {
+                                            const d = Math.max(2, Math.min(16, s));
                                             return (
-                                                <button key={s} onClick={() => setSize(s)} disabled={isSelectionTool} title={`${s}px`}
-                                                    style={{ width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, borderRadius: 4, background: curSize === s ? 'hsl(var(--ui-h) var(--ui-s) 29%)' : '#222', border: curSize === s ? '1px solid var(--accent-soft)' : '1px solid #333', cursor: 'pointer' }}>
-                                                    <span style={{ width: d, height: d, borderRadius: '50%', background: '#ddd', display: 'block' }} />
+                                                <button key={s} className={`size-cell${curSize === s ? ' active' : ''}`} onClick={() => setSize(s)} disabled={isSelectionTool} title={`${s}px`}>
+                                                    <span style={{ width: d, height: d, maxWidth: '80%', maxHeight: '80%', borderRadius: '50%', background: '#ddd', display: 'block' }} />
                                                 </button>
                                             );
                                         })}
@@ -4262,7 +4375,7 @@ export default function App() {
                             <button className="button" style={{ height: 24, padding: '0 8px' }} onClick={() => setPathCapture(null)}>취소</button>
                         </div>
                     )}
-                    {tool === 'curve' && (
+                    {etool === 'curve' && (
                         <div style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', zIndex: 31, background: 'hsl(var(--ui-h) var(--ui-s) 20%)', color: '#fff', fontSize: 12, padding: '6px 12px', borderRadius: 6, display: 'flex', gap: 8, alignItems: 'center', border: '1px solid #444' }}>
                             {curvePts === 0 ? '점을 찍어 곡선을 만드세요' : `앵커 ${curvePts}개 (누른 채 끌어 미세조정)`}
                             <button className="button" style={{ height: 24, padding: '0 10px', background: '#4ea1ff' }} disabled={curvePts < 2} onClick={commitCurve}>완료</button>
@@ -4506,13 +4619,13 @@ export default function App() {
                                 </React.Fragment>
                             ); })}
                         </div>
-                        <button className="button button-primary" style={{ width: '100%', marginTop: 10, opacity: currentCutId ? 1 : 0.4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }} onClick={() => handleDuplicateCut(currentCutId)} disabled={!currentCutId} title="현재 컷을 다음 프레임으로 복제 (Ctrl+D)"><CopyPlus size={14} /> 다음 프레임 복제</button>
+                        <button className="button button-primary" style={{ width: '100%', marginTop: 10, opacity: currentCutId ? 1 : 0.4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, background: 'var(--accent)', borderColor: 'var(--accent-hi)', color: '#fff' }} onClick={() => handleDuplicateCut(currentCutId)} disabled={!currentCutId} title="현재 컷을 다음 프레임으로 복제 (Ctrl+D)"><CopyPlus size={14} /> 다음 프레임 복제</button>
                         <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
                             <button className="button" style={{ flex: 1, minWidth: 0 }} onClick={handleAddCut}><Plus size={14} /> Add Cut</button>
                             <button className="button" style={{ flex: 1, minWidth: 0, opacity: copiedCut ? 1 : 0.4 }} onClick={handlePasteCut} disabled={!copiedCut} title="컷 붙여넣기 (Ctrl+V)"><ClipboardPaste size={14} /> Paste</button>
                         </div>
                         {selectedCutIds.size > 1 && (
-                            <button className="button del-btn" style={{ width: '100%', marginTop: 6 }} onClick={() => handleDeleteCut(currentCutId)} title="선택한 컷 삭제 (Delete)">
+                            <button className="button del-btn" style={{ width: '100%', marginTop: 6, borderColor: 'var(--accent-hi)' }} onClick={() => handleDeleteCut(currentCutId)} title="선택한 컷 삭제 (Delete)">
                                 <Trash2 size={14} /> 선택 {selectedCutIds.size}컷 삭제
                             </button>
                         )}
@@ -4540,9 +4653,10 @@ export default function App() {
                     <button className="icon-btn" onClick={() => setShowBottom(v => !v)}>{showBottom ? <ChevronDown size={14} /> : <ChevronUp size={14} />}</button>
                     {showBottom && <>
                         <div className="time-display">{fmt(currentTime)}</div>
-                        <button className="button button-primary" onClick={handlePlayPause}>{isPlaying ? <Pause size={16} /> : <Play size={16} />}</button>
-                        <button className="button" onClick={handleStop}><Square size={16} /></button>
-                        <button className={`button${loopPlay ? ' button-primary' : ''}`} onClick={() => setLoopPlay(v => !v)} title="반복 재생"><Repeat size={16} /></button>
+                        <button className="button button-primary" onClick={handlePlayPause} style={{ background: 'var(--accent)', borderColor: 'var(--accent-hi)', color: '#fff' }}>{isPlaying ? <Pause size={16} /> : <Play size={16} />}</button>
+                        <button className="button" onClick={handleStop} style={{ borderColor: 'var(--accent-hi)', color: 'var(--accent-soft)' }}><Square size={16} /></button>
+                        <button className={`button${loopPlay ? ' button-primary' : ''}`} onClick={() => setLoopPlay(v => !v)} title="반복 재생"
+                            style={loopPlay ? { background: 'var(--accent)', borderColor: 'var(--accent-hi)', color: '#fff' } : undefined}><Repeat size={16} /></button>
                         {videoOverlay?.cuts?.length > 0 && <>
                             <button className="button" onClick={() => goToScene(-1)} title="이전 장면(컷)">◀컷</button>
                             <button className="button" onClick={() => goToScene(1)} title="다음 장면(컷)">컷▶</button>
@@ -4571,7 +4685,7 @@ export default function App() {
                             </button>
                         ))}
                         {selectedCutIds.size > 0 && (
-                            <button className="chip" onClick={makePartFromSelection} title="선택한 컷을 새 파트로 묶기" style={{ flexShrink: 0, color: '#9cf' }}>+ 선택 {selectedCutIds.size}컷 → 새 파트</button>
+                            <button className="chip" onClick={makePartFromSelection} title="선택한 컷을 새 파트로 묶기" style={{ flexShrink: 0, color: 'var(--accent-soft)', borderColor: 'var(--accent-hi)' }}>+ 선택 {selectedCutIds.size}컷 → 새 파트</button>
                         )}
                     </div>
                 )}

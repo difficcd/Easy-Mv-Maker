@@ -234,16 +234,16 @@ body {
 }
 
 .splitter-v {
-    width: 6px;
+    width: 4px;
     cursor: col-resize;
-    background: hsl(var(--ui-h) var(--ui-s) 15%);
+    background: transparent;
     flex-shrink: 0;
     touch-action: none;
 }
 
 .splitter-v:hover,
 .splitter-v:active {
-    background: hsl(var(--ui-h) var(--ui-s) 30%);
+    background: var(--accent-soft);
 }
 
 .splitter-h {
@@ -261,13 +261,13 @@ body {
 
 /* Toolbar */
 .toolbar {
+    min-width: 0;
     background: hsl(var(--ui-h) var(--ui-s) 13%);
-    border-right: 1px solid hsl(var(--ui-h) var(--ui-s) 21%);
     display: flex;
     flex-direction: column;
-    align-items: center;
-    padding: 8px 6px;
-    gap: 6px;
+    align-items: stretch;
+    padding: 6px 4px;
+    gap: 5px;
     overflow-y: auto;
     overflow-x: hidden;
     flex-shrink: 0;
@@ -275,7 +275,8 @@ body {
 
 .tool-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    /* 고정 2열이 아니라 폭에 맞춰 열 수가 자동 조정된다 (좁히면 1열, 넓히면 3~4열) */
+    grid-template-columns: repeat(auto-fit, minmax(38px, 1fr));
     gap: 4px;
     width: 100%;
 }
@@ -379,13 +380,12 @@ body {
 
 .v-slider {
     -webkit-appearance: none;
-    width: 60px;
+    width: 100%;
     background: hsl(var(--ui-h) var(--ui-s) 21%);
     border-radius: 4px;
-    height: 3px;
+    height: 4px;
     outline: none;
-    transform: rotate(-90deg);
-    margin: 22px 0;
+    margin: 4px 0;
 }
 
 .v-slider::-webkit-slider-thumb {
@@ -578,11 +578,15 @@ canvas {
 
 /* Right panel */
 .right-panel {
+    min-width: 0;
+    flex-shrink: 0;
     background: hsl(var(--ui-h) var(--ui-s) 13%);
-    border-left: 1px solid hsl(var(--ui-h) var(--ui-s) 21%);
+    border-left: 1px solid hsl(var(--ui-h) var(--ui-s) 24%);
     display: flex;
     flex-direction: column;
-    padding: 12px;
+    padding: 10px;
+    /* 아래 타임라인과 경계가 딱 맞물리도록 아래쪽 테두리를 공유한다 */
+    border-bottom: 1px solid hsl(var(--ui-h) var(--ui-s) 24%);
     overflow: hidden;
 }
 
@@ -958,7 +962,7 @@ html {
 }
 
 /* Tablet: <= 1200px */
-@media (max-width: 1200px) {
+@media (max-width: 1200px) and (pointer: coarse) {
 
     /* Larger touch targets */
     .tool-btn {
@@ -1025,7 +1029,7 @@ html {
     }
 
     .tool-grid {
-        grid-template-columns: repeat(5, 1fr);
+        grid-template-columns: repeat(auto-fit, minmax(44px, 1fr));
     }
 
     .tool-label {
@@ -1108,7 +1112,7 @@ html {
 }
 
 /* Small tablet / large phone: <= 768px */
-@media (max-width: 768px) {
+@media (max-width: 768px) and (pointer: coarse) {
     .top-bar {
         height: 44px;
         padding: 0 8px;
@@ -1119,7 +1123,7 @@ html {
     }
 
     .tool-grid {
-        grid-template-columns: repeat(5, 1fr);
+        grid-template-columns: repeat(auto-fit, minmax(40px, 1fr));
         gap: 3px;
     }
 
@@ -1163,7 +1167,7 @@ html {
 
 /* 색상 패널 (독립 독). 좁은 도구 막대에 욱여넣던 색상 UI를 여기로 옮겨 제대로 배치한다. */
 .color-panel {
-    width: 200px;
+    min-width: 0;
     flex-shrink: 0;
     background: hsl(var(--ui-h) var(--ui-s) 13%);
     border-left: 1px solid hsl(var(--ui-h) var(--ui-s) 21%);
@@ -1367,4 +1371,186 @@ html {
 .wheel-sq {
     background: transparent;
     box-shadow: none;
+}
+
+/* 패널 머리글 — 도구 창/색상 창이 같은 모양의 닫기(✕)를 쓰도록 통일 */
+.panel-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    margin-bottom: 6px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid hsl(var(--ui-h) var(--ui-s) 21%);
+}
+
+/* 두 창을 동시에 열었을 때 서로 구분되도록 경계를 준다 */
+.color-panel {
+    border-left: 1px solid hsl(var(--ui-h) var(--ui-s) 24%);
+}
+
+.toolbar {
+    border-right: 1px solid hsl(var(--ui-h) var(--ui-s) 24%);
+}
+
+/* 폭에 따라 '열 수'가 알아서 바뀐다(리플로우). 버튼 자체는 쓰기 좋은 크기를 유지하고,
+   칸이 좁아 라벨이 들어갈 수 없을 때만 라벨이 빠진다. */
+.toolbar .tool-grid {
+    grid-template-columns: repeat(auto-fit, minmax(42px, 1fr));
+}
+
+.toolbar .size-grid {
+    grid-template-columns: repeat(auto-fit, minmax(26px, 1fr));
+}
+
+.toolbar .tool-btn {
+    min-width: 0;
+    padding: 5px 2px;
+}
+
+.toolbar .tool-label {
+    font-size: 9px;
+    line-height: 1.1;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+
+/* 아이콘 바: 아이콘을 키우고 클릭 영역도 넓힘 */
+.dock-rail {
+    width: 42px;
+    padding: 8px 0;
+    gap: 6px;
+}
+
+.dock-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+}
+
+/* 설정 창: 글씨/컨트롤을 키워 읽기 쉽게 */
+.settings-modal .pal-tab {
+    font-size: 13px;
+    padding: 7px 16px;
+}
+
+.settings-modal .color-section-label {
+    font-size: 11px;
+}
+
+.settings-modal .key-row {
+    padding: 10px 4px;
+    font-size: 13px;
+}
+
+/* 테마 색조 선택 라인 */
+.hue-line {
+    flex: 1;
+    height: 26px;
+    border-radius: 6px;
+    cursor: pointer;
+    border: 1px solid hsl(var(--ui-h) var(--ui-s) 26%);
+    background: linear-gradient(90deg,
+            hsl(0 70% 45%), hsl(60 70% 45%), hsl(120 70% 45%),
+            hsl(180 70% 45%), hsl(240 70% 45%), hsl(300 70% 45%), hsl(360 70% 45%));
+    touch-action: none;
+}
+
+/* 붓 크기 프리셋: 고정 배치 대신 표(그리드)에 넣어 폭에 맞춰 재배열된다 */
+.size-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(24px, 1fr));
+    gap: 4px;
+    width: 100%;
+}
+
+.size-cell {
+    aspect-ratio: 1;
+    width: 100%;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border-radius: 4px;
+    background: hsl(var(--ui-h) var(--ui-s) 17%);
+    border: 1px solid hsl(var(--ui-h) var(--ui-s) 25%);
+    cursor: pointer;
+}
+
+.size-cell.active {
+    background: var(--accent);
+    border-color: var(--accent-hi);
+}
+
+/* 도구 창 안의 요소는 폭을 넘지 않게 */
+.toolbar>* {
+    max-width: 100%;
+}
+
+.slider-wrap {
+    min-width: 0;
+}
+
+/* 도구 창 내부 요소는 항상 패널 폭을 채운다 (내용 폭으로 고정되지 않게) */
+.toolbar .tool-grid,
+.toolbar .size-grid,
+.toolbar .slider-wrap,
+.toolbar .panel-head {
+    width: 100%;
+    min-width: 0;
+}
+
+/* 현재 색: 늘리지 않고 완전한 원으로 유지 (폭을 채우면 타원이 된다) */
+.toolbar .color-picker {
+    width: 34px;
+    height: 34px;
+    min-width: 0;
+    flex-shrink: 0;
+    align-self: center;
+    border-radius: 50%;
+}
+
+.toolbar .color-picker::-webkit-color-swatch {
+    border-radius: 50%;
+}
+
+/* 최근 색: 칸 수를 고정해 두고 빈 칸은 비워 둔다 (색이 늘 때마다 레이아웃이 흔들리지 않게) */
+.slot-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(22px, 1fr));
+    gap: 4px;
+    width: 100%;
+}
+
+.slot {
+    aspect-ratio: 1;
+    width: 100%;
+    padding: 0;
+    border-radius: 4px;
+    border: 1px solid hsl(var(--ui-h) var(--ui-s) 24%);
+    background: transparent;
+}
+
+.slot.filled {
+    cursor: pointer;
+    border-color: #0005;
+}
+
+.slot.sel {
+    outline: 2px solid var(--accent-soft);
+    outline-offset: -2px;
+}
+
+/* 빈 칸은 투명하다는 걸 알 수 있게 옅은 체크무늬 */
+.slot.empty {
+    background-image: linear-gradient(45deg, hsl(var(--ui-h) var(--ui-s) 18%) 25%, transparent 25%),
+        linear-gradient(-45deg, hsl(var(--ui-h) var(--ui-s) 18%) 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, hsl(var(--ui-h) var(--ui-s) 18%) 75%),
+        linear-gradient(-45deg, transparent 75%, hsl(var(--ui-h) var(--ui-s) 18%) 75%);
+    background-size: 8px 8px;
+    background-position: 0 0, 0 4px, 4px -4px, -4px 0;
 }

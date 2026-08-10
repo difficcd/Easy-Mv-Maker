@@ -173,7 +173,7 @@ export function hexToRgb(hex) {
     return { r: 0, g: 0, b: 0 };
 }
 
-export function bucketFillTransparentRegion(baseImageData, startX, startY, fillRgb, fillAlpha) {
+export function bucketFillTransparentRegion(baseImageData, startX, startY, fillRgb, fillAlpha, tolerance = 24) {
     const w = baseImageData.width;
     const h = baseImageData.height;
     const data = baseImageData.data;
@@ -181,37 +181,49 @@ export function bucketFillTransparentRegion(baseImageData, startX, startY, fillR
     const sy = startY | 0;
     if (sx < 0 || sy < 0 || sx >= w || sy >= h) return null;
 
-    const alphaThreshold = 8;
+    // 클릭한 픽셀과 '같은 색'인 연결 영역을 채운다. 예전에는 투명한 곳만 채워서,
+    // 한 번 칠한 자리에 다른 색으로 덧칠하는 (페인트통의 기본 동작) 것이 아예 불가능했다.
     const startOff = (sy * w + sx) * 4;
-    const startA = data[startOff + 3];
-    // Clicking on an existing stroke/boundary: do nothing (standard paint-bucket feel).
-    if (startA >= alphaThreshold) return null;
+    const s0 = data[startOff], s1 = data[startOff + 1], s2 = data[startOff + 2], s3 = data[startOff + 3];
+    const tol = Math.max(0, tolerance);
+    // 투명끼리는 색 성분이 의미 없으므로 알파만 본다.
+    const matches = (o) => {
+        const a = data[o + 3];
+        if (s3 < 8) return a < 8;
+        if (a < 8) return false;
+        return Math.abs(data[o] - s0) <= tol && Math.abs(data[o + 1] - s1) <= tol
+            && Math.abs(data[o + 2] - s2) <= tol && Math.abs(a - s3) <= tol;
+    };
+    // 이미 목표색이면 할 일이 없다 (무한 반복 방지).
+    if (s3 >= 8 && Math.abs(s0 - fillRgb.r) < 2 && Math.abs(s1 - fillRgb.g) < 2
+        && Math.abs(s2 - fillRgb.b) < 2 && Math.abs(s3 - fillAlpha) < 2) return null;
 
     const mask = new Uint8Array(w * h);
     const q = new Int32Array(w * h);
     let qh = 0;
     let qt = 0;
-    q[qt++] = sy * w + sx;
+    // 반드시 '넣을 때' 방문 표시를 해야 한다. 꺼낼 때 표시하면 한 픽셀이 이웃 4곳에서
+    // 중복으로 들어와 큐 길이가 w*h를 넘고, 타입드 배열은 범위 밖 쓰기를 조용히 버린다
+    // → 채우기가 도중에 끊겨 BFS 진행 모양(마름모)만 칠해졌다.
+    const push = (i) => { if (!mask[i]) { mask[i] = 1; q[qt++] = i; } };
+    push(sy * w + sx);
 
     let minX = w, minY = h, maxX = -1, maxY = -1;
     while (qh < qt) {
         const idx = q[qh++];
-        if (mask[idx]) continue;
-        mask[idx] = 1;
         const x = idx % w;
         const y = (idx / w) | 0;
-        const off = idx * 4;
-        if (data[off + 3] >= alphaThreshold) continue;
+        if (!matches(idx * 4)) continue; // 다른 색(경계): 방문만 하고 넘지 않는다
 
         if (x < minX) minX = x;
         if (y < minY) minY = y;
         if (x > maxX) maxX = x;
         if (y > maxY) maxY = y;
 
-        if (x > 0) q[qt++] = idx - 1;
-        if (x + 1 < w) q[qt++] = idx + 1;
-        if (y > 0) q[qt++] = idx - w;
-        if (y + 1 < h) q[qt++] = idx + w;
+        if (x > 0) push(idx - 1);
+        if (x + 1 < w) push(idx + 1);
+        if (y > 0) push(idx - w);
+        if (y + 1 < h) push(idx + w);
     }
 
     if (maxX < minX || maxY < minY) return null;
@@ -226,12 +238,9 @@ export function bucketFillTransparentRegion(baseImageData, startX, startY, fillR
     for (let y = minY; y <= maxY; y++) {
         for (let x = minX; x <= maxX; x++) {
             const idx = y * w + x;
-            const off = idx * 4;
-            if (data[off + 3] >= alphaThreshold) continue;
             if (!mask[idx]) continue;
-            const ox = x - minX;
-            const oy = y - minY;
-            const o = (oy * cw + ox) * 4;
+            if (!matches(idx * 4)) continue;
+            const o = ((y - minY) * cw + (x - minX)) * 4;
             outData[o] = r;
             outData[o + 1] = g;
             outData[o + 2] = b;

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Droplets, Trash2, Plus, Pencil } from 'lucide-react';
+import { Droplets } from 'lucide-react';
 
 // --- 색 변환 (HSV <-> HEX) ------------------------------------------------------------
 const hex2rgb = (h) => {
@@ -25,11 +25,15 @@ const hsv2rgb = (h, s, v) => {
 };
 const hsv2hex = (h, s, v) => { const { r, g, b } = hsv2rgb(h, s, v); return rgb2hex(r, g, b); };
 
-// 색상환: 바깥 고리 = 색조, 안쪽 사각형 = 채도/명도.
-const WHEEL = 168, RING = 14, R_OUT = WHEEL / 2 - 2, R_IN = R_OUT - RING;
-const SQ = Math.floor((R_IN * 2) / Math.SQRT2) - 2; // 고리 안에 들어가는 정사각형
+export const RECENT_SLOTS = 30; // 최근 색 저장 칸 수 (고정)
 
-function ColorWheel({ color, onPick }) {
+// 색상환: 바깥 고리 = 색조, 안쪽 사각형 = 채도/명도.
+// 크기는 패널 폭을 따라간다 — 좁혔을 때 잘려서 안 보이는 일이 없게.
+function ColorWheel({ color, onPick, size = 168 }) {
+    const WHEEL = Math.max(96, Math.round(size));
+    const RING = Math.max(9, Math.round(WHEEL * 0.085));
+    const R_OUT = WHEEL / 2 - 2, R_IN = R_OUT - RING;
+    const SQ = Math.max(40, Math.floor((R_IN * 2) / Math.SQRT2) - 2);
     const ringRef = React.useRef(null);
     const sqRef = React.useRef(null);
     const dragRef = React.useRef(null);
@@ -49,7 +53,7 @@ function ColorWheel({ color, onPick }) {
             ctx.arc(cx, cy, (R_OUT + R_IN) / 2, (a - 0.7) * Math.PI / 180, (a + 0.7) * Math.PI / 180);
             ctx.stroke();
         }
-    }, []);
+    }, [WHEEL, RING]);
 
     // 사각형은 현재 색조에 따라 다시 그린다.
     React.useEffect(() => {
@@ -63,7 +67,7 @@ function ColorWheel({ color, onPick }) {
         const gb = ctx.createLinearGradient(0, 0, 0, SQ);
         gb.addColorStop(0, 'rgba(0,0,0,0)'); gb.addColorStop(1, 'rgba(0,0,0,1)');
         ctx.fillStyle = gb; ctx.fillRect(0, 0, SQ, SQ);
-    }, [h]);
+    }, [h, SQ]);
 
     const ringFromEvent = (e, el) => {
         const r0 = el.getBoundingClientRect();
@@ -115,29 +119,25 @@ function ColorWheel({ color, onPick }) {
 export default function ColorPanel({
     color, useColor, pickColor, pickingColor,
     recentColors,
-    palettes, activePalette, setActivePalette,
-    addToPalette, removeFromPalette, addPalette, renamePalette, deletePalette,
-    paletteEdit, setPaletteEdit,
+    width,
     onClose,
 }) {
-    const pal = palettes[activePalette];
-    const swatch = (c, i, size, onPick, onRemove) => (
-        <button key={i} onClick={onPick} onContextMenu={e => { e.preventDefault(); onRemove?.(); }} title={c}
+    const swatch = (c, i, size, onPick) => (
+        <button key={i} onClick={onPick} title={c}
             style={{
                 width: size, height: size, borderRadius: 4, background: c, padding: 0, cursor: 'pointer',
                 border: c.toLowerCase() === String(color).toLowerCase() ? '2px solid var(--accent-soft)' : '1px solid #0005',
-                outline: onRemove && paletteEdit ? '1px dashed #f66' : 'none',
             }} />
     );
     return (
-        <div className="color-panel">
-            <div className="color-panel-head">
+        <div className="color-panel" style={{ width }}>
+            <div className="panel-head">
                 <span className="panel-title">COLOR</span>
-                <button className="icon-btn" onClick={onClose} title="색상 패널 닫기">✕</button>
+                <button className="icon-btn" onClick={onClose} title="색상 창 닫기">✕</button>
             </div>
 
             {/* 색상환: 바깥 고리로 색조, 안쪽 사각형으로 채도·명도 */}
-            <ColorWheel color={color} onPick={useColor} />
+            <ColorWheel color={color} onPick={useColor} size={Math.max(96, Math.min(240, (width || 200) - 26))} />
 
             {/* 현재 색 크게 보여주기 + 코드 + 스포이드 */}
             <div className="current-color">
@@ -156,39 +156,18 @@ export default function ColorPanel({
                 </div>
             </div>
 
-            {/* 최근 색 — 실제로 '사용한' 색이 쌓인다 */}
+            {/* 최근 색 — 실제로 '사용한' 색이 쌓인다.
+                칸 수를 30개로 고정해 두고 빈 칸은 비워 둔다: 색이 늘 때마다 영역 크기가
+                들썩이지 않아 레이아웃이 안정적이다. */}
             <div className="color-section-label">최근 사용한 색</div>
-            <div className="swatch-grid" style={{ maxHeight: 150, overflowY: 'auto' }}>
-                {recentColors.map((c, i) => swatch(c, i, 24, () => useColor(c)))}
-                {!recentColors.length && <span style={{ fontSize: 10, color: '#666' }}>그리면 여기에 쌓입니다</span>}
-            </div>
-
-            {/* 팔레트 탭 */}
-            <div className="color-section-label" style={{ marginTop: 10 }}>팔레트</div>
-            <div className="pal-tabs">
-                {palettes.map((p, i) => (
-                    <button key={i} className={`pal-tab${i === activePalette ? ' active' : ''}`}
-                        onClick={() => setActivePalette(i)} onDoubleClick={renamePalette}
-                        title={`${p.name} (더블클릭: 이름 변경)`}>{p.name}</button>
-                ))}
-                <button className="pal-tab pal-tab-add" onClick={addPalette} title="새 팔레트 탭"><Plus size={12} /></button>
-            </div>
-
-            <div className="pal-actions">
-                <button className="button" style={{ height: 26, padding: '0 8px' }} onClick={() => addToPalette(color)} title="현재 색을 이 팔레트에 추가">＋ 색 추가</button>
-                <button className="icon-btn" onClick={renamePalette} title="팔레트 이름 변경"><Pencil size={13} /></button>
-                <button className={`icon-btn${paletteEdit ? ' active' : ''}`} onClick={() => setPaletteEdit(v => !v)}
-                    title={paletteEdit ? '삭제 모드 끄기' : '삭제 모드 (스와치를 눌러 삭제)'}
-                    style={paletteEdit ? { color: '#f66' } : undefined}><Trash2 size={13} /></button>
-                {palettes.length > 1 && <button className="icon-btn del-btn" onClick={deletePalette} title="이 팔레트 탭 삭제">✕</button>}
-            </div>
-
-            <div className="swatch-grid" style={{ maxHeight: 190, overflowY: 'auto' }}
-                title={paletteEdit ? '눌러서 삭제' : '클릭: 사용 · 우클릭: 삭제'}>
-                {(pal?.colors || []).map((c, i) => swatch(c, i, 22,
-                    () => paletteEdit ? removeFromPalette(i) : useColor(c),
-                    () => removeFromPalette(i)))}
-                {!(pal?.colors || []).length && <span style={{ fontSize: 10, color: '#666' }}>‘＋ 색 추가’로 채워보세요</span>}
+            <div className="slot-grid">
+                {Array.from({ length: RECENT_SLOTS }, (_, i) => {
+                    const c = recentColors[i];
+                    return c
+                        ? <button key={i} className={`slot filled${c.toLowerCase() === String(color).toLowerCase() ? ' sel' : ''}`}
+                            style={{ background: c }} title={c} onClick={() => useColor(c)} />
+                        : <span key={i} className="slot empty" />;
+                })}
             </div>
 
         </div>
