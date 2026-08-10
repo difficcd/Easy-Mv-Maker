@@ -203,7 +203,7 @@ export default function App() {
     const addPalette = () => { setPalettes(ps => [...ps, { name: `팔레트 ${ps.length + 1}`, colors: [] }]); setActivePalette(palettes.length); };
     const deletePalette = () => { if (palettes.length <= 1) return; setPalettes(ps => ps.filter((_, i) => i !== activePalette)); setActivePalette(i => Math.max(0, i - 1)); };
     const renamePalette = () => { const n = window.prompt('팔레트 이름', palettes[activePalette]?.name); if (n) setPalettes(ps => ps.map((p, i) => i === activePalette ? { ...p, name: n } : p)); };
-    const useColor = (c) => { if (!c) return; setColor(c); };
+    const applyColor = (c) => { if (!c) return; setColor(c); };
     // '사용됨' 기준: 실제로 그 색으로 무언가를 그렸을 때만 최근 색에 올린다.
     const noteColorUsed = (c) => {
         if (!c) return;
@@ -213,7 +213,7 @@ export default function App() {
     };
     // Eyedropper: native picker where available, else sample the canvas on the next click.
     const pickColor = async () => {
-        if (window.EyeDropper) { try { const r = await new window.EyeDropper().open(); useColor(r.sRGBHex); } catch { } }
+        if (window.EyeDropper) { try { const r = await new window.EyeDropper().open(); applyColor(r.sRGBHex); } catch { } }
         else setPickingColor(true);
     };
     const [brushSize, setBrushSize] = useState(5);
@@ -2210,7 +2210,7 @@ export default function App() {
         const pos = getPos(e);
         // Eyedropper fallback: sample the composited canvas pixel under the click.
         if (pickingColor) {
-            try { const d = canvasRef.current.getContext('2d').getImageData(Math.round(pos.x), Math.round(pos.y), 1, 1).data; if (d[3] > 0) useColor('#' + [d[0], d[1], d[2]].map(v => v.toString(16).padStart(2, '0')).join('')); } catch { }
+            try { const d = canvasRef.current.getContext('2d').getImageData(Math.round(pos.x), Math.round(pos.y), 1, 1).data; if (d[3] > 0) applyColor('#' + [d[0], d[1], d[2]].map(v => v.toString(16).padStart(2, '0')).join('')); } catch { }
             setPickingColor(false); return;
         }
         // Recording a motion path for a part animation: capture the stroke as a path.
@@ -3901,7 +3901,7 @@ export default function App() {
                 </div>
                 {leftDock === 'color' && (
                     <ColorPanel
-                        color={color} useColor={useColor} pickColor={pickColor} pickingColor={pickingColor}
+                        color={color} applyColor={applyColor} pickColor={pickColor} pickingColor={pickingColor}
                         recentColors={recentColors}
                         width={colorW}
                         onClose={() => setLeftDock(null)} />
@@ -3930,7 +3930,7 @@ export default function App() {
                             {hasLassoClip && <button className="tool-btn" onClick={pasteLassoSelection} title="복사한 올가미 선택을 현재 레이어에 붙여넣기"><ClipboardPaste size={15} /><span className="tool-label">올가미↓</span></button>}
                         </div>
                         <div className="tool-divider" />
-                        <input type="color" className="color-picker" value={color} onChange={e => useColor(e.target.value)} title="색상" disabled={isSelectionTool} />
+                        <input type="color" className="color-picker" value={color} onChange={e => applyColor(e.target.value)} title="색상" disabled={isSelectionTool} />
                         <button className={`tool-btn${pickingColor ? ' active' : ''}`} onClick={pickColor} title="스포이드 (화면에서 색 추출)" disabled={isSelectionTool} style={{ padding: '0 6px' }}><Pipette size={13} /><span className="tool-label">스포이드</span></button>
                         <div className="slider-wrap">
                             {tool === 'soft' ? (

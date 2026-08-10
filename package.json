@@ -13,7 +13,9 @@
     "android:sync": "npm run build && npx cap sync android",
     "android:open": "npx cap open android",
     "android:run": "npm run build && npx cap run android",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "check": "npm run typecheck && node scripts/hook-baseline.mjs && npm run build"
   },
   "dependencies": {
     "@capacitor/android": "^7.0.0",
@@ -27,6 +29,8 @@
     "@capacitor/cli": "^7.0.0",
     "@vitejs/plugin-react": "^4.3.4",
     "concurrently": "^10.0.3",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
     "typescript": "^5.9.3",
     "vite": "^6.1.1",
     "vite-plugin-qrcode": "^0.4.1"

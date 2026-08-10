@@ -119,7 +119,7 @@ function ColorWheel({ color, onPick, size = 168 }) {
 // 예전에는 96px짜리 좁은 도구 막대 안에 색상·최근색·팔레트를 전부 밀어넣어 디자인이 무너졌다.
 // 여기로 빼면서 스와치를 제대로 된 크기로 놓고, 팔레트를 '탭'으로 보여준다.
 export default function ColorPanel({
-    color, useColor, pickColor, pickingColor,
+    color, applyColor, pickColor, pickingColor,
     recentColors,
     width,
     onClose,
@@ -139,7 +139,7 @@ export default function ColorPanel({
             </div>
 
             {/* 색상환: 바깥 고리로 색조, 안쪽 사각형으로 채도·명도 */}
-            <ColorWheel color={color} onPick={useColor} size={Math.max(96, Math.min(240, (width || 200) - 26))} />
+            <ColorWheel color={color} onPick={applyColor} size={Math.max(96, Math.min(240, (width || 200) - 26))} />
 
             {/* 현재 색 크게 보여주기 + 코드 + 스포이드 */}
             <div className="current-color">
@@ -147,11 +147,11 @@ export default function ColorPanel({
                 <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
                     <span style={{ fontSize: 9, color: '#7a7a90' }}>현재 색</span>
                     <input className="time-input" style={{ width: '100%' }} value={color}
-                        onChange={e => { const v = e.target.value.trim(); if (/^#[0-9a-fA-F]{6}$/.test(v)) useColor(v); }}
+                        onChange={e => { const v = e.target.value.trim(); if (/^#[0-9a-fA-F]{6}$/.test(v)) applyColor(v); }}
                         title="색상 코드 직접 입력 (#RRGGBB)" />
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                    <input type="color" className="color-swatch-sm" value={color} onChange={e => useColor(e.target.value)} title="시스템 색 선택기" />
+                    <input type="color" className="color-swatch-sm" value={color} onChange={e => applyColor(e.target.value)} title="시스템 색 선택기" />
                     <button className={`button${pickingColor ? ' button-primary' : ''}`} onClick={pickColor} title="스포이드" style={{ height: 24, padding: '0 6px', justifyContent: 'center' }}>
                         <Droplets size={13} />
                     </button>
@@ -167,7 +167,7 @@ export default function ColorPanel({
                     const c = recentColors[i];
                     return c
                         ? <button key={i} className={`slot filled${c.toLowerCase() === String(color).toLowerCase() ? ' sel' : ''}`}
-                            style={{ background: c }} title={c} onClick={() => useColor(c)} />
+                            style={{ background: c }} title={c} onClick={() => applyColor(c)} />
                         : <span key={i} className="slot empty" />;
                 })}
             </div>
