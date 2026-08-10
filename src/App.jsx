@@ -24,6 +24,33 @@ const PEN_TYPES = [
     { id: 'fill', label: 'Fill', Icon: Droplets },
 ];
 const BOIL_FPS = 10; // 자글자글(boiling line) 모션이 바뀌는 초당 횟수
+
+// 단축키: 기본값 + 사용자가 바꾼 값(브라우저 보관). 표기는 'ctrl+[' 처럼 소문자 조합.
+const DEFAULT_KEYS = {
+    undo: 'j', redo: 'k',
+    brushDown: '[', brushUp: ']',
+    zoomOut: 'ctrl+[', zoomIn: 'ctrl+]',
+    resetView: 'ctrl+0',
+};
+const KEY_LABELS = {
+    undo: '실행 취소', redo: '다시 실행',
+    brushDown: '브러시 작게', brushUp: '브러시 크게',
+    zoomOut: '캔버스 축소', zoomIn: '캔버스 확대', resetView: '줌 초기화',
+};
+// 이벤트를 'ctrl+shift+k' 같은 문자열로. 비교를 단순하게 하려고 항상 소문자.
+const keyOf = (e) => {
+    const p = [];
+    if (e.ctrlKey || e.metaKey) p.push('ctrl');
+    if (e.altKey) p.push('alt');
+    if (e.shiftKey) p.push('shift');
+    const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    p.push(k);
+    return p.join('+');
+};
+const loadKeymap = () => {
+    try { const v = JSON.parse(localStorage.getItem('mv_keymap')); return v && typeof v === 'object' ? { ...DEFAULT_KEYS, ...v } : { ...DEFAULT_KEYS }; }
+    catch { return { ...DEFAULT_KEYS }; }
+};
 const TOOL_TYPES = [
     { id: 'lasso', label: 'Lasso', Icon: GitBranch },
     { id: 'move', label: 'Move', Icon: Move },
@@ -168,6 +195,10 @@ export default function App() {
     const liveClearPendingRef = useRef(false); // 커밋 후, 레이어 캐시가 새 선을 그린 뒤 오버레이를 지움 (깜빡임/사라짐 방지)
     const lineStartRef = useRef(null);    // 직선 도구 시작점
     const drawTargetLayerRef = useRef(null); // 이번 스트로크를 커밋할 실제 레이어 id (활성 레이어 무효화 대비)
+    const layerDragRef = useRef(null);    // move 도구로 전체를 끌 때
+    const [dragTick, setDragTick] = useState(0); // 끄는 동안 원본을 숨긴 채 다시 그리게 하는 신호
+    const liveDrawnRef = useRef(0);       // 라이브 오버레이에 이미 그린 점 개수 (꼬리만 이어 그리기용)
+    const liveRafRef = useRef(0);
     const boilPhaseRef = useRef(0);       // 자글자글 "모션" 위상 — 시간에 따라 바뀌며 선이 제자리에서 부글거림
     const [boilTick, setBoilTick] = useState(0); // 정지(편집) 중에도 자글 모션을 미리보기 위한 위상 티커
     const curveAnchorsRef = useRef(null); // 곡선 도구: 탭으로 찍은 앵커점들
@@ -248,6 +279,9 @@ export default function App() {
     const backupKeyRef = useRef(null);
     const backupBusyRef = useRef(false);
     const lastBackupSigRef = useRef('');
+    const [keymap, setKeymap] = useState(loadKeymap);
+    const [showKeys, setShowKeys] = useState(false);   // 단축키 설정 창
+    const [rebinding, setRebinding] = useState(null);  // 재지정 대기 중인 액션 id
     const [spaceDown, setSpaceDown] = useState(false); // 스페이스바 = 화면 이동(손바닥) 모드
     const spaceDownRef = useRef(false);
     const panningRef = useRef(false);
@@ -534,7 +568,21 @@ export default function App() {
 
     useEffect(() => {
         const handleKeyDown = (e) => {
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+            // 사용자 지정 단축키 먼저. (Ctrl+Z/Y 등 관용 조합은 아래에 그대로 남겨 둔다)
+            const combo = keyOf(e);
+            const hit = Object.keys(keymap).find(k => keymap[k] && keymap[k].toLowerCase() === combo);
+            if (hit) {
+                e.preventDefault();
+                if (hit === 'undo') globalUndo();
+                else if (hit === 'redo') globalRedo();
+                else if (hit === 'zoomIn') zoomCanvas(1.25);
+                else if (hit === 'zoomOut') zoomCanvas(1 / 1.25);
+                else if (hit === 'resetView') resetView();
+                else if (hit === 'brushUp') { const s = tool === 'eraser' ? eraserSize : brushSize; const n = Math.min(200, Math.round(s * 1.25) + 1); tool === 'eraser' ? setEraserSize(n) : setBrushSize(n); }
+                else if (hit === 'brushDown') { const s = tool === 'eraser' ? eraserSize : brushSize; const n = Math.max(1, Math.round(s / 1.25)); tool === 'eraser' ? setEraserSize(n) : setBrushSize(n); }
+                return;
+            }
             if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) { e.preventDefault(); doSave(false); }
             if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); globalUndo(); }
             if ((e.ctrlKey || e.metaKey) && (e.key === 'Z' || (e.key === 'z' && e.shiftKey) || e.key === 'y')) { e.preventDefault(); globalRedo(); }
@@ -547,7 +595,7 @@ export default function App() {
         };
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [cuts, currentCutId, copiedCut, selection]);
+    }, [cuts, currentCutId, copiedCut, selection, keymap, tool, brushSize, eraserSize]);
 
     useEffect(() => {
         if (selection && selection.cutId !== currentCutId) cancelSelection();
@@ -1651,11 +1699,50 @@ export default function App() {
 
     const getPos = (e) => { const c = canvasRef.current, r = c.getBoundingClientRect(); return { x: (e.clientX - r.left) * (c.width / r.width), y: (e.clientY - r.top) * (c.height / r.height), pressure: e.pressure > 0 ? e.pressure : 0.5 }; };
     // Render only the in-progress stroke on the overlay canvas — one stroke, no full-layer rebuild.
-    const renderLiveStroke = () => {
+    // 그리는 중 미리보기. 예전에는 손이 움직일 때마다 스트로크 '전체'를 다시 매끈하게 만들어
+    // 다시 그렸다 → 선이 길어질수록 한 번 그리는 비용이 선형으로 늘고 전체는 제곱이 되어,
+    // 빠르게 그릴수록 입력이 밀리고 그 결과 곡선이 각지게 꺾였다.
+    // 이제는 (1) rAF로 한 프레임에 한 번만 그리고 (2) 이미 그린 부분은 지우지 않고 '새로 늘어난
+    // 꼬리'만 이어 그린다 → 손 움직임당 비용이 선 길이와 무관해진다.
+    const renderLiveStroke = (full = false) => {
         const lc = liveCanvasRef.current; if (!lc) return;
         const ctx = lc.getContext('2d');
-        ctx.clearRect(0, 0, lc.width, lc.height);
-        if (liveStrokeRef.current) drawStrokesOnCtx(ctx, [liveStrokeRef.current], false, bitmapStoreRef.current);
+        const st = liveStrokeRef.current;
+        if (!st) { ctx.clearRect(0, 0, lc.width, lc.height); liveDrawnRef.current = 0; return; }
+        const n = st.points.length;
+        // 전체 재그리기가 필요한 경우(직선/곡선 도구처럼 앞부분이 바뀌는 경우)
+        if (full || liveDrawnRef.current === 0 || n < liveDrawnRef.current) {
+            ctx.clearRect(0, 0, lc.width, lc.height);
+            drawStrokesOnCtx(ctx, [st], false, bitmapStoreRef.current);
+            liveDrawnRef.current = n;
+            return;
+        }
+        if (n === liveDrawnRef.current) return;
+        // 꼬리만: 이전에 그린 지점보다 조금 앞에서 시작해 이어붙이면 이음매가 보이지 않는다.
+        const from = Math.max(0, liveDrawnRef.current - 3);
+        drawStrokesOnCtx(ctx, [{ ...st, points: st.points.slice(from) }], false, bitmapStoreRef.current);
+        liveDrawnRef.current = n;
+    };
+    // 전체 이동 미리보기: 옮겨진 모습을 오버레이에 그린다 (원본은 paintFrame이 숨긴다).
+    // 누른 직후에도 한 번 그려야 잠깐 빈 화면이 번쩍이지 않는다.
+    const renderLayerDragPreview = () => {
+        const d = layerDragRef.current; if (!d) return;
+        const lc = liveCanvasRef.current; if (!lc) return;
+        const cut = cuts.find(c => c.id === d.cutId); if (!cut) return;
+        const c2 = lc.getContext('2d');
+        c2.clearRect(0, 0, lc.width, lc.height);
+        const ox = Math.round(d.dx), oy = Math.round(d.dy);
+        const order = flattenLayersInUiOrder(cut.layers || []).filter(l => l.type === 'layer' && d.layerIds.includes(l.id));
+        for (let i = order.length - 1; i >= 0; i--) {
+            const src = ensureLayerCanvas(cut.id, order[i]); // 캐시에 없으면 즉석 생성
+            if (src) c2.drawImage(src, ox, oy);
+        }
+    };
+
+    // 한 프레임에 한 번만 그리도록 묶는다 (포인터 이벤트는 프레임보다 훨씬 자주 들어온다).
+    const scheduleLiveRender = () => {
+        if (liveRafRef.current) return;
+        liveRafRef.current = requestAnimationFrame(() => { liveRafRef.current = 0; renderLiveStroke(); });
     };
     // 곡선 도구: 찍은 앵커들을 지나는 Catmull-Rom 스플라인으로 촘촘히 샘플링.
     const catmullThrough = (pts, seg = 16) => {
@@ -1806,6 +1893,37 @@ export default function App() {
         else if (touchPtsRef.current.size === 0) pinchRef.current = null;
     };
     const resetView = () => setView({ zoom: 1, x: 0, y: 0 });
+    // 단축키 재지정: 대기 중일 때 눌린 키 조합을 그대로 받아 저장한다(다른 처리보다 먼저 가로챔).
+    useEffect(() => {
+        if (!rebinding) return;
+        const h = (e) => {
+            e.preventDefault(); e.stopPropagation();
+            if (e.key === 'Escape') { setRebinding(null); return; }
+            if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return; // 조합키만 누른 상태는 무시
+            const combo = keyOf(e);
+            setKeymap(prev => {
+                // 같은 조합을 쓰던 다른 항목은 비워 충돌을 막는다.
+                const next = { ...prev };
+                for (const k of Object.keys(next)) if (next[k] === combo) next[k] = '';
+                next[rebinding] = combo;
+                try { localStorage.setItem('mv_keymap', JSON.stringify(next)); } catch { }
+                return next;
+            });
+            setRebinding(null);
+        };
+        window.addEventListener('keydown', h, true);
+        return () => window.removeEventListener('keydown', h, true);
+    }, [rebinding]);
+
+    // 화면 중앙 기준 확대/축소 (버튼·단축키용)
+    const zoomCanvas = (factor) => {
+        lastInteractRef.current = Date.now();
+        setView(v => {
+            const zoom = Math.max(0.1, Math.min(16, v.zoom * factor));
+            const k = zoom / v.zoom;
+            return { zoom, x: v.x * k, y: v.y * k };
+        });
+    };
 
     // 스페이스바 = 손바닥(화면 이동) 모드. 입력창에 타이핑 중일 땐 무시하고,
     // 페이지가 스크롤되지 않도록 기본 동작만 막는다.
@@ -1821,6 +1939,8 @@ export default function App() {
         };
         const up = (e) => {
             if (e.code !== 'Space') return;
+            // keyup에서도 막아야 한다: 포커스된 버튼이 스페이스로 '클릭'되는 걸 방지.
+            if (!isTyping()) e.preventDefault();
             spaceDownRef.current = false; setSpaceDown(false);
         };
         // 창을 벗어났다 돌아오면 눌린 상태로 남지 않게 초기화
@@ -2070,6 +2190,22 @@ export default function App() {
                 e.preventDefault();
                 return;
             }
+            // 텍스트를 안 집었으면 '전체 이동'. 선택 범위가 없어도 끌어서 옮길 수 있어야 한다.
+            // 기본은 이 컷의 보이는 레이어 + 텍스트 전부, Alt를 누르면 활성 레이어만.
+            const drawable = flattenLayersInUiOrder(currentCut?.layers || []).filter(l => l.type === 'layer');
+            const onlyActive = e.altKey;
+            const act = resolveDrawLayer(currentCut);
+            const ids = onlyActive ? (act ? [act.id] : []) : drawable.map(l => l.id);
+            if (ids.length) {
+                activePointerIdRef.current = e.pointerId;
+                try { canvasRef.current?.setPointerCapture(e.pointerId); } catch { }
+                isDrawing.current = true;
+                layerDragRef.current = { cutId: currentCutId, layerIds: ids, withTexts: !onlyActive, startPos: { x: pos.x, y: pos.y }, dx: 0, dy: 0 };
+                renderLayerDragPreview();   // 누르자마자 그려 빈 화면 번쩍임 방지
+                setDragTick(v => v + 1);    // 원본은 숨긴다
+                e.preventDefault();
+                return;
+            }
         }
 
         if (tool === 'curve') {
@@ -2103,15 +2239,15 @@ export default function App() {
             case 'rough':
             case 'calligraphy': {
                 // Draw on the live overlay only — no layer-state writes per move (that was the lag).
-                liveStrokeRef.current = { id: Date.now(), tool, color, opacity, size: brushSize, points: [pos] };
-                renderLiveStroke();
+                liveStrokeRef.current = { id: Date.now(), tool, color, opacity, size: brushSize, points: [pos], pen: e.pointerType === 'pen' };
+                liveDrawnRef.current = 0; renderLiveStroke(true);
                 break;
             }
             case 'line': {
                 // 직선자: 시작점을 고정하고 끝점만 따라옴 → 2점 직선.
                 lineStartRef.current = pos;
-                liveStrokeRef.current = { id: Date.now(), tool: 'brush', color, opacity, size: brushSize, points: [pos, { ...pos }] };
-                renderLiveStroke();
+                liveStrokeRef.current = { id: Date.now(), tool: 'brush', color, opacity, size: brushSize, points: [pos, { ...pos }], pen: e.pointerType === 'pen' };
+                liveDrawnRef.current = 0; renderLiveStroke(true);
                 break;
             }
             case 'mosaic': {
@@ -2176,6 +2312,15 @@ export default function App() {
 
         if (pathPtsRef.current) { pathPtsRef.current.push(pos); return; }
 
+        // 전체 이동 미리보기: 옮겨진 모습은 오버레이가 그리고, 원본은 paintFrame이 숨긴다.
+        if (layerDragRef.current) {
+            const d = layerDragRef.current;
+            d.dx = pos.x - d.startPos.x; d.dy = pos.y - d.startPos.y;
+            renderLayerDragPreview();
+            setDragTick(v => v + 1); // 원본 숨김 상태를 유지하며 다시 그리기
+            return;
+        }
+
         if (tool === 'curve' && curveDraggingRef.current && curveAnchorsRef.current) {
             const a = curveAnchorsRef.current; a[a.length - 1] = { x: pos.x, y: pos.y, pressure: pos.pressure };
             renderCurvePreview();
@@ -2218,7 +2363,7 @@ export default function App() {
             case 'line': {
                 if (liveStrokeRef.current && lineStartRef.current) {
                     liveStrokeRef.current.points = [lineStartRef.current, pos];
-                    renderLiveStroke();
+                    renderLiveStroke(true); // 끝점이 바뀌므로 전체 재그리기
                 }
                 break;
             }
@@ -2241,7 +2386,7 @@ export default function App() {
                 if (liveStrokeRef.current) {
                     // Brush tools: append + repaint just the overlay (no React, no full-layer rebuild).
                     for (const p of positions) liveStrokeRef.current.points.push(p);
-                    renderLiveStroke();
+                    scheduleLiveRender();
                     break;
                 }
                 // Eraser: layer-write path (needs to composite against the layer).
@@ -2262,6 +2407,31 @@ export default function App() {
     };
 
     const stopDraw = () => {
+        // 레이어 전체 이동 확정: 모든 스트로크 좌표에 옮긴 만큼을 더한다.
+        if (layerDragRef.current) {
+            const d = layerDragRef.current; layerDragRef.current = null;
+            isDrawing.current = false;
+            try { if (activePointerIdRef.current !== null) canvasRef.current?.releasePointerCapture(activePointerIdRef.current); } catch { }
+            activePointerIdRef.current = null;
+            const dx = Math.round(d.dx), dy = Math.round(d.dy);
+            const lc = liveCanvasRef.current; if (lc) lc.getContext('2d').clearRect(0, 0, lc.width, lc.height);
+            if (dx || dy) {
+                updLayers(d.cutId, c => ({
+                    layers: c.layers.map(l => !d.layerIds.includes(l.id) ? l : ({
+                        ...l,
+                        rev: (l.rev || 0) + 1, // 좌표만 바뀌므로 캐시 무효화용 리비전을 올린다
+                        strokes: safeArray(l.strokes).map(st => st.points
+                            ? { ...st, points: st.points.map(p => ({ ...p, x: p.x + dx, y: p.y + dy })) }
+                            : { ...st, x: (st.x || 0) + dx, y: (st.y || 0) + dy }),
+                    })),
+                    texts: d.withTexts
+                        ? safeArray(c.texts).map(t => ({ ...t, x: (t.x || 0) + dx, y: (t.y || 0) + dy }))
+                        : safeArray(c.texts),
+                }));
+            }
+            setDragTick(v => v + 1);
+            return;
+        }
         // 곡선자: 앵커 하나 찍기/미세조정 끝 — 확정은 완료 버튼에서.
         if (tool === 'curve' && curveDraggingRef.current) {
             curveDraggingRef.current = false;
@@ -2533,7 +2703,9 @@ export default function App() {
                 // Avoids O(n) stringify of a growing stroke on every drawing frame.
                 // 자글 레이어는 위상이 계속 바뀌므로 여기서 미리 굽지 않는다 (ensureLayerCanvas가 매 위상마다 그림).
                 // 썸네일용으로 정지 상태(위상 0) 한 장만 유지.
-                const layerStrokes = strokeSig(layer.strokes) + '|r' + (layer.roughen || 0);
+                // rev: 스트로크 '개수/마지막 스트로크'가 그대로인 채 좌표만 바뀌는 편집(전체 이동 등)은
+                // strokeSig로 감지되지 않는다. 그런 편집은 rev를 올려 캐시를 확실히 무효화한다.
+                const layerStrokes = strokeSig(layer.strokes) + '|r' + (layer.roughen || 0) + '|v' + (layer.rev || 0);
                 if (!canvas || canvas.dataset.strokes !== layerStrokes) {
                     // Skip (don't cache a blank) if a frame isn't decoded yet — the prefetch effect
                     // decodes it and repaints. Do NOT request a decode here (would loop with tick).
@@ -2636,7 +2808,7 @@ export default function App() {
         // 레이어별 속도 배수를 적용한 위상 (속도 0 = 떨림 정지)
         const boil = layer.roughen ? Math.floor(boilPhaseRef.current * (layer.roughSpeed ?? 1)) : 0;
         const rOpts = { roughen: layer.roughen || 0, roughPhase: boil, roughWave: layer.roughWave ?? 1, roughMinSize: layer.roughMinSize ?? 0 };
-        const sig = strokeSig(layer.strokes) + '|r' + (layer.roughen || 0) + (layer.roughen ? `|b${boil}|w${rOpts.roughWave}|m${rOpts.roughMinSize}` : '');
+        const sig = strokeSig(layer.strokes) + '|r' + (layer.roughen || 0) + '|v' + (layer.rev || 0) + (layer.roughen ? `|b${boil}|w${rOpts.roughWave}|m${rOpts.roughMinSize}` : '');
         const cached = layerCanvasCache[key];
         if (cached && cached.dataset.strokes === sig) return cached;
         const map = fallbackCanvasRef.current;
@@ -2764,6 +2936,9 @@ export default function App() {
                 const mb = maskEntry?.imageBitmap;
                 const mi = maskEntry?.imageData;
 
+                // 전체 이동 중인 레이어는 오버레이가 대신 그린다(원본은 잠시 숨김) → 잔상 방지.
+                if (layerDragRef.current && layerDragRef.current.cutId === ac.id
+                    && layerDragRef.current.layerIds.includes(l.id)) { ctx.restore(); continue; }
                 if (la?.swayProfile && (!shouldMask || (!mb && !mi))) {
                     // 지점별 흔들림: 축을 따라 잘라 구간마다 다른 양으로 휜다(비-어파인이라 단일 shear로는 불가).
                     // 핵심: 각 조각을 통째로 '옮기면' 경계에서 어긋나 찢어진다. 조각마다 기울기(shear)를 줘
@@ -2895,7 +3070,7 @@ export default function App() {
             }
             ctx.restore();
         });
-    }, [cuts, currentCutId, onionPrev, onionNext, selection, layerCanvasCache, frameDecodeTick, videoOverlay, boilTick]);
+    }, [cuts, currentCutId, onionPrev, onionNext, selection, layerCanvasCache, frameDecodeTick, videoOverlay, boilTick, dragTick]);
 
     const paintFrameRef = useRef(null);
     paintFrameRef.current = paintFrame;
@@ -3535,6 +3710,36 @@ export default function App() {
                     </div>
                 );
             })()}
+            {/* 단축키 직접 설정: 항목을 누르고 원하는 키를 누르면 그 조합으로 바뀐다 */}
+            {showKeys && (
+                <div onClick={() => { setShowKeys(false); setRebinding(null); }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div onClick={e => e.stopPropagation()} style={{ width: 420, maxHeight: '75vh', overflow: 'auto', background: '#1e1e2e', border: '1px solid #333', borderRadius: 8, padding: 16 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                            <span className="panel-title">단축키 설정</span>
+                            <button className="icon-btn" onClick={() => { setShowKeys(false); setRebinding(null); }}>✕</button>
+                        </div>
+                        <div style={{ fontSize: 11, color: '#888', marginBottom: 10 }}>
+                            {rebinding ? '원하는 키를 누르세요 (Esc = 취소)' : '바꿀 항목을 누른 뒤 새 키를 누르세요.'}
+                        </div>
+                        {Object.keys(DEFAULT_KEYS).map(id => (
+                            <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 4px', borderBottom: '1px solid #2a2a3a' }}>
+                                <span style={{ flex: 1, fontSize: 12, color: '#ddd' }}>{KEY_LABELS[id]}</span>
+                                <button className="button" style={{ height: 26, minWidth: 96, justifyContent: 'center', background: rebinding === id ? '#6d28d9' : undefined }}
+                                    onClick={() => setRebinding(rebinding === id ? null : id)}>
+                                    {rebinding === id ? '키 입력 대기…' : (keymap[id] || '(없음)')}
+                                </button>
+                                {keymap[id] !== DEFAULT_KEYS[id] && (
+                                    <button className="small-btn" title="기본값으로" onClick={() => { const next = { ...keymap, [id]: DEFAULT_KEYS[id] }; setKeymap(next); try { localStorage.setItem('mv_keymap', JSON.stringify(next)); } catch { } }}>되돌리기</button>
+                                )}
+                            </div>
+                        ))}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
+                            <span style={{ fontSize: 10, color: '#777' }}>Ctrl+S 저장 · Ctrl+Z/Y 등 기본 조합은 항상 동작합니다</span>
+                            <button className="button" onClick={() => { setKeymap({ ...DEFAULT_KEYS }); try { localStorage.setItem('mv_keymap', JSON.stringify(DEFAULT_KEYS)); } catch { } }}>전체 기본값</button>
+                        </div>
+                    </div>
+                </div>
+            )}
             {serverProjects !== null && <ProjectPicker title="서버에서 열기" items={serverProjects} onOpen={doServerOpen} onDelete={doServerDelete} onClose={() => setServerProjects(null)} />}
             {localProjects !== null && <ProjectPicker title="로컬에서 열기" items={localProjects} onOpen={doLocalOpen} onDelete={doLocalDelete} onClose={() => setLocalProjects(null)} />}
             {backupList !== null && (
@@ -3716,6 +3921,8 @@ export default function App() {
                         <div>Ctrl+Z 실행취소 · Ctrl+Shift+Z / Ctrl+Y 다시실행</div>
                         <div>Ctrl+C 컷 복사 · Ctrl+V 붙여넣기 · Ctrl+D 다음 프레임 복제</div>
                         <div>Ctrl+S 저장 · Esc 선택 취소 · Enter 선택 적용</div>
+                        <div><b>{keymap.undo}</b> 실행취소 · <b>{keymap.redo}</b> 다시실행 · <b>{keymap.brushDown}</b>/<b>{keymap.brushUp}</b> 브러시 크기 · <b>{keymap.zoomOut}</b>/<b>{keymap.zoomIn}</b> 캔버스 축소/확대 (상단 ⚙에서 변경)</div>
+                        <div>move 도구: 빈 곳을 끌면 <b>그림 전체가 이동</b>합니다(선택 범위 불필요). <b>Alt+드래그</b> = 활성 레이어만</div>
                         <div style={{ marginTop: 8 }}><b style={{ color: '#9aa' }}>펜 / 손가락</b></div>
                         <div>펜(S펜)·마우스 = 그리기 / 손가락은 그려지지 않음(팜 리젝션)</div>
                         <div>캔버스: 손가락 1개 = 이동, 2개 = 핀치 줌 (우상단 ⟲ 초기화)</div>
@@ -3814,6 +4021,14 @@ export default function App() {
                     <option value="custom">직접 입력…</option>
                 </select>
                 <button className="icon-btn" onClick={() => setShowHelp(true)} title="단축키 · 도움말" style={{ fontSize: 13, fontWeight: 700, width: 24, height: 24 }}>?</button>
+                {/* 캔버스 확대/축소 (해상도 선택란 · 도움말 오른쪽) */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 2 }} title={`캔버스 확대/축소 (${keymap.zoomOut} / ${keymap.zoomIn})`}>
+                    <button className="icon-btn" style={{ width: 24, height: 24, fontSize: 15 }} onClick={() => zoomCanvas(1 / 1.25)}>−</button>
+                    <button className="button" style={{ height: 24, padding: '0 6px', fontSize: 11, minWidth: 46, justifyContent: 'center' }}
+                        onClick={resetView} title="클릭하면 100%로">{Math.round(view.zoom * 100)}%</button>
+                    <button className="icon-btn" style={{ width: 24, height: 24, fontSize: 15 }} onClick={() => zoomCanvas(1.25)}>＋</button>
+                </div>
+                <button className="icon-btn" onClick={() => setShowKeys(true)} title="단축키 직접 설정" style={{ width: 24, height: 24 }}><Settings size={13} /></button>
                 <div className="menu-spacer" />
                 {audioFile && <span style={{ fontSize: 11, color: '#8ab', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={audioFile.name}>♪ {audioFile.name}</span>}
                 {autosaveErr
@@ -3950,7 +4165,9 @@ export default function App() {
                 {showLeft && <div className="splitter-v" style={{ touchAction: 'none' }} title="드래그로 도구 패널 너비 조절" onPointerDown={e => { e.currentTarget.setPointerCapture?.(e.pointerId); setSplitter({ type: 'left', startX: e.clientX, startW: leftW }); }} />}
                 {!showLeft && <button onClick={() => setShowLeft(true)} className="icon-btn" style={{ width: 24, alignSelf: 'stretch', padding: 0, borderRadius: 0, background: '#1e1e2e', border: 'none', borderRight: '1px solid #333' }}><ChevronRight size={14} /></button>}
 
-                <div className="canvas-area" ref={canvasAreaRef} style={{ touchAction: 'none', position: 'relative', cursor: spaceDown ? 'grab' : undefined }}
+                {/* 스페이스 이동 중에는 이 영역의 스크롤을 잠근다. 열어두면 스페이스/드래그가
+                    화면을 아래로 스크롤시켜 '이동'이 아니라 그냥 내려가 버린다. */}
+                <div className="canvas-area" ref={canvasAreaRef} style={{ touchAction: 'none', position: 'relative', cursor: spaceDown ? 'grab' : undefined, overflow: spaceDown ? 'hidden' : 'auto' }}
                     onMouseDown={e => { if (e.button === 1) e.preventDefault(); }} /* 가운데클릭 자동스크롤 방지 */
                     onAuxClick={e => { if (e.button === 1) e.preventDefault(); }}
                     onPointerDown={onAreaPointerDown} onPointerMove={onAreaPointerMove} onPointerUp={onAreaPointerUp} onPointerCancel={onAreaPointerUp}>

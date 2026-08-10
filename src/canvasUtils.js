@@ -559,22 +559,26 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null,
         };
         // Dot pen: hard square stamps (pixel-art look), no anti-aliased round stroke.
         if (s.tool === 'pen') {
-            const size = Math.max(1, Math.round(s.size));
-            const half = size / 2;
+            const base = Math.max(1, Math.round(s.size));
             ctx.globalCompositeOperation = 'source-over';
             ctx.globalAlpha = s.opacity ?? 1;
             ctx.fillStyle = s.color;
-            const stamp = (x, y) => ctx.fillRect(Math.round(x - half), Math.round(y - half), size, size);
+            // 도트펜도 필압을 따른다(도장 크기로). 예전엔 크기가 고정이라 타블렛으로 그려도
+            // 필압이 전혀 반영되지 않았다 — 모양은 그대로 각진 픽셀 도장을 유지한다.
+            const dotHasPr = s.pen === true || s.points.some(p => p.pressure !== undefined && p.pressure !== 0.5);
+            const sizeAt = (pr) => Math.max(1, Math.round(base * (dotHasPr ? Math.min(2, Math.max(0.15, pr * 2)) : 1)));
+            const stamp = (x, y, size) => { const half = size / 2; ctx.fillRect(Math.round(x - half), Math.round(y - half), size, size); };
             const P = roughAmp ? roughenPoints(jitterBasePoints(s), roughAmp, roughSeed, roughWave) : s.points;
             if (P.length === 1) {
-                stamp(P[0].x, P[0].y);
+                stamp(P[0].x, P[0].y, sizeAt(P[0].pressure ?? 0.5));
             } else {
                 for (let i = 1; i < P.length; i++) {
                     const a = P[i - 1], b = P[i];
                     const d = Math.hypot(b.x - a.x, b.y - a.y);
-                    const steps = Math.max(1, Math.ceil(d / Math.max(1, size / 2)));
+                    const sz = sizeAt(((a.pressure ?? 0.5) + (b.pressure ?? 0.5)) / 2);
+                    const steps = Math.max(1, Math.ceil(d / Math.max(1, sz / 2)));
                     for (let t = 0; t <= steps; t++) {
-                        stamp(a.x + (b.x - a.x) * t / steps, a.y + (b.y - a.y) * t / steps);
+                        stamp(a.x + (b.x - a.x) * t / steps, a.y + (b.y - a.y) * t / steps, sz);
                     }
                 }
             }
@@ -582,7 +586,9 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null,
             return;
         }
         ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-        const hasPressure = s.points.some(p => p.pressure !== undefined && p.pressure !== 0.5);
+        // 타블렛/S펜으로 그린 스트로크(s.pen)는 압력을 항상 신뢰한다. 값이 우연히 0.5 근처만
+        // 나오면 아래 휴리스틱이 '압력 없음'으로 오판해 굵기 변화가 통째로 사라진다.
+        const hasPressure = s.pen === true || s.points.some(p => p.pressure !== undefined && p.pressure !== 0.5);
         const baseColor = s.color;
         const baseOpacity = s.opacity ?? 1;
         // Marker: draw the whole stroke opaque on a temp canvas, then composite once.
