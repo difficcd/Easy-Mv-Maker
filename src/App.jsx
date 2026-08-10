@@ -3548,6 +3548,10 @@ export default function App() {
     // Recents keep only the source key/link, never the video data — the downloaded file is
     // dropped right after extraction, so re-importing the same link re-downloads it.
     const openVideoImport = (file, name, src) => {
+        // 새 가져오기는 언제나 설정 창을 띄운다. 창은 videoImport && !videoBusyBg 일 때만 뜨는데,
+        // 이전 추출에서 '백그라운드로'를 눌렀다가 그 추출이 정상 종료되지 못하면 플래그가 true로
+        // 남아 이후 가져오기에서 창이 영영 안 뜬다 → 시작 시점에 반드시 내려준다.
+        setVideoBusyBg(false);
         const label = (name || file.name).replace(/\.[^.]+$/, '').slice(0, 24);
         const srcKey = src?.key || `f:${file.name}:${file.size}`;
         setRecentVideos(p => [{ id: 'rv_' + Date.now().toString(36), name: label, srcKey, url: src?.url || null },
