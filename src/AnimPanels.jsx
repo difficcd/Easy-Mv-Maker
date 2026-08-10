@@ -42,16 +42,14 @@ export function CutAnimPanel({ cut, updCutAnim }) {
             <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                 <span style={{ fontSize: 10, width: 28, color: '#aaa', flexShrink: 0 }}>변형</span>
                 <select value={a.deformAxis} onChange={e => updCutAnim(cut.id, { deformAxis: e.target.value })} className="time-input" style={{ width: 56 }}><option value="y">상하</option><option value="x">좌우</option></select>
-                <input type="range" min="-50" max="50" step="5" value={Math.round(a.deformAmount * 100)} onChange={e => updCutAnim(cut.id, { deformAmount: (+e.target.value) / 100 })} style={{ flex: 1, minWidth: 0 }} title="스퀴즈/스트레치 양" />
-                <span style={{ fontSize: 10, width: 34, color: '#aaa', textAlign: 'right' }}>{Math.round(a.deformAmount * 100)}%</span>
+                <NumIn value={Math.round(a.deformAmount * 100)} onChange={v => updCutAnim(cut.id, { deformAmount: v / 100 })} step={5} w={56} title="스퀴즈/스트레치 양(%) — 상한 없음" />%
             </div>
             <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                 <label style={{ fontSize: 10, color: '#aaa', display: 'flex', alignItems: 'center', gap: 3 }}>
                     <input type="checkbox" checked={!!a.deformReturn} onChange={e => updCutAnim(cut.id, { deformReturn: e.target.checked })} /> 왕복
                 </label>
                 <span style={{ fontSize: 10, color: a.deformReturn ? '#aaa' : '#555', marginLeft: 4 }}>속도</span>
-                <input type="range" min="0.2" max="6" step="0.1" value={a.deformSpeed} disabled={!a.deformReturn} onChange={e => updCutAnim(cut.id, { deformSpeed: +e.target.value })} style={{ flex: 1, minWidth: 0 }} />
-                <span style={{ fontSize: 10, width: 28, color: a.deformReturn ? '#aaa' : '#555', textAlign: 'right' }}>{(+a.deformSpeed).toFixed(1)}x</span>
+                <NumIn value={a.deformSpeed} onChange={v => updCutAnim(cut.id, { deformSpeed: Math.max(0.01, v) })} step={0.5} min={0.01} w={56} title="속도 배수 (상한 없음)" />x
                 <span style={{ fontSize: 10, color: a.deformReturn ? '#aaa' : '#555' }}>횟수</span>
                 <NumIn value={a.deformCount} onChange={v => updCutAnim(cut.id, { deformCount: Math.round(v) })} min={0} w={44} title="횟수 (0 = 컷 내내)" />
             </div>
@@ -65,7 +63,7 @@ export function CutAnimPanel({ cut, updCutAnim }) {
                     <input type="checkbox" checked={!!a.moveReturn} onChange={e => updCutAnim(cut.id, { moveReturn: e.target.checked })} /> 이동왕복
                 </label>
                 <span style={{ fontSize: 10, color: a.moveReturn ? '#aaa' : '#555', marginLeft: 4 }}>속도</span>
-                <input type="range" min="0.2" max="6" step="0.1" value={a.moveSpeed} disabled={!a.moveReturn} onChange={e => updCutAnim(cut.id, { moveSpeed: +e.target.value })} style={{ flex: 1, minWidth: 0 }} />
+                <NumIn value={a.moveSpeed} onChange={v => updCutAnim(cut.id, { moveSpeed: Math.max(0.01, v) })} step={0.5} min={0.01} w={56} title="속도 배수 (상한 없음)" />x
                 <span style={{ fontSize: 10, color: a.moveReturn ? '#aaa' : '#555' }}>횟수</span>
                 <NumIn value={a.moveCount} onChange={v => updCutAnim(cut.id, { moveCount: Math.round(v) })} min={0} w={44} title="횟수 (0 = 컷 내내)" />
             </div>
@@ -73,20 +71,97 @@ export function CutAnimPanel({ cut, updCutAnim }) {
                 <span style={{ fontSize: 10, width: 28, color: '#aaa', flexShrink: 0 }}>속도감</span>
                 <select value={a.ease} onChange={e => updCutAnim(cut.id, { ease: e.target.value })} className="time-input" style={{ flex: 1, minWidth: 0 }} title="가속/감속 곡선">{EASE_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
                 <span style={{ fontSize: 10, color: a.ease === 'linear' ? '#555' : '#aaa' }}>가중치</span>
-                <input type="range" min="1" max="4" step="0.5" value={a.easePower} disabled={a.ease === 'linear'} onChange={e => updCutAnim(cut.id, { easePower: +e.target.value })} style={{ width: 70 }} />
+                <NumIn value={a.easePower} onChange={v => updCutAnim(cut.id, { easePower: Math.max(0.1, v) })} step={0.5} min={0.1} w={50} title="가감속 세기 (상한 없음)" />
             </div>
         </div>
     );
 }
 
+// #14 이동 효과 프리셋: 값을 하나씩 맞추지 않고 자주 쓰는 '부드러운 모션'을 한 번에 넣는다.
+// 각 프리셋은 이동/회전/크기 + 왕복 여부 + 가감속을 한 세트로 채운다.
+const MOVE_PRESETS = [
+    { id: 'floatY', label: '둥실둥실', v: { mode: 'return', tx: 0, ty: -24, rot: 0, scale: 0, speed: 0.6, count: 0, ease: 'inout', easePower: 2 } },
+    { id: 'driftX', label: '좌우 흐름', v: { mode: 'return', tx: 40, ty: 0, rot: 0, scale: 0, speed: 0.5, count: 0, ease: 'inout', easePower: 2 } },
+    { id: 'breathe', label: '숨쉬기', v: { mode: 'return', tx: 0, ty: 0, rot: 0, scale: 0.06, speed: 0.8, count: 0, ease: 'inout', easePower: 2 } },
+    { id: 'tilt', label: '갸우뚱', v: { mode: 'return', tx: 0, ty: 0, rot: 6, scale: 0, speed: 0.7, count: 0, ease: 'inout', easePower: 2 } },
+    { id: 'slideIn', label: '미끄러져 등장', v: { mode: 'progress', tx: -120, ty: 0, rot: 0, scale: 0, speed: 1, count: 0, ease: 'out', easePower: 3 } },
+    { id: 'popIn', label: '톡 튀어나오기', v: { mode: 'progress', tx: 0, ty: 0, rot: 0, scale: -0.35, speed: 1, count: 0, ease: 'out', easePower: 3 } },
+    { id: 'bob', label: '통통 튀기', v: { mode: 'return', tx: 0, ty: -40, rot: 0, scale: 0, speed: 2, count: 0, ease: 'out', easePower: 2 } },
+];
+
 // Per-layer ("part") animation (move/rotate/scale/path + ping-pong/speed/count/easing).
-export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCapture, setPathCapture }) {
+// 사용자가 저장한 커스텀 프리셋 (기본 프리셋과 같은 형식, 브라우저에 보관)
+const loadCustomPresets = () => { try { const v = JSON.parse(localStorage.getItem('mv_move_presets')); return Array.isArray(v) ? v : []; } catch { return []; } };
+const saveCustomPresets = (list) => { try { localStorage.setItem('mv_move_presets', JSON.stringify(list)); } catch { } };
+
+export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCapture, setPathCapture, cutProgress = 0 }) {
     const a = { ...LAYER_ANIM_DEFAULT, ...layer.anim };
+    const [custom, setCustom] = React.useState(loadCustomPresets);
+    const keys = Array.isArray(a.keys) ? a.keys : [];
+    const sortKeys = (arr) => [...arr].sort((x, y) => x.p - y.p);
+    const setKeys = (arr) => updLayerAnim(cut.id, layer.id, { keys: arr.length ? sortKeys(arr) : null });
+    // 현재 재생 위치(컷 내 진행도)에 키를 추가한다. 같은 위치면 덮어쓴다.
+    const addKeyHere = () => {
+        const p = Math.round(Math.max(0, Math.min(1, cutProgress)) * 100) / 100;
+        const cur = keys.find(k => Math.abs(k.p - p) < 0.005);
+        const val = { p, tx: a.tx || 0, ty: a.ty || 0, rot: a.rot || 0, scale: a.scale || 0, op: 1, ease: 'inout', easePower: 2 };
+        setKeys(cur ? keys.map(k => k === cur ? { ...k, ...val } : k) : [...keys, val]);
+    };
+    const updKey = (i, o) => setKeys(keys.map((k, j) => j === i ? { ...k, ...o } : k));
     return (
         <div style={{ padding: '6px 8px', background: '#15151f', borderTop: '1px solid #2a2a3a', display: 'flex', flexDirection: 'column', gap: 5 }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: 10, color: '#888' }}>파츠 애니메이션 (재생 시 적용)</span>
                 {layer.anim && <button className="small-btn" onClick={() => updLayers(cut.id, c => ({ layers: c.layers.map(l => l.id === layer.id ? { ...l, anim: undefined } : l) }))}>끄기</button>}
+            </div>
+            {/* 부드러운 모션 프리셋 — 누르면 아래 값들이 한 번에 채워지고, 이후 자유롭게 손볼 수 있다.
+                현재 설정을 내 프리셋으로 저장해 두고 다른 파츠에 재사용할 수도 있다. */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, alignItems: 'center' }} title="자주 쓰는 움직임을 한 번에 적용합니다. 적용 후 값은 직접 수정할 수 있습니다.">
+                {MOVE_PRESETS.map(p => (
+                    <button key={p.id} className="small-btn" style={{ fontSize: 9, padding: '2px 6px' }}
+                        onClick={() => updLayerAnim(cut.id, layer.id, p.v)}>{p.label}</button>
+                ))}
+                {custom.map((p, i) => (
+                    <button key={'c' + i} className="small-btn" style={{ fontSize: 9, padding: '2px 6px', borderColor: '#7c8cff' }}
+                        title="내 프리셋 · 우클릭으로 삭제"
+                        onContextMenu={e => { e.preventDefault(); const next = custom.filter((_, j) => j !== i); setCustom(next); saveCustomPresets(next); }}
+                        onClick={() => updLayerAnim(cut.id, layer.id, p.v)}>{p.label}</button>
+                ))}
+                <button className="small-btn" style={{ fontSize: 9, padding: '2px 6px', color: '#8bd' }}
+                    title="지금 설정을 내 프리셋으로 저장 (다른 파츠에서도 사용)"
+                    onClick={() => {
+                        const label = window.prompt('프리셋 이름', '내 모션');
+                        if (!label) return;
+                        const v = { mode: a.mode, tx: a.tx, ty: a.ty, rot: a.rot, scale: a.scale, speed: a.speed, count: a.count, ease: a.ease, easePower: a.easePower };
+                        const next = [...custom, { id: 'c' + Date.now(), label, v }];
+                        setCustom(next); saveCustomPresets(next);
+                    }}>+ 저장</button>
+            </div>
+            {/* 키프레임 트위닝: 시점마다 값을 찍어두면 그 사이를 자동으로 이어준다 */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3, borderTop: '1px solid #2a2a3a', paddingTop: 4 }}>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 10, color: '#c9a' }}
+                    title="재생 위치를 옮겨가며 '키 추가'를 누르면 그 사이가 자동으로 보간됩니다(트위닝). 키가 2개 이상이면 위의 이동/회전/크기 대신 키프레임이 적용됩니다.">
+                    <span style={{ width: 34, fontWeight: 700 }}>키프레임</span>
+                    <button className="small-btn" onClick={addKeyHere}>+ 키 추가 ({Math.round(Math.max(0, Math.min(1, cutProgress)) * 100)}%)</button>
+                    {keys.length > 0 && <button className="small-btn" onClick={() => setKeys([])}>전체 삭제</button>}
+                    {keys.length === 1 && <span style={{ color: '#e0a84e' }}>2개 이상부터 적용</span>}
+                    {keys.length >= 2 && <span style={{ color: '#5a8' }}>● {keys.length}개</span>}
+                </div>
+                {keys.map((k, i) => (
+                    <div key={i} style={{ display: 'flex', gap: 3, alignItems: 'center', fontSize: 9, color: '#999', flexWrap: 'wrap', paddingLeft: 36 }}>
+                        <NumIn value={Math.round(k.p * 100)} onChange={v => updKey(i, { p: Math.max(0, Math.min(100, v)) / 100 })} min={0} max={100} w={44} title="시점 (컷 내 %)" />%
+                        X<NumIn value={k.tx || 0} onChange={v => updKey(i, { tx: v })} w={50} title="가로 이동(px)" />
+                        Y<NumIn value={k.ty || 0} onChange={v => updKey(i, { ty: v })} w={50} title="세로 이동(px)" />
+                        ∠<NumIn value={k.rot || 0} onChange={v => updKey(i, { rot: v })} step={5} w={46} title="회전(도)" />
+                        ⤢<NumIn value={Math.round((k.scale || 0) * 100)} onChange={v => updKey(i, { scale: v / 100 })} step={5} w={46} title="크기 변화(%)" />
+                        α<NumIn value={Math.round((k.op ?? 1) * 100)} onChange={v => updKey(i, { op: Math.max(0, Math.min(100, v)) / 100 })} min={0} max={100} step={10} w={44} title="불투명도(%)" />
+                        <select className="time-input" style={{ width: 62, height: 18, fontSize: 9 }} value={k.ease || 'linear'}
+                            onChange={e => updKey(i, { ease: e.target.value })} title="이 키에서 다음 키까지의 가감속">
+                            {EASE_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                        </select>
+                        <button className="small-btn" style={{ fontSize: 9, padding: '1px 5px' }} onClick={() => setKeys(keys.filter((_, j) => j !== i))}>✕</button>
+                    </div>
+                ))}
             </div>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 10, color: '#aaa' }}>
                 <span style={{ width: 24 }}>이동</span>
@@ -103,9 +178,8 @@ export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCaptur
                 <label style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
                     <input type="checkbox" checked={a.mode === 'return'} onChange={e => updLayerAnim(cut.id, layer.id, { mode: e.target.checked ? 'return' : 'progress' })} /> 왕복
                 </label>
-                <span style={{ marginLeft: 4, color: a.mode === 'return' ? '#aaa' : '#555' }}>속도</span>
-                <input type="range" min="0.2" max="6" step="0.1" value={a.speed} disabled={a.mode !== 'return'} onChange={e => updLayerAnim(cut.id, layer.id, { speed: +e.target.value })} style={{ flex: 1, minWidth: 0 }} />
-                <span style={{ width: 26, textAlign: 'right', color: a.mode === 'return' ? '#aaa' : '#555' }}>{(+a.speed).toFixed(1)}x</span>
+                <span style={{ marginLeft: 4, color: '#aaa' }}>속도</span>
+                <NumIn value={a.speed} onChange={v => updLayerAnim(cut.id, layer.id, { speed: Math.max(0.01, v) })} step={0.5} min={0.01} w={56} title="재생 속도 배수 (상한 없음)" />x
                 <span style={{ color: a.mode === 'return' ? '#aaa' : '#555' }}>횟수</span>
                 <NumIn value={a.count} onChange={v => updLayerAnim(cut.id, layer.id, { count: Math.round(v) })} min={0} w={44} title="횟수 (0 = 컷 내내)" />
             </div>
@@ -113,12 +187,12 @@ export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCaptur
                 <span style={{ width: 24 }}>속도감</span>
                 <select value={a.ease} onChange={e => updLayerAnim(cut.id, layer.id, { ease: e.target.value })} className="time-input" style={{ flex: 1, minWidth: 0 }} title="가속/감속 (왕복 아닐 때)">{EASE_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
                 <span style={{ color: a.ease === 'linear' ? '#555' : '#aaa' }}>가중치</span>
-                <input type="range" min="1" max="4" step="0.5" value={a.easePower} disabled={a.ease === 'linear'} onChange={e => updLayerAnim(cut.id, layer.id, { easePower: +e.target.value })} style={{ width: 64 }} />
+                <NumIn value={a.easePower} onChange={v => updLayerAnim(cut.id, layer.id, { easePower: Math.max(0.1, v) })} step={0.5} min={0.1} w={50} title="가감속 세기 (상한 없음)" />
             </div>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 10, color: '#888' }}>
                 <span>기준점</span>
-                X<input type="range" min="0" max="1" step="0.05" value={a.pivotX} onChange={e => updLayerAnim(cut.id, layer.id, { pivotX: +e.target.value })} style={{ width: 54 }} />
-                Y<input type="range" min="0" max="1" step="0.05" value={a.pivotY} onChange={e => updLayerAnim(cut.id, layer.id, { pivotY: +e.target.value })} style={{ width: 54 }} />
+                X<NumIn value={Math.round((a.pivotX ?? 0.5) * 100)} onChange={v => updLayerAnim(cut.id, layer.id, { pivotX: v / 100 })} step={5} w={50} title="기준점 X (%)" />
+                Y<NumIn value={Math.round((a.pivotY ?? 0.5) * 100)} onChange={v => updLayerAnim(cut.id, layer.id, { pivotY: v / 100 })} step={5} w={50} title="기준점 Y (%)" />
             </div>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 10, color: '#8bd' }} title="머리카락·천처럼 계속 흔들리는 효과. 기준점 Y를 위(0)로 두면 아래가 크게 흔들립니다.">
                 <span style={{ width: 24 }}>흔들</span>

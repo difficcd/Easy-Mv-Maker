@@ -41,29 +41,80 @@ function signedDist(mask, w, h) {
 // interpolation: the shape itself moves/grows between frames (not an A/B crossfade).
 // Filled with the A->B average ink colour; soft 1px edge.
 export function morphFrames(aImg, bImg, t) {
+    return morphSequence(aImg, bImg, [t])[0];
+}
+
+// 여러 중간 프레임을 한 번에. 거리장(sA/sB) 계산이 이 작업의 대부분이고 t와 무관하므로
+// 한 번만 구해 재사용한다 — 프레임마다 morphFrames를 부르면 N배 느려진다.
+export function morphSequence(aImg, bImg, ts) {
+    const f = morphPrepare(aImg, bImg);
+    return ts.map(f);
+}
+// 거리장을 한 번 계산해 두고, 중간 프레임 한 장을 만드는 함수를 돌려준다.
+// 호출부가 프레임 사이사이에 진행률을 갱신하거나 UI에 양보할 수 있게 하기 위함.
+export function morphPrepare(aImg, bImg) {
     const w = aImg.width, h = aImg.height, N = w * h;
     const A = aImg.data, B = bImg.data;
-    const mA = new Uint8Array(N), mB = new Uint8Array(N);
+    const mA = new Uint8Array(N), mBraw = new Uint8Array(N);
     let ar = 0, ag = 0, ab = 0, an = 0, br = 0, bg = 0, bb = 0, bn = 0;
-    for (let i = 0; i < N; i++) {
-        const o = i * 4;
-        if (A[o + 3] > 16) { mA[i] = 1; ar += A[o]; ag += A[o + 1]; ab += A[o + 2]; an++; }
-        if (B[o + 3] > 16) { mB[i] = 1; br += B[o]; bg += B[o + 1]; bb += B[o + 2]; bn++; }
+    let ax = 0, ay = 0, bx = 0, by = 0;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const i = y * w + x, o = i * 4;
+        if (A[o + 3] > 16) { mA[i] = 1; ar += A[o]; ag += A[o + 1]; ab += A[o + 2]; ax += x; ay += y; an++; }
+        if (B[o + 3] > 16) { mBraw[i] = 1; br += B[o]; bg += B[o + 1]; bb += B[o + 2]; bx += x; by += y; bn++; }
     }
-    const sA = signedDist(mA, w, h), sB = signedDist(mB, w, h);
     const cr = an ? ar / an : 0, cg = an ? ag / an : 0, cb = an ? ab / an : 0;
     const dr = bn ? br / bn : cr, dg = bn ? bg / bn : cg, db = bn ? bb / bn : cb;
-    const R = Math.round(cr + (dr - cr) * t), G = Math.round(cg + (dg - cg) * t), Bl = Math.round(cb + (db - cb) * t);
-    const out = new ImageData(w, h), O = out.data;
-    for (let i = 0; i < N; i++) {
-        const s = (1 - t) * sA[i] + t * sB[i];
-        if (s < 1) {
-            const o = i * 4;
-            O[o] = R; O[o + 1] = G; O[o + 2] = Bl;
-            O[o + 3] = s <= 0 ? 255 : Math.round((1 - s) * 255);
-        }
+    // 한쪽이 비어 있으면 모핑할 형태가 없다 → 알파 크로스페이드로 물러선다.
+    if (!an || !bn) {
+        return (t) => {
+            const out = new ImageData(w, h), O = out.data;
+            for (let i = 0; i < N; i++) {
+                const o = i * 4;
+                const aA = A[o + 3] * (1 - t), aB = B[o + 3] * t;
+                const al = aA + aB; if (al < 1) continue;
+                O[o] = (A[o] * aA + B[o] * aB) / al; O[o + 1] = (A[o + 1] * aA + B[o + 1] * aB) / al;
+                O[o + 2] = (A[o + 2] * aA + B[o + 2] * aB) / al; O[o + 3] = Math.min(255, al);
+            }
+            return out;
+        };
     }
-    return out;
+    // 두 그림이 떨어져 있으면 거리장을 그대로 섞을 때 중간이 통째로 비어버린다
+    // (중간 지점은 양쪽 모두 '바깥'이라 보간값이 계속 양수라서 아무것도 안 그려짐).
+    // 그래서 무게중심을 맞춘 뒤 '형태'만 모핑하고, '이동'은 따로 보간한다
+    // → 중간 프레임이 실제로 옮겨가면서 변형된다.
+    const cax = ax / an, cay = ay / an, cbx = bx / bn, cby = by / bn;
+    const shx = Math.round(cax - cbx), shy = Math.round(cay - cby);
+    const mB = new Uint8Array(N);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const sx = x - shx, sy = y - shy;
+        if (sx < 0 || sy < 0 || sx >= w || sy >= h) continue;
+        if (mBraw[sy * w + sx]) mB[y * w + x] = 1;
+    }
+    const sA = signedDist(mA, w, h);
+    const sB = signedDist(mB, w, h);
+    const dxTot = cbx - cax, dyTot = cby - cay;
+    return (t) => {
+        const R = Math.round(cr + (dr - cr) * t), G = Math.round(cg + (dg - cg) * t), Bl = Math.round(cb + (db - cb) * t);
+        const ox = dxTot * t, oy = dyTot * t;
+        const out = new ImageData(w, h), O = out.data;
+        for (let y = 0; y < h; y++) {
+            const sy = Math.round(y - oy);
+            if (sy < 0 || sy >= h) continue;
+            for (let x = 0; x < w; x++) {
+                const sx = Math.round(x - ox);
+                if (sx < 0 || sx >= w) continue;
+                const i = sy * w + sx;
+                const s = (1 - t) * sA[i] + t * sB[i];
+                if (s < 1) {
+                    const o = (y * w + x) * 4;
+                    O[o] = R; O[o + 1] = G; O[o + 2] = Bl;
+                    O[o + 3] = s <= 0 ? 255 : Math.round((1 - s) * 255);
+                }
+            }
+        }
+        return out;
+    };
 }
 
 export const DEFAULT_CUT_DURATION = 1;
@@ -845,7 +896,7 @@ export function computeCutAnim(ac, time, cw = CANVAS_W, ch = CANVAS_H) {
     return { alpha: Math.max(0, alpha), sx, sy, tx, ty };
 }
 
-export const LAYER_ANIM_DEFAULT = { mode: 'progress', speed: 1, count: 0, tx: 0, ty: 0, rot: 0, scale: 0, pivotX: 0.5, pivotY: 0.5, path: null, ease: 'linear', easePower: 2, swayAmount: 0, swaySpeed: 1, swayCurve: null, swayProfile: null, swayAxis: 'y' };
+export const LAYER_ANIM_DEFAULT = { mode: 'progress', speed: 1, count: 0, tx: 0, ty: 0, rot: 0, scale: 0, pivotX: 0.5, pivotY: 0.5, path: null, ease: 'linear', easePower: 2, swayAmount: 0, swaySpeed: 1, swayCurve: null, swayProfile: null, swayAxis: 'y', keys: null };
 
 // Easing applied to a 0..1 progress. type: linear | in (slow→fast) | out (fast→slow)
 // | inout. power (>=1) is the user-adjustable strength/weight.
@@ -979,19 +1030,51 @@ export function computeTextAnim(t, ac, time) {
     return { alpha, dx, dy, scale, blur, rot, chars };
 }
 
+// 키프레임 트위닝: 지정한 시점들 사이를 보간한다 (구간마다 가감속을 따로 줄 수 있음).
+// 이게 애니메이션에서 말하는 본래의 '트위닝'이다.
+export function sampleKeys(keys, p) {
+    const n = keys.length;
+    if (p <= keys[0].p) return keys[0];
+    if (p >= keys[n - 1].p) return keys[n - 1];
+    for (let i = 0; i < n - 1; i++) {
+        const k0 = keys[i], k1 = keys[i + 1];
+        if (p >= k0.p && p <= k1.p) {
+            const span = Math.max(1e-6, k1.p - k0.p);
+            const u = applyEase((p - k0.p) / span, k0.ease || 'linear', k0.easePower ?? 2);
+            const mix = (x, y) => (x ?? 0) + ((y ?? 0) - (x ?? 0)) * u;
+            return {
+                tx: mix(k0.tx, k1.tx), ty: mix(k0.ty, k1.ty), rot: mix(k0.rot, k1.rot),
+                scale: mix(k0.scale, k1.scale), op: mix(k0.op ?? 1, k1.op ?? 1),
+            };
+        }
+    }
+    return keys[n - 1];
+}
+
 export function computeLayerAnim(layer, ac, time, cw = CANVAS_W, ch = CANVAS_H) {
     const a = layer.anim;
     if (!a) return null;
     const dur = Math.max(0.0001, ac.endTime - ac.startTime);
     const t = Math.max(0, Math.min(1, (time - ac.startTime) / dur));
     const speed = a.speed || 1, count = a.count || 0;
-    let prog;
-    if (a.mode === 'return') { const cyc = speed * t; prog = (count > 0 && cyc >= count) ? 0 : Math.sin(2 * Math.PI * cyc); }
-    else prog = applyEase(t, a.ease, a.easePower);
-    let tx = (a.tx || 0) * prog, ty = (a.ty || 0) * prog;
-    const rot = (a.rot || 0) * prog * Math.PI / 180;
-    const sc = 1 + (a.scale || 0) * prog;
-    if (a.path && a.path.length > 1) {
+    const keys = Array.isArray(a.keys) && a.keys.length >= 2 ? a.keys : null;
+    let tx, ty, rot, sc, alpha = 1, prog;
+    if (keys) {
+        // 키프레임이 있으면 그것이 이동/회전/크기/투명도를 지배한다 (속도 배수로 재생 빠르기 조절).
+        const k = sampleKeys(keys, Math.max(0, Math.min(1, t * speed)));
+        tx = k.tx || 0; ty = k.ty || 0;
+        rot = (k.rot || 0) * Math.PI / 180;
+        sc = 1 + (k.scale || 0);
+        alpha = Math.max(0, Math.min(1, k.op ?? 1));
+        prog = t;
+    } else {
+        if (a.mode === 'return') { const cyc = speed * t; prog = (count > 0 && cyc >= count) ? 0 : Math.sin(2 * Math.PI * cyc); }
+        else prog = applyEase(t, a.ease, a.easePower);
+        tx = (a.tx || 0) * prog; ty = (a.ty || 0) * prog;
+        rot = (a.rot || 0) * prog * Math.PI / 180;
+        sc = 1 + (a.scale || 0) * prog;
+    }
+    if (!keys && a.path && a.path.length > 1) {
         let s;
         if (a.mode === 'return') { let x = 2 * speed * t; if (count > 0 && x >= 2 * count) x = 0; s = triwave(x); }
         else s = applyEase(t, a.ease, a.easePower);
@@ -1013,9 +1096,9 @@ export function computeLayerAnim(layer, ac, time, cw = CANVAS_W, ch = CANVAS_H) 
     const axis = a.swayAxis === 'x' ? 'x' : 'y';
     // 프로파일 가중치 1 = 기존 shear가 축 끝에서 만들던 변위와 같은 크기 (감각 유지)
     const swayDisp = prof ? (sway / 100) * wave * (axis === 'y' ? ch : cw) : 0;
-    if (tx === 0 && ty === 0 && rot === 0 && sc === 1 && shear === 0 && !prof) return null;
+    if (tx === 0 && ty === 0 && rot === 0 && sc === 1 && shear === 0 && !prof && alpha === 1) return null;
     return {
-        tx, ty, rot, sc, shear: prof ? 0 : shear, px: (a.pivotX ?? 0.5) * cw, py: (a.pivotY ?? 0.5) * ch,
+        tx, ty, rot, sc, alpha, shear: prof ? 0 : shear, px: (a.pivotX ?? 0.5) * cw, py: (a.pivotY ?? 0.5) * ch,
         swayProfile: prof, swayAxis: axis, swayDisp,
     };
 }

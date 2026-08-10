@@ -7,7 +7,7 @@ import {
     DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT, FONT_PRESETS,
     pointInPolygon, dist, safeArray, hexToRgb, bucketFillTransparentRegion,
     layerKey, imageDataToDataURL, dataURLToImageData, drawStrokesOnCtx,
-    flattenForCanvas, flattenLayersInUiOrder, strokeSig, extractVideoFrames, fitRect, detectSceneCuts, curveToWave, swayWeightAt,
+    flattenForCanvas, flattenLayersInUiOrder, strokeSig, extractVideoFrames, fitRect, detectSceneCuts, curveToWave, swayWeightAt, morphPrepare,
     ANIM_DEFAULT, computeCutAnim, LAYER_ANIM_DEFAULT, computeLayerAnim, TEXT_ANIM_DEFAULT, computeTextAnim,
 } from './canvasUtils';
 
@@ -1520,6 +1520,52 @@ export default function App() {
     };
     // Duplicate a cut as the *next frame*: clone it right after itself and push any
     // later cuts on the same track to make room. This is the core frame-by-frame flow.
+    // #11 트위닝: 현재 컷과 다음 컷 사이를 자동 생성한 중간 프레임으로 채운다.
+    // 단순 크로스페이드가 아니라 거리장 기반 모핑이라 '형태 자체'가 이동/변형된다.
+    const flattenCutToImageData = (cut) => {
+        const cnv = document.createElement('canvas'); cnv.width = CANVAS_W; cnv.height = CANVAS_H;
+        const c2 = cnv.getContext('2d');
+        const order = flattenLayersInUiOrder(cut.layers || []).filter(l => l.type === 'layer' && l.visible !== false);
+        for (let i = order.length - 1; i >= 0; i--) { const lc = ensureLayerCanvas(cut.id, order[i]); if (lc) c2.drawImage(lc, 0, 0); }
+        return c2.getImageData(0, 0, CANVAS_W, CANVAS_H);
+    };
+    const doTween = async () => {
+        const A = cuts.find(c => c.id === currentCutId);
+        if (!A) return;
+        const B = cuts.filter(c => c.track === A.track && c.startTime > A.startTime).sort((a, b) => a.startTime - b.startTime)[0];
+        if (!B) { alert('다음 컷이 없습니다. 트위닝은 현재 컷과 다음 컷 사이를 채웁니다.'); return; }
+        const s = window.prompt(`"${A.name}" → "${B.name}" 사이에 넣을 중간 프레임 개수 (1~12)`, '3');
+        if (!s) return;
+        const n = Math.max(1, Math.min(12, Math.round(+s) || 3));
+        setLoadProgress({ label: '중간 프레임 만드는 중', done: 0, total: n });
+        await new Promise(r => setTimeout(r, 30)); // 게이지를 한 번 그리고 시작
+        try {
+            const make = morphPrepare(flattenCutToImageData(A), flattenCutToImageData(B));
+            const dur = A.endTime - A.startTime;
+            const base = Date.now();
+            const newCuts = [];
+            for (let i = 0; i < n; i++) {
+                const img = make((i + 1) / (n + 1));
+                const bitmapId = storeBitmap(img);
+                const st = A.endTime + i * dur;
+                newCuts.push({
+                    id: base + i + 1, name: `${A.name}~${i + 1}`, startTime: st, endTime: st + dur, track: A.track,
+                    layers: [{ id: 1, name: 'L1', type: 'layer', parentId: null, visible: true, redoStrokes: [], strokes: [{ id: base + 1000 + i, tool: 'paste', bitmapId, x: 0, y: 0 }] }],
+                    activeLayerId: 1, texts: [],
+                });
+                setLoadProgress({ label: '중간 프레임 만드는 중', done: i + 1, total: n });
+                await new Promise(r => setTimeout(r, 0)); // 각 장마다 UI에 양보 (멈춘 것처럼 보이지 않게)
+            }
+            const shift = n * dur;
+            setCuts(prev => [
+                ...prev.map(c => (c.track === A.track && c.startTime >= A.endTime - 1e-9)
+                    ? { ...c, startTime: c.startTime + shift, endTime: c.endTime + shift } : c),
+                ...newCuts,
+            ]);
+        } catch (e) { alert('트위닝 실패: ' + e.message); }
+        finally { setLoadProgress(null); }
+    };
+
     const handleDuplicateCut = (id) => {
         const cut = cuts.find(c => c.id === (id ?? currentCutId));
         if (!cut) return;
@@ -2705,6 +2751,7 @@ export default function App() {
                 const la = playing ? computeLayerAnim(l, ac, t, CANVAS_W, CANVAS_H) : null;
                 ctx.save();
                 if (la) {
+                    if (la.alpha != null && la.alpha < 1) ctx.globalAlpha *= la.alpha; // 키프레임 투명도
                     ctx.translate(la.px + la.tx, la.py + la.ty);
                     ctx.rotate(la.rot);
                     ctx.scale(la.sc, la.sc);
@@ -2718,22 +2765,25 @@ export default function App() {
                 const mi = maskEntry?.imageData;
 
                 if (la?.swayProfile && (!shouldMask || (!mb && !mi))) {
-                    // 지점별 흔들림: 축을 따라 얇게 잘라 각 구간을 다른 양만큼 밀어준다.
-                    // 단일 shear는 한 방향 기울임만 되지만, 이렇게 하면 위는 유지하고 가운데는
-                    // 왼쪽, 아래는 오른쪽으로 꺾는 식의 변형이 가능하다(비-어파인).
-                    const SLICES = 48;
+                    // 지점별 흔들림: 축을 따라 잘라 구간마다 다른 양으로 휜다(비-어파인이라 단일 shear로는 불가).
+                    // 핵심: 각 조각을 통째로 '옮기면' 경계에서 어긋나 찢어진다. 조각마다 기울기(shear)를 줘
+                    // 변위가 조각 안에서 연속으로 변하게 하고, 경계값을 이웃과 정확히 같게 맞춘다 → 이음매 없음.
+                    const SLICES = 64;
                     const vertical = la.swayAxis === 'y';
                     const span = vertical ? CANVAS_H : CANVAS_W;
+                    const dispAt = (pos) => la.swayDisp * swayWeightAt(la.swayProfile, pos / span);
                     for (let sIdx = 0; sIdx < SLICES; sIdx++) {
-                        const a0 = Math.floor(sIdx * span / SLICES);
-                        const a1 = Math.floor((sIdx + 1) * span / SLICES);
+                        const a0 = Math.round(sIdx * span / SLICES);
+                        const a1 = Math.round((sIdx + 1) * span / SLICES);
                         const len = a1 - a0; if (len <= 0) continue;
-                        const p = (a0 + len / 2) / span;
-                        const d = la.swayDisp * swayWeightAt(la.swayProfile, p);
-                        // 슬라이스 경계의 미세한 틈을 막으려고 1px 겹쳐 그린다.
-                        const ov = sIdx < SLICES - 1 ? 1 : 0;
-                        if (vertical) ctx.drawImage(layerCanvas, 0, a0, CANVAS_W, len + ov, d, a0, CANVAS_W, len + ov);
-                        else ctx.drawImage(layerCanvas, a0, 0, len + ov, CANVAS_H, a0, d, len + ov, CANVAS_H);
+                        const d0 = dispAt(a0), d1 = dispAt(a1);
+                        const k = (d1 - d0) / len;  // 조각 내부 기울기
+                        const m = d0 - k * a0;      // a0에서 정확히 d0이 되도록
+                        ctx.save();
+                        // 축 방향 좌표는 그대로 두므로(대각 성분 1, 해당 비대각 0) 조각들이 빈틈 없이 붙는다.
+                        if (vertical) { ctx.transform(1, 0, k, 1, m, 0); ctx.drawImage(layerCanvas, 0, a0, CANVAS_W, len, 0, a0, CANVAS_W, len); }
+                        else { ctx.transform(1, k, 0, 1, 0, m); ctx.drawImage(layerCanvas, a0, 0, len, CANVAS_H, a0, 0, len, CANVAS_H); }
+                        ctx.restore();
                     }
                 } else if (!shouldMask || (!mb && !mi)) {
                     ctx.drawImage(layerCanvas, 0, 0);
@@ -3446,7 +3496,8 @@ export default function App() {
                         <JitterPanel cut={cut} layer={layer} updLayer={updLayerProps} />
                     )}
                     {!isFolder && animLayer && animLayer.cutId === cut.id && animLayer.layerId === layer.id && (
-                        <LayerAnimPanel cut={cut} layer={layer} updLayerAnim={updLayerAnim} updLayers={updLayers} pathCapture={pathCapture} setPathCapture={setPathCapture} />
+                        <LayerAnimPanel cut={cut} layer={layer} updLayerAnim={updLayerAnim} updLayers={updLayers} pathCapture={pathCapture} setPathCapture={setPathCapture}
+                            cutProgress={(currentTime - cut.startTime) / Math.max(0.0001, cut.endTime - cut.startTime)} />
                     )}
                     {dt === 'after' && <div className="drop-line" />}
                     {isFolder && !layer.collapsed && renderLayers(cut, layer.id, depth + 1)}
@@ -3811,6 +3862,7 @@ export default function App() {
                             <button className="tool-btn" onClick={globalUndo} title="Undo"><Undo size={15} /><span className="tool-label">Undo</span></button>
                             <button className="tool-btn" onClick={globalRedo} title="Redo"><Redo size={15} /><span className="tool-label">Redo</span></button>
                             <button className="tool-btn" onClick={handleClearCut} title="현재 컷 전체 비우기"><Trash size={15} /><span className="tool-label">비우기</span></button>
+                            <button className="tool-btn" onClick={doTween} title="현재 컷과 다음 컷 사이를 자동 중간 프레임으로 채웁니다 (형태 모핑)"><Repeat size={15} /><span className="tool-label">트위닝</span></button>
                             {hasLassoClip && <button className="tool-btn" onClick={pasteLassoSelection} title="복사한 올가미 선택을 현재 레이어에 붙여넣기"><ClipboardPaste size={15} /><span className="tool-label">올가미↓</span></button>}
                         </div>
                         <div className="tool-divider" />
