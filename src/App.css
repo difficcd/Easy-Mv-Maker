@@ -48,6 +48,22 @@ body {
     overflow: hidden;
 }
 
+/* This is a tool, not a document. Dragging anything - a panel header, a splitter, a cut, a
+   marquee - used to leave every label it passed over highlighted as selected text. Selection is
+   off for the whole shell and switched back on only where text is genuinely edited. */
+.app-container {
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.app-container input,
+.app-container textarea,
+.app-container select,
+.app-container [contenteditable="true"] {
+    user-select: text;
+    -webkit-user-select: text;
+}
+
 /* Top bar */
 .top-bar {
     height: 48px;
@@ -779,19 +795,6 @@ canvas {
     display: flex;
     flex-direction: column;
     flex-shrink: 0;
-    /* Dragging a marquee across the timeline used to select the track labels, ruler numbers and
-       part names as text, leaving them highlighted behind the selection. Only the cut blocks
-       themselves opted out; the container has to. */
-    user-select: none;
-    -webkit-user-select: none;
-}
-
-/* Fields inside the timeline still need real text selection. */
-.timeline input,
-.timeline textarea,
-.timeline select {
-    user-select: text;
-    -webkit-user-select: text;
 }
 
 .tl-controls {
