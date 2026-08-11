@@ -10,6 +10,7 @@ import { Timeline } from './Timeline';
 import { ProjectPicker, ProgressOverlay, SettingsModal, HelpModal, VideoImportModal, SceneDetectModal, LinkPromptModal } from './Modals';
 import { tr, loadLang, saveLang, setLangValue } from './i18n';
 import { moveLayer } from './layerOps.js';
+import { dragCut, resizeCut } from './cutOps.js';
 import {
     DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT, FONT_PRESETS,
     pointInPolygon, dist, safeArray, hexToRgb, bucketFillTransparentRegion,
@@ -974,23 +975,11 @@ export default function App() {
                     });
                     return;
                 }
+                // The geometry is in cutOps and unit tested; only the guide line is a side effect.
                 setCuts(prev => {
-                    const tc = prev.find(c => c.id === resizingData.cutId); if (!tc) return prev;
-                    const others = prev.filter(o => o.id !== tc.id && o.track === tc.track);
-                    const edges = [0, ...others.flatMap(o => [o.startTime, o.endTime])];
-                    const snap = (v) => { for (const ed of edges) { if (Math.abs((v - ed) * pps) <= 8) return ed; } return v; };
-                    if (resizingData.edge === 'left') {
-                        let ns = snap(Math.max(0, i0 + dt));
-                        for (const o of others) if (ns < o.endTime && i0 >= o.endTime) ns = o.endTime;
-                        ns = Math.min(ns, i1 - 0.05);
-                        setSnapLinePos(ns * pps + 60);
-                        return prev.map(c => c.id === tc.id ? { ...c, startTime: ns } : c);
-                    } else {
-                        let ne = snap(Math.max(i0 + 0.05, i1 + dt));
-                        for (const o of others) if (ne > o.startTime && i1 <= o.startTime) ne = o.startTime;
-                        setSnapLinePos(ne * pps + 60);
-                        return prev.map(c => c.id === tc.id ? { ...c, endTime: ne } : c);
-                    }
+                    const r = resizeCut(prev, { cutId: resizingData.cutId, edge: resizingData.edge, initialStart: i0, initialEnd: i1 }, dt, pps);
+                    setSnapLinePos(r.snapAt == null ? null : r.snapAt * pps + 60);
+                    return r.cuts;
                 });
             } else if (draggingCutData) {
                 // A cut only moves once the press is "armed" (long-press on touch, immediate
@@ -1028,28 +1017,9 @@ export default function App() {
                     return;
                 }
                 setCuts(prev => {
-                    const tc = prev.find(c => c.id === draggingCutData.cutId); if (!tc) return prev;
-                    let ns = Math.max(0, draggingCutData.initialStart + dt), dur = tc.endTime - tc.startTime;
-                    const nt = Math.max(0, Math.min(numTracks - 1, draggingCutData.initialTrack + trackOff));
-                    const others = prev.filter(o => o.id !== tc.id && o.track === nt);
-                    const edges = [0, ...others.flatMap(o => [o.startTime, o.endTime])];
-                    const snap = (v) => { for (const e of edges) { if (Math.abs((v - e) * pps) <= 8) return e; } return v; };
-                    const snStart = snap(ns);
-                    const snEnd = snap(ns + dur);
-                    const dS = Math.abs((snStart - ns) * pps), dE = Math.abs((snEnd - (ns + dur)) * pps);
-                    let snapped = false;
-                    if (dS <= 8 && dS <= dE) { ns = snStart; setSnapLinePos(ns * pps + 60); snapped = true; }
-                    else if (dE <= 8) { ns = snEnd - dur; setSnapLinePos((ns + dur) * pps + 60); snapped = true; }
-                    if (!snapped) setSnapLinePos(null);
-                    for (const o of others) {
-                        if (ns < o.endTime && ns + dur > o.startTime) {
-                            const sideL = o.startTime - dur, sideR = o.endTime;
-                            ns = Math.abs(ns - sideL) < Math.abs(ns - sideR) ? sideL : sideR;
-                            setSnapLinePos(null);
-                        }
-                    }
-                    ns = Math.max(0, ns);
-                    return prev.map(c => c.id === tc.id ? { ...c, startTime: ns, endTime: ns + dur, track: nt } : c);
+                    const r = dragCut(prev, draggingCutData, dt, trackOff, numTracks, pps);
+                    setSnapLinePos(r.snapAt == null ? null : r.snapAt * pps + 60);
+                    return r.cuts;
                 });
             }
         };
