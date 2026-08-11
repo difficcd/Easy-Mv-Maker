@@ -13,12 +13,14 @@
 // .map(t => ... t('표시') ...) would let the local shadow the function and throw at runtime;
 // that exact shape came up during the conversion.
 
-let lang = 'ko';
+let lang = 'en';
 
 export const getLang = () => lang;
 export const setLangValue = (l) => { lang = l === 'en' ? 'en' : 'ko'; };
+// English is the default: the repository, the README and the screenshots are English, so a
+// first-time visitor should land in English. Korean is one click away and is remembered.
 export const loadLang = () => {
-    try { return localStorage.getItem('mv_lang') === 'en' ? 'en' : 'ko'; } catch { return 'ko'; }
+    try { return localStorage.getItem('mv_lang') === 'ko' ? 'ko' : 'en'; } catch { return 'en'; }
 };
 export const saveLang = (l) => {
     try { localStorage.setItem('mv_lang', l); } catch { }

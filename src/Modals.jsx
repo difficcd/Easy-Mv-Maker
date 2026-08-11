@@ -81,8 +81,8 @@ export function SettingsModal({
                         <div>
                             <div className="color-section-label" style={{ marginBottom: 6 }}>{tr('언어')}</div>
                             <div className="pal-tabs">
-                                <button className={`pal-tab${lang === 'ko' ? ' active' : ''}`} onClick={() => changeLang('ko')}>한국어</button>
                                 <button className={`pal-tab${lang === 'en' ? ' active' : ''}`} onClick={() => changeLang('en')}>English</button>
+                                <button className={`pal-tab${lang === 'ko' ? ' active' : ''}`} onClick={() => changeLang('ko')}>한국어</button>
                             </div>
                         </div>
                         <div>

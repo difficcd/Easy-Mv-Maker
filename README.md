@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshot.png" alt="Easy MV Maker — tool panel, canvas, cut/layer tree and a six-cut timeline" width="900">
+  <img src="docs/screenshot.png" alt="Easy MV Maker — tool panel, canvas, cut/layer tree and timeline" width="900">
 </p>
 
 <p align="center"><sub>The accent colour above is user-set — one colour drives the whole UI.</sub></p>
@@ -47,11 +47,15 @@
 - Autosave, `.emv` save/open, server save
 - Automatic server backup every 5 minutes, keeping the newest 12 — runs in the background without blocking the UI
 - Video import from a local file or URL: frame extraction, scene-change detection, audio track
+- Imports match the source video's own size by default, so a vertical shorts clip fills the canvas instead of being letterboxed; landscape and portrait presets are there too
 - WebM export, PWA, Android packaging
 
 **UI**
+- English and Korean, switchable in Settings
+- Dockable panels: drag a panel by its header to the left or right edge to dock it there, or drop it in the middle to pull it out as a floating window. The arrangement is remembered
+- Tab hides every panel to leave just the canvas, and restores exactly what was open
+- Dragging the playhead scrubs with animation, so you see the motion rather than static artwork sliding past
 - Custom theme colour — one colour derives an HSL ramp applied across the whole app (playback bar, panels, buttons included), with neutral saturation adjustable too
-- Left icon rail toggles the tool and colour panels independently, Clip Studio style; panel widths are drag-resizable and reflow with width
 - User-definable keyboard shortcuts
 - Long jobs report progress in a corner chip instead of a full-screen overlay
 
@@ -90,14 +94,19 @@ npm run android:open     # open Android Studio -> run / build APK
 
 ```
 src/
-  App.jsx          app state, drawing pipeline, timeline logic (~4,300 lines)
+  App.jsx          app state, drawing pipeline, timeline logic, panel docking (~4,500 lines)
   canvasUtils.js   pure helpers: smoothing, boiling, fill, distance-field morph, waveforms
+  i18n.js          the English dictionary (~500 entries) and the tr() lookup
   Modals.jsx       project picker, settings, help, video import, scene detect
   TopBar.jsx  Timeline.jsx  CutLayerPanel.jsx  ColorPanel.jsx  AnimPanels.jsx
   globals.d.ts     ambient declarations (EyeDropper, Capacitor, File System Access…)
 server/index.js    project storage + backup rotation + video/audio import API
 scripts/           hook-warning baseline guard
 ```
+
+The Korean source text doubles as the translation key, gettext style, so a missing entry shows
+Korean rather than an empty label. The lookup is named `tr`, not `t`, because `t` is already a
+local variable in dozens of places here.
 
 ## Notes
 

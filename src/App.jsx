@@ -53,7 +53,7 @@ const hexToHsl = (hex) => {
     return { h: hh, s: sat, l };
 };
 const hsl = (h, s, l) => `hsl(${h.toFixed(0)} ${Math.max(0, Math.min(100, s * 100)).toFixed(0)}% ${Math.max(0, Math.min(100, l * 100)).toFixed(0)}%)`;
-const applyTheme = (base, uiSat = 18) => {
+const applyTheme = (base, uiSat = 3) => {
     // A bad value yields hsl(NaN ...), which CSS ignores, silently reverting to the default.
     // Guard against it up front.
     if (!/^#[0-9a-fA-F]{6}$/.test(String(base))) base = DEFAULT_THEME;
@@ -380,7 +380,7 @@ export default function App() {
     const [themeRecent, setThemeRecent] = useState(() => {
         try { const v = JSON.parse(localStorage.getItem('mv_theme_recent')); return Array.isArray(v) ? v : []; } catch { return []; }
     });
-    const [uiSat, setUiSat] = useState(() => { const v = parseFloat(localStorage.getItem('mv_ui_sat')); return isNaN(v) ? 18 : v; });
+    const [uiSat, setUiSat] = useState(() => { const v = parseFloat(localStorage.getItem('mv_ui_sat')); return isNaN(v) ? 3 : v; });
     useEffect(() => {
         applyTheme(themeColor, uiSat);
         try { localStorage.setItem('mv_theme', themeColor); localStorage.setItem('mv_ui_sat', String(uiSat)); } catch { }
