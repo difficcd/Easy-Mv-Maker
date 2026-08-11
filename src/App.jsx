@@ -10,6 +10,7 @@ import { Timeline } from './Timeline';
 import { ProjectPicker, ProgressOverlay, SettingsModal, HelpModal, VideoImportModal, SceneDetectModal, LinkPromptModal } from './Modals';
 import { tr, loadLang, saveLang, setLangValue } from './i18n';
 import { moveLayer } from './layerOps.js';
+import { resolveDrawLayer as resolveDrawLayerPure, commitStroke } from './layerOps.js';
 import { dragCut, resizeCut } from './cutOps.js';
 import {
     DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT, FONT_PRESETS,
@@ -525,31 +526,13 @@ export default function App() {
     // Work out which layer to actually draw into: if the active one is a folder or missing,
     // fall back to the topmost visible drawing layer. A hidden active layer is kept, but made
     // visible again on commit, so a stroke never disappears.
-    const resolveDrawLayer = (cut) => {
-        if (!cut) return null;
-        const a = cut.layers.find(l => l.id === cut.activeLayerId);
-        if (a && a.type === 'layer') return a;
-        const drawables = flattenLayersInUiOrder(cut.layers); // the visible leaf layers
-        if (drawables.length) return drawables[drawables.length - 1];
-        return cut.layers.find(l => l.type === 'layer') || null;
-    };
+    const resolveDrawLayer = (cut) => resolveDrawLayerPure(cut, flattenLayersInUiOrder);
     // Commit the stroke to its target layer and force that layer and its parent folders
     // visible, so the result is always on screen.
     const commitStrokeToLayer = (cutId, layerId, st) => {
-        updLayers(cutId, c => {
-            const byId = new Map(c.layers.map(l => [l.id, l]));
-            const reveal = new Set([layerId]);
-            let cur = byId.get(layerId);
-            while (cur && cur.parentId != null) { reveal.add(cur.parentId); cur = byId.get(cur.parentId); }
-            return {
-                activeLayerId: layerId,
-                layers: c.layers.map(l => {
-                    if (l.id === layerId) return { ...l, visible: true, strokes: [...l.strokes, st] };
-                    if (reveal.has(l.id)) return { ...l, visible: true };
-                    return l;
-                }),
-            };
-        });
+        // A missing layer yields null; an empty patch then leaves the cut alone rather than
+        // writing a half-formed one.
+        updLayers(cutId, c => commitStroke(c.layers, layerId, st) || {});
     };
 
     const cancelSelection = () => {

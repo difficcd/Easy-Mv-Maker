@@ -57,3 +57,48 @@ export function moveLayer(layers, layerId, targetId, position = 'after') {
     }
     return next;
 }
+
+/**
+ * Which layer a stroke should actually go into.
+ *
+ * The active layer is not always usable: it can be a folder, or point at something that no longer
+ * exists. Falling back to the topmost visible drawable layer is what stops a stroke landing
+ * nowhere. A hidden active layer is deliberately kept - commitStroke reveals it instead, so
+ * drawing into a hidden layer shows the result rather than silently swallowing it.
+ */
+export function resolveDrawLayer(cut, flattenVisibleLeaves) {
+    if (!cut || !Array.isArray(cut.layers)) return null;
+    const active = cut.layers.find(l => l.id === cut.activeLayerId);
+    if (active && active.type === 'layer') return active;
+    const drawables = flattenVisibleLeaves(cut.layers);
+    if (drawables.length) return drawables[drawables.length - 1];
+    return cut.layers.find(l => l.type === 'layer') || null;
+}
+
+/**
+ * Add a stroke to a layer and make sure it will be seen: the layer itself and every folder above
+ * it are forced visible. Returns { activeLayerId, layers }, or null if the layer is gone.
+ *
+ * The reveal is the point. Without it, drawing into a hidden layer - or one inside a collapsed,
+ * hidden folder - accepts the stroke and shows nothing, which reads as the drawing being lost.
+ */
+export function commitStroke(layers, layerId, stroke) {
+    if (!Array.isArray(layers) || !layers.some(l => l.id === layerId)) return null;
+
+    const byId = new Map(layers.map(l => [l.id, l]));
+    const reveal = new Set();
+    let cur = byId.get(layerId);
+    for (let guard = 0; cur && cur.parentId != null && guard <= layers.length; guard++) {
+        reveal.add(cur.parentId);
+        cur = byId.get(cur.parentId);
+    }
+
+    return {
+        activeLayerId: layerId,
+        layers: layers.map(l => {
+            if (l.id === layerId) return { ...l, visible: true, strokes: [...(l.strokes || []), stroke] };
+            if (reveal.has(l.id)) return { ...l, visible: true };
+            return l;
+        }),
+    };
+}

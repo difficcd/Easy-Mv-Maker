@@ -4,7 +4,8 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { moveLayer, isDescendantOf } from '../src/layerOps.js';
+import { moveLayer, isDescendantOf, resolveDrawLayer, commitStroke } from '../src/layerOps.js';
+import { flattenLayersInUiOrder } from '../src/canvasUtils.js';
 
 // f1 > a, b   then c at the root
 const tree = () => ([
@@ -92,4 +93,104 @@ test('moveLayer: nothing is lost or duplicated by a move', () => {
         assert.equal(out.length, 4, `${drag}->${target} keeps the count`);
         assert.equal(new Set(ids(out)).size, 4, 'no duplicates');
     }
+});
+
+// ── where a stroke goes, and whether it can be seen ────────────────────────
+// This project has a history of "the line I just drew disappeared". These two functions are why
+// it does not happen any more, so the rules are worth pinning down.
+
+const flat = flattenLayersInUiOrder;
+
+test('resolveDrawLayer: a usable active layer is used as-is', () => {
+    const cut = { activeLayerId: 'a', layers: [{ id: 'a', type: 'layer', parentId: null, visible: true }] };
+    assert.equal(resolveDrawLayer(cut, flat).id, 'a');
+});
+
+test('resolveDrawLayer: a hidden active layer is still chosen, not skipped', () => {
+    // Skipping it would move the stroke somewhere the user did not ask for; commitStroke reveals
+    // the layer instead.
+    const cut = {
+        activeLayerId: 'hidden',
+        layers: [
+            { id: 'vis', type: 'layer', parentId: null, visible: true },
+            { id: 'hidden', type: 'layer', parentId: null, visible: false },
+        ],
+    };
+    assert.equal(resolveDrawLayer(cut, flat).id, 'hidden');
+});
+
+test('resolveDrawLayer: a folder as active falls back to a real layer', () => {
+    const cut = {
+        activeLayerId: 'f1',
+        layers: [
+            { id: 'f1', type: 'folder', parentId: null, visible: true },
+            { id: 'a', type: 'layer', parentId: 'f1', visible: true },
+        ],
+    };
+    const got = resolveDrawLayer(cut, flat);
+    assert.equal(got.type, 'layer', 'never returns a folder to draw into');
+});
+
+test('resolveDrawLayer: a stale active id falls back rather than returning nothing', () => {
+    const cut = {
+        activeLayerId: 'deleted',
+        layers: [{ id: 'a', type: 'layer', parentId: null, visible: true }],
+    };
+    assert.equal(resolveDrawLayer(cut, flat).id, 'a');
+});
+
+test('resolveDrawLayer: nothing drawable means null, not a crash', () => {
+    assert.equal(resolveDrawLayer(null, flat), null);
+    assert.equal(resolveDrawLayer({ layers: [] }, flat), null);
+    assert.equal(resolveDrawLayer({ activeLayerId: 'x', layers: [{ id: 'f', type: 'folder', parentId: null, visible: true }] }, flat), null);
+});
+
+test('commitStroke: the stroke is appended and the layer becomes visible', () => {
+    const layers = [{ id: 'a', type: 'layer', parentId: null, visible: false, strokes: [] }];
+    const out = commitStroke(layers, 'a', { id: 's1' });
+    assert.equal(out.activeLayerId, 'a');
+    assert.deepEqual(out.layers[0].strokes.map(s => s.id), ['s1']);
+    assert.equal(out.layers[0].visible, true, 'drawing into a hidden layer reveals it');
+});
+
+test('commitStroke: every folder above the layer is revealed too', () => {
+    const layers = [
+        { id: 'outer', type: 'folder', parentId: null, visible: false },
+        { id: 'inner', type: 'folder', parentId: 'outer', visible: false },
+        { id: 'a', type: 'layer', parentId: 'inner', visible: false, strokes: [] },
+    ];
+    const out = commitStroke(layers, 'a', { id: 's1' });
+    for (const l of out.layers) assert.equal(l.visible, true, `${l.id} must be visible`);
+});
+
+test('commitStroke: unrelated layers are untouched', () => {
+    const layers = [
+        { id: 'a', type: 'layer', parentId: null, visible: false, strokes: [] },
+        { id: 'b', type: 'layer', parentId: null, visible: false, strokes: [] },
+    ];
+    const out = commitStroke(layers, 'a', { id: 's1' });
+    assert.equal(out.layers[1].visible, false, 'b stays hidden');
+    assert.equal(out.layers[1].strokes.length, 0);
+});
+
+test('commitStroke: the input is not mutated', () => {
+    const layers = [{ id: 'a', type: 'layer', parentId: null, visible: false, strokes: [] }];
+    const snapshot = JSON.stringify(layers);
+    commitStroke(layers, 'a', { id: 's1' });
+    assert.equal(JSON.stringify(layers), snapshot);
+});
+
+test('commitStroke: a missing layer returns null instead of losing the stroke silently', () => {
+    assert.equal(commitStroke([{ id: 'a', type: 'layer', parentId: null }], 'nope', { id: 's' }), null);
+    assert.equal(commitStroke(null, 'a', { id: 's' }), null);
+});
+
+test('commitStroke: a parentId cycle cannot hang the reveal walk', () => {
+    const layers = [
+        { id: 'x', type: 'folder', parentId: 'y', visible: false },
+        { id: 'y', type: 'folder', parentId: 'x', visible: false },
+        { id: 'a', type: 'layer', parentId: 'x', visible: false, strokes: [] },
+    ];
+    const out = commitStroke(layers, 'a', { id: 's1' });
+    assert.ok(out, 'returns rather than looping forever');
 });
