@@ -479,6 +479,47 @@ function softStamp(r, g, b, radius) {
     return c;
 }
 
+/**
+ * Give a canvas these dimensions, reallocating only if it does not already have them.
+ *
+ * Assigning canvas.width reallocates the backing store even when the value is unchanged - the
+ * spec says so, and at 1920x1080 that is 8.3MB thrown away and replaced per assignment. A
+ * boiling layer is redrawn ten times a second, and `cnv.width = CANVAS_W` on the reused canvas
+ * was measured churning 79MB a second per boiling layer, which is what ran the tab out of
+ * memory. It was not even clearing anything the caller needed: drawStrokesOnCtx clears first.
+ *
+ * @returns {boolean} true if the canvas was resized, and so is already blank
+ */
+export function sizeCanvas(cnv, w, h) {
+    if (cnv.width === w && cnv.height === h) return false;
+    cnv.width = w;
+    cnv.height = h;
+    return true;
+}
+
+// One scratch canvas, reused. Marker and pencil each need a full-size temporary layer to
+// composite through, and creating one per stroke meant a fresh 8MB allocation per stroke on every
+// repaint - with boiling redrawing ten times a second, that is gigabytes a second for a layer
+// with a handful of marker strokes. Every use here is strictly sequential (take it, draw, blend
+// it in, done) and never nested, so a single shared canvas is enough.
+let _scratch = null;
+
+/** A cleared, full-size scratch canvas with a context in its default state. */
+function takeScratch(w, h) {
+    if (!_scratch) _scratch = document.createElement('canvas');
+    const cx = sizeCanvas(_scratch, w, h)
+        ? _scratch.getContext('2d')                        // a resize already blanked it
+        : (() => { const c = _scratch.getContext('2d'); c.clearRect(0, 0, w, h); return c; })();
+    // A resize resets these; a reuse does not, and the last user leaves them dirty. Marker in
+    // particular sets no alpha of its own, so it would inherit whatever pencil left behind.
+    cx.setTransform(1, 0, 0, 1, 0, 0);
+    cx.globalAlpha = 1;
+    cx.globalCompositeOperation = 'source-over';
+    cx.filter = 'none';
+    cx.shadowBlur = 0; cx.shadowColor = 'transparent';
+    return cx;
+}
+
 export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null, opts = {}) {
     if (clear) {
         ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
@@ -614,9 +655,8 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null,
         // Compositing per-segment with a translucent multiply darkens every overlap,
         // which showed up as black dots at the joints under pressure rendering.
         if (s.tool === 'marker') {
-            const tmp = document.createElement('canvas');
-            tmp.width = ctx.canvas.width; tmp.height = ctx.canvas.height;
-            const tctx = tmp.getContext('2d');
+            const tctx = takeScratch(ctx.canvas.width, ctx.canvas.height);
+            const tmp = tctx.canvas;
             tctx.lineCap = 'round'; tctx.lineJoin = 'round'; tctx.strokeStyle = baseColor; tctx.fillStyle = baseColor;
             const mp = smooth(s.points);
             const mw = mp.map((_, i) => hasPressure && mp.length > 1 ? s.size * pressureAt(mp, Math.max(1, i)) * 2 : s.size);
@@ -632,8 +672,8 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null,
         // Pencil: a smooth core stroke with paper-grain bitten out of it (destination-in), so it
         // reads as a textured graphite line rather than a flat vector stroke. Pressure = darkness.
         if (s.tool === 'pencil') {
-            const tmp = document.createElement('canvas'); tmp.width = ctx.canvas.width; tmp.height = ctx.canvas.height;
-            const tctx = tmp.getContext('2d');
+            const tctx = takeScratch(ctx.canvas.width, ctx.canvas.height);
+            const tmp = tctx.canvas;
             tctx.lineCap = 'round'; tctx.lineJoin = 'round'; tctx.strokeStyle = baseColor; tctx.fillStyle = baseColor;
             const pp = smooth(s.points), pn = pp.length;
             const pw = pp.map((_, idx) => { const i = Math.max(1, idx); const pr = hasPressure && pn > 1 ? pressureAt(pp, i) : 0.5; return s.size * (0.65 + 0.35 * Math.min(1, pr * 2)); });

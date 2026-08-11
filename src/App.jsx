@@ -16,7 +16,7 @@ import { dragCut, resizeCut } from './cutOps.js';
 import {
     DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT, FONT_PRESETS,
     pointInPolygon, dist, safeArray, hexToRgb, bucketFillTransparentRegion,
-    layerKey, imageDataToDataURL, dataURLToImageData, drawStrokesOnCtx,
+    layerKey, imageDataToDataURL, dataURLToImageData, drawStrokesOnCtx, sizeCanvas,
     flattenForCanvas, flattenLayersInUiOrder, strokeSig, extractVideoFrames, fitRect, detectSceneCuts, curveToWave, swayWeightAt, morphPrepare,
     accentSoft, ANIM_DEFAULT, computeCutAnim, LAYER_ANIM_DEFAULT, computeLayerAnim, TEXT_ANIM_DEFAULT, computeTextAnim,
     targetCanvasFor,
@@ -2919,8 +2919,7 @@ export default function App() {
                     for (const st of safeArray(layer.strokes)) { if (st.tool === 'paste' && st.bitmapId) { const e = bitmapStoreRef.current.get(st.bitmapId); if (e && e.blob && !e.imageBitmap && !e.imageData) { notReady = true; break; } } }
                     if (notReady) continue;
                     const newCanvas = canvas || document.createElement('canvas');
-                    newCanvas.width = CANVAS_W;
-                    newCanvas.height = CANVAS_H;
+                    sizeCanvas(newCanvas, CANVAS_W, CANVAS_H);
                     drawStrokesOnCtx(newCanvas.getContext('2d'), layer.strokes, true, bitmapStoreRef.current, { roughen: layer.roughen || 0 });
                     newCanvas.dataset.strokes = layerStrokes;
                     newCache[key] = newCanvas;
@@ -3039,15 +3038,18 @@ export default function App() {
             // asset was unavailable. Instead the strokes that can be drawn are drawn, and the
             // signature is marked incomplete so it redraws once the decode finishes.
             const part = document.createElement('canvas');
-            part.width = CANVAS_W; part.height = CANVAS_H;
+            sizeCanvas(part, CANVAS_W, CANVAS_H);
             drawStrokesOnCtx(part.getContext('2d'), layer.strokes, true, store, rOpts);
             part.dataset.strokes = sig + '|miss' + missing.length;
             map.delete(key); map.set(key, part);
             while (map.size > 24) map.delete(map.keys().next().value);
             return part;
         }
+        // Resize only when the size actually changed. This canvas is reused every boiling phase,
+        // ten times a second, and re-assigning the same width reallocated 8MB each time - the
+        // measured 79MB/s that ran the tab out of memory. drawStrokesOnCtx clears it either way.
         const cnv = hit || document.createElement('canvas');
-        cnv.width = CANVAS_W; cnv.height = CANVAS_H;
+        sizeCanvas(cnv, CANVAS_W, CANVAS_H);
         drawStrokesOnCtx(cnv.getContext('2d'), layer.strokes, true, bitmapStoreRef.current, rOpts);
         cnv.dataset.strokes = sig;
         map.delete(key); map.set(key, cnv); // re-insert = most recently used

@@ -13,7 +13,7 @@ import assert from 'node:assert/strict';
 import {
     pointInPolygon, dist, safeArray, hexToRgb, fitRect, layerKey, strokeSig,
     applyEase, triwave, swayWeightAt, sampleWave, sampleKeys, targetCanvasFor,
-    computeCutAnim, flattenLayersInUiOrder,
+    computeCutAnim, flattenLayersInUiOrder, sizeCanvas,
 } from '../src/canvasUtils.js';
 
 const near = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) < eps, `${a} ≈ ${b}`);
@@ -160,4 +160,39 @@ test('flattenLayersInUiOrder: only leaves, and a hidden folder hides its childre
 // ── cut animation ──────────────────────────────────────────────────────────
 test('computeCutAnim: no anim means nothing to apply', () => {
     assert.equal(computeCutAnim({ startTime: 0, endTime: 1 }, 0.5), null);
+});
+
+// ── canvas sizing ──────────────────────────────────────────────────────────
+// Assigning canvas.width reallocates the backing store even when the value is unchanged. A
+// boiling layer redraws ten times a second, and the unconditional `cnv.width = CANVAS_W` on the
+// reused canvas was measured churning 79MB a second per layer - the tab ran out of memory.
+// A plain object stands in for the canvas: sizeCanvas only reads and writes width/height.
+test('sizeCanvas: does not touch a canvas that is already the right size', () => {
+    let writes = 0;
+    const cnv = { _w: 1920, _h: 1080,
+        get width() { return this._w; }, set width(v) { writes++; this._w = v; },
+        get height() { return this._h; }, set height(v) { writes++; this._h = v; } };
+    assert.equal(sizeCanvas(cnv, 1920, 1080), false, 'reports that it did not reallocate');
+    assert.equal(writes, 0, 'the whole point: no assignment, so no 8MB reallocation');
+});
+
+test('sizeCanvas: resizes when either dimension differs', () => {
+    const mk = (w, h) => ({ width: w, height: h });
+    const a = mk(300, 150);
+    assert.equal(sizeCanvas(a, 1920, 1080), true);
+    assert.deepEqual([a.width, a.height], [1920, 1080]);
+
+    const b = mk(1920, 720); // height alone differs
+    assert.equal(sizeCanvas(b, 1920, 1080), true);
+    assert.deepEqual([b.width, b.height], [1920, 1080]);
+
+    const c = mk(640, 1080); // width alone differs
+    assert.equal(sizeCanvas(c, 1920, 1080), true);
+    assert.deepEqual([c.width, c.height], [1920, 1080]);
+});
+
+test('sizeCanvas: a true return means the canvas is already blank, so callers may skip clearing', () => {
+    const cnv = { width: 300, height: 150 };
+    assert.equal(sizeCanvas(cnv, 1920, 1080), true, 'resized, and a resize blanks the bitmap');
+    assert.equal(sizeCanvas(cnv, 1920, 1080), false, 'second call is a no-op, caller must clear');
 });
