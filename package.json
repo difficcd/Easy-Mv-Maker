@@ -14,6 +14,7 @@
     "android:open": "npx cap open android",
     "android:run": "npm run build && npx cap run android",
     "test": "node --test test/*.test.js",
+    "bench": "node scripts/bench.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "check": "npm run typecheck && npm test && node scripts/hook-baseline.mjs && npm run build"

@@ -1,0 +1,69 @@
+name: Android APK
+
+# Builds an installable APK in CI so there is something to actually run without setting up an
+# Android SDK locally. Two ways in: press "Run workflow" for a throwaway build attached to the
+# run, or push a v* tag to also publish it as a GitHub Release.
+#
+# This is the debug variant, signed with the standard debug key. A release build needs a real
+# keystore, and this repository deliberately keeps keystores out of git (see .gitignore), so
+# wiring that up means adding repository secrets first.
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # Capacitor 7 with AGP 8.7 needs JDK 21; 17 fails at the Gradle configuration stage.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: android-actions/setup-android@v3
+
+      - run: npm ci
+
+      # cap sync copies dist/ into the Android project, so the web build has to come first.
+      - name: Build web bundle
+        run: npm run build
+
+      - name: Sync Capacitor
+        run: npx cap sync android
+
+      - name: Assemble debug APK
+        working-directory: android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Name the artifact after the commit
+        id: name
+        run: echo "tag=${GITHUB_REF_NAME//\//-}-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: easy-mv-maker-${{ steps.name.outputs.tag }}
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      # Only tags produce a Release; a manual run just leaves the artifact on the run itself.
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: android/app/build/outputs/apk/debug/app-debug.apk
+          body: |
+            Debug APK built from ${{ github.sha }}.
+            Install with `adb install app-debug.apk`, or copy it to the tablet and open it
+            (Android will ask you to allow installs from this source).

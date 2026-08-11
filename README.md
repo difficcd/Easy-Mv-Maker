@@ -84,18 +84,43 @@ npm run typecheck  # tsc --noEmit (allowJs/checkJs, files stay .jsx)
 npm run lint       # eslint-plugin-react-hooks
 ```
 
-The same four steps run in CI on every push and pull request.
+The same steps run in CI on every push and pull request.
 
 Unit tests cover the pure helpers in `canvasUtils` — geometry, easing and waveforms, keyframe
-sampling, layer flattening, and the video-import canvas sizing. They use Node's built-in runner
-because none of it needs a DOM or a framework. The functions that genuinely need a 2D context
-(frame extraction, stroke drawing) are deliberately not faked here.
+sampling, layer flattening, the video-import canvas sizing — and the layer-tree moves in
+`layerOps`, including the rule that a folder may not be dropped into its own subtree. They use
+Node's built-in runner because none of it needs a DOM or a framework. The functions that
+genuinely need a 2D context (frame extraction, stroke drawing) are deliberately not faked here.
+
+```bash
+npm run bench      # measures the pure hot paths
+```
+
+Worth knowing before adding memoisation: measured against a 16.7ms frame, the per-render derived
+values are not where the time goes. Aggregating parts over 1,000 cuts costs 0.026ms, `strokeSig`
+under a microsecond, flattening 100 layers 0.017ms. Wrapping those in `useMemo` would add more
+dependency-checking than it saves. The cost in this app is canvas repaint and bitmap decoding,
+which is why the caching that exists is a per-layer canvas cache, incremental tail rendering, a
+rAF throttle, and a WeakMap for the boiling path — not `useMemo`.
 
 `scripts/hook-baseline.mjs` fails only when hook dependency warnings **grow**. The remaining ones are mostly deliberate (per-frame canvas work and heavy caches), so zero isn't the target; the guard catches new stale-closure risk introduced by things like extracting custom hooks. Use `UPDATE=1 node scripts/hook-baseline.mjs` to move the baseline on purpose.
 
 > Passing every static check does not prove a component mounts — a component returning `undefined` is legal in React. After a structural change, open the affected screen and look at it.
 
 ## Android (Capacitor)
+
+An installable APK is built in CI, so you do not need an Android SDK to get one:
+
+- **Tagged releases** — pushing a `v*` tag publishes the APK to
+  [Releases](https://github.com/difficcd/Easy-Mv-Maker/releases).
+- **Any commit** — run the *Android APK* workflow from the Actions tab and download the artifact
+  from that run.
+
+It is the debug variant, signed with the standard debug key, so Android will ask you to allow
+installs from that source. A release build needs a real keystore, and keystores are kept out of
+this repository on purpose.
+
+Locally, if you do have the SDK:
 
 ```bash
 npm run android:sync     # build web + sync
@@ -109,11 +134,13 @@ src/
   App.jsx          app state, drawing pipeline, timeline logic, panel docking (~4,500 lines)
   canvasUtils.js   pure helpers: smoothing, boiling, fill, distance-field morph, waveforms
   i18n.js          the English dictionary (~500 entries) and the tr() lookup
+  layerOps.js      pure layer-tree moves (reparenting, ordering, cycle refusal)
   Modals.jsx       project picker, settings, help, video import, scene detect
   TopBar.jsx  Timeline.jsx  CutLayerPanel.jsx  ColorPanel.jsx  AnimPanels.jsx
   globals.d.ts     ambient declarations (EyeDropper, Capacitor, File System Access…)
 server/index.js    project storage + backup rotation + video/audio import API
-scripts/           hook-warning baseline guard
+scripts/           hook-warning baseline guard, hot-path benchmark
+test/              unit tests (node --test)
 ```
 
 The Korean source text doubles as the translation key, gettext style, so a missing entry shows

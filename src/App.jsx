@@ -9,6 +9,7 @@ import { CutLayerPanel } from './CutLayerPanel';
 import { Timeline } from './Timeline';
 import { ProjectPicker, ProgressOverlay, SettingsModal, HelpModal, VideoImportModal, SceneDetectModal, LinkPromptModal } from './Modals';
 import { tr, loadLang, saveLang, setLangValue } from './i18n';
+import { moveLayer } from './layerOps.js';
 import {
     DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT, FONT_PRESETS,
     pointInPolygon, dist, safeArray, hexToRgb, bucketFillTransparentRegion,
@@ -1848,28 +1849,11 @@ export default function App() {
         e.preventDefault(); e.stopPropagation();
         if (!dragLayerInfo || dragLayerInfo.layerId === targetId || dragLayerInfo.cutId !== cutId) { setDragLayerInfo(null); setDropInfo(null); return; }
         const { layerId } = dragLayerInfo, { position } = dropInfo || { position: 'after' };
+        // The move itself is pure and lives in layerOps, where it is unit tested; null means the
+        // move was refused (dropping a folder into its own subtree) and nothing should change.
         updLayers(cutId, c => {
-            const layers = [...c.layers];
-            const di = layers.findIndex(l => l.id === layerId);
-            const dragged = { ...layers[di] }; layers.splice(di, 1);
-            const tl = layers.find(l => l.id === targetId); if (!tl) return c;
-            if (position === 'inside' && tl.type === 'folder') {
-                // Nesting is allowed, but a folder may not be dropped into itself or a descendant.
-                if (dragged.type === 'folder') {
-                    if (targetId === dragged.id) return c;
-                    let cur = tl;
-                    while (cur && cur.parentId != null) { if (cur.parentId === dragged.id) return c; cur = layers.find(l => l.id === cur.parentId); }
-                }
-                dragged.parentId = targetId;
-                let ii = layers.findIndex(l => l.id === targetId) + 1;
-                for (let i = ii; i < layers.length; i++) { if (layers[i].parentId === targetId) ii = i + 1; else break; }
-                layers.splice(ii, 0, dragged);
-            } else {
-                dragged.parentId = tl.parentId;
-                const ti = layers.findIndex(l => l.id === targetId);
-                layers.splice(position === 'before' ? ti : ti + 1, 0, dragged);
-            }
-            return { layers };
+            const layers = moveLayer(c.layers, layerId, targetId, position);
+            return layers ? { layers } : {};
         });
         setDragLayerInfo(null); setDropInfo(null);
     };
