@@ -164,6 +164,30 @@ export default function App() {
     const [showRight, setShowRight] = useState(true);
     const [showBottom, setShowBottom] = useState(true);
     const [splitter, setSplitter] = useState(null);
+    // True while the playhead is being dragged. Rendering treats it as playback (see paintFrame).
+    const [scrubbing, setScrubbing] = useState(false);
+
+    // Where each panel lives: 'left', 'right' or 'float'. Panels are drawn from these rather than
+    // from fixed positions in the layout, so dragging one only has to change this value.
+    const [docks, setDocks] = useState(() => {
+        try {
+            const v = JSON.parse(localStorage.getItem('mv_docks'));
+            if (v && ['left', 'right', 'float'].includes(v.tools)) return v;
+        } catch { }
+        return { tools: 'left', color: 'left', cut: 'right' };
+    });
+    const [floatPos, setFloatPos] = useState(() => {
+        try {
+            const v = JSON.parse(localStorage.getItem('mv_floats'));
+            if (v && typeof v === 'object') return v;
+        } catch { }
+        return { tools: { x: 120, y: 120 }, color: { x: 160, y: 160 }, cut: { x: 200, y: 200 } };
+    });
+    useEffect(() => { try { localStorage.setItem('mv_docks', JSON.stringify(docks)); } catch { } }, [docks]);
+    useEffect(() => { try { localStorage.setItem('mv_floats', JSON.stringify(floatPos)); } catch { } }, [floatPos]);
+    // The panel being dragged by its header, plus where it would land if dropped now.
+    const [panelDrag, setPanelDrag] = useState(null);
+
     const [snapLinePos, setSnapLinePos] = useState(null);
     const [audioFile, setAudioFile] = useState(null);
     const [audioUrl, setAudioUrl] = useState(null);
@@ -374,6 +398,25 @@ export default function App() {
         return () => clearTimeout(t);
     }, [themeColor]);
     const [leftDock, setLeftDock] = useState('color'); // which panel is open in the left dock (null = closed); switched from the icon rail
+
+    // Tab collapses every panel to leave just the canvas, and remembers what was open so the
+    // second press restores exactly that rather than opening everything.
+    const panelsBeforeHideRef = useRef(null);
+    const toggleAllPanels = () => {
+        const prev = panelsBeforeHideRef.current;
+        if (prev) {
+            panelsBeforeHideRef.current = null;
+            setShowLeft(prev.left); setLeftDock(prev.dock); setShowRight(prev.right); setShowBottom(prev.bottom);
+        } else {
+            panelsBeforeHideRef.current = { left: showLeft, dock: leftDock, right: showRight, bottom: showBottom };
+            setShowLeft(false); setLeftDock(null); setShowRight(false); setShowBottom(false);
+        }
+    };
+    // The key handler subscribes once with an empty dependency list, so calling toggleAllPanels
+    // directly from it would freeze the panel state as it was on the first render. Same ref trick
+    // paintFrame already uses.
+    const toggleAllPanelsRef = useRef(null);
+    toggleAllPanelsRef.current = toggleAllPanels;
     const [keymap, setKeymap] = useState(loadKeymap);
     const [showSettings, setShowSettings] = useState(false); // settings dialog (shortcuts and theme)
     const [settingsTab, setSettingsTab] = useState('theme'); // open on the theme tab
@@ -667,6 +710,13 @@ export default function App() {
     useEffect(() => {
         const handleKeyDown = (e) => {
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+            // Tab hides every panel so the canvas is alone on screen, and restores exactly what was
+            // open before. Plain Tab only: Ctrl/Alt/Shift+Tab stay with the browser.
+            if (e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+                e.preventDefault();
+                toggleAllPanelsRef.current?.();
+                return;
+            }
             // User-defined shortcuts first; the conventional Ctrl+Z / Ctrl+Y combinations are
             // left in place below.
             const combo = keyOf(e);
@@ -812,7 +862,16 @@ export default function App() {
         if (!splitter) return;
         const mv = (e) => {
             // Relative to grab point so the panel doesn't jump on first move (precise drag).
-            if (splitter.type === 'right') setRightW(Math.max(150, Math.min(640, splitter.startW + (splitter.startX - e.clientX))));
+            if (splitter.type === 'panel') {
+                // A left-docked panel grows as the pointer moves right; a right-docked one is the
+                // mirror image, so the sign follows the side it is docked to.
+                const delta = splitter.side === 'left' ? (e.clientX - splitter.startX) : (splitter.startX - e.clientX);
+                const w = Math.max(120, Math.min(640, splitter.startW + delta));
+                if (splitter.id === 'color') setColorW(w);
+                else if (splitter.id === 'tools') setLeftW(w);
+                else setRightW(w);
+            }
+            else if (splitter.type === 'right') setRightW(Math.max(150, Math.min(640, splitter.startW + (splitter.startX - e.clientX))));
             else if (splitter.type === 'left') setLeftW(Math.max(56, Math.min(420, splitter.startW + (e.clientX - splitter.startX))));
             else if (splitter.type === 'color') setColorW(Math.max(150, Math.min(520, splitter.startW + (e.clientX - splitter.startX))));
             else if (splitter.type === 'bottom') setTimelineH(Math.max(100, Math.min(600, splitter.startH + (splitter.startY - e.clientY))));
@@ -3278,7 +3337,7 @@ export default function App() {
     // paints imperatively (see below), so this effect just draws overlays at rest.
     useEffect(() => {
         if (isPlaying) return;              // rAF loop owns the canvas during playback
-        paintFrame(currentTime, false);
+        paintFrame(currentTime, scrubbing); // scrubbing renders like playback so animation shows
         const canvas = canvasRef.current; if (!canvas) return;
         const ctx = canvas.getContext('2d');
 
@@ -3372,7 +3431,7 @@ export default function App() {
             ctx.stroke();
             ctx.setLineDash([]);
         }
-    }, [paintFrame, cuts, currentCutId, isPlaying, currentTime, lassoPoints, selection, selectedText, animLayer]);
+    }, [paintFrame, cuts, currentCutId, isPlaying, scrubbing, currentTime, lassoPoints, selection, selectedText, animLayer]);
 
     // Boiling is motion, so it is invisible on a still frame; the phase is advanced slowly
     // while editing to preview it. That preview redraws the whole layer, though, so it stops
@@ -3456,9 +3515,16 @@ export default function App() {
     // only fires on the ruler and empty track space.
     const startTimelineScrub = (e) => {
         if (e.button !== undefined && e.button !== 0) return;
+        // Dragging the playhead should look like playback, not like the editing view. paintFrame
+        // only evaluates cut/part/text animation when it is told it is playing, so a scrub used to
+        // show static artwork sliding past instead of the animation at that instant.
+        setScrubbing(true);
         seekToClientX(e.clientX);
         const mv = (ev) => seekToClientX(ev.clientX);
-        const up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); };
+        const up = () => {
+            setScrubbing(false);
+            window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up);
+        };
         window.addEventListener('pointermove', mv);
         window.addEventListener('pointerup', up);
     };
@@ -3905,6 +3971,193 @@ export default function App() {
     const isSelectionTool = tool === 'lasso' || !!selection;
     liveRef.current = { cuts, copiedCut, selection, audioData, numTracks }; // current GC + history sources
 
+    const PANEL_IDS = ['color', 'tools', 'cut'];
+    const PANEL_ROOTS = { color: '.color-panel', tools: '.toolbar', cut: '.right-panel' };
+    const panelWidth = { color: colorW, tools: toolW, cut: rightW };
+    const panelOpen = { color: leftDock === 'color', tools: showLeft, cut: showRight };
+
+    // Which dock a pointer position means. The edge bands are wide enough to hit on a tablet;
+    // anywhere else means the panel is being pulled out into its own window.
+    const dropZoneAt = (x) => (x < 140 ? 'left' : x > window.innerWidth - 140 ? 'right' : 'float');
+
+    // Header drag is delegated from main-content rather than wired into each panel, so ColorPanel
+    // and CutLayerPanel keep their own markup and know nothing about docking.
+    const onDockPointerDown = (e) => {
+        if (e.button !== undefined && e.button !== 0) return;
+        const head = e.target.closest?.('.panel-head');
+        if (!head) return;
+        if (e.target.closest('button, input, select, textarea')) return;   // ✕ and controls still work
+        const id = PANEL_IDS.find(p => head.closest(PANEL_ROOTS[p]));
+        if (!id) return;
+        e.preventDefault();
+        const host = head.closest(PANEL_ROOTS[id]).getBoundingClientRect();
+        const grab = { dx: e.clientX - host.left, dy: e.clientY - host.top };
+        setPanelDrag({ id, x: e.clientX, y: e.clientY, zone: dropZoneAt(e.clientX), ...grab });
+        const mv = (ev) => setPanelDrag(d => d && ({ ...d, x: ev.clientX, y: ev.clientY, zone: dropZoneAt(ev.clientX) }));
+        const up = (ev) => {
+            window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up);
+            const zone = dropZoneAt(ev.clientX);
+            setPanelDrag(null);
+            setDocks(d => ({ ...d, [id]: zone }));
+            if (zone === 'float') setFloatPos(p => ({ ...p, [id]: { x: Math.max(0, ev.clientX - grab.dx), y: Math.max(0, ev.clientY - grab.dy) } }));
+        };
+        window.addEventListener('pointermove', mv);
+        window.addEventListener('pointerup', up);
+    };
+
+    // A docked panel keeps a splitter on the side that faces the canvas.
+    const panelSplitter = (id, side) => (
+        <div key={id + '-sp'} className="splitter-v" style={{ touchAction: 'none' }}
+            title={tr('드래그로 패널 너비 조절')}
+            onPointerDown={e => {
+                try { e.currentTarget.setPointerCapture(e.pointerId); } catch { }
+                setSplitter({ type: 'panel', id, side, startX: e.clientX, startW: panelWidth[id] });
+            }} />
+    );
+
+    // The tool panel body lives in a variable so the same markup can be mounted in the left
+    // dock, the right dock, or a floating window without being duplicated.
+    const toolsPanelEl = (
+                <div className="toolbar" style={{ width: toolW, flexShrink: 0 }}>
+                    <div className="panel-head">
+                        <span className="panel-title">TOOLS</span>
+                        <button className="icon-btn" onClick={() => setShowLeft(false)} title={tr('도구 창 닫기')}>✕</button>
+                    </div>
+                    <div className="tool-grid">
+                        {TOOL_TYPES.map(pt => (
+                            <button key={pt.id} className={`tool-btn${tool === pt.id ? ' active' : ''}`} onClick={() => handleSetTool(pt.id)} title={tr(pt.label)}>
+                                <pt.Icon size={15} />
+                                <span className="tool-label">{tr(pt.label)}</span>
+                            </button>
+                        ))}
+                        <button className={`tool-btn${onionPrev ? ' onion-prev-active' : ''}`} onClick={() => setOnionPrev(v => !v)} title={tr('이전 프레임 표시 (연보라)')}><Layers size={15} /><span className="tool-label">◀Onion</span></button>
+                        <button className={`tool-btn${onionNext ? ' onion-next-active' : ''}`} onClick={() => setOnionNext(v => !v)} title={tr('다음 프레임 표시 (원본색)')}><Layers size={15} /><span className="tool-label">Onion▶</span></button>
+                        <button className="tool-btn" onClick={globalUndo} title="Undo"><Undo size={15} /><span className="tool-label">Undo</span></button>
+                        <button className="tool-btn" onClick={globalRedo} title="Redo"><Redo size={15} /><span className="tool-label">Redo</span></button>
+                        <button className="tool-btn" onClick={handleClearCut} title={tr('현재 컷 전체 비우기')}><Trash size={15} /><span className="tool-label">{tr('비우기')}</span></button>
+                        <button className="tool-btn" onClick={doTween} title={tr('현재 컷과 다음 컷 사이를 자동 중간 프레임으로 채웁니다 (형태 모핑)')}><Repeat size={15} /><span className="tool-label">{tr('트위닝')}</span></button>
+                        {hasLassoClip && <button className="tool-btn" onClick={pasteLassoSelection} title={tr('복사한 올가미 선택을 현재 레이어에 붙여넣기')}><ClipboardPaste size={15} /><span className="tool-label">{tr('올가미↓')}</span></button>}
+                        <button className={`tool-btn${pickingColor ? ' active' : ''}`} onClick={pickColor} title={tr('스포이드 (화면에서 색 추출)')} disabled={isSelectionTool}><Pipette size={15} /><span className="tool-label">{tr('스포이드')}</span></button>
+                    </div>
+                    <div className="tool-divider" />
+                    <input type="color" className="color-picker" value={color} onChange={e => applyColor(e.target.value)} title={tr('색상')} disabled={isSelectionTool} />
+                    <div className="slider-wrap">
+                        {tool === 'soft' ? (
+                            <>
+                                <span className="slider-label">{tr('에어 모드')}</span>
+                                <div style={{ display: 'flex', gap: 3, width: '100%' }}>
+                                    <button className={`pal-btn${softMode === 'soft' ? ' active' : ''}`} onClick={() => setSoftMode('soft')} title={tr('부드럽게 뿌리는 에어브러시')}>{tr('에어')}</button>
+                                    <button className={`pal-btn${softMode === 'blur' ? ' active' : ''}`} onClick={() => setSoftMode('blur')} title={tr('이미 그린 것을 문질러 퍼뜨림')}>{tr('블러')}</button>
+                                </div>
+                                <span style={{ fontSize: 9, color: '#888', textAlign: 'center' }}>{softMode === 'soft' ? tr('색을 뿌립니다') : tr('그려진 걸 퍼뜨립니다')}</span>
+                            </>
+                        ) : tool === 'ruler' ? (
+                            <>
+                                <span className="slider-label">{tr('자 모드')}</span>
+                                <div style={{ display: 'flex', gap: 3, width: '100%' }}>
+                                    <button className={`pal-btn${rulerMode === 'line' ? ' active' : ''}`} onClick={() => setRulerMode('line')} title={tr('정확한 직선')}>{tr('직선')}</button>
+                                    <button className={`pal-btn${rulerMode === 'curve' ? ' active' : ''}`} onClick={() => { commitCurve(); setRulerMode('curve'); }} title={tr('점을 찍어 만드는 곡선')}>{tr('곡선')}</button>
+                                </div>
+                                <span style={{ fontSize: 9, color: '#888', textAlign: 'center' }}>{rulerMode === 'line' ? tr('드래그로 직선') : tr('탭으로 점 찍기')}</span>
+                            </>
+                        ) : tool === 'mosaic' ? (
+                            <>
+                                <span className="slider-label">{tr('모자이크')}</span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 2, justifyContent: 'center' }}>
+                                    <input type="number" min="2" max="120" value={mosaicBlock}
+                                        onChange={e => setMosaicBlock(Math.max(2, Math.min(120, Math.round(+e.target.value) || 2)))} style={{ width: 46, textAlign: 'center' }} className="time-input" />
+                                    <span style={{ fontSize: 10, color: '#888' }}>px</span>
+                                </div>
+                                <input type="range" min="2" max="80" value={Math.min(80, mosaicBlock)} onChange={e => setMosaicBlock(+e.target.value)} className="v-slider" />
+                                <span style={{ fontSize: 9, color: '#888', textAlign: 'center' }}>{tr('화면 위를 드래그')}</span>
+                            </>
+                        ) : (() => {
+                            const curSize = tool === 'eraser' ? eraserSize : brushSize;
+                            const setSize = (v) => { const n = Math.max(1, Math.min(200, Math.round(v) || 1)); tool === 'eraser' ? setEraserSize(n) : setBrushSize(n); };
+                            return (<>
+                                <span className="slider-label">{tool === 'eraser' ? tr('지우개') : 'Size'}</span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 2, justifyContent: 'center' }}>
+                                    <input type="number" min="1" max="200" value={curSize} disabled={isSelectionTool}
+                                        onChange={e => setSize(+e.target.value)} style={{ width: 46, textAlign: 'center' }} className="time-input" />
+                                    <span style={{ fontSize: 10, color: '#888' }}>px</span>
+                                </div>
+                                <div className="size-grid" style={{ margin: '4px 0' }}>
+                                    {[1, 2, 3, 5, 8, 12, 16, 24, 32, 48, 64, 90, 120, 160].map(s => {
+                                        const d = Math.max(2, Math.min(16, s));
+                                        return (
+                                            <button key={s} className={`size-cell${curSize === s ? ' active' : ''}`} onClick={() => setSize(s)} disabled={isSelectionTool} title={`${s}px`}>
+                                                <span style={{ width: d, height: d, maxWidth: '80%', maxHeight: '80%', borderRadius: '50%', background: '#ddd', display: 'block' }} />
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                                <input type="range" min="1" max="80" value={Math.min(80, curSize)} onChange={e => setSize(+e.target.value)} className="v-slider" disabled={isSelectionTool} />
+                            </>);
+                        })()}
+                    </div>
+                    <div className="slider-wrap">
+                        <span className="slider-label">Opacity</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 2, justifyContent: 'center' }}>
+                            <input type="number" min="0" max="100" value={Math.round(opacity * 100)} disabled={isSelectionTool}
+                                onChange={e => setOpacity(Math.max(0, Math.min(100, Math.round(+e.target.value) || 0)) / 100)}
+                                style={{ width: 46, textAlign: 'center' }} className="time-input" />
+                            <span style={{ fontSize: 10, color: '#888' }}>%</span>
+                        </div>
+                        <input type="range" min="0" max="100" value={Math.round(opacity * 100)} onChange={e => setOpacity(+e.target.value / 100)} className="v-slider" disabled={isSelectionTool} />
+                    </div>
+                </div>
+    );
+
+    const colorPanelEl = (
+                <ColorPanel
+                    color={color} applyColor={applyColor} pickColor={pickColor} pickingColor={pickingColor}
+                    recentColors={recentColors}
+                    width={colorW}
+                    onClose={() => setLeftDock(null)} />
+    );
+    const cutPanelEl = (
+                <CutLayerPanel
+                    collapsedCutIds={collapsedCutIds} copiedCut={copiedCut} currentCutId={currentCutId} cuts={cuts}
+                    deleteTextObject={deleteTextObject} deleteVideoBatch={deleteVideoBatch}
+                    dragLayerInfo={dragLayerInfo} expandedCuts={expandedCuts} handleAddCut={handleAddCut}
+                    handleAddFolder={handleAddFolder} handleAddLayer={handleAddLayer} handleCopyCut={handleCopyCut}
+                    handleCutClick={handleCutClick} handleDeleteCut={handleDeleteCut}
+                    handleDuplicateCut={handleDuplicateCut} handlePasteCut={handlePasteCut}
+                    handleSetTool={handleSetTool} openEditText={openEditText} renameCut={renameCut}
+                    renamingCutId={renamingCutId} renderLayers={renderLayers} rightW={rightW}
+                    selectedCutIds={selectedCutIds} selectedText={selectedText} setDragLayerInfo={setDragLayerInfo}
+                    setDropInfo={setDropInfo} setRenamingCutId={setRenamingCutId} setSelectedText={setSelectedText}
+                    setShowRight={setShowRight} showRight={showRight} toggleCutCollapse={toggleCutCollapse}
+                    toggleCutSettings={toggleCutSettings} toggleTextVisible={toggleTextVisible}
+                    updCutAnim={updCutAnim} updCutTime={updCutTime} updLayers={updLayers}
+                    videoBatches={videoBatches} />
+    );
+    const panelEls = { color: colorPanelEl, tools: toolsPanelEl, cut: cutPanelEl };
+
+    // Panels docked to one side, each with its splitter facing the canvas.
+    const dockSlot = (side) => PANEL_IDS.filter(id => docks[id] === side && panelOpen[id]).map(id => (
+        <React.Fragment key={id}>
+            {side === 'right' && panelSplitter(id, side)}
+            {panelEls[id]}
+            {side === 'left' && panelSplitter(id, side)}
+        </React.Fragment>
+    ));
+
+    // Panels pulled out of the docks, drawn above everything and positioned by their own state.
+    const floatingPanels = PANEL_IDS.filter(id => docks[id] === 'float' && panelOpen[id]).map(id => {
+        // A window being dragged follows the pointer live; the stored position only updates on drop.
+        const live = panelDrag?.id === id;
+        const x = live ? panelDrag.x - panelDrag.dx : (floatPos[id]?.x ?? 120);
+        const y = live ? panelDrag.y - panelDrag.dy : (floatPos[id]?.y ?? 120);
+        return (
+            // These sit outside main-content, so they need the header-drag handler of their own.
+            <div key={id} className="float-panel" onPointerDown={onDockPointerDown}
+                style={{ left: Math.max(0, x), top: Math.max(0, y), opacity: live ? 0.85 : 1 }}>
+                {panelEls[id]}
+            </div>
+        );
+    });
+
     return (
         <div className="app-container">
             <audio ref={audioRef} style={{ display: 'none' }} />
@@ -4022,7 +4275,7 @@ export default function App() {
                 <button className="icon-btn" onClick={newTab} title={tr('새 탭(프로젝트)')} style={{ alignSelf: 'center', marginLeft: 2 }}><Plus size={14} /></button>
             </div>
 
-            <div className="main-content">
+            <div className="main-content" onPointerDown={onDockPointerDown}>
                 {/* Far-left icon rail for switching panels, Clip Studio style: tools on top,
                     colour below. */}
                 <div className="dock-rail">
@@ -4031,106 +4284,7 @@ export default function App() {
                     <button className={`dock-icon${leftDock === 'color' ? ' active' : ''}`} title={tr('색상 창 (COLOR)')}
                         onClick={() => setLeftDock(v => v === 'color' ? null : 'color')}><Palette size={20} /></button>
                 </div>
-                {leftDock === 'color' && (
-                    <ColorPanel
-                        color={color} applyColor={applyColor} pickColor={pickColor} pickingColor={pickingColor}
-                        recentColors={recentColors}
-                        width={colorW}
-                        onClose={() => setLeftDock(null)} />
-                )}
-                {leftDock === 'color' && <div className="splitter-v" style={{ touchAction: 'none' }} title={tr('드래그로 색상 창 너비 조절')}
-                    onPointerDown={e => { try { e.currentTarget.setPointerCapture(e.pointerId); } catch { } setSplitter({ type: 'color', startX: e.clientX, startW: colorW }); }} />}
-                {showLeft && (
-                    <div className="toolbar" style={{ width: toolW, flexShrink: 0 }}>
-                        <div className="panel-head">
-                            <span className="panel-title">TOOLS</span>
-                            <button className="icon-btn" onClick={() => setShowLeft(false)} title={tr('도구 창 닫기')}>✕</button>
-                        </div>
-                        <div className="tool-grid">
-                            {TOOL_TYPES.map(pt => (
-                                <button key={pt.id} className={`tool-btn${tool === pt.id ? ' active' : ''}`} onClick={() => handleSetTool(pt.id)} title={tr(pt.label)}>
-                                    <pt.Icon size={15} />
-                                    <span className="tool-label">{tr(pt.label)}</span>
-                                </button>
-                            ))}
-                            <button className={`tool-btn${onionPrev ? ' onion-prev-active' : ''}`} onClick={() => setOnionPrev(v => !v)} title={tr('이전 프레임 표시 (연보라)')}><Layers size={15} /><span className="tool-label">◀Onion</span></button>
-                            <button className={`tool-btn${onionNext ? ' onion-next-active' : ''}`} onClick={() => setOnionNext(v => !v)} title={tr('다음 프레임 표시 (원본색)')}><Layers size={15} /><span className="tool-label">Onion▶</span></button>
-                            <button className="tool-btn" onClick={globalUndo} title="Undo"><Undo size={15} /><span className="tool-label">Undo</span></button>
-                            <button className="tool-btn" onClick={globalRedo} title="Redo"><Redo size={15} /><span className="tool-label">Redo</span></button>
-                            <button className="tool-btn" onClick={handleClearCut} title={tr('현재 컷 전체 비우기')}><Trash size={15} /><span className="tool-label">{tr('비우기')}</span></button>
-                            <button className="tool-btn" onClick={doTween} title={tr('현재 컷과 다음 컷 사이를 자동 중간 프레임으로 채웁니다 (형태 모핑)')}><Repeat size={15} /><span className="tool-label">{tr('트위닝')}</span></button>
-                            {hasLassoClip && <button className="tool-btn" onClick={pasteLassoSelection} title={tr('복사한 올가미 선택을 현재 레이어에 붙여넣기')}><ClipboardPaste size={15} /><span className="tool-label">{tr('올가미↓')}</span></button>}
-                            <button className={`tool-btn${pickingColor ? ' active' : ''}`} onClick={pickColor} title={tr('스포이드 (화면에서 색 추출)')} disabled={isSelectionTool}><Pipette size={15} /><span className="tool-label">{tr('스포이드')}</span></button>
-                        </div>
-                        <div className="tool-divider" />
-                        <input type="color" className="color-picker" value={color} onChange={e => applyColor(e.target.value)} title={tr('색상')} disabled={isSelectionTool} />
-                        <div className="slider-wrap">
-                            {tool === 'soft' ? (
-                                <>
-                                    <span className="slider-label">{tr('에어 모드')}</span>
-                                    <div style={{ display: 'flex', gap: 3, width: '100%' }}>
-                                        <button className={`pal-btn${softMode === 'soft' ? ' active' : ''}`} onClick={() => setSoftMode('soft')} title={tr('부드럽게 뿌리는 에어브러시')}>{tr('에어')}</button>
-                                        <button className={`pal-btn${softMode === 'blur' ? ' active' : ''}`} onClick={() => setSoftMode('blur')} title={tr('이미 그린 것을 문질러 퍼뜨림')}>{tr('블러')}</button>
-                                    </div>
-                                    <span style={{ fontSize: 9, color: '#888', textAlign: 'center' }}>{softMode === 'soft' ? tr('색을 뿌립니다') : tr('그려진 걸 퍼뜨립니다')}</span>
-                                </>
-                            ) : tool === 'ruler' ? (
-                                <>
-                                    <span className="slider-label">{tr('자 모드')}</span>
-                                    <div style={{ display: 'flex', gap: 3, width: '100%' }}>
-                                        <button className={`pal-btn${rulerMode === 'line' ? ' active' : ''}`} onClick={() => setRulerMode('line')} title={tr('정확한 직선')}>{tr('직선')}</button>
-                                        <button className={`pal-btn${rulerMode === 'curve' ? ' active' : ''}`} onClick={() => { commitCurve(); setRulerMode('curve'); }} title={tr('점을 찍어 만드는 곡선')}>{tr('곡선')}</button>
-                                    </div>
-                                    <span style={{ fontSize: 9, color: '#888', textAlign: 'center' }}>{rulerMode === 'line' ? tr('드래그로 직선') : tr('탭으로 점 찍기')}</span>
-                                </>
-                            ) : tool === 'mosaic' ? (
-                                <>
-                                    <span className="slider-label">{tr('모자이크')}</span>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 2, justifyContent: 'center' }}>
-                                        <input type="number" min="2" max="120" value={mosaicBlock}
-                                            onChange={e => setMosaicBlock(Math.max(2, Math.min(120, Math.round(+e.target.value) || 2)))} style={{ width: 46, textAlign: 'center' }} className="time-input" />
-                                        <span style={{ fontSize: 10, color: '#888' }}>px</span>
-                                    </div>
-                                    <input type="range" min="2" max="80" value={Math.min(80, mosaicBlock)} onChange={e => setMosaicBlock(+e.target.value)} className="v-slider" />
-                                    <span style={{ fontSize: 9, color: '#888', textAlign: 'center' }}>{tr('화면 위를 드래그')}</span>
-                                </>
-                            ) : (() => {
-                                const curSize = tool === 'eraser' ? eraserSize : brushSize;
-                                const setSize = (v) => { const n = Math.max(1, Math.min(200, Math.round(v) || 1)); tool === 'eraser' ? setEraserSize(n) : setBrushSize(n); };
-                                return (<>
-                                    <span className="slider-label">{tool === 'eraser' ? tr('지우개') : 'Size'}</span>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 2, justifyContent: 'center' }}>
-                                        <input type="number" min="1" max="200" value={curSize} disabled={isSelectionTool}
-                                            onChange={e => setSize(+e.target.value)} style={{ width: 46, textAlign: 'center' }} className="time-input" />
-                                        <span style={{ fontSize: 10, color: '#888' }}>px</span>
-                                    </div>
-                                    <div className="size-grid" style={{ margin: '4px 0' }}>
-                                        {[1, 2, 3, 5, 8, 12, 16, 24, 32, 48, 64, 90, 120, 160].map(s => {
-                                            const d = Math.max(2, Math.min(16, s));
-                                            return (
-                                                <button key={s} className={`size-cell${curSize === s ? ' active' : ''}`} onClick={() => setSize(s)} disabled={isSelectionTool} title={`${s}px`}>
-                                                    <span style={{ width: d, height: d, maxWidth: '80%', maxHeight: '80%', borderRadius: '50%', background: '#ddd', display: 'block' }} />
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                    <input type="range" min="1" max="80" value={Math.min(80, curSize)} onChange={e => setSize(+e.target.value)} className="v-slider" disabled={isSelectionTool} />
-                                </>);
-                            })()}
-                        </div>
-                        <div className="slider-wrap">
-                            <span className="slider-label">Opacity</span>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 2, justifyContent: 'center' }}>
-                                <input type="number" min="0" max="100" value={Math.round(opacity * 100)} disabled={isSelectionTool}
-                                    onChange={e => setOpacity(Math.max(0, Math.min(100, Math.round(+e.target.value) || 0)) / 100)}
-                                    style={{ width: 46, textAlign: 'center' }} className="time-input" />
-                                <span style={{ fontSize: 10, color: '#888' }}>%</span>
-                            </div>
-                            <input type="range" min="0" max="100" value={Math.round(opacity * 100)} onChange={e => setOpacity(+e.target.value / 100)} className="v-slider" disabled={isSelectionTool} />
-                        </div>
-                    </div>
-                )}
-                {showLeft && <div className="splitter-v" style={{ touchAction: 'none' }} title={tr('드래그로 도구 패널 너비 조절')} onPointerDown={e => { try { e.currentTarget.setPointerCapture(e.pointerId); } catch { } setSplitter({ type: 'left', startX: e.clientX, startW: leftW }); }} />}
+                {dockSlot('left')}
 
                 {/* Scrolling is locked here while panning with space. Left open, space and drag
                     scroll the page down instead of moving the canvas. */}
@@ -4313,27 +4467,17 @@ export default function App() {
                     </div>
                 </div>
 
-                {showRight && <div className="splitter-v" style={{ touchAction: 'none' }} onPointerDown={e => { try { e.currentTarget.setPointerCapture(e.pointerId); } catch { } setSplitter({ type: 'right', startX: e.clientX, startW: rightW }); }} />}
+                {dockSlot('right')}
 
-                {showRight && (
-                    <CutLayerPanel
-                        collapsedCutIds={collapsedCutIds} copiedCut={copiedCut} currentCutId={currentCutId} cuts={cuts}
-                        deleteTextObject={deleteTextObject} deleteVideoBatch={deleteVideoBatch}
-                        dragLayerInfo={dragLayerInfo} expandedCuts={expandedCuts} handleAddCut={handleAddCut}
-                        handleAddFolder={handleAddFolder} handleAddLayer={handleAddLayer} handleCopyCut={handleCopyCut}
-                        handleCutClick={handleCutClick} handleDeleteCut={handleDeleteCut}
-                        handleDuplicateCut={handleDuplicateCut} handlePasteCut={handlePasteCut}
-                        handleSetTool={handleSetTool} openEditText={openEditText} renameCut={renameCut}
-                        renamingCutId={renamingCutId} renderLayers={renderLayers} rightW={rightW}
-                        selectedCutIds={selectedCutIds} selectedText={selectedText} setDragLayerInfo={setDragLayerInfo}
-                        setDropInfo={setDropInfo} setRenamingCutId={setRenamingCutId} setSelectedText={setSelectedText}
-                        setShowRight={setShowRight} showRight={showRight} toggleCutCollapse={toggleCutCollapse}
-                        toggleCutSettings={toggleCutSettings} toggleTextVisible={toggleTextVisible}
-                        updCutAnim={updCutAnim} updCutTime={updCutTime} updLayers={updLayers}
-                        videoBatches={videoBatches} />
-                )}
                 {!showRight && <button onClick={() => setShowRight(true)} className="icon-btn" style={{ width: 24, alignSelf: 'stretch', padding: 0, borderRadius: 0, background: 'hsl(var(--ui-h) var(--ui-s) 15%)', border: 'none', borderLeft: '1px solid #333' }}><ChevronRight size={14} /></button>}
             </div>
+
+            {/* Panels pulled out of a dock float above the layout. */}
+            {floatingPanels}
+            {/* While a header is being dragged, show where it would land. */}
+            {panelDrag && panelDrag.zone !== 'float' && (
+                <div className="dock-hint" style={{ [panelDrag.zone]: 0 }} />
+            )}
 
             {showBottom && <div className="splitter-h" style={{ touchAction: 'none' }} onPointerDown={e => { try { e.currentTarget.setPointerCapture(e.pointerId); } catch { } setSplitter({ type: 'bottom', startY: e.clientY, startH: timelineH }); }} />}
 

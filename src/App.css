@@ -1594,3 +1594,49 @@ html {
 @keyframes mvSpin {
     to { transform: rotate(360deg); }
 }
+
+/* ── Floating panels ─────────────────────────────────────────────────────────
+   A panel dragged out of a dock keeps exactly the same markup; only its
+   container changes, so nothing inside has to know where it is mounted. */
+.float-panel {
+    position: fixed;
+    z-index: 900;
+    max-height: 80vh;
+    overflow: auto;
+    border-radius: 8px;
+    border: 1px solid hsl(var(--ui-h) var(--ui-s) 30%);
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
+    background: hsl(var(--ui-h) var(--ui-s) 13%);
+}
+
+/* Inside a floating window the panel is the whole window, so its own border
+   would double up with the frame's. */
+.float-panel>* {
+    border: none;
+    height: auto;
+}
+
+/* Panel headers are the drag handle, so say so. */
+.panel-head {
+    cursor: grab;
+}
+
+.panel-head:active {
+    cursor: grabbing;
+}
+
+/* Where the panel would dock if dropped now. */
+.dock-hint {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    width: 140px;
+    z-index: 1400;
+    pointer-events: none;
+    background: linear-gradient(to right, var(--accent-glow), transparent);
+    border: 2px solid var(--accent-hi);
+}
+
+.dock-hint[style*="right"] {
+    background: linear-gradient(to left, var(--accent-glow), transparent);
+}

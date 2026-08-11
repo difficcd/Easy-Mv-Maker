@@ -19,7 +19,9 @@ export function CutLayerPanel({
 }) {
     return (
             <div className="right-panel" style={{ width: rightW, flexShrink: 0 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                {/* panel-head is what the docking drag looks for, so this header has to carry the
+                    class the other panels use or CUT / LAYER cannot be dragged between docks. */}
+                <div className="panel-head" style={{ marginBottom: 10 }}>
                     <span className="panel-title">CUT / LAYER</span>
                     <button className="icon-btn" onClick={() => setShowRight(false)}><ChevronRight size={14} /></button>
                 </div>
