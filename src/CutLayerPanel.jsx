@@ -30,7 +30,7 @@ export function CutLayerPanel({
                         <div className={`cut-item${currentCutId === cut.id ? ' cut-active' : ''}${selectedCutIds.has(cut.id) && selectedCutIds.size > 1 ? ' cut-multi' : ''}`} onClick={e => handleCutClick(e, cut.id)}>
                             <div className="cut-header">
                                 {isCur
-                                    ? <button className="icon-btn" onClick={e => { e.stopPropagation(); toggleCutCollapse(cut.id); }} title={collapsed ? '펼치기' : tr('접기')}>{collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}</button>
+                                    ? <button className="icon-btn" onClick={e => { e.stopPropagation(); toggleCutCollapse(cut.id); }} title={collapsed ? tr('펼치기') : tr('접기')}>{collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}</button>
                                     : <span style={{ width: 22, flexShrink: 0, fontSize: 9, color: '#666', textAlign: 'center' }}>L{layerCount}</span>}
                                 {renamingCutId === cut.id
                                     ? <input className="time-input" style={{ flex: 1, minWidth: 0 }} autoFocus defaultValue={cut.name}
@@ -99,7 +99,7 @@ export function CutLayerPanel({
                 </div>
                 {selectedCutIds.size > 1 && (
                     <button className="button del-btn" style={{ width: '100%', marginTop: 6, borderColor: 'var(--accent-hi)' }} onClick={() => handleDeleteCut(currentCutId)} title={tr('선택한 컷 삭제 (Delete)')}>
-                        <Trash2 size={14} /> 선택 {selectedCutIds.size}컷 삭제
+                        <Trash2 size={14} /> {tr('선택 {0}컷 삭제', selectedCutIds.size)}
                     </button>
                 )}
                 {videoBatches.length > 0 && (
@@ -108,7 +108,7 @@ export function CutLayerPanel({
                         {videoBatches.map(b => (
                             <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#bbb', padding: '3px 0' }}>
                                 <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.label}</span>
-                                <span style={{ color: '#777' }}>{b.count}컷</span>
+                                <span style={{ color: '#777' }}>{tr('{0}컷', b.count)}</span>
                                 <button className="icon-btn del-btn" title={tr('이 영상 프레임 전체 삭제')} onClick={() => deleteVideoBatch(b.id)}><Trash2 size={11} /></button>
                             </div>
                         ))}

@@ -15,6 +15,7 @@ import {
     layerKey, imageDataToDataURL, dataURLToImageData, drawStrokesOnCtx,
     flattenForCanvas, flattenLayersInUiOrder, strokeSig, extractVideoFrames, fitRect, detectSceneCuts, curveToWave, swayWeightAt, morphPrepare,
     accentSoft, ANIM_DEFAULT, computeCutAnim, LAYER_ANIM_DEFAULT, computeLayerAnim, TEXT_ANIM_DEFAULT, computeTextAnim,
+    targetCanvasFor,
 } from './canvasUtils';
 
 const PEN_TYPES = [
@@ -222,7 +223,7 @@ export default function App() {
     useEffect(() => { try { localStorage.setItem('mv_palettes', JSON.stringify(palettes)); } catch { } }, [palettes]);
     const addToPalette = (c) => setPalettes(ps => ps.map((p, i) => i === activePalette && !p.colors.some(x => x.toLowerCase() === c.toLowerCase()) ? { ...p, colors: [...p.colors, c] } : p));
     const removeFromPalette = (ci) => setPalettes(ps => ps.map((p, i) => i === activePalette ? { ...p, colors: p.colors.filter((_, j) => j !== ci) } : p));
-    const addPalette = () => { setPalettes(ps => [...ps, { name: `팔레트 ${ps.length + 1}`, colors: [] }]); setActivePalette(palettes.length); };
+    const addPalette = () => { setPalettes(ps => [...ps, { name: tr('팔레트 {0}', ps.length + 1), colors: [] }]); setActivePalette(palettes.length); };
     const deletePalette = () => { if (palettes.length <= 1) return; setPalettes(ps => ps.filter((_, i) => i !== activePalette)); setActivePalette(i => Math.max(0, i - 1)); };
     const renamePalette = () => { const n = window.prompt(tr('팔레트 이름'), palettes[activePalette]?.name); if (n) setPalettes(ps => ps.map((p, i) => i === activePalette ? { ...p, name: n } : p)); };
     const applyColor = (c) => { if (!c) return; setColor(c); };
@@ -564,7 +565,7 @@ export default function App() {
             const layers = c.layers.map(l => l.id === sel.sourceLayerId
                 ? { ...l, strokes: [...l.strokes, { id: Date.now(), tool: 'eraseBitmap', bitmapId: sel.maskBitmapId, x: px, y: py }] }
                 : l);
-            const partLayer = { id: newId, name: `파츠 ${newId}`, type: 'layer', parentId: null, visible: true, redoStrokes: [], strokes: [{ id: Date.now() + 1, tool: 'paste', bitmapId: sel.bitmapId, x: tx, y: ty, w: tw, h: th }] };
+            const partLayer = { id: newId, name: tr('파츠 {0}', newId), type: 'layer', parentId: null, visible: true, redoStrokes: [], strokes: [{ id: Date.now() + 1, tool: 'paste', bitmapId: sel.bitmapId, x: tx, y: ty, w: tw, h: th }] };
             return { layers: [...layers, partLayer], activeLayerId: newId };
         });
         cancelSelection();
@@ -1313,7 +1314,7 @@ export default function App() {
             const res = await fetch(`/api/projects/${id}/asset/${a.id}?ext=${encodeURIComponent(a.ext)}`, {
                 method: 'PUT', headers: { 'Content-Type': blob.type || 'application/octet-stream' }, body: blob,
             });
-            if (!res.ok) throw new Error(`프레임 업로드 실패 (${i + 1}/${total})`);
+            if (!res.ok) throw new Error(tr('프레임 업로드 실패 ({0}/{1})', i + 1, total));
             if (total > 12) setLoadProgress({ label: tr('서버에 올리는 중'), done: i + 1, total });
         }
     };
@@ -1344,12 +1345,12 @@ export default function App() {
             alert(tr('서버에 저장했습니다.'));
         } catch (e) {
             console.error('[import]', e);
-            setAppError(tr('서버 저장 실패: ') + e.message + '\n(API 서버가 실행 중인지 확인하세요. 큰 프로젝트는 저장에 시간이 걸립니다.)');
+            setAppError(tr('서버 저장 실패: ') + e.message + '\n' + tr('(API 서버가 실행 중인지 확인하세요. 큰 프로젝트는 저장에 시간이 걸립니다.)'));
         } finally { setServerBusy(false); setLoadProgress(null); }
     };
     const openServerList = async () => {
         try { setServerProjects(await apiFetch('/api/projects')); }
-        catch (e) { alert(tr('서버 목록을 불러오지 못했습니다: ') + e.message + '\n(API 서버 실행 확인: npm run dev)'); }
+        catch (e) { alert(tr('서버 목록을 불러오지 못했습니다: ') + e.message + '\n' + tr('(API 서버 실행 확인: npm run dev)')); }
     };
     const doServerOpen = async (id, name) => {
         try {
@@ -1397,7 +1398,7 @@ export default function App() {
             const res = await fetch(`/api/projects/${key}/asset/${a.id}?ext=${encodeURIComponent(a.ext)}`, {
                 method: 'PUT', headers: { 'Content-Type': blob.type || 'application/octet-stream' }, body: blob,
             });
-            if (!res.ok) throw new Error(`에셋 업로드 실패 (${i + 1}/${todo.length})`);
+            if (!res.ok) throw new Error(tr('에셋 업로드 실패 ({0}/{1})', i + 1, todo.length));
             setBackupProg({ done: i + 1, total: todo.length });
             onProgress?.(i + 1, todo.length);
         }
@@ -1511,7 +1512,7 @@ export default function App() {
                 safeArray(c.layers).some(l => safeArray(l.strokes).length) || safeArray(c.texts).length);
             if (!meaningful) return;
             const when = data.savedAt ? new Date(data.savedAt).toLocaleString() : '';
-            if (window.confirm(`이전에 자동저장된 작업이 있습니다${when ? ` (${when})` : ''}.\n복구할까요?`)) {
+            if (window.confirm(tr('이전에 자동저장된 작업이 있습니다{0}.\n복구할까요?', when ? ` (${when})` : ''))) {
                 restore(data);
             }
         }).catch(() => { }).finally(() => { didRecoverRef.current = true; });
@@ -1619,7 +1620,7 @@ export default function App() {
     const updCutAnim = (id, patch) => setCuts(p => p.map(c => c.id === id ? { ...c, anim: { ...ANIM_DEFAULT, ...c.anim, ...patch } } : c));
     const updLayerAnim = (cutId, layerId, patch) => updLayers(cutId, c => ({ layers: c.layers.map(l => l.id === layerId ? { ...l, anim: { ...LAYER_ANIM_DEFAULT, ...l.anim, ...patch } } : l) }));
     const handleAddTrack = () => setNumTracks(p => p + 1);
-    const handleDeleteTrack = (i) => { if (numTracks <= 1) return; if (!window.confirm(`Track ${i} 삭제?`)) return; setCuts(p => p.filter(c => c.track !== i).map(c => c.track > i ? { ...c, track: c.track - 1 } : c)); setNumTracks(p => p - 1); };
+    const handleDeleteTrack = (i) => { if (numTracks <= 1) return; if (!window.confirm(tr('Track {0} 삭제?', i))) return; setCuts(p => p.filter(c => c.track !== i).map(c => c.track > i ? { ...c, track: c.track - 1 } : c)); setNumTracks(p => p - 1); };
     // Click a cut in the list: plain = select one, Ctrl/Cmd = toggle, Shift = range (timeline order).
     const handleCutClick = (e, id) => {
         if (e.ctrlKey || e.metaKey) {
@@ -1698,7 +1699,7 @@ export default function App() {
         if (!A) return;
         const B = cuts.filter(c => c.track === A.track && c.startTime > A.startTime).sort((a, b) => a.startTime - b.startTime)[0];
         if (!B) { alert(tr('다음 컷이 없습니다. 트위닝은 현재 컷과 다음 컷 사이를 채웁니다.')); return; }
-        const s = window.prompt(`"${A.name}" → "${B.name}" 사이에 넣을 중간 프레임 개수 (1~12)`, '3');
+        const s = window.prompt(tr('"{0}" → "{1}" 사이에 넣을 중간 프레임 개수 (1~12)', A.name, B.name), '3');
         if (!s) return;
         const n = Math.max(1, Math.min(12, Math.round(+s) || 3));
         setLoadProgress({ label: tr('중간 프레임 만드는 중'), done: 0, total: n });
@@ -3658,7 +3659,7 @@ export default function App() {
     })();
     const deleteVideoBatch = (batchId) => {
         const b = videoBatches.find(x => x.id === batchId);
-        if (!b || !window.confirm(`"${b.label}" 프레임 ${b.count}컷을 삭제할까요?`)) return;
+        if (!b || !window.confirm(tr('"{0}" 프레임 {1}컷을 삭제할까요?', b.label, b.count))) return;
         setCuts(p => {
             const left = p.filter(c => c.videoBatch !== batchId);
             if (!left.some(c => c.id === currentCutId)) setCurrentCutId(left[0]?.id ?? null);
@@ -3682,7 +3683,7 @@ export default function App() {
     // Group the currently-selected cuts into a new part.
     const makePartFromSelection = () => {
         if (!selectedCutIds.size) { alert(tr('먼저 컷을 선택하세요 (타임라인에서 드래그 또는 Ctrl+클릭).')); return; }
-        const name = window.prompt(tr('새 파트 이름:'), `파트 ${parts.length + 1}`);
+        const name = window.prompt(tr('새 파트 이름:'), tr('파트 {0}', parts.length + 1));
         if (name == null) return;
         const pid = 'part_' + Date.now().toString(36);
         setCuts(p => p.map(c => selectedCutIds.has(c.id) ? { ...c, partId: pid, partName: name } : c));
@@ -3713,7 +3714,7 @@ export default function App() {
             openVideoImport(file, 'YT ' + (url.match(/(?:v=|youtu\.be\/|shorts\/)([\w-]{6,})/)?.[1] || tr('영상')), { url, key: 'yt:' + url });
         } catch (e) {
             console.error('[import]', e);
-            setAppError(tr('영상 가져오기 실패: ') + e.message + '\n(서버에 yt-dlp 설치 필요)');
+            setAppError(tr('영상 가져오기 실패: ') + e.message + '\n' + tr('(서버에 yt-dlp 설치 필요)'));
         } finally { setVideoBusy(null); }
     };
 
@@ -3730,12 +3731,15 @@ export default function App() {
             // lossless at ~5-8x smaller than true-lossless PNG — best default for large videos.
             const q = cfg.quality || 'compressed';
             const isNative = q !== 'compressed';
+            const tgt = targetCanvasFor(cfg, CANVAS_W, CANVAS_H);
+            const TW = tgt.w, TH = tgt.h;
+            if (TW !== CANVAS_W || TH !== CANVAS_H) setCanvasSize({ w: TW, h: TH });
             const { frames, holds = [], skipped = 0, fps, width: fW, height: fH } = await extractVideoFrames(cfg.file, {
                 fps: cfg.fps, maxFrames: cfg.whole ? 0 : cfg.maxFrames,
                 start: useRange ? rStart : 0, end: useRange ? rEnd : null,
                 scale: isNative ? 1 : cfg.scale, quality: q === 'lossless' ? 1 : q === 'high' ? 0.95 : 0.82,
                 dedupe: cfg.dedupe ?? 'exact', nativeRes: isNative, format: q === 'lossless' ? 'png' : 'webp',
-                width: CANVAS_W, height: CANVAS_H,
+                width: TW, height: TH,
                 onProgress: (done, total, skipped) => setVideoBusy({ done, total, skipped }),
                 shouldStop: () => videoStopRef.current,
             });
@@ -3751,7 +3755,7 @@ export default function App() {
             const label = cfg.label || cfg.file.name.replace(/\.[^.]+$/, '').slice(0, 24);
             // Native-res frames keep the source aspect, so letterbox-fit them into the canvas;
             // compressed frames are already pre-letterboxed to the canvas (full-canvas paste).
-            const fit = (isNative && fW && fH) ? fitRect(fW, fH, CANVAS_W, CANVAS_H) : { x: 0, y: 0, w: CANVAS_W, h: CANVAS_H };
+            const fit = (isNative && fW && fH) ? fitRect(fW, fH, TW, TH) : { x: 0, y: 0, w: TW, h: TH };
             const px = Math.round(fit.x), py = Math.round(fit.y), pw = Math.round(fit.w), ph = Math.round(fit.h);
             // Split the import into N sequential parts (part1~n) so a long video comes in already
             // organized. videoBatch stays one value (the frame manager deletes the whole import).
@@ -3804,13 +3808,13 @@ export default function App() {
             if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || ('HTTP ' + res.status)); }
             const blob = await res.blob();
             loadAudioUrl(URL.createObjectURL(blob), tr('유튜브 음원'));
-        } catch (e) { alert(tr('음원 추출 실패: ') + e.message + '\n(서버에 yt-dlp + ffmpeg 설치 필요)'); }
+        } catch (e) { alert(tr('음원 추출 실패: ') + e.message + '\n' + tr('(서버에 yt-dlp + ffmpeg 설치 필요)')); }
     };
     const handleExport = () => {
         const canvas = canvasRef.current;
         if (!canvas) return;
         if (typeof canvas.captureStream !== 'function' || typeof window.MediaRecorder === 'undefined') {
-            alert('이 환경에서는 내보내기를 지원하지 않습니다.\nPC 브라우저(Chrome 등)에서 실행해 주세요.'); return;
+            alert(tr('이 환경에서는 내보내기를 지원하지 않습니다.\nPC 브라우저(Chrome 등)에서 실행해 주세요.')); return;
         }
         const ctMax = Math.max(...cuts.map(c => c.endTime), audioData?.endTime ?? 0);
         if (ctMax <= 0) { alert(tr('내보낼 콘텐츠가 없습니다.')); return; }
@@ -3861,7 +3865,7 @@ export default function App() {
                         <span className="layer-name">{layer.name}</span>
                         {!isFolder && (
                             <button className="icon-btn" style={{ color: layer.roughen ? '#e0a84e' : undefined }}
-                                title={layer.roughen ? `자글자글 모션 (강도 ${layer.roughen}) — 클릭: 설정 열기` : tr('자글자글 모션 설정 (이미 그린 선이 제자리에서 부글거림)')}
+                                title={layer.roughen ? tr('자글자글 모션 (강도 {0}) — 클릭: 설정 열기', layer.roughen) : tr('자글자글 모션 설정 (이미 그린 선이 제자리에서 부글거림)')}
                                 onClick={e => toggleJitterPanel(e, cut.id, layer.id)}>
                                 <Waves size={11} />
                             </button>
@@ -3930,7 +3934,7 @@ export default function App() {
                     )}
                     {backupProg && (
                         <div className="bg-chip">
-                            <span className="bg-spin" /> 서버 백업 {backupProg.done}/{backupProg.total}
+                            <span className="bg-spin" /> {tr('서버 백업')} {backupProg.done}/{backupProg.total}
                         </div>
                     )}
                     {toast && (
@@ -3943,7 +3947,7 @@ export default function App() {
             )}
             {videoBusy && videoBusyBg && !videoBusy.fetching && (
                 <div style={{ position: 'fixed', right: 16, bottom: 16, zIndex: 1000, background: 'hsl(var(--ui-h) var(--ui-s) 15%)', border: '1px solid #333', borderRadius: 8, padding: '10px 14px', color: '#ccc', fontSize: 12, display: 'flex', gap: 10, alignItems: 'center', boxShadow: '0 4px 16px rgba(0,0,0,.4)' }}>
-                    <span>프레임 추출 {videoBusy.done}/{videoBusy.total || '?'}</span>
+                    <span>{tr('프레임 추출')} {videoBusy.done}/{videoBusy.total || '?'}</span>
                     <div style={{ width: 80, height: 6, background: 'hsl(var(--ui-h) var(--ui-s) 20%)', borderRadius: 3, overflow: 'hidden' }}><div style={{ height: '100%', width: `${videoBusy.total ? (videoBusy.done / videoBusy.total * 100) : 0}%`, background: 'var(--accent-soft)' }} /></div>
                     <button className="button" style={{ height: 26, padding: '0 8px' }} onClick={() => setVideoBusyBg(false)}>{tr('열기')}</button>
                     <button className="button" style={{ height: 26, padding: '0 8px' }} onClick={() => { videoStopRef.current = true; }}>{tr('중지')}</button>
@@ -3962,7 +3966,7 @@ export default function App() {
             )}
             {linkPrompt && (
                 <LinkPromptModal
-                    title={linkPrompt.kind === 'audio' ? '유튜브 음원 가져오기' : tr('유튜브 영상 프레임 가져오기')}
+                    title={linkPrompt.kind === 'audio' ? tr('유튜브 음원 가져오기') : tr('유튜브 영상 프레임 가져오기')}
                     placeholder="https://www.youtube.com/watch?v=..."
                     onClose={() => setLinkPrompt(null)}
                     onSubmit={(url) => {
@@ -4052,7 +4056,7 @@ export default function App() {
                         </div>
                         <div className="tool-divider" />
                         <input type="color" className="color-picker" value={color} onChange={e => applyColor(e.target.value)} title={tr('색상')} disabled={isSelectionTool} />
-                        <button className={`tool-btn${pickingColor ? ' active' : ''}`} onClick={pickColor} title={tr('스포이드 (화면에서 색 추출)')} disabled={isSelectionTool} style={{ padding: '0 6px' }}><Pipette size={13} /><span className="tool-label">{tr('스포이드')}</span></button>
+                        <button className={`tool-btn${pickingColor ? ' active' : ''}`} onClick={pickColor} title={tr('스포이드 (화면에서 색 추출)')} disabled={isSelectionTool} style={{ width: 46, height: 46, padding: 0, alignSelf: 'center', flex: '0 0 auto' }}><Pipette size={16} /></button>
                         <div className="slider-wrap">
                             {tool === 'soft' ? (
                                 <>
@@ -4061,7 +4065,7 @@ export default function App() {
                                         <button className={`pal-btn${softMode === 'soft' ? ' active' : ''}`} onClick={() => setSoftMode('soft')} title={tr('부드럽게 뿌리는 에어브러시')}>{tr('에어')}</button>
                                         <button className={`pal-btn${softMode === 'blur' ? ' active' : ''}`} onClick={() => setSoftMode('blur')} title={tr('이미 그린 것을 문질러 퍼뜨림')}>{tr('블러')}</button>
                                     </div>
-                                    <span style={{ fontSize: 9, color: '#888', textAlign: 'center' }}>{softMode === 'soft' ? '색을 뿌립니다' : tr('그려진 걸 퍼뜨립니다')}</span>
+                                    <span style={{ fontSize: 9, color: '#888', textAlign: 'center' }}>{softMode === 'soft' ? tr('색을 뿌립니다') : tr('그려진 걸 퍼뜨립니다')}</span>
                                 </>
                             ) : tool === 'ruler' ? (
                                 <>
@@ -4070,7 +4074,7 @@ export default function App() {
                                         <button className={`pal-btn${rulerMode === 'line' ? ' active' : ''}`} onClick={() => setRulerMode('line')} title={tr('정확한 직선')}>{tr('직선')}</button>
                                         <button className={`pal-btn${rulerMode === 'curve' ? ' active' : ''}`} onClick={() => { commitCurve(); setRulerMode('curve'); }} title={tr('점을 찍어 만드는 곡선')}>{tr('곡선')}</button>
                                     </div>
-                                    <span style={{ fontSize: 9, color: '#888', textAlign: 'center' }}>{rulerMode === 'line' ? '드래그로 직선' : tr('탭으로 점 찍기')}</span>
+                                    <span style={{ fontSize: 9, color: '#888', textAlign: 'center' }}>{rulerMode === 'line' ? tr('드래그로 직선') : tr('탭으로 점 찍기')}</span>
                                 </>
                             ) : tool === 'mosaic' ? (
                                 <>
@@ -4087,7 +4091,7 @@ export default function App() {
                                 const curSize = tool === 'eraser' ? eraserSize : brushSize;
                                 const setSize = (v) => { const n = Math.max(1, Math.min(200, Math.round(v) || 1)); tool === 'eraser' ? setEraserSize(n) : setBrushSize(n); };
                                 return (<>
-                                    <span className="slider-label">{tool === 'eraser' ? '지우개' : 'Size'}</span>
+                                    <span className="slider-label">{tool === 'eraser' ? tr('지우개') : 'Size'}</span>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 2, justifyContent: 'center' }}>
                                         <input type="number" min="1" max="200" value={curSize} disabled={isSelectionTool}
                                             onChange={e => setSize(+e.target.value)} style={{ width: 46, textAlign: 'center' }} className="time-input" />
@@ -4129,13 +4133,13 @@ export default function App() {
                     onPointerDown={onAreaPointerDown} onPointerMove={onAreaPointerMove} onPointerUp={onAreaPointerUp} onPointerCancel={onAreaPointerUp}>
                     {pathCapture && (
                         <div style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', zIndex: 31, background: 'var(--accent-soft)', color: '#fff', fontSize: 12, padding: '6px 12px', borderRadius: 6, display: 'flex', gap: 8, alignItems: 'center' }}>
-                            {pathCapture.mode === 'sway' ? '물결치듯 곡선을 그리세요 — 그 모양·크기대로 흔들립니다' : tr('펜으로 이동 경로를 그리세요')}
+                            {pathCapture.mode === 'sway' ? tr('물결치듯 곡선을 그리세요 — 그 모양·크기대로 흔들립니다') : tr('펜으로 이동 경로를 그리세요')}
                             <button className="button" style={{ height: 24, padding: '0 8px' }} onClick={() => setPathCapture(null)}>{tr('취소')}</button>
                         </div>
                     )}
                     {etool === 'curve' && (
                         <div style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', zIndex: 31, background: 'hsl(var(--ui-h) var(--ui-s) 20%)', color: '#fff', fontSize: 12, padding: '6px 12px', borderRadius: 6, display: 'flex', gap: 8, alignItems: 'center', border: '1px solid #444' }}>
-                            {curvePts === 0 ? '점을 찍어 곡선을 만드세요' : `앵커 ${curvePts}개 (누른 채 끌어 미세조정)`}
+                            {curvePts === 0 ? tr('점을 찍어 곡선을 만드세요') : tr('앵커 {0}개 (누른 채 끌어 미세조정)', curvePts)}
                             <button className="button" style={{ height: 24, padding: '0 10px', background: '#4ea1ff' }} disabled={curvePts < 2} onClick={commitCurve}>{tr('완료')}</button>
                             <button className="button" style={{ height: 24, padding: '0 8px' }} disabled={curvePts === 0} onClick={cancelCurve}>{tr('취소')}</button>
                         </div>
@@ -4235,23 +4239,23 @@ export default function App() {
                                         {[1, 1.15, 1.25, 1.5, 1.8, 2].map(v => <option key={v} value={v}>{v}x</option>)}
                                     </select>
                                     <label style={{ fontSize: 11, color: '#aaa', display: 'flex', alignItems: 'center', gap: 3 }} title={tr('가독성용 외곽선')}>
-                                        <input type="checkbox" checked={!!textEdit.outline} onChange={e => setTextEdit(te => te ? ({ ...te, outline: e.target.checked }) : te)} />테두리
+                                        <input type="checkbox" checked={!!textEdit.outline} onChange={e => setTextEdit(te => te ? ({ ...te, outline: e.target.checked }) : te)} />{tr('테두리')}
                                     </label>
                                     {textEdit.outline && <input type="color" value={textEdit.outlineColor || '#ffffff'} onChange={e => setTextEdit(te => te ? ({ ...te, outlineColor: e.target.value }) : te)} className="text-editor-color" title={tr('테두리 색')} />}
                                     <select className="time-input" style={{ width: 58 }} title={tr('자간(글자 간격)')} value={textEdit.letterSpacing ?? 0}
                                         onChange={e => setTextEdit(te => te ? ({ ...te, letterSpacing: +e.target.value }) : te)}>
-                                        {[-2, 0, 1, 2, 4, 8, 12].map(v => <option key={v} value={v}>자간{v}</option>)}
+                                        {[-2, 0, 1, 2, 4, 8, 12].map(v => <option key={v} value={v}>{tr('자간')}{v}</option>)}
                                     </select>
                                     <label style={{ fontSize: 11, color: '#aaa', display: 'flex', alignItems: 'center', gap: 3 }} title={tr('그림자')}>
-                                        <input type="checkbox" checked={!!textEdit.shadow} onChange={e => setTextEdit(te => te ? ({ ...te, shadow: e.target.checked }) : te)} />그림자
+                                        <input type="checkbox" checked={!!textEdit.shadow} onChange={e => setTextEdit(te => te ? ({ ...te, shadow: e.target.checked }) : te)} />{tr('그림자')}
                                     </label>
                                     {textEdit.shadow && <input type="color" value={(textEdit.shadowColor || '#000000').startsWith('#') ? textEdit.shadowColor : '#000000'} onChange={e => setTextEdit(te => te ? ({ ...te, shadowColor: e.target.value }) : te)} className="text-editor-color" title={tr('그림자 색')} />}
                                     <label style={{ fontSize: 11, color: '#aaa', display: 'flex', alignItems: 'center', gap: 3 }} title={tr('위→아래 2색 그라데이션')}>
-                                        <input type="checkbox" checked={!!textEdit.gradient} onChange={e => setTextEdit(te => te ? ({ ...te, gradient: e.target.checked }) : te)} />그라데이션
+                                        <input type="checkbox" checked={!!textEdit.gradient} onChange={e => setTextEdit(te => te ? ({ ...te, gradient: e.target.checked }) : te)} />{tr('그라데이션')}
                                     </label>
                                     {textEdit.gradient && <input type="color" value={textEdit.color2 || '#ffffff'} onChange={e => setTextEdit(te => te ? ({ ...te, color2: e.target.value }) : te)} className="text-editor-color" title={tr('그라데이션 끝 색')} />}
                                     <label style={{ fontSize: 11, color: '#aaa', display: 'flex', alignItems: 'center', gap: 3 }} title={tr('글자 뒤 배경 박스')}>
-                                        <input type="checkbox" checked={!!textEdit.bgColor} onChange={e => setTextEdit(te => te ? ({ ...te, bgColor: e.target.checked ? (te.bgColor || '#ffffff') : '' }) : te)} />배경
+                                        <input type="checkbox" checked={!!textEdit.bgColor} onChange={e => setTextEdit(te => te ? ({ ...te, bgColor: e.target.checked ? (te.bgColor || '#ffffff') : '' }) : te)} />{tr('배경')}
                                     </label>
                                     {textEdit.bgColor && <input type="color" value={textEdit.bgColor.startsWith('#') ? textEdit.bgColor : '#ffffff'} onChange={e => setTextEdit(te => te ? ({ ...te, bgColor: e.target.value }) : te)} className="text-editor-color" title={tr('배경 색')} />}
                                     <input type="number" className="time-input" style={{ width: 54 }} title={tr('회전(도)')} value={textEdit.rotation ?? 0} step={5}
@@ -4265,7 +4269,7 @@ export default function App() {
                                             <span style={{ width: '100%', height: 1, background: '#ffffff14', margin: '2px 0' }} />
                                             <label style={{ fontSize: 11, color: '#aaa', display: 'flex', alignItems: 'center', gap: 3 }} title={tr('재생할 때만 적용됩니다')}>
                                                 <input type="checkbox" checked={on}
-                                                    onChange={e => setTextEdit(te => te ? ({ ...te, anim: e.target.checked ? { ...TEXT_ANIM_DEFAULT } : null }) : te)} />애니메이션
+                                                    onChange={e => setTextEdit(te => te ? ({ ...te, anim: e.target.checked ? { ...TEXT_ANIM_DEFAULT } : null }) : te)} />{tr('애니메이션')}
                                             </label>
                                             {on && <>
                                                 <select className="time-input" style={{ width: 74 }} title={tr('등장')} value={an.inType} onChange={e => set({ inType: e.target.value })}>
@@ -4286,7 +4290,7 @@ export default function App() {
                                                         onChange={e => set({ emSpeed: Math.max(0, +e.target.value || 0) })} />
                                                 </>}
                                                 <label style={{ fontSize: 11, color: '#aaa', display: 'flex', alignItems: 'center', gap: 3 }} title={tr('한 글자씩 나타남')}>
-                                                    <input type="checkbox" checked={!!an.typing} onChange={e => set({ typing: e.target.checked })} />타이핑
+                                                    <input type="checkbox" checked={!!an.typing} onChange={e => set({ typing: e.target.checked })} />{tr('타이핑')}
                                                 </label>
                                                 {an.typing && <input type="number" className="time-input" style={{ width: 56 }} title={tr('초당 글자수')} value={an.typeSpeed} step={2} min={1}
                                                     onChange={e => set({ typeSpeed: Math.max(1, +e.target.value || 1) })} />}

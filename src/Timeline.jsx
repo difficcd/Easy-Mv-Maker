@@ -53,13 +53,13 @@ export function Timeline({
                 {parts.map((p, i) => (
                     <button key={p.id} className={`chip${activePartId === p.id ? ' chip-active' : ''}`} style={{ flexShrink: 0 }}
                         onClick={() => selectPart(p.id)} onDoubleClick={() => renamePart(p.id)}
-                        title={`${p.name} · ${p.count}컷 (클릭: 이 파트만 재생 / 더블클릭: 이름변경)`}>
+                        title={tr('{0} · {1}컷 (클릭: 이 파트만 재생 / 더블클릭: 이름변경)', p.name, p.count)}>
                         {p.name.slice(0, 14)} <span style={{ opacity: 0.6 }}>·{p.count}</span>
                         <span onClick={e => { e.stopPropagation(); ungroupPart(p.id); }} title={tr('파트 해제 (컷은 유지)')} style={{ marginLeft: 4, opacity: 0.5, cursor: 'pointer' }}>✕</span>
                     </button>
                 ))}
                 {selectedCutIds.size > 0 && (
-                    <button className="chip" onClick={makePartFromSelection} title={tr('선택한 컷을 새 파트로 묶기')} style={{ flexShrink: 0, color: 'var(--accent-soft)', borderColor: 'var(--accent-hi)' }}>+ 선택 {selectedCutIds.size}컷 → 새 파트</button>
+                    <button className="chip" onClick={makePartFromSelection} title={tr('선택한 컷을 새 파트로 묶기')} style={{ flexShrink: 0, color: 'var(--accent-soft)', borderColor: 'var(--accent-hi)' }}>+ {tr('선택 {0}컷 → 새 파트', selectedCutIds.size)}</button>
                 )}
             </div>
         )}
@@ -151,8 +151,8 @@ export function Timeline({
                     {videoOverlay && (
                         <div className="tl-track" style={{ background: '#0f1e2a' }}>
                             <div className="tl-track-label" style={{ background: '#0f1e2a' }}><span>{tr('영상')}</span>
-                                {sceneDetect ? <span style={{ fontSize: 9, color: '#7aa' }}>컷감지 {sceneDetect.total ? Math.round(sceneDetect.done / sceneDetect.total * 100) : 0}%</span>
-                                    : videoOverlay.cuts?.length ? <span style={{ fontSize: 9, color: '#7aa' }}>{videoOverlay.cuts.length}컷</span> : null}
+                                {sceneDetect ? <span style={{ fontSize: 9, color: '#7aa' }}>{tr('컷 감지')} {sceneDetect.total ? Math.round(sceneDetect.done / sceneDetect.total * 100) : 0}%</span>
+                                    : videoOverlay.cuts?.length ? <span style={{ fontSize: 9, color: '#7aa' }}>{tr('{0}컷', videoOverlay.cuts.length)}</span> : null}
                                 <button className="icon-btn" title={tr('장면(컷) 감지 설정')} style={{ fontSize: 11 }} onClick={e => { e.stopPropagation(); setSceneCfg({ threshold: 14, rangeOn: false, startText: '0:00', endText: '' }); }}>🎯</button>
                                 <button className="icon-btn del-btn" onClick={e => { e.stopPropagation(); removeVideoOverlay(); }} title={tr('영상 트랙 삭제')}><Trash2 size={9} /></button></div>
                             <div className="cut-block" style={{ left: `${videoOverlay.startTime * pps + 60}px`, width: `${(videoOverlay.endTime - videoOverlay.startTime) * pps}px`, background: '#155e75', borderColor: '#22d3ee55', cursor: draggingCutData?.cutId === 'video' ? 'grabbing' : 'grab', touchAction: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
@@ -162,7 +162,7 @@ export function Timeline({
                                 {safeArray(videoOverlay.cuts).map((vt, i) => {
                                     const rel = (vt - (videoOverlay.cutOffset || 0));
                                     if (rel < 0 || rel > (videoOverlay.endTime - videoOverlay.startTime)) return null;
-                                    return <div key={i} title={`장면 ${i + 1} (${fmt((videoOverlay.cutStart || 0) + rel)})`}
+                                    return <div key={i} title={tr('장면 {0} ({1})', i + 1, fmt((videoOverlay.cutStart || 0) + rel))}
                                         onPointerDown={e => { e.stopPropagation(); }}
                                         onClick={e => { e.stopPropagation(); seekToTime((videoOverlay.cutStart || 0) + rel); }}
                                         style={{ position: 'absolute', top: 0, bottom: 0, left: `${rel * pps}px`, width: 2, background: '#fde047', boxShadow: '0 0 3px rgba(253,224,71,.7)', cursor: 'pointer' }} />;

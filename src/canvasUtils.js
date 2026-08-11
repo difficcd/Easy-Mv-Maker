@@ -1169,3 +1169,16 @@ export const accentSoft = (alpha = 1) => {
     return v.startsWith('hsl(') ? v.replace(/\)$/, ` / ${alpha})`) : v;
 };
 
+// Which canvas a video import should land in. A vertical clip dropped into a landscape canvas
+// is mostly empty margin, so the import can either match the source or be pinned to one of the
+// two shapes people actually publish.
+export const targetCanvasFor = (cfg, curW, curH) => {
+    const mode = cfg?.canvasMode || 'source';
+    if (mode === 'landscape') return { w: 1920, h: 1080 };
+    if (mode === 'portrait') return { w: 1080, h: 1920 };
+    if (mode === 'source' && cfg?.srcW > 0 && cfg?.srcH > 0) {
+        // Even dimensions keep the frames off half-pixel resampling.
+        return { w: Math.round(cfg.srcW / 2) * 2, h: Math.round(cfg.srcH / 2) * 2 };
+    }
+    return { w: curW, h: curH };
+};

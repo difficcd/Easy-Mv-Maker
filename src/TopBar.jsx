@@ -42,7 +42,7 @@ export function TopBar({
                             <div className="file-menu-sep" />
                             <div style={{ fontSize: 10, color: '#777', padding: '4px 12px 2px' }}>{tr('자동 백업 (되돌리기용)')}</div>
                             <button className="file-menu-item" onClick={() => { doServerBackup(false); setShowFileMenu(false); }} disabled={backupBusy}>
-                                {backupBusy ? '백업 중…' : tr('지금 서버에 백업')}
+                                {backupBusy ? tr('백업 중…') : tr('지금 서버에 백업')}
                             </button>
                             <button className="file-menu-item" onClick={() => { openBackupList(); setShowFileMenu(false); }}>{tr('백업에서 되돌리기...')}</button>
                         </>}
@@ -64,7 +64,7 @@ export function TopBar({
                         <div className="file-menu-sep" />
                         <div style={{ fontSize: 10, color: '#777', padding: '4px 12px 2px' }}>{tr('영상')}</div>
                         <label className="file-menu-item" style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }} title={tr('영상을 프레임별 컷으로 가져오기')}>
-                            <Film size={14} /> 영상 프레임 가져오기...
+                            <Film size={14} /> {tr('영상 프레임 가져오기...')}
                             <input type="file" accept="video/*" ref={videoFileRef} style={{ display: 'none' }}
                                 onChange={e => { const f = e.target.files[0]; e.target.value = ''; if (f) { openVideoImport(f); setShowMediaMenu(false); } }} />
                         </label>
@@ -99,7 +99,7 @@ export function TopBar({
             </select>
             <button className="icon-btn" onClick={() => setShowHelp(true)} title={tr('단축키 · 도움말')} style={{ fontSize: 13, fontWeight: 700, width: 24, height: 24 }}>?</button>
             {/* Canvas zoom, to the right of the resolution picker and the help button. */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 2 }} title={`캔버스 확대/축소 (${keymap.zoomOut} / ${keymap.zoomIn})`}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 2 }} title={tr('캔버스 확대/축소 ({0} / {1})', keymap.zoomOut, keymap.zoomIn)}>
                 <button className="icon-btn" style={{ width: 24, height: 24, fontSize: 15 }} onClick={() => zoomCanvas(1 / 1.25)}>−</button>
                 <button className="button" style={{ height: 24, padding: '0 6px', fontSize: 11, minWidth: 46, justifyContent: 'center' }}
                     onClick={resetView} title={tr('클릭하면 100%로')}>{Math.round(view.zoom * 100)}%</button>
@@ -109,17 +109,17 @@ export function TopBar({
             <div className="menu-spacer" />
             {audioFile && <span style={{ fontSize: 11, color: 'var(--accent-pale)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={audioFile.name}>♪ {audioFile.name}</span>}
             {autosaveErr
-                ? <span style={{ fontSize: 11, color: '#f66', fontWeight: 700 }} title={`자동저장 실패: ${autosaveErr}\n저장공간이 가득 찼을 수 있습니다. 파일로 내보내기 또는 서버 저장을 권장합니다.`}>{tr('⚠ 자동저장 실패')}</span>
-                : autoSavedAt && <span style={{ fontSize: 11, color: 'var(--accent-soft)' }} title={tr('브라우저에 자동저장됨')}>● 자동저장 {new Date(autoSavedAt).toLocaleTimeString()}</span>}
+                ? <span style={{ fontSize: 11, color: '#f66', fontWeight: 700 }} title={tr('자동저장 실패: {0}\n저장공간이 가득 찼을 수 있습니다. 파일로 내보내기 또는 서버 저장을 권장합니다.', autosaveErr)}>{tr('⚠ 자동저장 실패')}</span>
+                : autoSavedAt && <span style={{ fontSize: 11, color: 'var(--accent-soft)' }} title={tr('브라우저에 자동저장됨')}>● {tr('자동저장')} {new Date(autoSavedAt).toLocaleTimeString()}</span>}
             {/* Say plainly that without a server the work stays local. Working on unaware and
                 then losing it is the worst outcome here. */}
             {!serverAvailable
                 ? <span style={{ fontSize: 11, color: '#e0a84e' }} title={tr('API 서버에 연결할 수 없어 서버 저장/백업이 비활성화됩니다. 작업은 이 브라우저에만 저장됩니다.')}>{tr('⚠ 로컬 전용')}</span>
-                : backupAt && <span style={{ fontSize: 11, color: 'var(--accent-pale)' }} title={tr('서버에 백업된 시각 (파일 > 백업에서 되돌리기)')}>⛁ 백업 {new Date(backupAt).toLocaleTimeString()}</span>}
+                : backupAt && <span style={{ fontSize: 11, color: 'var(--accent-pale)' }} title={tr('서버에 백업된 시각 (파일 > 백업에서 되돌리기)')}>⛁ {tr('백업')} {new Date(backupAt).toLocaleTimeString()}</span>}
             {storageInfo && storageInfo.pct > 0.8 && (
                 <span style={{ fontSize: 11, color: storageInfo.pct > 0.92 ? '#f66' : '#e0a84e' }}
-                    title={`브라우저 저장공간 ${(storageInfo.usage / 1073741824).toFixed(2)}GB / ${(storageInfo.quota / 1073741824).toFixed(2)}GB 사용 중. 가득 차면 자동저장이 실패할 수 있으니 서버 저장 또는 파일로 내보내기를 권장합니다.`}>
-                    ⚠ 저장공간 {Math.round(storageInfo.pct * 100)}%
+                    title={tr('브라우저 저장공간 {0}GB / {1}GB 사용 중. 가득 차면 자동저장이 실패할 수 있으니 서버 저장 또는 파일로 내보내기를 권장합니다.', (storageInfo.usage / 1073741824).toFixed(2), (storageInfo.quota / 1073741824).toFixed(2))}>
+                    ⚠ {tr('저장공간')} {Math.round(storageInfo.pct * 100)}%
                 </span>
             )}
             <button className="button button-primary" onClick={handleExport} style={{ display: 'flex', alignItems: 'center', gap: 5, height: 30, background: 'var(--accent)', borderColor: 'var(--accent-hi)', color: '#fff' }}><Download size={15} /> Export</button>

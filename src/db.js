@@ -1,3 +1,4 @@
+import { tr } from './i18n';
 // Minimal IndexedDB wrapper (no deps) used for local autosave / crash recovery.
 // A project record is the same JSON shape produced by App's buildData(), so it
 // round-trips through the existing restore() path unchanged.
@@ -67,5 +68,5 @@ export async function deleteProject(id) {
 }
 
 export const autosaveKey = AUTOSAVE_ID;
-export const saveAutosave = (data) => saveProject(AUTOSAVE_ID, data, '(자동저장)');
+export const saveAutosave = (data) => saveProject(AUTOSAVE_ID, data, tr('(자동저장)'));
 export const loadAutosave = () => loadProject(AUTOSAVE_ID);

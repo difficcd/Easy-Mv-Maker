@@ -1,6 +1,7 @@
 import React from 'react';
 import { Trash2 } from 'lucide-react';
 import { tr } from './i18n';
+import { targetCanvasFor } from './canvasUtils';
 
 // Overlays and dialogs split out of App.jsx. All state arrives as props; these only display.
 // (App.jsx had grown to 4,800 lines, so the screens moved into files you can actually read.)
@@ -46,7 +47,7 @@ export function ProgressOverlay({ progress }) {
                         : { height: '100%', width: `${pct}%`, borderRadius: 99, background: 'var(--accent)', transition: 'width .12s linear' }} />
                 </div>
                 <div style={{ fontSize: 11, color: '#888', marginTop: 8, display: 'flex', justifyContent: 'space-between' }}>
-                    <span>{pct == null ? '잠시만 기다려 주세요' : `${done} / ${total}`}</span>
+                    <span>{pct == null ? tr('잠시만 기다려 주세요') : `${done} / ${total}`}</span>
                     <span>{pct == null ? '' : `${pct}%`}</span>
                 </div>
             </div>
@@ -124,7 +125,7 @@ export function SettingsModal({
                                 <span style={{ flex: 1, color: '#ddd' }}>{tr(keyLabels[id])}</span>
                                 <button className="button" style={{ height: 30, minWidth: 110, justifyContent: 'center', background: rebinding === id ? 'var(--accent)' : undefined }}
                                     onClick={() => setRebinding(rebinding === id ? null : id)}>
-                                    {rebinding === id ? '키 입력 대기…' : (keymap[id] || tr('(없음)'))}
+                                    {rebinding === id ? tr('키 입력 대기…') : (keymap[id] || tr('(없음)'))}
                                 </button>
                                 {keymap[id] !== defaultKeys[id] && (
                                     <button className="small-btn" title={tr('기본값으로')} onClick={() => saveKeymap({ ...keymap, [id]: defaultKeys[id] })}>{tr('되돌리기')}</button>
@@ -216,7 +217,7 @@ export function VideoImportModal({
                         </div>
                         <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 8, flexWrap: 'wrap' }}>
                             <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                <input type="checkbox" checked={videoImport.whole} onChange={e => setVideoImport(v => ({ ...v, whole: e.target.checked }))} /> 영상 전체
+                                <input type="checkbox" checked={videoImport.whole} onChange={e => setVideoImport(v => ({ ...v, whole: e.target.checked }))} /> {tr('영상 전체')}
                             </label>
                             {!videoImport.whole && (
                                 <label style={{ display: 'flex', alignItems: 'center', gap: 4 }} title={tr('가져올 컷 개수 (중복 병합분은 제외한 실제 컷 수)')}>
@@ -226,10 +227,10 @@ export function VideoImportModal({
                                 </label>
                             )}
                             <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                <input type="checkbox" checked={videoImport.withAudio} onChange={e => setVideoImport(v => ({ ...v, withAudio: e.target.checked }))} /> 음원도 같이
+                                <input type="checkbox" checked={videoImport.withAudio} onChange={e => setVideoImport(v => ({ ...v, withAudio: e.target.checked }))} /> {tr('음원도 같이')}
                             </label>
                             <label style={{ display: 'flex', alignItems: 'center', gap: 4 }} title={tr('영상의 일부 구간만 가져오기 (mm:ss)')}>
-                                <input type="checkbox" checked={videoImport.rangeOn} onChange={e => setVideoImport(v => ({ ...v, rangeOn: e.target.checked }))} /> 구간만
+                                <input type="checkbox" checked={videoImport.rangeOn} onChange={e => setVideoImport(v => ({ ...v, rangeOn: e.target.checked }))} /> {tr('구간만')}
                             </label>
                             {videoImport.rangeOn && (
                                 <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
@@ -251,29 +252,48 @@ export function VideoImportModal({
                                     onChange={e => setVideoImport(v => ({ ...v, parts: Math.max(1, Math.min(50, Math.floor(+e.target.value) || 1)) }))} />
                                 <span style={{ color: 'var(--accent-soft)' }}>{tr('파트로 나누기')}</span>
                             </label>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 4 }} title={tr('세로 영상(쇼츠)을 가로 캔버스에 넣으면 대부분이 여백이 됩니다. 영상에 맞추거나 직접 고르세요.')}>
+                                <span style={{ color: '#888' }}>{tr('캔버스 크기')}</span>
+                                <select className="time-input" style={{ width: 150 }} value={videoImport.canvasMode || 'source'}
+                                    onChange={e => setVideoImport(v => ({ ...v, canvasMode: e.target.value }))}>
+                                    <option value="source">{tr('영상 크기대로')}</option>
+                                    <option value="landscape">{tr('일반 (가로 1920×1080)')}</option>
+                                    <option value="portrait">{tr('쇼츠 (세로 1080×1920)')}</option>
+                                    <option value="keep">{tr('현재 캔버스 유지')}</option>
+                                </select>
+                            </label>
                             <span style={{ marginLeft: 'auto' }}>{tr('중복 통합')}</span>
                             <select className="time-input" style={{ width: 100 }} value={videoImport.dedupe} onChange={e => setVideoImport(v => ({ ...v, dedupe: e.target.value === 'exact' ? 'exact' : +e.target.value }))}>
                                 {[['0', tr('끄기')], ['exact', tr('완전 동일')], ['3', tr('거의 같음')], ['8', tr('느슨')]].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                             </select>
                         </div>
                         <div style={{ color: '#888', lineHeight: 1.6, marginBottom: 12 }}>
-                            캔버스({canvasW}×{canvasH})에 비율 유지로 넣고, 현재 트랙 뒤에 이어서 생성됩니다.<br />
+                            {(() => {
+                                const t = targetCanvasFor(videoImport, canvasW, canvasH);
+                                const changes = t.w !== canvasW || t.h !== canvasH;
+                                return <>
+                                    {tr('캔버스({0}×{1})에 비율 유지로 넣고, 현재 트랙 뒤에 이어서 생성됩니다.', t.w, t.h)}
+                                    {changes && <> <b style={{ color: 'var(--accent-soft)' }}>{tr('가져오면 캔버스가 {0}×{1}로 바뀝니다.', t.w, t.h)}</b></>}
+                                </>;
+                            })()}<br />
                             {videoImport.quality === 'lossless'
                                 ? <><b style={{ color: 'var(--accent-soft)' }}>{tr('무손실 PNG')}</b> {tr('— 픽셀 완전 보존, 장당 용량이 큽니다(수 MB). 긴 영상은')} <b>{tr('고화질 WebP')}</b>{tr('를 권장.')}</>
                                 : videoImport.quality === 'high'
                                     ? <>{tr('원본 해상도')} <b style={{ color: 'var(--accent-soft)' }}>{tr('고화질 WebP(거의 무손실)')}</b> {tr('— 무손실 대비 용량 약 1/5~1/8, 화질 차이는 거의 없음.')}</>
-                                    : <>{tr('프레임은')} <b style={{ color: '#9b9' }}>{tr('WebP로 압축 저장')}</b>되어 원본 대비 용량이 크게 줄어듭니다{videoImport.scale < 1 ? ` (배율 ${Math.round(videoImport.scale * 100)}%로 추가 절감)` : ''}.</>}
+                                    : <>{tr('프레임은')} <b style={{ color: '#9b9' }}>{tr('WebP로 압축 저장')}</b>{tr('되어 원본 대비 용량이 크게 줄어듭니다')}{videoImport.scale < 1 ? ' ' + tr('(배율 {0}%로 추가 절감)', Math.round(videoImport.scale * 100)) : ''}.</>}
                             {videoImport.dedupe === 'exact'
                                 ? <><br /><b style={{ color: '#9b9' }}>{tr('완전히 똑같은 프레임만')}</b> {tr('한 컷으로 합칩니다 (픽셀 단위 비교).')}</>
                                 : videoImport.dedupe > 0 && <><br />{tr('이어지는')} <b style={{ color: '#9b9' }}>{tr('비슷한 화면을 한 컷으로 합칩니다')}</b> {tr('— 정지 구간이 길수록 컷 수·용량이 줄어듭니다.')}</>}
                             {!videoImport.whole && <><br />{tr('지정한 {0}컷은 중복 병합을 제외한 실제 컷 수입니다 (합쳐진 프레임은 개수에 안 셉니다).', videoImport.maxFrames)}</>}
                             {videoImport.rangeOn && <><br /><b style={{ color: 'var(--accent-soft)' }}>{videoImport.startText || '0:00'} ~ {videoImport.endText || tr('끝')}</b> {tr('구간만 가져옵니다 (mm:ss).')}</>}
-                            {videoImport.parts > 1 && <><br /><b style={{ color: 'var(--accent-soft)' }}>{tr('{0}개 파트', videoImport.parts)}</b>{tr('로 나눠 가져옵니다 — 재생 시 파트별 또는 전체로 볼 수 있습니다.')}</>}
+                            {videoImport.parts > 1 && <><br /><b style={{ color: 'var(--accent-soft)' }}>{tr('{0}개 파트', videoImport.parts)}</b>{' '}{tr('로 나눠 가져옵니다 — 재생 시 파트별 또는 전체로 볼 수 있습니다.')}</>}
                             {videoImport.whole && <><br /><span style={{ color: '#c99' }}>{tr('전체 추출: 길이가 길면 컷이 매우 많아집니다. fps를 낮게(1~4) 두는 것을 권장합니다.')}</span></>}
                         </div>
-                        <div style={{ background: 'hsl(var(--ui-h) var(--ui-s) 12%)', border: '1px solid hsl(var(--ui-h) var(--ui-s) 20%)', borderRadius: 6, padding: '8px 10px', marginBottom: 10, color: 'var(--accent-pale)', fontSize: 11.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                            <span><b style={{ color: '#8de' }}>{tr('영상 위에 덧그리기')}</b> {tr('— 프레임으로 쪼개지 않고 원본 영상을 트랙으로 깔고 그 위에 그림·텍스트. 24fps 장편도 매끄럽게 재생.')} <b style={{ color: '#8de' }}>{tr('음원도 함께')}</b> {tr('들어갑니다.')}</span>
-                            <button className="button" style={{ whiteSpace: 'nowrap' }} onClick={() => {
+                        {/* The text must be allowed to shrink and the button not to: without flex:1 and
+                            min-width:0 the longer English copy collapses into a one-word column. */}
+                        <div style={{ background: 'hsl(var(--ui-h) var(--ui-s) 12%)', border: '1px solid hsl(var(--ui-h) var(--ui-s) 20%)', borderRadius: 6, padding: '8px 10px', marginBottom: 10, color: 'var(--accent-pale)', fontSize: 11.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                            <span style={{ flex: '1 1 240px', minWidth: 0 }}><b style={{ color: '#8de' }}>{tr('영상 위에 덧그리기')}</b> {tr('— 프레임으로 쪼개지 않고 원본 영상을 트랙으로 깔고 그 위에 그림·텍스트. 24fps 장편도 매끄럽게 재생.')} <b style={{ color: '#8de' }}>{tr('음원도 함께')}</b> {tr('들어갑니다.')}</span>
+                            <button className="button" style={{ whiteSpace: 'nowrap', flex: '0 0 auto' }} onClick={() => {
                                 const useRange = videoImport.rangeOn && parseClock(videoImport.endText) > parseClock(videoImport.startText);
                                 const off = useRange ? parseClock(videoImport.startText) : 0;
                                 const clip = useRange ? (parseClock(videoImport.endText) - parseClock(videoImport.startText)) : null;
@@ -306,10 +326,10 @@ export function SceneDetectModal({ sceneCfg, setSceneCfg, sceneDetect, runSceneD
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                     <span style={{ width: 56 }}>{tr('민감도')}</span>
                     <input type="range" min={6} max={30} step={1} value={30 - sceneCfg.threshold + 6} onChange={e => setSceneCfg(v => ({ ...v, threshold: 30 - (+e.target.value) + 6 }))} style={{ flex: 1 }} />
-                    <span style={{ width: 60, color: '#888', textAlign: 'right' }}>{sceneCfg.threshold <= 10 ? '민감' : sceneCfg.threshold >= 20 ? '둔감' : tr('보통')}</span>
+                    <span style={{ width: 60, color: '#888', textAlign: 'right' }}>{sceneCfg.threshold <= 10 ? tr('민감') : sceneCfg.threshold >= 20 ? tr('둔감') : tr('보통')}</span>
                 </div>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                    <input type="checkbox" checked={sceneCfg.rangeOn} onChange={e => setSceneCfg(v => ({ ...v, rangeOn: e.target.checked }))} /> 구간만 감지 (전체보다 빠름)
+                    <input type="checkbox" checked={sceneCfg.rangeOn} onChange={e => setSceneCfg(v => ({ ...v, rangeOn: e.target.checked }))} /> {tr('구간만 감지 (전체보다 빠름)')}
                 </label>
                 {sceneCfg.rangeOn && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8, paddingLeft: 22 }}>
@@ -319,12 +339,12 @@ export function SceneDetectModal({ sceneCfg, setSceneCfg, sceneDetect, runSceneD
                     </div>
                 )}
                 <div style={{ color: '#888', lineHeight: 1.6, marginBottom: 12 }}>
-                    장면이 바뀌는 지점을 정밀하게 찾아 <b style={{ color: '#fde047' }}>{tr('노란 표시')}</b>로 타임라인에 찍습니다. 민감도를 올리면 미세한 전환도 잡습니다.
-                    {sceneDetect && <><br /><b style={{ color: 'var(--accent-soft)' }}>감지 중… {sceneDetect.total ? Math.round(sceneDetect.done / sceneDetect.total * 100) : 0}%</b></>}
+                    {tr('장면이 바뀌는 지점을 정밀하게 찾아')} <b style={{ color: '#fde047' }}>{tr('노란 표시')}</b>{tr('로 타임라인에 찍습니다. 민감도를 올리면 미세한 전환도 잡습니다.')}
+                    {sceneDetect && <><br /><b style={{ color: 'var(--accent-soft)' }}>{tr('감지 중…')} {sceneDetect.total ? Math.round(sceneDetect.done / sceneDetect.total * 100) : 0}%</b></>}
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
                     <button className="button" onClick={() => setSceneCfg(null)}>{tr('닫기')}</button>
-                    <button className="button button-primary" disabled={!!sceneDetect} onClick={() => runSceneDetect(sceneCfg)}>{sceneDetect ? '감지 중…' : tr('감지')}</button>
+                    <button className="button button-primary" disabled={!!sceneDetect} onClick={() => runSceneDetect(sceneCfg)}>{sceneDetect ? tr('감지 중…') : tr('감지')}</button>
                 </div>
             </div>
         </div>
