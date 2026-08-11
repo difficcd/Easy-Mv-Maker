@@ -13,9 +13,10 @@
     "android:sync": "npm run build && npx cap sync android",
     "android:open": "npx cap open android",
     "android:run": "npm run build && npx cap run android",
+    "test": "node --test test/*.test.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
-    "check": "npm run typecheck && node scripts/hook-baseline.mjs && npm run build"
+    "check": "npm run typecheck && npm test && node scripts/hook-baseline.mjs && npm run build"
   },
   "dependencies": {
     "@capacitor/android": "^7.0.0",

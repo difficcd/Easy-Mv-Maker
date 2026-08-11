@@ -1,0 +1,40 @@
+name: CI
+
+# The repository already had a single command that gates everything (npm run check: type check,
+# unit tests, the hook-warning baseline, then the build). This just makes it run on every push
+# and pull request instead of only when someone remembers locally.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # npm ci needs the lockfile to match package.json exactly, which is the point: a dependency
+      # added without committing the lockfile fails here rather than on someone else's machine.
+      - run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      # Fails only when hook dependency warnings grow, i.e. when a change adds new stale-closure
+      # risk. See scripts/hook-baseline.mjs for why zero is not the target.
+      - name: Hook baseline
+        run: node scripts/hook-baseline.mjs
+
+      - name: Build
+        run: npm run build

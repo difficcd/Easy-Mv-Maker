@@ -6,6 +6,10 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/difficcd/Easy-Mv-Maker/actions/workflows/ci.yml"><img src="https://github.com/difficcd/Easy-Mv-Maker/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=000" alt="React 18">
   <img src="https://img.shields.io/badge/Vite-6-646CFF?logo=vite&logoColor=fff" alt="Vite 6">
   <img src="https://img.shields.io/badge/TypeScript-checkJs-3178C6?logo=typescript&logoColor=fff" alt="TypeScript checkJs">
@@ -74,10 +78,18 @@ On a tablet, scan the QR printed by `npm run dev` (same Wi-Fi). If 5173 is taken
 ### Checks
 
 ```bash
-npm run check      # typecheck + hook-warning baseline + build
+npm run check      # typecheck + unit tests + hook-warning baseline + build
+npm test           # node --test, no test framework dependency
 npm run typecheck  # tsc --noEmit (allowJs/checkJs, files stay .jsx)
 npm run lint       # eslint-plugin-react-hooks
 ```
+
+The same four steps run in CI on every push and pull request.
+
+Unit tests cover the pure helpers in `canvasUtils` — geometry, easing and waveforms, keyframe
+sampling, layer flattening, and the video-import canvas sizing. They use Node's built-in runner
+because none of it needs a DOM or a framework. The functions that genuinely need a 2D context
+(frame extraction, stroke drawing) are deliberately not faked here.
 
 `scripts/hook-baseline.mjs` fails only when hook dependency warnings **grow**. The remaining ones are mostly deliberate (per-frame canvas work and heavy caches), so zero isn't the target; the guard catches new stale-closure risk introduced by things like extracting custom hooks. Use `UPDATE=1 node scripts/hook-baseline.mjs` to move the baseline on purpose.
 
@@ -110,8 +122,21 @@ local variable in dozens of places here.
 
 ## Notes
 
-- The API server (:8787) and the dev server are exposed on the LAN so a tablet can connect, and there is **no authentication.** Use them on a trusted network only — anyone on it can read and delete projects.
-- Video import is intended for local, personal use. Respect the source service's terms and copyright.
+**The server is for local use only.** It is a convenience for reaching your own machine from a
+tablet on the same Wi-Fi, and it is not written to be exposed to anything wider:
+
+- No authentication of any kind. Anyone who can reach :8787 can read, overwrite and delete every
+  project, and trigger downloads.
+- It listens on all interfaces, because the tablet has to reach it. On an untrusted network that
+  means everyone on that network.
+- Asset uploads accept up to 1GB of raw body per request, so an open port is also a way to fill
+  your disk.
+- Path traversal is handled — project ids are sanitised before touching the filesystem — but that
+  is the only hostile input it defends against.
+
+Run it behind your own firewall on a network you control. Do not port-forward it.
+
+Video import is intended for local, personal use. Respect the source service's terms and copyright.
 
 ## License
 
