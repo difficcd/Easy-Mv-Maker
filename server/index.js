@@ -118,6 +118,42 @@ const BACKUP_KEEP = 12;
 const backupDirFor = (key) => path.join(DATA_DIR, `${safeId(key)}.backups`);
 const safeStamp = (s) => String(s).replace(/[^0-9A-Za-z_-]/g, '').slice(0, 40);
 
+// Rotating the snapshots was never enough: every automatic backup uploads its frames as binary
+// assets, and only the JSON was ever deleted. Frames belonging to snapshots that had long since
+// rotated out stayed on disk forever - one directory here had grown to 301MB of files that no
+// retained snapshot referenced any more.
+//
+// Deleting is safe only against ALL retained snapshots, not just the newest: an older snapshot
+// still has to be restorable. Anything none of them names is unreachable.
+async function pruneBackupAssets(key, dir) {
+    const assetsDir = assetsDirFor(key);
+    let names;
+    try { names = await fs.readdir(assetsDir); } catch { return 0; }
+
+    const keep = new Set();
+    let snaps;
+    try { snaps = (await fs.readdir(dir)).filter(f => f.endsWith('.json')); } catch { return 0; }
+    for (const f of snaps) {
+        try {
+            const j = JSON.parse(await fs.readFile(path.join(dir, f), 'utf8'));
+            for (const a of (j?.data?.assets || [])) if (a?.id) keep.add(String(a.id));
+        } catch {
+            // An unreadable snapshot is not evidence that anything is unused, so keep everything.
+            return 0;
+        }
+    }
+
+    let removed = 0;
+    for (const name of names) {
+        const id = name.replace(/\.[^.]+$/, '');
+        if (id.startsWith('__')) continue;        // __audio__ and friends are not in the manifest
+        if (keep.has(id)) continue;
+        await fs.unlink(path.join(assetsDir, name)).catch(() => { });
+        removed++;
+    }
+    return removed;
+}
+
 app.post('/api/backups/:key', async (req, res) => {
     try {
         const dir = backupDirFor(req.params.key);
@@ -137,7 +173,8 @@ app.post('/api/backups/:key', async (req, res) => {
         for (const f of files.slice(0, Math.max(0, files.length - BACKUP_KEEP))) {
             await fs.unlink(path.join(dir, f)).catch(() => { });
         }
-        res.json({ ok: true, stamp, savedAt, kept: Math.min(files.length, BACKUP_KEEP) });
+        const pruned = await pruneBackupAssets(req.params.key, dir);
+        res.json({ ok: true, stamp, savedAt, kept: Math.min(files.length, BACKUP_KEEP), pruned });
     } catch (e) { res.status(500).json({ error: String(e) }); }
 });
 
