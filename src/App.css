@@ -779,6 +779,19 @@ canvas {
     display: flex;
     flex-direction: column;
     flex-shrink: 0;
+    /* Dragging a marquee across the timeline used to select the track labels, ruler numbers and
+       part names as text, leaving them highlighted behind the selection. Only the cut blocks
+       themselves opted out; the container has to. */
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+/* Fields inside the timeline still need real text selection. */
+.timeline input,
+.timeline textarea,
+.timeline select {
+    user-select: text;
+    -webkit-user-select: text;
 }
 
 .tl-controls {

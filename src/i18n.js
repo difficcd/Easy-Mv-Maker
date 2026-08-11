@@ -548,7 +548,7 @@ const EN = {
     '구간만 감지': 'Detect in range only',
     '컷 감지': 'Scene detect',
     '{0}컷': '{0} cuts',
-    '선택 {0}컷 → 새 파트': '+ {0} selected cuts → new part',
+    '선택 {0}컷 → 새 파트': '{0} selected cuts → new part',
     '선택 {0}컷 삭제': 'Delete {0} selected cuts',
     '캔버스({0}×{1})에 비율 유지로 넣고, 현재 트랙 뒤에 이어서 생성됩니다.': 'Fitted into the {0}×{1} canvas with its aspect kept, and appended after the current track.',
     '되어 원본 대비 용량이 크게 줄어듭니다': ', which cuts the size sharply against the original',

@@ -3631,13 +3631,20 @@ export default function App() {
         const srcKey = src?.key || `f:${file.name}:${file.size}`;
         setRecentVideos(p => [{ id: 'rv_' + Date.now().toString(36), name: label, srcKey, url: src?.url || null },
         ...p.filter(v => v.srcKey !== srcKey)].slice(0, 3));
-        setVideoImport({ file, srcKey, label, fps: 4, maxFrames: 60, scale: 0.5, whole: true, withAudio: false, dedupe: 'exact', quality: 'compressed', rangeOn: false, startText: '0:00', endText: '', parts: 1 });
+        setVideoImport({ file, srcKey, label, fps: 4, maxFrames: 60, scale: 0.5, whole: true, withAudio: false, dedupe: 'exact', quality: 'compressed', rangeOn: false, startText: '0:00', endText: '', parts: 1, canvasMode: 'source', srcW: 0, srcH: 0 });
         // Auto-suggest a part count from the video length (~1 part per 30s) so a long video comes
         // in already split. The user can still change it in the dialog.
         try {
             const v = document.createElement('video'); v.preload = 'metadata'; const u = URL.createObjectURL(file);
-            v.onloadedmetadata = () => { const dur = v.duration || 0; URL.revokeObjectURL(u); const parts = Math.max(1, Math.min(30, Math.round(dur / 30)));
-                setVideoImport(vi => (vi && vi.file === file) ? { ...vi, durationSec: dur, parts } : vi); };
+            v.onloadedmetadata = () => {
+                const dur = v.duration || 0;
+                // The source size decides the import canvas, so it is read here rather than in a
+                // second probe. Without it 'match the video' has nothing to match and falls back.
+                const sw = v.videoWidth || 0, sh = v.videoHeight || 0;
+                URL.revokeObjectURL(u);
+                const parts = Math.max(1, Math.min(30, Math.round(dur / 30)));
+                setVideoImport(vi => (vi && vi.file === file) ? { ...vi, durationSec: dur, parts, srcW: sw, srcH: sh } : vi);
+            };
             v.src = u;
         } catch { }
     };
@@ -4053,10 +4060,10 @@ export default function App() {
                             <button className="tool-btn" onClick={handleClearCut} title={tr('현재 컷 전체 비우기')}><Trash size={15} /><span className="tool-label">{tr('비우기')}</span></button>
                             <button className="tool-btn" onClick={doTween} title={tr('현재 컷과 다음 컷 사이를 자동 중간 프레임으로 채웁니다 (형태 모핑)')}><Repeat size={15} /><span className="tool-label">{tr('트위닝')}</span></button>
                             {hasLassoClip && <button className="tool-btn" onClick={pasteLassoSelection} title={tr('복사한 올가미 선택을 현재 레이어에 붙여넣기')}><ClipboardPaste size={15} /><span className="tool-label">{tr('올가미↓')}</span></button>}
+                            <button className={`tool-btn${pickingColor ? ' active' : ''}`} onClick={pickColor} title={tr('스포이드 (화면에서 색 추출)')} disabled={isSelectionTool}><Pipette size={15} /><span className="tool-label">{tr('스포이드')}</span></button>
                         </div>
                         <div className="tool-divider" />
                         <input type="color" className="color-picker" value={color} onChange={e => applyColor(e.target.value)} title={tr('색상')} disabled={isSelectionTool} />
-                        <button className={`tool-btn${pickingColor ? ' active' : ''}`} onClick={pickColor} title={tr('스포이드 (화면에서 색 추출)')} disabled={isSelectionTool} style={{ width: 46, height: 46, padding: 0, alignSelf: 'center', flex: '0 0 auto' }}><Pipette size={16} /></button>
                         <div className="slider-wrap">
                             {tool === 'soft' ? (
                                 <>
