@@ -3,6 +3,7 @@ import { Plus, Trash2, PenLine, Pen, Feather, Eraser, Undo, Redo, Layers, Trash,
 import './App.css';
 import { saveAutosave, loadAutosave, saveProject, loadProject, listProjects, deleteProject, autosaveKey } from './db';
 import { CutAnimPanel, LayerAnimPanel, JitterPanel } from './AnimPanels';
+import { NumField, clampNum } from './NumField';
 import ColorPanel, { RECENT_SLOTS } from './ColorPanel';
 import { TopBar } from './TopBar';
 import { CutLayerPanel } from './CutLayerPanel';
@@ -2791,7 +2792,9 @@ export default function App() {
             x: Math.round(textEdit.x),
             y: Math.round(textEdit.y),
             text: t,
-            fontSize: textEdit.fontSize,
+            // Ctrl+Enter commits without the size field ever losing focus, so the range that the
+            // field would have applied on blur is applied here too.
+            fontSize: clampNum(Number(textEdit.fontSize) || 36, 6, 400),
             fontFamily: textEdit.fontFamily,
             color: textEdit.color,
             opacity: textEdit.opacity,
@@ -4302,12 +4305,16 @@ export default function App() {
                                 <div className="text-editor-row">
                                     <div className="te-section">{tr('글꼴')}</div>
                                     <label className="text-editor-label">Size</label>
-                                    <input
-                                        type="number"
-                                        min="6"
-                                        max="400"
+                                    {/* The range is applied when the field is left, not per
+                                        keystroke - clamping as you type makes a size of 100
+                                        impossible to enter, because "1" becomes 6 before the
+                                        zeros arrive. commitText clamps again for the Ctrl+Enter
+                                        path, which never blurs this field. */}
+                                    <NumField
+                                        min={6}
+                                        max={400}
                                         value={textEdit.fontSize}
-                                        onChange={e => setTextEdit(te => te ? ({ ...te, fontSize: Math.max(6, Math.min(400, +e.target.value || 6)) }) : te)}
+                                        onChange={v => setTextEdit(te => te ? ({ ...te, fontSize: v }) : te)}
                                         className="text-editor-num"
                                     />
                                     {(() => {
@@ -4380,8 +4387,8 @@ export default function App() {
                                         <input type="checkbox" checked={!!textEdit.bgColor} onChange={e => setTextEdit(te => te ? ({ ...te, bgColor: e.target.checked ? (te.bgColor || '#ffffff') : '' }) : te)} />{tr('배경')}
                                     </label>
                                     {textEdit.bgColor && <input type="color" value={textEdit.bgColor.startsWith('#') ? textEdit.bgColor : '#ffffff'} onChange={e => setTextEdit(te => te ? ({ ...te, bgColor: e.target.value }) : te)} className="text-editor-color" title={tr('배경 색')} />}
-                                    <input type="number" className="time-input" style={{ width: 54 }} title={tr('회전(도)')} value={textEdit.rotation ?? 0} step={5}
-                                        onChange={e => { let v = parseFloat(e.target.value); if (isNaN(v)) v = 0; setTextEdit(te => te ? ({ ...te, rotation: v }) : te); }} />
+                                    <NumField className="time-input" width={54} title={tr('회전(도)')} value={textEdit.rotation ?? 0} step={5}
+                                        onChange={v => setTextEdit(te => te ? ({ ...te, rotation: v }) : te)} />
                                     {/* Text animation, visible only during playback. */}
                                     {(() => {
                                         const an = { ...TEXT_ANIM_DEFAULT, ...(textEdit.anim || {}) };

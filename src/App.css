@@ -694,6 +694,50 @@ canvas {
     border-color: var(--accent);
 }
 
+/* Animation panels
+ *
+ * A label and its number box travel together. The rows wrap - they have to, since a number input
+ * will not shrink below the width it is given and the panel is only ~215px wide - and a wrap that
+ * lands between "X" and its field leaves both meaningless.
+ */
+.anim-field {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+/* One keyframe. Drawn as a card because a keyframe needs more controls than fit on a line here,
+ * and as bare wrapped rows two consecutive keys were indistinguishable. */
+.kf-card {
+    background: hsl(var(--ui-h) var(--ui-s) 13%);
+    border: 1px solid hsl(var(--ui-h) var(--ui-s) 21%);
+    border-radius: 5px;
+    padding: 3px 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.kf-card-head,
+.kf-card-body {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: 4px;
+    row-gap: 3px;
+    font-size: 9px;
+    color: #999;
+}
+
+.kf-index {
+    color: var(--accent-soft);
+    font-weight: 700;
+    flex-shrink: 0;
+    min-width: 16px;
+}
+
 /* Layer list */
 .layer-list {
     display: flex;
