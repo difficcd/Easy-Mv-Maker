@@ -1,5 +1,6 @@
 import React from 'react';
 import { Droplets } from 'lucide-react';
+import { tr } from './i18n';
 
 // --- 색 변환 (HSV <-> HEX) ------------------------------------------------------------
 const hex2rgb = (h) => {
@@ -135,7 +136,7 @@ export default function ColorPanel({
         <div className="color-panel" style={{ width }}>
             <div className="panel-head">
                 <span className="panel-title">COLOR</span>
-                <button className="icon-btn" onClick={onClose} title="색상 창 닫기">✕</button>
+                <button className="icon-btn" onClick={onClose} title={tr('색상 창 닫기')}>✕</button>
             </div>
 
             {/* 색상환: 바깥 고리로 색조, 안쪽 사각형으로 채도·명도 */}
@@ -143,25 +144,25 @@ export default function ColorPanel({
 
             {/* 현재 색 크게 보여주기 + 코드 + 스포이드 */}
             <div className="current-color">
-                <div className="current-color-chip" style={{ background: color }} title="현재 색" />
+                <div className="current-color-chip" style={{ background: color }} title={tr('현재 색')} />
                 <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                    <span style={{ fontSize: 9, color: '#7a7a90' }}>현재 색</span>
+                    <span style={{ fontSize: 9, color: '#7a7a90' }}>{tr('현재 색')}</span>
                     <input className="time-input" style={{ width: '100%' }} value={color}
                         onChange={e => { const v = e.target.value.trim(); if (/^#[0-9a-fA-F]{6}$/.test(v)) applyColor(v); }}
-                        title="색상 코드 직접 입력 (#RRGGBB)" />
+                        title={tr('색상 코드 직접 입력 (#RRGGBB)')} />
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                    <input type="color" className="color-swatch-sm" value={color} onChange={e => applyColor(e.target.value)} title="시스템 색 선택기" />
-                    <button className={`button${pickingColor ? ' button-primary' : ''}`} onClick={pickColor} title="스포이드" style={{ height: 24, padding: '0 6px', justifyContent: 'center' }}>
+                    <input type="color" className="color-swatch-sm" value={color} onChange={e => applyColor(e.target.value)} title={tr('시스템 색 선택기')} />
+                    <button className={`button${pickingColor ? ' button-primary' : ''}`} onClick={pickColor} title={tr('스포이드')} style={{ height: 24, padding: '0 6px', justifyContent: 'center' }}>
                         <Droplets size={13} />
                     </button>
                 </div>
             </div>
 
-            {/* 최근 색 — 실제로 '사용한' 색이 쌓인다.
+            {/* 최근 색 — 실제로 tr('사용한') 색이 쌓인다.
                 칸 수를 30개로 고정해 두고 빈 칸은 비워 둔다: 색이 늘 때마다 영역 크기가
                 들썩이지 않아 레이아웃이 안정적이다. */}
-            <div className="color-section-label">최근 사용한 색</div>
+            <div className="color-section-label">{tr('최근 사용한 색')}</div>
             <div className="slot-grid">
                 {Array.from({ length: RECENT_SLOTS }, (_, i) => {
                     const c = recentColors[i];

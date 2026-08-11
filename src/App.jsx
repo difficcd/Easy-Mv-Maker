@@ -8,6 +8,7 @@ import { TopBar } from './TopBar';
 import { CutLayerPanel } from './CutLayerPanel';
 import { Timeline } from './Timeline';
 import { ProjectPicker, ProgressOverlay, SettingsModal, HelpModal, VideoImportModal, SceneDetectModal, LinkPromptModal } from './Modals';
+import { tr, loadLang, saveLang, setLangValue } from './i18n';
 import {
     DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT, FONT_PRESETS,
     pointInPolygon, dist, safeArray, hexToRgb, bucketFillTransparentRegion,
@@ -76,6 +77,9 @@ const applyTheme = (base, uiSat = 18) => {
 // 차분한 인디고. 원색은 hsl(243 17% 25%)로 어둡고 채도가 낮지만, applyTheme의
 // 하한(채도 0.35 · 명도 0.36)이 걸려 실제 액센트는 hsl(243 35% 36%)로 칠해진다.
 const DEFAULT_THEME = '#36354b';
+// 언어는 훅이 아니라 모듈 변수로 들고 있는다. alert·confirm처럼 컴포넌트 밖 함수에도
+// 번역할 문자열이 40곳 넘게 있어서 훅으로는 닿지 않는다. 첫 렌더 전에 맞춰 둔다.
+setLangValue(loadLang());
 // 색조(0~360)를 테마 기준색으로. 채도·명도는 UI에 어울리는 값으로 고정한다.
 const hueToHex = (h) => {
     const s = 0.7, l = 0.45;
@@ -188,8 +192,8 @@ export default function App() {
     const audioDestRef = useRef(null);
     const exportEndRef = useRef(0);
     const [tool, setTool] = useState('pen');
-    const [rulerMode, setRulerMode] = useState('line'); // '자' 도구의 두 옵션: 직선 / 곡선
-    const [softMode, setSoftMode] = useState('soft');   // '에어' 도구의 두 옵션: 에어브러시 / 블러
+    const [rulerMode, setRulerMode] = useState('line'); // tr('자') 도구의 두 옵션: 직선 / 곡선
+    const [softMode, setSoftMode] = useState('soft');   // tr('에어') 도구의 두 옵션: 에어브러시 / 블러
     // 아래 로직은 예전처럼 'line'/'curve'를 그대로 쓰되, '자' 도구는 모드로 갈라준다.
     const etool = tool === 'ruler' ? rulerMode : tool === 'soft' ? softMode : tool;
     const [color, setColor] = useState('#000000');
@@ -203,7 +207,7 @@ export default function App() {
     // 팔레트: 빈 상태로 시작한다(기본 프리셋 없음). 사용자가 직접 담는다.
     const [palettes, setPalettes] = useState(() => {
         try { const s = JSON.parse(localStorage.getItem('mv_palettes')); if (Array.isArray(s) && s.length) return s; } catch { }
-        return [{ name: '내 팔레트', colors: [] }];
+        return [{ name: tr('내 팔레트'), colors: [] }];
     });
     const [activePalette, setActivePalette] = useState(0);
     const [paletteEdit, setPaletteEdit] = useState(false); // on: 스와치 탭 = 삭제 (태블릿용)
@@ -212,7 +216,7 @@ export default function App() {
     const removeFromPalette = (ci) => setPalettes(ps => ps.map((p, i) => i === activePalette ? { ...p, colors: p.colors.filter((_, j) => j !== ci) } : p));
     const addPalette = () => { setPalettes(ps => [...ps, { name: `팔레트 ${ps.length + 1}`, colors: [] }]); setActivePalette(palettes.length); };
     const deletePalette = () => { if (palettes.length <= 1) return; setPalettes(ps => ps.filter((_, i) => i !== activePalette)); setActivePalette(i => Math.max(0, i - 1)); };
-    const renamePalette = () => { const n = window.prompt('팔레트 이름', palettes[activePalette]?.name); if (n) setPalettes(ps => ps.map((p, i) => i === activePalette ? { ...p, name: n } : p)); };
+    const renamePalette = () => { const n = window.prompt(tr('팔레트 이름'), palettes[activePalette]?.name); if (n) setPalettes(ps => ps.map((p, i) => i === activePalette ? { ...p, name: n } : p)); };
     const applyColor = (c) => { if (!c) return; setColor(c); };
     // '사용됨' 기준: 실제로 그 색으로 무언가를 그렸을 때만 최근 색에 올린다.
     const noteColorUsed = (c) => {
@@ -334,6 +338,10 @@ export default function App() {
     const backupKeyRef = useRef(null);
     const backupBusyRef = useRef(false);
     const lastBackupSigRef = useRef('');
+    // lang 상태는 화면을 다시 그리기 위한 것뿐이고, 실제 조회는 모듈 변수를 본다.
+    // memo로 감싼 컴포넌트가 없어서 여기서 상태가 바뀌면 트리 전체가 새 언어로 다시 그려진다.
+    const [lang, setLang] = useState(loadLang);
+    const changeLang = (l) => { setLangValue(l); saveLang(l); setLang(l); };
     const [themeColor, setThemeColor] = useState(() => { try { return localStorage.getItem('mv_theme') || DEFAULT_THEME; } catch { return DEFAULT_THEME; } });
     const [themeRecent, setThemeRecent] = useState(() => {
         try { const v = JSON.parse(localStorage.getItem('mv_theme_recent')); return Array.isArray(v) ? v : []; } catch { return []; }
@@ -624,7 +632,7 @@ export default function App() {
         const m = new Map();
         for (const c of cuts) {
             if (!c.partId) continue;
-            const p = m.get(c.partId) || { id: c.partId, name: c.partName || '파트', count: 0, start: Infinity, end: 0 };
+            const p = m.get(c.partId) || { id: c.partId, name: c.partName || tr('파트'), count: 0, start: Infinity, end: 0 };
             p.count++; p.start = Math.min(p.start, c.startTime); p.end = Math.max(p.end, c.endTime);
             m.set(c.partId, p);
         }
@@ -1049,7 +1057,7 @@ export default function App() {
         // separate binary asset — embedding it as base64 (often tens of MB) is the main remaining
         // OOM source. For local/autosave it's embedded so the file stays self-contained.
         if (includeAudio && audioB64Ref.current && audioData) {
-            const meta = { name: audioFile?.name || '오디오', startTime: audioData.startTime, endTime: audioData.endTime, offset: audioData.offset, duration: audioDuration };
+            const meta = { name: audioFile?.name || tr('오디오'), startTime: audioData.startTime, endTime: audioData.endTime, offset: audioData.offset, duration: audioDuration };
             if (assetSink) {
                 const ext = (audioB64Ref.current.match(/^data:audio\/([\w.-]+)/)?.[1] || 'mp3').replace('mpeg', 'mp3').replace('x-m4a', 'm4a');
                 assetSink.push({ id: '__audio__', url: audioB64Ref.current, ext });
@@ -1069,8 +1077,8 @@ export default function App() {
         }
         return out;
     };
-    const restore = async (data, assetBase = null, label = '프로젝트 여는 중') => {
-        if (data.appName !== 'EasyMVMaker') { alert('올바른 .emv 파일이 아닙니다.'); return; }
+    const restore = async (data, assetBase = null, label = tr('프로젝트 여는 중')) => {
+        if (data.appName !== 'EasyMVMaker') { alert(tr('올바른 .emv 파일이 아닙니다.')); return; }
         // Rebuild the bitmap store before swapping cuts in, so fill/lasso/paste render correctly.
         const store = bitmapStoreRef.current;
         store.clear();
@@ -1147,7 +1155,7 @@ export default function App() {
         }
         if (audioDataUrl) {
             audioB64Ref.current = audioDataUrl;
-            setAudioFile({ name: data.audio.name || '오디오' });
+            setAudioFile({ name: data.audio.name || tr('오디오') });
             setAudioUrl(audioDataUrl);
             setAudioDuration(data.audio.duration || 30);
             setAudioData({ startTime: data.audio.startTime ?? 0, endTime: data.audio.endTime ?? (data.audio.duration || 30), offset: data.audio.offset ?? 0 });
@@ -1167,7 +1175,7 @@ export default function App() {
             const url = URL.createObjectURL(videoBlob);
             const v = videoElRef.current;
             if (v) { v.muted = true; v.playsInline = true; v.src = url; v.onseeked = () => setFrameDecodeTick(t => t + 1); v.onloadedmetadata = () => { try { v.currentTime = data.video.offset || 0; } catch { } }; }
-            setVideoOverlay({ name: data.video.name || '영상', startTime: data.video.startTime ?? 0, endTime: data.video.endTime ?? (data.video.duration || 0), offset: data.video.offset ?? 0, duration: data.video.duration || 0, w: data.video.w || 0, h: data.video.h || 0, cuts: data.video.cuts, cutStart: data.video.cutStart, cutOffset: data.video.cutOffset });
+            setVideoOverlay({ name: data.video.name || tr('영상'), startTime: data.video.startTime ?? 0, endTime: data.video.endTime ?? (data.video.duration || 0), offset: data.video.offset ?? 0, duration: data.video.duration || 0, w: data.video.w || 0, h: data.video.h || 0, cuts: data.video.cuts, cutStart: data.video.cutStart, cutOffset: data.video.cutOffset });
         } else {
             videoBlobRef.current = null; setVideoOverlay(null);
             if (videoElRef.current) { try { videoElRef.current.pause(); videoElRef.current.removeAttribute('src'); videoElRef.current.load(); } catch { } }
@@ -1187,16 +1195,16 @@ export default function App() {
     // 큰 .emv는 읽기·파싱만으로도 한참 멈춘 것처럼 보인다 → 진행률을 알 수 없는 구간은
     // 라벨만 띄우고(총량 0 = 무한 게이지), 이후 restore가 실제 진행률을 이어받는다.
     const readAndRestore = async (getText) => {
-        setLoadProgress({ label: '파일 읽는 중', done: 0, total: 0 });
+        setLoadProgress({ label: tr('파일 읽는 중'), done: 0, total: 0 });
         try {
             const text = await getText();
-            setLoadProgress({ label: '파일 분석 중', done: 0, total: 0 });
+            setLoadProgress({ label: tr('파일 분석 중'), done: 0, total: 0 });
             await new Promise(r => setTimeout(r, 0)); // 게이지가 한 번 그려질 틈을 준다
             const data = JSON.parse(text);
             await restore(data);
         } catch (err) {
             setLoadProgress(null);
-            alert('파일 오류: ' + err.message);
+            alert(tr('파일 오류: ') + err.message);
         }
     };
     const doOpen = async () => {
@@ -1229,14 +1237,14 @@ export default function App() {
         if (videoElRef.current) { try { videoElRef.current.pause(); videoElRef.current.removeAttribute('src'); videoElRef.current.load(); } catch { } }
     };
     const doNew = () => {
-        if (!window.confirm('새 프로젝트? 저장되지 않은 내용은 사라집니다.')) return;
+        if (!window.confirm(tr('새 프로젝트? 저장되지 않은 내용은 사라집니다.'))) return;
         resetToEmpty();
     };
 
     // --- Document tabs (multiple projects open at once, Clip Studio / SAI style) ---
     // Each tab keeps a full in-memory document snapshot (buildData with Blobs, so no base64 cost).
     // Switching = snapshot the current tab, then restore the target's snapshot.
-    const [tabs, setTabs] = useState([{ id: 't1', name: '프로젝트 1' }]);
+    const [tabs, setTabs] = useState([{ id: 't1', name: tr('프로젝트 1') }]);
     const [activeTabId, setActiveTabId] = useState('t1');
     const tabDocsRef = useRef({}); // id -> doc snapshot (null = fresh/empty)
     const tabBusyRef = useRef(false);
@@ -1256,15 +1264,15 @@ export default function App() {
         try {
             await snapshotActiveTab();
             const id = 't' + Date.now().toString(36);
-            setTabs(p => { const n = [...p, { id, name: '프로젝트 ' + (p.length + 1) }]; return n; });
+            setTabs(p => { const n = [...p, { id, name: tr('프로젝트 ') + (p.length + 1) }]; return n; });
             tabDocsRef.current[id] = null;
             setActiveTabId(id);
             resetToEmpty();
         } finally { tabBusyRef.current = false; }
     };
     const closeTab = async (id) => {
-        if (tabs.length <= 1) { if (window.confirm('마지막 탭입니다. 내용을 비울까요?')) { resetToEmpty(); tabDocsRef.current[id] = null; } return; }
-        if (!window.confirm('이 탭을 닫을까요? 저장하지 않은 내용은 사라집니다.')) return;
+        if (tabs.length <= 1) { if (window.confirm(tr('마지막 탭입니다. 내용을 비울까요?'))) { resetToEmpty(); tabDocsRef.current[id] = null; } return; }
+        if (!window.confirm(tr('이 탭을 닫을까요? 저장하지 않은 내용은 사라집니다.'))) return;
         delete tabDocsRef.current[id];
         const rest = tabs.filter(t => t.id !== id);
         setTabs(rest);
@@ -1294,7 +1302,7 @@ export default function App() {
                 method: 'PUT', headers: { 'Content-Type': blob.type || 'application/octet-stream' }, body: blob,
             });
             if (!res.ok) throw new Error(`프레임 업로드 실패 (${i + 1}/${total})`);
-            if (total > 12) setLoadProgress({ label: '서버에 올리는 중', done: i + 1, total });
+            if (total > 12) setLoadProgress({ label: tr('서버에 올리는 중'), done: i + 1, total });
         }
     };
     const doServerSave = async (forceNew = false) => {
@@ -1305,7 +1313,7 @@ export default function App() {
             let id = (!forceNew && serverIdRef.current) ? serverIdRef.current : null;
             let name = serverNameRef.current || 'Untitled';
             if (!id) {
-                name = window.prompt('서버에 저장할 프로젝트 이름:', serverNameRef.current || 'MV Project');
+                name = window.prompt(tr('서버에 저장할 프로젝트 이름:'), serverNameRef.current || 'MV Project');
                 if (!name) return;
                 // Create the record first (just to get an id); the real data is committed LAST.
                 const r = await apiFetch('/api/projects', {
@@ -1321,15 +1329,15 @@ export default function App() {
                 method: 'PUT', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name, data }),
             });
-            alert('서버에 저장했습니다.');
+            alert(tr('서버에 저장했습니다.'));
         } catch (e) {
             console.error('[import]', e);
-            setAppError('서버 저장 실패: ' + e.message + '\n(API 서버가 실행 중인지 확인하세요. 큰 프로젝트는 저장에 시간이 걸립니다.)');
+            setAppError(tr('서버 저장 실패: ') + e.message + '\n(API 서버가 실행 중인지 확인하세요. 큰 프로젝트는 저장에 시간이 걸립니다.)');
         } finally { setServerBusy(false); setLoadProgress(null); }
     };
     const openServerList = async () => {
         try { setServerProjects(await apiFetch('/api/projects')); }
-        catch (e) { alert('서버 목록을 불러오지 못했습니다: ' + e.message + '\n(API 서버 실행 확인: npm run dev)'); }
+        catch (e) { alert(tr('서버 목록을 불러오지 못했습니다: ') + e.message + '\n(API 서버 실행 확인: npm run dev)'); }
     };
     const doServerOpen = async (id, name) => {
         try {
@@ -1337,15 +1345,15 @@ export default function App() {
             await restore(data, `/api/projects/${id}`); // fetch externalized frame assets from this project
             serverIdRef.current = id; serverNameRef.current = name || '';
             setServerProjects(null);
-        } catch (e) { alert('서버에서 열기 실패: ' + e.message); }
+        } catch (e) { alert(tr('서버에서 열기 실패: ') + e.message); }
     };
     const doServerDelete = async (id) => {
-        if (!window.confirm('이 프로젝트를 서버에서 삭제할까요?')) return;
+        if (!window.confirm(tr('이 프로젝트를 서버에서 삭제할까요?'))) return;
         try {
             await apiFetch(`/api/projects/${id}`, { method: 'DELETE' });
             if (serverIdRef.current === id) { serverIdRef.current = null; serverNameRef.current = ''; }
             openServerList();
-        } catch (e) { alert('삭제 실패: ' + e.message); }
+        } catch (e) { alert(tr('삭제 실패: ') + e.message); }
     };
 
     // --- Rotating server backups of the autosave (safety net separate from "저장") ---------
@@ -1395,31 +1403,31 @@ export default function App() {
             if (assetSink.length) await uploadAssetsDeduped(key, assetSink);
             await apiFetch(`/api/backups/${key}`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: serverNameRef.current || localNameRef.current || '자동 백업', data }),
+                body: JSON.stringify({ name: serverNameRef.current || localNameRef.current || tr('자동 백업'), data }),
             });
             setBackupAt(Date.now());
-            if (!silent) setToast('서버에 백업했습니다.');
+            if (!silent) setToast(tr('서버에 백업했습니다.'));
         } catch (e) {
-            if (!silent) setAppError('서버 백업 실패: ' + e.message);
+            if (!silent) setAppError(tr('서버 백업 실패: ') + e.message);
         } finally { backupBusyRef.current = false; setBackupBusy(false); setBackupProg(null); }
     };
     const openBackupList = async () => {
         try { setBackupList(await apiFetch(`/api/backups/${getBackupKey()}`)); }
-        catch (e) { alert('백업 목록을 불러오지 못했습니다: ' + e.message); }
+        catch (e) { alert(tr('백업 목록을 불러오지 못했습니다: ') + e.message); }
     };
     const doBackupRestore = async (stamp) => {
-        if (!window.confirm('이 백업으로 되돌릴까요? 현재 작업 내용은 사라집니다.')) return;
+        if (!window.confirm(tr('이 백업으로 되돌릴까요? 현재 작업 내용은 사라집니다.'))) return;
         try {
             const key = getBackupKey();
             const data = await apiFetch(`/api/backups/${key}/${stamp}`);
             await restore(data, `/api/projects/${key}`); // 에셋은 같은 키의 저장소에서
             setBackupList(null);
-        } catch (e) { alert('백업 복구 실패: ' + e.message); }
+        } catch (e) { alert(tr('백업 복구 실패: ') + e.message); }
     };
     const doBackupDelete = async (stamp) => {
-        if (!window.confirm('이 백업을 삭제할까요?')) return;
+        if (!window.confirm(tr('이 백업을 삭제할까요?'))) return;
         try { await apiFetch(`/api/backups/${getBackupKey()}/${stamp}`, { method: 'DELETE' }); openBackupList(); }
-        catch (e) { alert('삭제 실패: ' + e.message); }
+        catch (e) { alert(tr('삭제 실패: ') + e.message); }
     };
     // Periodic backup. Reads the newest state through a ref: putting `cuts` in the deps would
     // restart the timer on every stroke, so it would never actually fire while you draw.
@@ -1459,27 +1467,27 @@ export default function App() {
     const doLocalSave = async (forceNew = false) => {
         try {
             const data = await buildData(true, null, true); // IndexedDB stores frame Blobs directly
-            if (!forceNew && localIdRef.current) { await saveProject(localIdRef.current, data, localNameRef.current || 'Untitled'); alert('로컬에 저장했습니다.'); return; }
-            const name = window.prompt('로컬 저장 이름:', localNameRef.current || 'MV Project');
+            if (!forceNew && localIdRef.current) { await saveProject(localIdRef.current, data, localNameRef.current || 'Untitled'); alert(tr('로컬에 저장했습니다.')); return; }
+            const name = window.prompt(tr('로컬 저장 이름:'), localNameRef.current || 'MV Project');
             if (!name) return;
             const id = 'l_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
             await saveProject(id, data, name);
             localIdRef.current = id; localNameRef.current = name;
-            alert('로컬에 저장했습니다.');
-        } catch (e) { alert('로컬 저장 실패: ' + e.message); }
+            alert(tr('로컬에 저장했습니다.'));
+        } catch (e) { alert(tr('로컬 저장 실패: ') + e.message); }
     };
     const openLocalList = async () => {
         try { setLocalProjects((await listProjects()).filter(p => p.id !== autosaveKey)); }
-        catch (e) { alert('로컬 목록 실패: ' + e.message); }
+        catch (e) { alert(tr('로컬 목록 실패: ') + e.message); }
     };
     const doLocalOpen = async (id, name) => {
-        try { const data = await loadProject(id); if (!data) { alert('데이터가 없습니다.'); return; } await restore(data); localIdRef.current = id; localNameRef.current = name || ''; setLocalProjects(null); }
-        catch (e) { alert('로컬 열기 실패: ' + e.message); }
+        try { const data = await loadProject(id); if (!data) { alert(tr('데이터가 없습니다.')); return; } await restore(data); localIdRef.current = id; localNameRef.current = name || ''; setLocalProjects(null); }
+        catch (e) { alert(tr('로컬 열기 실패: ') + e.message); }
     };
     const doLocalDelete = async (id) => {
-        if (!window.confirm('이 로컬 프로젝트를 삭제할까요?')) return;
+        if (!window.confirm(tr('이 로컬 프로젝트를 삭제할까요?'))) return;
         try { await deleteProject(id); if (localIdRef.current === id) { localIdRef.current = null; localNameRef.current = ''; } openLocalList(); }
-        catch (e) { alert('삭제 실패: ' + e.message); }
+        catch (e) { alert(tr('삭제 실패: ') + e.message); }
     };
 
     // Crash recovery: on first load, offer to restore the last autosaved project.
@@ -1581,7 +1589,7 @@ export default function App() {
     // Clear all drawing + text in the current cut (every layer's strokes), keeping the layers.
     const handleClearCut = () => {
         if (!currentCutId) return;
-        if (!window.confirm('현재 컷의 모든 그림과 텍스트를 지울까요?')) return;
+        if (!window.confirm(tr('현재 컷의 모든 그림과 텍스트를 지울까요?'))) return;
         setCuts(p => p.map(c => c.id === currentCutId
             ? { ...c, texts: [], layers: c.layers.map(l => l.type === 'layer' ? { ...l, strokes: [], redoStrokes: [] } : l) }
             : c));
@@ -1673,11 +1681,11 @@ export default function App() {
         const A = cuts.find(c => c.id === currentCutId);
         if (!A) return;
         const B = cuts.filter(c => c.track === A.track && c.startTime > A.startTime).sort((a, b) => a.startTime - b.startTime)[0];
-        if (!B) { alert('다음 컷이 없습니다. 트위닝은 현재 컷과 다음 컷 사이를 채웁니다.'); return; }
+        if (!B) { alert(tr('다음 컷이 없습니다. 트위닝은 현재 컷과 다음 컷 사이를 채웁니다.')); return; }
         const s = window.prompt(`"${A.name}" → "${B.name}" 사이에 넣을 중간 프레임 개수 (1~12)`, '3');
         if (!s) return;
         const n = Math.max(1, Math.min(12, Math.round(+s) || 3));
-        setLoadProgress({ label: '중간 프레임 만드는 중', done: 0, total: n });
+        setLoadProgress({ label: tr('중간 프레임 만드는 중'), done: 0, total: n });
         await new Promise(r => setTimeout(r, 30)); // 게이지를 한 번 그리고 시작
         try {
             const make = morphPrepare(flattenCutToImageData(A), flattenCutToImageData(B));
@@ -1693,7 +1701,7 @@ export default function App() {
                     layers: [{ id: 1, name: 'L1', type: 'layer', parentId: null, visible: true, redoStrokes: [], strokes: [{ id: base + 1000 + i, tool: 'paste', bitmapId, x: 0, y: 0 }] }],
                     activeLayerId: 1, texts: [],
                 });
-                setLoadProgress({ label: '중간 프레임 만드는 중', done: i + 1, total: n });
+                setLoadProgress({ label: tr('중간 프레임 만드는 중'), done: i + 1, total: n });
                 await new Promise(r => setTimeout(r, 0)); // 각 장마다 UI에 양보 (멈춘 것처럼 보이지 않게)
             }
             const shift = n * dur;
@@ -1702,7 +1710,7 @@ export default function App() {
                     ? { ...c, startTime: c.startTime + shift, endTime: c.endTime + shift } : c),
                 ...newCuts,
             ]);
-        } catch (e) { alert('트위닝 실패: ' + e.message); }
+        } catch (e) { alert(tr('트위닝 실패: ') + e.message); }
         finally { setLoadProgress(null); }
     };
 
@@ -2605,7 +2613,7 @@ export default function App() {
                     // 흔들림2: 그린 곡선을 파형으로 바꿔 저장. 강도는 그린 곡선의 실제 크기를 기본값으로.
                     const w = curveToWave(pts);
                     if (w) updLayerAnim(pathCapture.cutId, pathCapture.layerId, { swayCurve: w.wave, swayAmount: Math.max(1, Math.round(w.amp / 4)) });
-                    else alert('거의 직선이라 흔들림을 만들 수 없습니다. 물결치듯 그려보세요.');
+                    else alert(tr('거의 직선이라 흔들림을 만들 수 없습니다. 물결치듯 그려보세요.'));
                 } else {
                     updLayerAnim(pathCapture.cutId, pathCapture.layerId, { path: pts.map(p => ({ x: Math.round(p.x), y: Math.round(p.y) })) });
                 }
@@ -3150,7 +3158,7 @@ export default function App() {
                 ctx.scale(anim.sx, anim.sy);
                 ctx.translate(-CANVAS_W / 2, -CANVAS_H / 2);
             }
-            const t2 = t; // 아래 루프의 t는 '텍스트'라 시간 t를 가린다 → 미리 잡아둔다
+            const t2 = t; // 아래 루프의 t는 tr('텍스트')라 시간 t를 가린다 → 미리 잡아둔다
             for (const t of safeArray(ac.texts)) {
                 if (!t || t.visible === false) continue;
                 // 텍스트 애니메이션은 컷 애니메이션과 같이 재생 중에만 적용한다.
@@ -3539,7 +3547,7 @@ export default function App() {
         v.muted = true; v.playsInline = true; v.src = url;
         v.onloadedmetadata = () => {
             const dur = clipDur != null ? Math.min(clipDur, Math.max(0, v.duration - offset)) : Math.max(0, v.duration - offset);
-            setVideoOverlay({ name: name || '영상', startTime: startAt, endTime: startAt + dur, offset, duration: v.duration, w: v.videoWidth, h: v.videoHeight });
+            setVideoOverlay({ name: name || tr('영상'), startTime: startAt, endTime: startAt + dur, offset, duration: v.duration, w: v.videoWidth, h: v.videoHeight });
             // Prime the first frame so a paused canvas shows something immediately.
             try { v.currentTime = offset; } catch { }
         };
@@ -3599,7 +3607,7 @@ export default function App() {
         const m = new Map();
         for (const c of cuts) {
             if (!c.videoBatch) continue;
-            const b = m.get(c.videoBatch) || { id: c.videoBatch, label: c.videoLabel || '영상', count: 0, start: c.startTime, end: c.endTime };
+            const b = m.get(c.videoBatch) || { id: c.videoBatch, label: c.videoLabel || tr('영상'), count: 0, start: c.startTime, end: c.endTime };
             b.count++; b.start = Math.min(b.start, c.startTime); b.end = Math.max(b.end, c.endTime);
             m.set(c.videoBatch, b);
         }
@@ -3630,8 +3638,8 @@ export default function App() {
     };
     // Group the currently-selected cuts into a new part.
     const makePartFromSelection = () => {
-        if (!selectedCutIds.size) { alert('먼저 컷을 선택하세요 (타임라인에서 드래그 또는 Ctrl+클릭).'); return; }
-        const name = window.prompt('새 파트 이름:', `파트 ${parts.length + 1}`);
+        if (!selectedCutIds.size) { alert(tr('먼저 컷을 선택하세요 (타임라인에서 드래그 또는 Ctrl+클릭).')); return; }
+        const name = window.prompt(tr('새 파트 이름:'), `파트 ${parts.length + 1}`);
         if (name == null) return;
         const pid = 'part_' + Date.now().toString(36);
         setCuts(p => p.map(c => selectedCutIds.has(c.id) ? { ...c, partId: pid, partName: name } : c));
@@ -3639,7 +3647,7 @@ export default function App() {
     };
     const renamePart = (partId) => {
         const p = parts.find(x => x.id === partId); if (!p) return;
-        const name = window.prompt('파트 이름 변경:', p.name);
+        const name = window.prompt(tr('파트 이름 변경:'), p.name);
         if (name == null) return;
         setCuts(prev => prev.map(c => c.partId === partId ? { ...c, partName: name } : c));
     };
@@ -3659,10 +3667,10 @@ export default function App() {
             if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || ('HTTP ' + res.status)); }
             const blob = await res.blob();
             const file = new File([blob], 'youtube.mp4', { type: blob.type || 'video/mp4' });
-            openVideoImport(file, 'YT ' + (url.match(/(?:v=|youtu\.be\/|shorts\/)([\w-]{6,})/)?.[1] || '영상'), { url, key: 'yt:' + url });
+            openVideoImport(file, 'YT ' + (url.match(/(?:v=|youtu\.be\/|shorts\/)([\w-]{6,})/)?.[1] || tr('영상')), { url, key: 'yt:' + url });
         } catch (e) {
             console.error('[import]', e);
-            setAppError('영상 가져오기 실패: ' + e.message + '\n(서버에 yt-dlp 설치 필요)');
+            setAppError(tr('영상 가져오기 실패: ') + e.message + '\n(서버에 yt-dlp 설치 필요)');
         } finally { setVideoBusy(null); }
     };
 
@@ -3688,7 +3696,7 @@ export default function App() {
                 onProgress: (done, total, skipped) => setVideoBusy({ done, total, skipped }),
                 shouldStop: () => videoStopRef.current,
             });
-            if (!frames.length) { alert('추출된 프레임이 없습니다.'); return; }
+            if (!frames.length) { alert(tr('추출된 프레임이 없습니다.')); return; }
             // Re-importing the same source replaces its old frames instead of piling up duplicates.
             const srcKey = cfg.srcKey;
             const kept = cuts.filter(c => c.videoSrc !== srcKey);
@@ -3727,12 +3735,12 @@ export default function App() {
             // Audio (if asked) is the only thing that keeps the video bytes alive past this point.
             // Aligned to the first imported frame; when only a range was imported, the audio is
             // clipped to that same range (offset rStart, duration rEnd-rStart).
-            if (cfg.withAudio) loadAudioUrl(URL.createObjectURL(cfg.file), label + ' (영상 음원)', made[0].startTime, useRange ? rStart : 0, useRange ? (rEnd - rStart) : null);
+            if (cfg.withAudio) loadAudioUrl(URL.createObjectURL(cfg.file), label + tr(' (영상 음원)'), made[0].startTime, useRange ? rStart : 0, useRange ? (rEnd - rStart) : null);
             setVideoImport(null);
             setTimeout(gcBitmaps, 0); // replaced frames' bitmaps go too
         } catch (e) {
             console.error('[import]', e);
-            setAppError('영상 가져오기 실패: ' + e.message);
+            setAppError(tr('영상 가져오기 실패: ') + e.message);
         } finally {
             videoStopRef.current = false;
             setVideoBusy(null);
@@ -3752,8 +3760,8 @@ export default function App() {
             const res = await fetch('/api/youtube-audio?url=' + encodeURIComponent(url));
             if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || ('HTTP ' + res.status)); }
             const blob = await res.blob();
-            loadAudioUrl(URL.createObjectURL(blob), '유튜브 음원');
-        } catch (e) { alert('음원 추출 실패: ' + e.message + '\n(서버에 yt-dlp + ffmpeg 설치 필요)'); }
+            loadAudioUrl(URL.createObjectURL(blob), tr('유튜브 음원'));
+        } catch (e) { alert(tr('음원 추출 실패: ') + e.message + '\n(서버에 yt-dlp + ffmpeg 설치 필요)'); }
     };
     const handleExport = () => {
         const canvas = canvasRef.current;
@@ -3762,21 +3770,21 @@ export default function App() {
             alert('이 환경에서는 내보내기를 지원하지 않습니다.\nPC 브라우저(Chrome 등)에서 실행해 주세요.'); return;
         }
         const ctMax = Math.max(...cuts.map(c => c.endTime), audioData?.endTime ?? 0);
-        if (ctMax <= 0) { alert('내보낼 콘텐츠가 없습니다.'); return; }
+        if (ctMax <= 0) { alert(tr('내보낼 콘텐츠가 없습니다.')); return; }
         const candidates = ['video/mp4;codecs=h264', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
         const mimeType = candidates.find(t => { try { return MediaRecorder.isTypeSupported(t); } catch { return false; } }) || '';
         const ext = mimeType.startsWith('video/mp4') ? 'mp4' : 'webm';
-        alert('녹화가 시작됩니다.'); setCurrentTime(0); if (audioRef.current) audioRef.current.currentTime = 0;
+        alert(tr('녹화가 시작됩니다.')); setCurrentTime(0); if (audioRef.current) audioRef.current.currentTime = 0;
         const stream = canvas.captureStream(30), tracks = [...stream.getVideoTracks()];
         if (audioRef.current && audioUrl && !audioSourceRef.current) { try { audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)(); audioDestRef.current = audioCtxRef.current.createMediaStreamDestination(); audioSourceRef.current = audioCtxRef.current.createMediaElementSource(audioRef.current); audioSourceRef.current.connect(audioDestRef.current); audioSourceRef.current.connect(audioCtxRef.current.destination); } catch (e) { } }
         if (audioDestRef.current) tracks.push(...audioDestRef.current.stream.getAudioTracks());
         let mr;
         try { mr = new MediaRecorder(new MediaStream(tracks), mimeType ? { mimeType } : undefined); }
-        catch (e) { try { mr = new MediaRecorder(new MediaStream(tracks)); } catch (e2) { alert('녹화를 시작할 수 없습니다: ' + e2.message); return; } }
+        catch (e) { try { mr = new MediaRecorder(new MediaStream(tracks)); } catch (e2) { alert(tr('녹화를 시작할 수 없습니다: ') + e2.message); return; } }
         const blobType = mimeType || 'video/webm';
         const chunks = [];
         mr.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
-        mr.onstop = () => { const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob(chunks, { type: blobType })), download: `mv_export.${ext}`, style: 'display:none' }); document.body.appendChild(a); a.click(); document.body.removeChild(a); alert('완료!'); isExporting.current = false; };
+        mr.onstop = () => { const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob(chunks, { type: blobType })), download: `mv_export.${ext}`, style: 'display:none' }); document.body.appendChild(a); a.click(); document.body.removeChild(a); alert(tr('완료!')); isExporting.current = false; };
         exportEndRef.current = ctMax; isExporting.current = true; mediaRecorderRef.current = mr; mr.start(); setIsPlaying(true);
     };
 
@@ -3810,13 +3818,13 @@ export default function App() {
                         <span className="layer-name">{layer.name}</span>
                         {!isFolder && (
                             <button className="icon-btn" style={{ color: layer.roughen ? '#e0a84e' : undefined }}
-                                title={layer.roughen ? `자글자글 모션 (강도 ${layer.roughen}) — 클릭: 설정 열기` : '자글자글 모션 설정 (이미 그린 선이 제자리에서 부글거림)'}
+                                title={layer.roughen ? `자글자글 모션 (강도 ${layer.roughen}) — 클릭: 설정 열기` : tr('자글자글 모션 설정 (이미 그린 선이 제자리에서 부글거림)')}
                                 onClick={e => toggleJitterPanel(e, cut.id, layer.id)}>
                                 <Waves size={11} />
                             </button>
                         )}
                         {!isFolder && (
-                            <button className="icon-btn" style={{ color: layer.anim ? 'var(--accent-soft)' : undefined }} title="파츠 애니메이션"
+                            <button className="icon-btn" style={{ color: layer.anim ? 'var(--accent-soft)' : undefined }} title={tr('파츠 애니메이션')}
                                 onClick={e => { e.stopPropagation(); setAnimLayer(a => (a && a.cutId === cut.id && a.layerId === layer.id) ? null : { cutId: cut.id, layerId: layer.id }); }}>
                                 <Film size={11} />
                             </button>
@@ -3855,13 +3863,14 @@ export default function App() {
                     themeColor={themeColor} setThemeColor={setThemeColor} themeRecent={themeRecent} defaultTheme={DEFAULT_THEME}
                     uiSat={uiSat} setUiSat={setUiSat}
                     keymap={keymap} setKeymap={setKeymap} defaultKeys={DEFAULT_KEYS} keyLabels={KEY_LABELS}
+                    lang={lang} changeLang={changeLang}
                     rebinding={rebinding} setRebinding={setRebinding} />
             )}
-            {serverProjects !== null && <ProjectPicker title="서버에서 열기" items={serverProjects} onOpen={doServerOpen} onDelete={doServerDelete} onClose={() => setServerProjects(null)} />}
-            {localProjects !== null && <ProjectPicker title="로컬에서 열기" items={localProjects} onOpen={doLocalOpen} onDelete={doLocalDelete} onClose={() => setLocalProjects(null)} />}
+            {serverProjects !== null && <ProjectPicker title={tr('서버에서 열기')} items={serverProjects} onOpen={doServerOpen} onDelete={doServerDelete} onClose={() => setServerProjects(null)} />}
+            {localProjects !== null && <ProjectPicker title={tr('로컬에서 열기')} items={localProjects} onOpen={doLocalOpen} onDelete={doLocalDelete} onClose={() => setLocalProjects(null)} />}
             {backupList !== null && (
                 <ProjectPicker
-                    title="백업에서 되돌리기 (최근 12개 보관)"
+                    title={tr('백업에서 되돌리기 (최근 12개 보관)')}
                     items={backupList.map(b => ({ id: b.stamp, name: `${b.name}${b.size ? ` · ${(b.size / 1048576).toFixed(1)}MB` : ''}`, savedAt: b.savedAt }))}
                     onOpen={(stamp) => doBackupRestore(stamp)}
                     onDelete={(stamp) => doBackupDelete(stamp)}
@@ -3873,7 +3882,7 @@ export default function App() {
                 <div style={{ position: 'fixed', right: 16, bottom: 16, zIndex: 1500, display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
                     {videoBusy?.fetching && (
                         <div className="bg-chip">
-                            <span className="bg-spin" /> 영상 받는 중… <span style={{ color: '#888' }}>(작업 계속 가능)</span>
+                            <span className="bg-spin" /> {tr('영상 받는 중…')} <span style={{ color: '#888' }}>{tr('(작업 계속 가능)')}</span>
                         </div>
                     )}
                     {backupProg && (
@@ -3893,24 +3902,24 @@ export default function App() {
                 <div style={{ position: 'fixed', right: 16, bottom: 16, zIndex: 1000, background: 'hsl(var(--ui-h) var(--ui-s) 15%)', border: '1px solid #333', borderRadius: 8, padding: '10px 14px', color: '#ccc', fontSize: 12, display: 'flex', gap: 10, alignItems: 'center', boxShadow: '0 4px 16px rgba(0,0,0,.4)' }}>
                     <span>프레임 추출 {videoBusy.done}/{videoBusy.total || '?'}</span>
                     <div style={{ width: 80, height: 6, background: 'hsl(var(--ui-h) var(--ui-s) 20%)', borderRadius: 3, overflow: 'hidden' }}><div style={{ height: '100%', width: `${videoBusy.total ? (videoBusy.done / videoBusy.total * 100) : 0}%`, background: 'var(--accent-soft)' }} /></div>
-                    <button className="button" style={{ height: 26, padding: '0 8px' }} onClick={() => setVideoBusyBg(false)}>열기</button>
-                    <button className="button" style={{ height: 26, padding: '0 8px' }} onClick={() => { videoStopRef.current = true; }}>중지</button>
+                    <button className="button" style={{ height: 26, padding: '0 8px' }} onClick={() => setVideoBusyBg(false)}>{tr('열기')}</button>
+                    <button className="button" style={{ height: 26, padding: '0 8px' }} onClick={() => { videoStopRef.current = true; }}>{tr('중지')}</button>
                 </div>
             )}
             {/* 실패 배너: 오류를 화면에 남긴다. 이번 건처럼 API 서버가 죽어 있으면
-                예전에는 차단된 alert 때문에 '아무 반응 없음'으로만 보였다. */}
+                예전에는 차단된 alert 때문에 tr('아무 반응 없음')으로만 보였다. */}
             {appError && (
                 <div style={{ position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', zIndex: 3000,
                     maxWidth: 640, background: '#3a1414', border: '1px solid #a33', color: '#ffd9d9',
                     borderRadius: 8, padding: '10px 14px', fontSize: 12.5, display: 'flex', gap: 10, alignItems: 'center',
                     boxShadow: '0 8px 28px rgba(0,0,0,.5)' }}>
                     <span style={{ flex: 1 }}>{appError}</span>
-                    <button className="button" style={{ height: 26, padding: '0 10px' }} onClick={() => setAppError(null)}>닫기</button>
+                    <button className="button" style={{ height: 26, padding: '0 10px' }} onClick={() => setAppError(null)}>{tr('닫기')}</button>
                 </div>
             )}
             {linkPrompt && (
                 <LinkPromptModal
-                    title={linkPrompt.kind === 'audio' ? '유튜브 음원 가져오기' : '유튜브 영상 프레임 가져오기'}
+                    title={linkPrompt.kind === 'audio' ? '유튜브 음원 가져오기' : tr('유튜브 영상 프레임 가져오기')}
                     placeholder="https://www.youtube.com/watch?v=..."
                     onClose={() => setLinkPrompt(null)}
                     onSubmit={(url) => {
@@ -3949,22 +3958,22 @@ export default function App() {
             <div className="doc-tabs" style={{ display: 'flex', alignItems: 'stretch', gap: 2, background: 'hsl(var(--ui-h) var(--ui-s) 11%)', borderBottom: '1px solid hsl(var(--ui-h) var(--ui-s) 20%)', padding: '3px 6px 0', overflowX: 'auto', flexShrink: 0 }}>
                 {tabs.map(t => (
                     <div key={t.id} onClick={() => switchTab(t.id)}
-                        onDoubleClick={() => { const n = window.prompt('탭 이름', t.name); if (n != null) setTabs(p => p.map(x => x.id === t.id ? { ...x, name: n || x.name } : x)); }}
-                        title="클릭: 전환 · 더블클릭: 이름변경"
+                        onDoubleClick={() => { const n = window.prompt(tr('탭 이름'), t.name); if (n != null) setTabs(p => p.map(x => x.id === t.id ? { ...x, name: n || x.name } : x)); }}
+                        title={tr('클릭: 전환 · 더블클릭: 이름변경')}
                         style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: '6px 6px 0 0', cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap', maxWidth: 180, background: t.id === activeTabId ? 'hsl(var(--ui-h) var(--ui-s) 15%)' : 'transparent', color: t.id === activeTabId ? '#fff' : '#9a9ab0', borderBottom: t.id === activeTabId ? '2px solid var(--accent-soft)' : '2px solid transparent' }}>
                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.name}</span>
-                        <span onClick={e => { e.stopPropagation(); closeTab(t.id); }} title="탭 닫기" style={{ opacity: 0.6, fontSize: 13, lineHeight: 1 }}>✕</span>
+                        <span onClick={e => { e.stopPropagation(); closeTab(t.id); }} title={tr('탭 닫기')} style={{ opacity: 0.6, fontSize: 13, lineHeight: 1 }}>✕</span>
                     </div>
                 ))}
-                <button className="icon-btn" onClick={newTab} title="새 탭(프로젝트)" style={{ alignSelf: 'center', marginLeft: 2 }}><Plus size={14} /></button>
+                <button className="icon-btn" onClick={newTab} title={tr('새 탭(프로젝트)')} style={{ alignSelf: 'center', marginLeft: 2 }}><Plus size={14} /></button>
             </div>
 
             <div className="main-content">
                 {/* 맨 왼쪽 아이콘 바: 창 전환 (클립스튜디오식). 위=메인 설정, 아래=색상 창. */}
                 <div className="dock-rail">
-                    <button className={`dock-icon${showLeft ? ' active' : ''}`} title="도구 창 (펜 · 지우개 · 스포이드 등)"
+                    <button className={`dock-icon${showLeft ? ' active' : ''}`} title={tr('도구 창 (펜 · 지우개 · 스포이드 등)')}
                         onClick={() => setShowLeft(v => !v)}><Menu size={20} /></button>
-                    <button className={`dock-icon${leftDock === 'color' ? ' active' : ''}`} title="색상 창 (COLOR)"
+                    <button className={`dock-icon${leftDock === 'color' ? ' active' : ''}`} title={tr('색상 창 (COLOR)')}
                         onClick={() => setLeftDock(v => v === 'color' ? null : 'color')}><Palette size={20} /></button>
                 </div>
                 {leftDock === 'color' && (
@@ -3974,61 +3983,61 @@ export default function App() {
                         width={colorW}
                         onClose={() => setLeftDock(null)} />
                 )}
-                {leftDock === 'color' && <div className="splitter-v" style={{ touchAction: 'none' }} title="드래그로 색상 창 너비 조절"
+                {leftDock === 'color' && <div className="splitter-v" style={{ touchAction: 'none' }} title={tr('드래그로 색상 창 너비 조절')}
                     onPointerDown={e => { try { e.currentTarget.setPointerCapture(e.pointerId); } catch { } setSplitter({ type: 'color', startX: e.clientX, startW: colorW }); }} />}
                 {showLeft && (
                     <div className="toolbar" style={{ width: toolW, flexShrink: 0 }}>
                         <div className="panel-head">
                             <span className="panel-title">TOOLS</span>
-                            <button className="icon-btn" onClick={() => setShowLeft(false)} title="도구 창 닫기">✕</button>
+                            <button className="icon-btn" onClick={() => setShowLeft(false)} title={tr('도구 창 닫기')}>✕</button>
                         </div>
                         <div className="tool-grid">
                             {TOOL_TYPES.map(pt => (
-                                <button key={pt.id} className={`tool-btn${tool === pt.id ? ' active' : ''}`} onClick={() => handleSetTool(pt.id)} title={pt.label}>
+                                <button key={pt.id} className={`tool-btn${tool === pt.id ? ' active' : ''}`} onClick={() => handleSetTool(pt.id)} title={tr(pt.label)}>
                                     <pt.Icon size={15} />
-                                    <span className="tool-label">{pt.label}</span>
+                                    <span className="tool-label">{tr(pt.label)}</span>
                                 </button>
                             ))}
-                            <button className={`tool-btn${onionPrev ? ' onion-prev-active' : ''}`} onClick={() => setOnionPrev(v => !v)} title="이전 프레임 표시 (연보라)"><Layers size={15} /><span className="tool-label">◀Onion</span></button>
-                            <button className={`tool-btn${onionNext ? ' onion-next-active' : ''}`} onClick={() => setOnionNext(v => !v)} title="다음 프레임 표시 (원본색)"><Layers size={15} /><span className="tool-label">Onion▶</span></button>
+                            <button className={`tool-btn${onionPrev ? ' onion-prev-active' : ''}`} onClick={() => setOnionPrev(v => !v)} title={tr('이전 프레임 표시 (연보라)')}><Layers size={15} /><span className="tool-label">◀Onion</span></button>
+                            <button className={`tool-btn${onionNext ? ' onion-next-active' : ''}`} onClick={() => setOnionNext(v => !v)} title={tr('다음 프레임 표시 (원본색)')}><Layers size={15} /><span className="tool-label">Onion▶</span></button>
                             <button className="tool-btn" onClick={globalUndo} title="Undo"><Undo size={15} /><span className="tool-label">Undo</span></button>
                             <button className="tool-btn" onClick={globalRedo} title="Redo"><Redo size={15} /><span className="tool-label">Redo</span></button>
-                            <button className="tool-btn" onClick={handleClearCut} title="현재 컷 전체 비우기"><Trash size={15} /><span className="tool-label">비우기</span></button>
-                            <button className="tool-btn" onClick={doTween} title="현재 컷과 다음 컷 사이를 자동 중간 프레임으로 채웁니다 (형태 모핑)"><Repeat size={15} /><span className="tool-label">트위닝</span></button>
-                            {hasLassoClip && <button className="tool-btn" onClick={pasteLassoSelection} title="복사한 올가미 선택을 현재 레이어에 붙여넣기"><ClipboardPaste size={15} /><span className="tool-label">올가미↓</span></button>}
+                            <button className="tool-btn" onClick={handleClearCut} title={tr('현재 컷 전체 비우기')}><Trash size={15} /><span className="tool-label">{tr('비우기')}</span></button>
+                            <button className="tool-btn" onClick={doTween} title={tr('현재 컷과 다음 컷 사이를 자동 중간 프레임으로 채웁니다 (형태 모핑)')}><Repeat size={15} /><span className="tool-label">{tr('트위닝')}</span></button>
+                            {hasLassoClip && <button className="tool-btn" onClick={pasteLassoSelection} title={tr('복사한 올가미 선택을 현재 레이어에 붙여넣기')}><ClipboardPaste size={15} /><span className="tool-label">{tr('올가미↓')}</span></button>}
                         </div>
                         <div className="tool-divider" />
-                        <input type="color" className="color-picker" value={color} onChange={e => applyColor(e.target.value)} title="색상" disabled={isSelectionTool} />
-                        <button className={`tool-btn${pickingColor ? ' active' : ''}`} onClick={pickColor} title="스포이드 (화면에서 색 추출)" disabled={isSelectionTool} style={{ padding: '0 6px' }}><Pipette size={13} /><span className="tool-label">스포이드</span></button>
+                        <input type="color" className="color-picker" value={color} onChange={e => applyColor(e.target.value)} title={tr('색상')} disabled={isSelectionTool} />
+                        <button className={`tool-btn${pickingColor ? ' active' : ''}`} onClick={pickColor} title={tr('스포이드 (화면에서 색 추출)')} disabled={isSelectionTool} style={{ padding: '0 6px' }}><Pipette size={13} /><span className="tool-label">{tr('스포이드')}</span></button>
                         <div className="slider-wrap">
                             {tool === 'soft' ? (
                                 <>
-                                    <span className="slider-label">에어 모드</span>
+                                    <span className="slider-label">{tr('에어 모드')}</span>
                                     <div style={{ display: 'flex', gap: 3, width: '100%' }}>
-                                        <button className={`pal-btn${softMode === 'soft' ? ' active' : ''}`} onClick={() => setSoftMode('soft')} title="부드럽게 뿌리는 에어브러시">에어</button>
-                                        <button className={`pal-btn${softMode === 'blur' ? ' active' : ''}`} onClick={() => setSoftMode('blur')} title="이미 그린 것을 문질러 퍼뜨림">블러</button>
+                                        <button className={`pal-btn${softMode === 'soft' ? ' active' : ''}`} onClick={() => setSoftMode('soft')} title={tr('부드럽게 뿌리는 에어브러시')}>{tr('에어')}</button>
+                                        <button className={`pal-btn${softMode === 'blur' ? ' active' : ''}`} onClick={() => setSoftMode('blur')} title={tr('이미 그린 것을 문질러 퍼뜨림')}>{tr('블러')}</button>
                                     </div>
-                                    <span style={{ fontSize: 9, color: '#888', textAlign: 'center' }}>{softMode === 'soft' ? '색을 뿌립니다' : '그려진 걸 퍼뜨립니다'}</span>
+                                    <span style={{ fontSize: 9, color: '#888', textAlign: 'center' }}>{softMode === 'soft' ? '색을 뿌립니다' : tr('그려진 걸 퍼뜨립니다')}</span>
                                 </>
                             ) : tool === 'ruler' ? (
                                 <>
-                                    <span className="slider-label">자 모드</span>
+                                    <span className="slider-label">{tr('자 모드')}</span>
                                     <div style={{ display: 'flex', gap: 3, width: '100%' }}>
-                                        <button className={`pal-btn${rulerMode === 'line' ? ' active' : ''}`} onClick={() => setRulerMode('line')} title="정확한 직선">직선</button>
-                                        <button className={`pal-btn${rulerMode === 'curve' ? ' active' : ''}`} onClick={() => { commitCurve(); setRulerMode('curve'); }} title="점을 찍어 만드는 곡선">곡선</button>
+                                        <button className={`pal-btn${rulerMode === 'line' ? ' active' : ''}`} onClick={() => setRulerMode('line')} title={tr('정확한 직선')}>{tr('직선')}</button>
+                                        <button className={`pal-btn${rulerMode === 'curve' ? ' active' : ''}`} onClick={() => { commitCurve(); setRulerMode('curve'); }} title={tr('점을 찍어 만드는 곡선')}>{tr('곡선')}</button>
                                     </div>
-                                    <span style={{ fontSize: 9, color: '#888', textAlign: 'center' }}>{rulerMode === 'line' ? '드래그로 직선' : '탭으로 점 찍기'}</span>
+                                    <span style={{ fontSize: 9, color: '#888', textAlign: 'center' }}>{rulerMode === 'line' ? '드래그로 직선' : tr('탭으로 점 찍기')}</span>
                                 </>
                             ) : tool === 'mosaic' ? (
                                 <>
-                                    <span className="slider-label">모자이크</span>
+                                    <span className="slider-label">{tr('모자이크')}</span>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 2, justifyContent: 'center' }}>
                                         <input type="number" min="2" max="120" value={mosaicBlock}
                                             onChange={e => setMosaicBlock(Math.max(2, Math.min(120, Math.round(+e.target.value) || 2)))} style={{ width: 46, textAlign: 'center' }} className="time-input" />
                                         <span style={{ fontSize: 10, color: '#888' }}>px</span>
                                     </div>
                                     <input type="range" min="2" max="80" value={Math.min(80, mosaicBlock)} onChange={e => setMosaicBlock(+e.target.value)} className="v-slider" />
-                                    <span style={{ fontSize: 9, color: '#888', textAlign: 'center' }}>화면 위를 드래그</span>
+                                    <span style={{ fontSize: 9, color: '#888', textAlign: 'center' }}>{tr('화면 위를 드래그')}</span>
                                 </>
                             ) : (() => {
                                 const curSize = tool === 'eraser' ? eraserSize : brushSize;
@@ -4066,29 +4075,29 @@ export default function App() {
                         </div>
                     </div>
                 )}
-                {showLeft && <div className="splitter-v" style={{ touchAction: 'none' }} title="드래그로 도구 패널 너비 조절" onPointerDown={e => { try { e.currentTarget.setPointerCapture(e.pointerId); } catch { } setSplitter({ type: 'left', startX: e.clientX, startW: leftW }); }} />}
+                {showLeft && <div className="splitter-v" style={{ touchAction: 'none' }} title={tr('드래그로 도구 패널 너비 조절')} onPointerDown={e => { try { e.currentTarget.setPointerCapture(e.pointerId); } catch { } setSplitter({ type: 'left', startX: e.clientX, startW: leftW }); }} />}
 
                 {/* 스페이스 이동 중에는 이 영역의 스크롤을 잠근다. 열어두면 스페이스/드래그가
-                    화면을 아래로 스크롤시켜 '이동'이 아니라 그냥 내려가 버린다. */}
+                    화면을 아래로 스크롤시켜 tr('이동')이 아니라 그냥 내려가 버린다. */}
                 <div className="canvas-area" ref={canvasAreaRef} style={{ touchAction: 'none', position: 'relative', cursor: spaceDown ? 'grab' : undefined, overflow: spaceDown ? 'hidden' : 'auto' }}
                     onMouseDown={e => { if (e.button === 1) e.preventDefault(); }} /* 가운데클릭 자동스크롤 방지 */
                     onAuxClick={e => { if (e.button === 1) e.preventDefault(); }}
                     onPointerDown={onAreaPointerDown} onPointerMove={onAreaPointerMove} onPointerUp={onAreaPointerUp} onPointerCancel={onAreaPointerUp}>
                     {pathCapture && (
                         <div style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', zIndex: 31, background: 'var(--accent-soft)', color: '#fff', fontSize: 12, padding: '6px 12px', borderRadius: 6, display: 'flex', gap: 8, alignItems: 'center' }}>
-                            {pathCapture.mode === 'sway' ? '물결치듯 곡선을 그리세요 — 그 모양·크기대로 흔들립니다' : '펜으로 이동 경로를 그리세요'}
-                            <button className="button" style={{ height: 24, padding: '0 8px' }} onClick={() => setPathCapture(null)}>취소</button>
+                            {pathCapture.mode === 'sway' ? '물결치듯 곡선을 그리세요 — 그 모양·크기대로 흔들립니다' : tr('펜으로 이동 경로를 그리세요')}
+                            <button className="button" style={{ height: 24, padding: '0 8px' }} onClick={() => setPathCapture(null)}>{tr('취소')}</button>
                         </div>
                     )}
                     {etool === 'curve' && (
                         <div style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', zIndex: 31, background: 'hsl(var(--ui-h) var(--ui-s) 20%)', color: '#fff', fontSize: 12, padding: '6px 12px', borderRadius: 6, display: 'flex', gap: 8, alignItems: 'center', border: '1px solid #444' }}>
                             {curvePts === 0 ? '점을 찍어 곡선을 만드세요' : `앵커 ${curvePts}개 (누른 채 끌어 미세조정)`}
-                            <button className="button" style={{ height: 24, padding: '0 10px', background: '#4ea1ff' }} disabled={curvePts < 2} onClick={commitCurve}>완료</button>
-                            <button className="button" style={{ height: 24, padding: '0 8px' }} disabled={curvePts === 0} onClick={cancelCurve}>취소</button>
+                            <button className="button" style={{ height: 24, padding: '0 10px', background: '#4ea1ff' }} disabled={curvePts < 2} onClick={commitCurve}>{tr('완료')}</button>
+                            <button className="button" style={{ height: 24, padding: '0 8px' }} disabled={curvePts === 0} onClick={cancelCurve}>{tr('취소')}</button>
                         </div>
                     )}
                     {(view.zoom !== 1 || view.x !== 0 || view.y !== 0) && (
-                        <button className="button" onClick={resetView} title="줌 초기화"
+                        <button className="button" onClick={resetView} title={tr('줌 초기화')}
                             style={{ position: 'absolute', top: 8, right: 8, zIndex: 30, height: 28, padding: '0 10px' }}>
                             {Math.round(view.zoom * 100)}% ⟲
                         </button>
@@ -4102,10 +4111,10 @@ export default function App() {
                         <canvas ref={liveCanvasRef} width={CANVAS_W} height={CANVAS_H} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', background: 'transparent', boxShadow: 'none' }} />
                         {selection && (
                             <div className="selection-actions">
-                                <button className="button button-primary" onClick={extractSelectionToPart} style={{ height: 30, padding: '0 10px' }} title="선택 영역을 별도 레이어(파츠)로 분리해 애니메이션">파츠로 분리</button>
-                                <button className="button" onClick={copyLassoSelection} style={{ height: 30, padding: '0 10px' }} title="선택 영역 복사 (다른 컷/레이어에 붙여넣기)">복사</button>
-                                <button className="button" onClick={commitSelection} style={{ height: 30, padding: '0 10px' }} title="제자리에 적용(이동/크기)">완료</button>
-                                <button className="button" onClick={cancelSelection} style={{ height: 30, padding: '0 10px' }}>취소</button>
+                                <button className="button button-primary" onClick={extractSelectionToPart} style={{ height: 30, padding: '0 10px' }} title={tr('선택 영역을 별도 레이어(파츠)로 분리해 애니메이션')}>{tr('파츠로 분리')}</button>
+                                <button className="button" onClick={copyLassoSelection} style={{ height: 30, padding: '0 10px' }} title={tr('선택 영역 복사 (다른 컷/레이어에 붙여넣기)')}>{tr('복사')}</button>
+                                <button className="button" onClick={commitSelection} style={{ height: 30, padding: '0 10px' }} title={tr('제자리에 적용(이동/크기)')}>{tr('완료')}</button>
+                                <button className="button" onClick={cancelSelection} style={{ height: 30, padding: '0 10px' }}>{tr('취소')}</button>
                             </div>
                         )}
                         {textEdit && (
@@ -4118,7 +4127,7 @@ export default function App() {
                                         if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cancelText(); }
                                         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); e.stopPropagation(); commitText(); }
                                     }}
-                                    placeholder="텍스트 입력 (Ctrl+Enter 완료, Esc 취소)"
+                                    placeholder={tr('텍스트 입력 (Ctrl+Enter 완료, Esc 취소)')}
                                 />
                                 <div className="text-editor-row">
                                     <label className="text-editor-label">Size</label>
@@ -4141,7 +4150,7 @@ export default function App() {
                                                         const v = e.target.value;
                                                         setTextEdit(te => te ? ({ ...te, fontFamily: v === '__custom__' ? (te.fontFamily || 'sans-serif') : v }) : te);
                                                     }}
-                                                    title="폰트"
+                                                    title={tr('폰트')}
                                                 >
                                                     <option value="__custom__">Custom</option>
                                                     {FONT_PRESETS.map(f => (
@@ -4154,7 +4163,7 @@ export default function App() {
                                                         value={textEdit.fontFamily}
                                                         onChange={e => setTextEdit(te => te ? ({ ...te, fontFamily: e.target.value }) : te)}
                                                         placeholder="Custom font-family"
-                                                        title="커스텀 폰트"
+                                                        title={tr('커스텀 폰트')}
                                                     />
                                                 )}
                                             </>
@@ -4165,41 +4174,41 @@ export default function App() {
                                         value={textEdit.color}
                                         onChange={e => setTextEdit(te => te ? ({ ...te, color: e.target.value }) : te)}
                                         className="text-editor-color"
-                                        title="색상"
+                                        title={tr('색상')}
                                     />
-                                    <button className="button" title="굵게" onClick={() => setTextEdit(te => te ? ({ ...te, bold: !te.bold }) : te)}
+                                    <button className="button" title={tr('굵게')} onClick={() => setTextEdit(te => te ? ({ ...te, bold: !te.bold }) : te)}
                                         style={{ height: 26, width: 28, padding: 0, fontWeight: 800, background: textEdit.bold ? 'hsl(var(--ui-h) var(--ui-s) 29%)' : undefined }}>B</button>
-                                    <button className="button" title="기울임" onClick={() => setTextEdit(te => te ? ({ ...te, italic: !te.italic }) : te)}
+                                    <button className="button" title={tr('기울임')} onClick={() => setTextEdit(te => te ? ({ ...te, italic: !te.italic }) : te)}
                                         style={{ height: 26, width: 28, padding: 0, fontStyle: 'italic', background: textEdit.italic ? 'hsl(var(--ui-h) var(--ui-s) 29%)' : undefined }}>I</button>
-                                    <select className="time-input" style={{ width: 52 }} title="정렬" value={textEdit.align || 'left'}
+                                    <select className="time-input" style={{ width: 52 }} title={tr('정렬')} value={textEdit.align || 'left'}
                                         onChange={e => setTextEdit(te => te ? ({ ...te, align: e.target.value }) : te)}>
                                         <option value="left">◧</option><option value="center">▣</option><option value="right">◨</option>
                                     </select>
-                                    <select className="time-input" style={{ width: 54 }} title="줄간격" value={textEdit.lineHeight ?? 1.25}
+                                    <select className="time-input" style={{ width: 54 }} title={tr('줄간격')} value={textEdit.lineHeight ?? 1.25}
                                         onChange={e => setTextEdit(te => te ? ({ ...te, lineHeight: +e.target.value }) : te)}>
                                         {[1, 1.15, 1.25, 1.5, 1.8, 2].map(v => <option key={v} value={v}>{v}x</option>)}
                                     </select>
-                                    <label style={{ fontSize: 11, color: '#aaa', display: 'flex', alignItems: 'center', gap: 3 }} title="가독성용 외곽선">
+                                    <label style={{ fontSize: 11, color: '#aaa', display: 'flex', alignItems: 'center', gap: 3 }} title={tr('가독성용 외곽선')}>
                                         <input type="checkbox" checked={!!textEdit.outline} onChange={e => setTextEdit(te => te ? ({ ...te, outline: e.target.checked }) : te)} />테두리
                                     </label>
-                                    {textEdit.outline && <input type="color" value={textEdit.outlineColor || '#ffffff'} onChange={e => setTextEdit(te => te ? ({ ...te, outlineColor: e.target.value }) : te)} className="text-editor-color" title="테두리 색" />}
-                                    <select className="time-input" style={{ width: 58 }} title="자간(글자 간격)" value={textEdit.letterSpacing ?? 0}
+                                    {textEdit.outline && <input type="color" value={textEdit.outlineColor || '#ffffff'} onChange={e => setTextEdit(te => te ? ({ ...te, outlineColor: e.target.value }) : te)} className="text-editor-color" title={tr('테두리 색')} />}
+                                    <select className="time-input" style={{ width: 58 }} title={tr('자간(글자 간격)')} value={textEdit.letterSpacing ?? 0}
                                         onChange={e => setTextEdit(te => te ? ({ ...te, letterSpacing: +e.target.value }) : te)}>
                                         {[-2, 0, 1, 2, 4, 8, 12].map(v => <option key={v} value={v}>자간{v}</option>)}
                                     </select>
-                                    <label style={{ fontSize: 11, color: '#aaa', display: 'flex', alignItems: 'center', gap: 3 }} title="그림자">
+                                    <label style={{ fontSize: 11, color: '#aaa', display: 'flex', alignItems: 'center', gap: 3 }} title={tr('그림자')}>
                                         <input type="checkbox" checked={!!textEdit.shadow} onChange={e => setTextEdit(te => te ? ({ ...te, shadow: e.target.checked }) : te)} />그림자
                                     </label>
-                                    {textEdit.shadow && <input type="color" value={(textEdit.shadowColor || '#000000').startsWith('#') ? textEdit.shadowColor : '#000000'} onChange={e => setTextEdit(te => te ? ({ ...te, shadowColor: e.target.value }) : te)} className="text-editor-color" title="그림자 색" />}
-                                    <label style={{ fontSize: 11, color: '#aaa', display: 'flex', alignItems: 'center', gap: 3 }} title="위→아래 2색 그라데이션">
+                                    {textEdit.shadow && <input type="color" value={(textEdit.shadowColor || '#000000').startsWith('#') ? textEdit.shadowColor : '#000000'} onChange={e => setTextEdit(te => te ? ({ ...te, shadowColor: e.target.value }) : te)} className="text-editor-color" title={tr('그림자 색')} />}
+                                    <label style={{ fontSize: 11, color: '#aaa', display: 'flex', alignItems: 'center', gap: 3 }} title={tr('위→아래 2색 그라데이션')}>
                                         <input type="checkbox" checked={!!textEdit.gradient} onChange={e => setTextEdit(te => te ? ({ ...te, gradient: e.target.checked }) : te)} />그라데이션
                                     </label>
-                                    {textEdit.gradient && <input type="color" value={textEdit.color2 || '#ffffff'} onChange={e => setTextEdit(te => te ? ({ ...te, color2: e.target.value }) : te)} className="text-editor-color" title="그라데이션 끝 색" />}
-                                    <label style={{ fontSize: 11, color: '#aaa', display: 'flex', alignItems: 'center', gap: 3 }} title="글자 뒤 배경 박스">
+                                    {textEdit.gradient && <input type="color" value={textEdit.color2 || '#ffffff'} onChange={e => setTextEdit(te => te ? ({ ...te, color2: e.target.value }) : te)} className="text-editor-color" title={tr('그라데이션 끝 색')} />}
+                                    <label style={{ fontSize: 11, color: '#aaa', display: 'flex', alignItems: 'center', gap: 3 }} title={tr('글자 뒤 배경 박스')}>
                                         <input type="checkbox" checked={!!textEdit.bgColor} onChange={e => setTextEdit(te => te ? ({ ...te, bgColor: e.target.checked ? (te.bgColor || '#ffffff') : '' }) : te)} />배경
                                     </label>
-                                    {textEdit.bgColor && <input type="color" value={textEdit.bgColor.startsWith('#') ? textEdit.bgColor : '#ffffff'} onChange={e => setTextEdit(te => te ? ({ ...te, bgColor: e.target.value }) : te)} className="text-editor-color" title="배경 색" />}
-                                    <input type="number" className="time-input" style={{ width: 54 }} title="회전(도)" value={textEdit.rotation ?? 0} step={5}
+                                    {textEdit.bgColor && <input type="color" value={textEdit.bgColor.startsWith('#') ? textEdit.bgColor : '#ffffff'} onChange={e => setTextEdit(te => te ? ({ ...te, bgColor: e.target.value }) : te)} className="text-editor-color" title={tr('배경 색')} />}
+                                    <input type="number" className="time-input" style={{ width: 54 }} title={tr('회전(도)')} value={textEdit.rotation ?? 0} step={5}
                                         onChange={e => { let v = parseFloat(e.target.value); if (isNaN(v)) v = 0; setTextEdit(te => te ? ({ ...te, rotation: v }) : te); }} />
                                     {/* 텍스트 애니메이션 (재생 시에만 보임) */}
                                     {(() => {
@@ -4208,39 +4217,39 @@ export default function App() {
                                         const set = (o) => setTextEdit(te => te ? ({ ...te, anim: { ...an, ...o } }) : te);
                                         return (<>
                                             <span style={{ width: '100%', height: 1, background: '#ffffff14', margin: '2px 0' }} />
-                                            <label style={{ fontSize: 11, color: '#aaa', display: 'flex', alignItems: 'center', gap: 3 }} title="재생할 때만 적용됩니다">
+                                            <label style={{ fontSize: 11, color: '#aaa', display: 'flex', alignItems: 'center', gap: 3 }} title={tr('재생할 때만 적용됩니다')}>
                                                 <input type="checkbox" checked={on}
                                                     onChange={e => setTextEdit(te => te ? ({ ...te, anim: e.target.checked ? { ...TEXT_ANIM_DEFAULT } : null }) : te)} />애니메이션
                                             </label>
                                             {on && <>
-                                                <select className="time-input" style={{ width: 74 }} title="등장" value={an.inType} onChange={e => set({ inType: e.target.value })}>
-                                                    <option value="none">등장없음</option><option value="fade">페이드</option><option value="up">아래→위</option>
-                                                    <option value="down">위→아래</option><option value="scale">확대</option><option value="blur">흐림</option>
+                                                <select className="time-input" style={{ width: 74 }} title={tr('등장')} value={an.inType} onChange={e => set({ inType: e.target.value })}>
+                                                    <option value="none">{tr('등장없음')}</option><option value="fade">{tr('페이드')}</option><option value="up">{tr('아래→위')}</option>
+                                                    <option value="down">{tr('위→아래')}</option><option value="scale">{tr('확대')}</option><option value="blur">{tr('흐림')}</option>
                                                 </select>
-                                                <select className="time-input" style={{ width: 74 }} title="퇴장" value={an.outType} onChange={e => set({ outType: e.target.value })}>
-                                                    <option value="none">퇴장없음</option><option value="fade">페이드</option><option value="up">위로</option>
-                                                    <option value="down">아래로</option><option value="scale">축소</option><option value="blur">흐림</option>
+                                                <select className="time-input" style={{ width: 74 }} title={tr('퇴장')} value={an.outType} onChange={e => set({ outType: e.target.value })}>
+                                                    <option value="none">{tr('퇴장없음')}</option><option value="fade">{tr('페이드')}</option><option value="up">{tr('위로')}</option>
+                                                    <option value="down">{tr('아래로')}</option><option value="scale">{tr('축소')}</option><option value="blur">{tr('흐림')}</option>
                                                 </select>
-                                                <select className="time-input" style={{ width: 74 }} title="계속 반복되는 강조" value={an.emphasis} onChange={e => set({ emphasis: e.target.value })}>
-                                                    <option value="none">강조없음</option><option value="pulse">두근두근</option><option value="shake">흔들기</option><option value="swing">갸우뚱</option>
+                                                <select className="time-input" style={{ width: 74 }} title={tr('계속 반복되는 강조')} value={an.emphasis} onChange={e => set({ emphasis: e.target.value })}>
+                                                    <option value="none">{tr('강조없음')}</option><option value="pulse">{tr('두근두근')}</option><option value="shake">{tr('흔들기')}</option><option value="swing">{tr('갸우뚱')}</option>
                                                 </select>
                                                 {an.emphasis !== 'none' && <>
-                                                    <input type="number" className="time-input" style={{ width: 50 }} title="강조 세기" value={an.emAmount} step={5} min={0}
+                                                    <input type="number" className="time-input" style={{ width: 50 }} title={tr('강조 세기')} value={an.emAmount} step={5} min={0}
                                                         onChange={e => set({ emAmount: Math.max(0, +e.target.value || 0) })} />
-                                                    <input type="number" className="time-input" style={{ width: 50 }} title="강조 속도" value={an.emSpeed} step={0.5} min={0}
+                                                    <input type="number" className="time-input" style={{ width: 50 }} title={tr('강조 속도')} value={an.emSpeed} step={0.5} min={0}
                                                         onChange={e => set({ emSpeed: Math.max(0, +e.target.value || 0) })} />
                                                 </>}
-                                                <label style={{ fontSize: 11, color: '#aaa', display: 'flex', alignItems: 'center', gap: 3 }} title="한 글자씩 나타남">
+                                                <label style={{ fontSize: 11, color: '#aaa', display: 'flex', alignItems: 'center', gap: 3 }} title={tr('한 글자씩 나타남')}>
                                                     <input type="checkbox" checked={!!an.typing} onChange={e => set({ typing: e.target.checked })} />타이핑
                                                 </label>
-                                                {an.typing && <input type="number" className="time-input" style={{ width: 56 }} title="초당 글자수" value={an.typeSpeed} step={2} min={1}
+                                                {an.typing && <input type="number" className="time-input" style={{ width: 56 }} title={tr('초당 글자수')} value={an.typeSpeed} step={2} min={1}
                                                     onChange={e => set({ typeSpeed: Math.max(1, +e.target.value || 1) })} />}
                                             </>}
                                         </>);
                                     })()}
                                     <div style={{ flex: 1 }} />
-                                    <button className="button button-primary" onClick={commitText} style={{ height: 28, padding: '0 10px' }}>완료</button>
-                                    <button className="button" onClick={cancelText} style={{ height: 28, padding: '0 10px' }}>취소</button>
+                                    <button className="button button-primary" onClick={commitText} style={{ height: 28, padding: '0 10px' }}>{tr('완료')}</button>
+                                    <button className="button" onClick={cancelText} style={{ height: 28, padding: '0 10px' }}>{tr('취소')}</button>
                                 </div>
                             </div>
                         )}
