@@ -11,6 +11,7 @@ import { ProjectPicker, ProgressOverlay, SettingsModal, HelpModal, VideoImportMo
 import { tr, loadLang, saveLang, setLangValue } from './i18n';
 import { moveLayer } from './layerOps.js';
 import { resolveDrawLayer as resolveDrawLayerPure, commitStroke } from './layerOps.js';
+import { unusedBitmapIds } from './bitmapRefs.js';
 import { dragCut, resizeCut } from './cutOps.js';
 import {
     DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT, FONT_PRESETS,
@@ -1029,16 +1030,17 @@ export default function App() {
     // Free bitmaps no longer referenced by any cut, history snapshot, clipboard, or selection.
     // Scans ALL reference sources so undo/paste never lose their pixels.
     const gcBitmaps = () => {
-        const used = new Set();
-        const scan = (arr) => arr && arr.forEach(c => c.layers && c.layers.forEach(l => l.strokes && l.strokes.forEach(s => { if (s.bitmapId) used.add(s.bitmapId); })));
         const live = liveRef.current;
-        scan(live.cuts);
-        historyRef.current.forEach(s => scan(s.cuts));
-        const cc = live.copiedCut; if (cc) scan(Array.isArray(cc) ? cc : [cc]);
-        if (lassoClipRef.current?.bitmapId) used.add(lassoClipRef.current.bitmapId);
-        const sel = live.selection; if (sel) { if (sel.bitmapId) used.add(sel.bitmapId); if (sel.maskBitmapId) used.add(sel.maskBitmapId); }
-        const store = bitmapStoreRef.current, cache = dataUrlCacheRef.current;
-        for (const id of [...store.keys()]) if (!used.has(id)) { store.delete(id); cache.delete(id); }
+        // Every reference source is named in bitmapRefs, where it is unit tested; missing one
+        // here would free pixels that undo, paste or the current selection still need.
+        const dead = unusedBitmapIds(bitmapStoreRef.current.keys(), {
+            cuts: live.cuts,
+            history: historyRef.current,
+            copiedCut: live.copiedCut,
+            lassoClip: lassoClipRef.current,
+            selection: live.selection,
+        });
+        for (const id of dead) { bitmapStoreRef.current.delete(id); dataUrlCacheRef.current.delete(id); }
     };
     // assetSink: when provided (server save), whole-image frame bitmaps are NOT inlined as base64
     // in the JSON; they're collected here to upload as separate binary assets. This keeps the JSON

@@ -134,7 +134,9 @@ src/
   App.jsx          app state, drawing pipeline, timeline logic, panel docking (~4,500 lines)
   canvasUtils.js   pure helpers: smoothing, boiling, fill, distance-field morph, waveforms
   i18n.js          the English dictionary (~500 entries) and the tr() lookup
-  layerOps.js      pure layer-tree moves (reparenting, ordering, cycle refusal)
+  layerOps.js      pure layer-tree moves, draw-target resolution, stroke commit
+  cutOps.js        pure timeline geometry: cut drag, resize, snapping, overlap
+  bitmapRefs.js    which stored bitmaps are still referenced (undo, clipboard, selection)
   Modals.jsx       project picker, settings, help, video import, scene detect
   TopBar.jsx  Timeline.jsx  CutLayerPanel.jsx  ColorPanel.jsx  AnimPanels.jsx
   globals.d.ts     ambient declarations (EyeDropper, Capacitor, File System Access…)
