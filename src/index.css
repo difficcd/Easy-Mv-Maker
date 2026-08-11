@@ -1,60 +1,34 @@
+/* Document-level defaults only.
+ *
+ * Everything that used to be here beyond this - .button, .button-primary and their hovers, body
+ * sizing, a second box-sizing reset - was Vite starter boilerplate that App.css had long since
+ * replaced, and the two were fighting.
+ *
+ * .button-primary set background-color: #8a2be2, which overrode App.css's themed `background`
+ * shorthand because a longhand declared later wins over the colour inside a shorthand. That is
+ * why Export, the play button and Duplicate looked permanently purple no matter what theme colour
+ * was chosen, and why they carry inline background overrides to this day - those were treating
+ * the symptom. The text editor's Done button had no such override, so it stayed blueviolet.
+ *
+ * body also carried `display: flex; place-items: center; min-width: 100vw`, which centred the app
+ * container and forced the page one scrollbar-width wider than the viewport.
+ */
+
 :root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+    font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+    line-height: 1.5;
+    font-weight: 400;
 
-  color-scheme: dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #1e1e1e;
+    color-scheme: dark;
+    color: rgba(255, 255, 255, 0.87);
 
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-body {
-  margin: 0;
-  display: flex;
-  place-items: center;
-  min-height: 100vh;
-  min-width: 100vw;
-  background-color: #121212;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }
 
 #root {
-  width: 100%;
-  height: 100%;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-.button {
-  background-color: #3a3a3a;
-  color: white;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: background-color 0.2s;
-}
-
-.button:hover {
-  background-color: #555;
-}
-
-.button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.button-primary {
-  background-color: #8a2be2;
-}
-
-.button-primary:hover {
-  background-color: #9b4dca;
+    width: 100%;
+    height: 100%;
 }

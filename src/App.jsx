@@ -171,6 +171,24 @@ export default function App() {
     // True while the playhead is being dragged. Rendering treats it as playback (see paintFrame).
     const [scrubbing, setScrubbing] = useState(false);
 
+    // The editor opens at the text's position, so clicking near an edge used to put half of it
+    // off-screen with the Done button unreachable. Measure once it is laid out and nudge it back
+    // in; its size changes as options appear, so this reruns whenever the editor does.
+    const textEditorRef = useRef(null);
+    useLayoutEffect(() => {
+        const el = textEditorRef.current;
+        if (!el) return;
+        el.style.transform = 'translate(10px, 10px)';
+        const r = el.getBoundingClientRect();
+        const pad = 8;
+        let dx = 0, dy = 0;
+        if (r.right > window.innerWidth - pad) dx = window.innerWidth - pad - r.right;
+        if (r.bottom > window.innerHeight - pad) dy = window.innerHeight - pad - r.bottom;
+        if (r.left + dx < pad) dx = pad - r.left;
+        if (r.top + dy < pad) dy = pad - r.top;
+        el.style.transform = `translate(${10 + dx}px, ${10 + dy}px)`;
+    });
+
     // Where each panel lives: 'left', 'right' or 'float'. Panels are drawn from these rather than
     // from fixed positions in the layout, so dragging one only has to change this value.
     const [docks, setDocks] = useState(() => {
@@ -4268,7 +4286,7 @@ export default function App() {
                             </div>
                         )}
                         {textEdit && (
-                            <div className="text-editor" style={{ left: Math.round(textEdit.cssX), top: Math.round(textEdit.cssY) }}>
+                            <div className="text-editor" ref={textEditorRef} style={{ left: Math.round(textEdit.cssX), top: Math.round(textEdit.cssY) }}>
                                 <textarea
                                     ref={textAreaRef}
                                     value={textEdit.text}
@@ -4280,6 +4298,7 @@ export default function App() {
                                     placeholder={tr('텍스트 입력 (Ctrl+Enter 완료, Esc 취소)')}
                                 />
                                 <div className="text-editor-row">
+                                    <div className="te-section">{tr('글꼴')}</div>
                                     <label className="text-editor-label">Size</label>
                                     <input
                                         type="number"
@@ -4338,23 +4357,24 @@ export default function App() {
                                         onChange={e => setTextEdit(te => te ? ({ ...te, lineHeight: +e.target.value }) : te)}>
                                         {[1, 1.15, 1.25, 1.5, 1.8, 2].map(v => <option key={v} value={v}>{v}x</option>)}
                                     </select>
-                                    <label style={{ fontSize: 11, color: '#aaa', display: 'flex', alignItems: 'center', gap: 3 }} title={tr('가독성용 외곽선')}>
-                                        <input type="checkbox" checked={!!textEdit.outline} onChange={e => setTextEdit(te => te ? ({ ...te, outline: e.target.checked }) : te)} />{tr('테두리')}
-                                    </label>
-                                    {textEdit.outline && <input type="color" value={textEdit.outlineColor || '#ffffff'} onChange={e => setTextEdit(te => te ? ({ ...te, outlineColor: e.target.value }) : te)} className="text-editor-color" title={tr('테두리 색')} />}
                                     <select className="time-input" style={{ width: 58 }} title={tr('자간(글자 간격)')} value={textEdit.letterSpacing ?? 0}
                                         onChange={e => setTextEdit(te => te ? ({ ...te, letterSpacing: +e.target.value }) : te)}>
                                         {[-2, 0, 1, 2, 4, 8, 12].map(v => <option key={v} value={v}>{tr('자간')}{v}</option>)}
                                     </select>
-                                    <label style={{ fontSize: 11, color: '#aaa', display: 'flex', alignItems: 'center', gap: 3 }} title={tr('그림자')}>
+                                    <div className="te-section">{tr('효과')}</div>
+                                    <label className="te-check" title={tr('가독성용 외곽선')}>
+                                        <input type="checkbox" checked={!!textEdit.outline} onChange={e => setTextEdit(te => te ? ({ ...te, outline: e.target.checked }) : te)} />{tr('테두리')}
+                                    </label>
+                                    {textEdit.outline && <input type="color" value={textEdit.outlineColor || '#ffffff'} onChange={e => setTextEdit(te => te ? ({ ...te, outlineColor: e.target.value }) : te)} className="text-editor-color" title={tr('테두리 색')} />}
+                                    <label className="te-check" title={tr('그림자')}>
                                         <input type="checkbox" checked={!!textEdit.shadow} onChange={e => setTextEdit(te => te ? ({ ...te, shadow: e.target.checked }) : te)} />{tr('그림자')}
                                     </label>
                                     {textEdit.shadow && <input type="color" value={(textEdit.shadowColor || '#000000').startsWith('#') ? textEdit.shadowColor : '#000000'} onChange={e => setTextEdit(te => te ? ({ ...te, shadowColor: e.target.value }) : te)} className="text-editor-color" title={tr('그림자 색')} />}
-                                    <label style={{ fontSize: 11, color: '#aaa', display: 'flex', alignItems: 'center', gap: 3 }} title={tr('위→아래 2색 그라데이션')}>
+                                    <label className="te-check" title={tr('위→아래 2색 그라데이션')}>
                                         <input type="checkbox" checked={!!textEdit.gradient} onChange={e => setTextEdit(te => te ? ({ ...te, gradient: e.target.checked }) : te)} />{tr('그라데이션')}
                                     </label>
                                     {textEdit.gradient && <input type="color" value={textEdit.color2 || '#ffffff'} onChange={e => setTextEdit(te => te ? ({ ...te, color2: e.target.value }) : te)} className="text-editor-color" title={tr('그라데이션 끝 색')} />}
-                                    <label style={{ fontSize: 11, color: '#aaa', display: 'flex', alignItems: 'center', gap: 3 }} title={tr('글자 뒤 배경 박스')}>
+                                    <label className="te-check" title={tr('글자 뒤 배경 박스')}>
                                         <input type="checkbox" checked={!!textEdit.bgColor} onChange={e => setTextEdit(te => te ? ({ ...te, bgColor: e.target.checked ? (te.bgColor || '#ffffff') : '' }) : te)} />{tr('배경')}
                                     </label>
                                     {textEdit.bgColor && <input type="color" value={textEdit.bgColor.startsWith('#') ? textEdit.bgColor : '#ffffff'} onChange={e => setTextEdit(te => te ? ({ ...te, bgColor: e.target.value }) : te)} className="text-editor-color" title={tr('배경 색')} />}
@@ -4366,8 +4386,8 @@ export default function App() {
                                         const on = !!textEdit.anim;
                                         const set = (o) => setTextEdit(te => te ? ({ ...te, anim: { ...an, ...o } }) : te);
                                         return (<>
-                                            <span style={{ width: '100%', height: 1, background: '#ffffff14', margin: '2px 0' }} />
-                                            <label style={{ fontSize: 11, color: '#aaa', display: 'flex', alignItems: 'center', gap: 3 }} title={tr('재생할 때만 적용됩니다')}>
+                                            <div className="te-section">{tr('애니메이션')}</div>
+                                            <label className="te-check" title={tr('재생할 때만 적용됩니다')}>
                                                 <input type="checkbox" checked={on}
                                                     onChange={e => setTextEdit(te => te ? ({ ...te, anim: e.target.checked ? { ...TEXT_ANIM_DEFAULT } : null }) : te)} />{tr('애니메이션')}
                                             </label>
@@ -4389,7 +4409,7 @@ export default function App() {
                                                     <input type="number" className="time-input" style={{ width: 50 }} title={tr('강조 속도')} value={an.emSpeed} step={0.5} min={0}
                                                         onChange={e => set({ emSpeed: Math.max(0, +e.target.value || 0) })} />
                                                 </>}
-                                                <label style={{ fontSize: 11, color: '#aaa', display: 'flex', alignItems: 'center', gap: 3 }} title={tr('한 글자씩 나타남')}>
+                                                <label className="te-check" title={tr('한 글자씩 나타남')}>
                                                     <input type="checkbox" checked={!!an.typing} onChange={e => set({ typing: e.target.checked })} />{tr('타이핑')}
                                                 </label>
                                                 {an.typing && <input type="number" className="time-input" style={{ width: 56 }} title={tr('초당 글자수')} value={an.typeSpeed} step={2} min={1}
@@ -4397,9 +4417,10 @@ export default function App() {
                                             </>}
                                         </>);
                                     })()}
-                                    <div style={{ flex: 1 }} />
-                                    <button className="button button-primary" onClick={commitText} style={{ height: 28, padding: '0 10px' }}>{tr('완료')}</button>
-                                    <button className="button" onClick={cancelText} style={{ height: 28, padding: '0 10px' }}>{tr('취소')}</button>
+                                    <div className="te-footer">
+                                        <button className="button button-primary" onClick={commitText} style={{ height: 28, padding: '0 12px' }}>{tr('완료')}</button>
+                                        <button className="button" onClick={cancelText} style={{ height: 28, padding: '0 12px' }}>{tr('취소')}</button>
+                                    </div>
                                 </div>
                             </div>
                         )}

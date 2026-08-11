@@ -532,6 +532,8 @@ const EN = {
     '올가미↓': 'Lasso ↓',
     '◀컷': '◀ Cut',
     '컷▶': 'Cut ▶',
+    '글꼴': 'Font',
+    '효과': 'Effects',
     '드래그로 패널 너비 조절': 'Drag to resize the panel',
     '테두리': 'Outline',
     '그라데이션': 'Gradient',

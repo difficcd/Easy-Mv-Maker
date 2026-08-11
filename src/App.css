@@ -456,33 +456,39 @@ body {
 
 .text-editor {
     position: absolute;
-    min-width: 260px;
+    min-width: 300px;
     max-width: 560px;
     /* There are enough controls to run tall, so it scrolls within the panel rather than off-screen. */
     max-height: 80vh;
     overflow-y: auto;
     z-index: 40;
     transform: translate(10px, 10px);
-    padding: 10px;
+    padding: 12px;
     border-radius: 12px;
-    background: rgba(20, 20, 42, 0.86);
-    border: 1px solid rgba(255, 255, 255, 0.10);
+    /* Theme-driven, like every other panel. This used to be a hardcoded navy that ignored the
+       theme colour entirely, so it looked pasted in from another application. */
+    background: hsl(var(--ui-h) var(--ui-s) 14%);
+    border: 1px solid hsl(var(--ui-h) var(--ui-s) 28%);
     backdrop-filter: blur(10px);
-    box-shadow: 0 18px 44px rgba(0, 0, 0, 0.45);
+    box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
 }
 
 .text-editor textarea {
     width: 100%;
-    height: 120px;
+    height: 110px;
     resize: vertical;
-    background: rgba(15, 18, 32, 0.92);
-    color: rgba(255, 255, 255, 0.92);
-    caret-color: rgba(255, 255, 255, 0.92);
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    border-radius: 10px;
+    background: hsl(var(--ui-h) var(--ui-s) 10%);
+    color: #e6e6ee;
+    caret-color: var(--accent-soft);
+    border: 1px solid hsl(var(--ui-h) var(--ui-s) 26%);
+    border-radius: 8px;
     padding: 10px;
     font: 14px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
     outline: none;
+}
+
+.text-editor textarea:focus {
+    border-color: var(--accent-hi);
 }
 
 .text-editor textarea::placeholder {
@@ -1642,4 +1648,70 @@ html {
 
 .dock-hint[style*="right"] {
     background: linear-gradient(to left, var(--accent-glow), transparent);
+}
+
+/* ── Text editor: section headings ───────────────────────────────────────────
+   Every control used to sit as a sibling in one wrapping row, which is why it
+   was hard to work in - nothing told you where the font settings ended and the
+   effects began. A full-width heading forces a line break in the wrap container
+   and gives the row structure without moving any control out of it. */
+.te-section {
+    width: 100%;
+    margin: 8px 0 2px;
+    padding-top: 7px;
+    border-top: 1px solid hsl(var(--ui-h) var(--ui-s) 24%);
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--accent-soft);
+}
+
+/* The first heading follows the textarea, so it does not need its own rule above. */
+.te-section:first-of-type {
+    margin-top: 4px;
+    border-top: none;
+    padding-top: 0;
+}
+
+.te-check {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: #b8b8c6;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.te-check:hover {
+    color: #e6e6ee;
+}
+
+/* Done and Cancel used to sit in the flow of the controls, so they moved around
+   as options appeared and were easy to miss. */
+.te-footer {
+    width: 100%;
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-top: 10px;
+    padding-top: 9px;
+    border-top: 1px solid hsl(var(--ui-h) var(--ui-s) 24%);
+}
+
+/* Colour swatches read as part of the control they belong to, not as gaps. */
+.text-editor .text-editor-color {
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: 1px solid hsl(var(--ui-h) var(--ui-s) 32%);
+    border-radius: 5px;
+    background: none;
+    cursor: pointer;
+}
+
+.text-editor .text-editor-label {
+    font-size: 11px;
+    color: #9a9aa8;
 }
