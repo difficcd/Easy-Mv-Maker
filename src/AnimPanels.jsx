@@ -78,8 +78,8 @@ export function CutAnimPanel({ cut, updCutAnim }) {
     );
 }
 
-// #14 이동 효과 프리셋: 값을 하나씩 맞추지 않고 자주 쓰는 '부드러운 모션'을 한 번에 넣는다.
-// 각 프리셋은 이동/회전/크기 + 왕복 여부 + 가감속을 한 세트로 채운다.
+// Motion presets: rather than dialling in each value, drop in a common soft movement at once.
+// Each preset fills move, rotate and scale together with the ping-pong flag and the easing.
 const MOVE_PRESETS = [
     { id: 'floatY', label: '둥실둥실', v: { mode: 'return', tx: 0, ty: -24, rot: 0, scale: 0, speed: 0.6, count: 0, ease: 'inout', easePower: 2 } },
     { id: 'driftX', label: '좌우 흐름', v: { mode: 'return', tx: 40, ty: 0, rot: 0, scale: 0, speed: 0.5, count: 0, ease: 'inout', easePower: 2 } },
@@ -91,7 +91,7 @@ const MOVE_PRESETS = [
 ];
 
 // Per-layer ("part") animation (move/rotate/scale/path + ping-pong/speed/count/easing).
-// 사용자가 저장한 커스텀 프리셋 (기본 프리셋과 같은 형식, 브라우저에 보관)
+// Presets the user saved: same shape as the built-in ones, kept in the browser.
 const loadCustomPresets = () => { try { const v = JSON.parse(localStorage.getItem('mv_move_presets')); return Array.isArray(v) ? v : []; } catch { return []; } };
 const saveCustomPresets = (list) => { try { localStorage.setItem('mv_move_presets', JSON.stringify(list)); } catch { } };
 
@@ -101,7 +101,8 @@ export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCaptur
     const keys = Array.isArray(a.keys) ? a.keys : [];
     const sortKeys = (arr) => [...arr].sort((x, y) => x.p - y.p);
     const setKeys = (arr) => updLayerAnim(cut.id, layer.id, { keys: arr.length ? sortKeys(arr) : null });
-    // 현재 재생 위치(컷 내 진행도)에 키를 추가한다. 같은 위치면 덮어쓴다.
+    // Add a key at the current playback position (progress through the cut), overwriting
+    // any key already sitting there.
     const addKeyHere = () => {
         const p = Math.round(Math.max(0, Math.min(1, cutProgress)) * 100) / 100;
         const cur = keys.find(k => Math.abs(k.p - p) < 0.005);
@@ -115,8 +116,9 @@ export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCaptur
                 <span style={{ fontSize: 10, color: '#888' }}>{tr('파츠 애니메이션 (재생 시 적용)')}</span>
                 {layer.anim && <button className="small-btn" onClick={() => updLayers(cut.id, c => ({ layers: c.layers.map(l => l.id === layer.id ? { ...l, anim: undefined } : l) }))}>{tr('끄기')}</button>}
             </div>
-            {/* 부드러운 모션 프리셋 — 누르면 아래 값들이 한 번에 채워지고, 이후 자유롭게 손볼 수 있다.
-                현재 설정을 내 프리셋으로 저장해 두고 다른 파츠에 재사용할 수도 있다. */}
+            {/* Soft-motion presets: pressing one fills in all the values below, which can then
+                be adjusted freely. The current settings can also be saved as a preset and
+                reused on other parts. */}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, alignItems: 'center' }} title={tr('자주 쓰는 움직임을 한 번에 적용합니다. 적용 후 값은 직접 수정할 수 있습니다.')}>
                 {MOVE_PRESETS.map(p => (
                     <button key={p.id} className="small-btn" style={{ fontSize: 9, padding: '2px 6px' }}
@@ -138,7 +140,7 @@ export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCaptur
                         setCustom(next); saveCustomPresets(next);
                     }}>{tr('+ 저장')}</button>
             </div>
-            {/* 키프레임 트위닝: 시점마다 값을 찍어두면 그 사이를 자동으로 이어준다 */}
+            {/* Keyframe tweening: set a value at each point in time and the gaps are filled in. */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 3, borderTop: '1px solid hsl(var(--ui-h) var(--ui-s) 20%)', paddingTop: 4 }}>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 10, color: '#c9a' }}
                     title={tr("재생 위치를 옮겨가며 '키 추가'를 누르면 그 사이가 자동으로 보간됩니다(트위닝). 키가 2개 이상이면 위의 이동/회전/크기 대신 키프레임이 적용됩니다.")}>
@@ -200,7 +202,8 @@ export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCaptur
                 <span>{tr('강도')}</span><NumIn value={a.swayAmount || 0} onChange={v => updLayerAnim(cut.id, layer.id, { swayAmount: v })} min={0} w={50} title={tr('흔들림 강도')} />
                 <span>{tr('속도')}</span><NumIn value={a.swaySpeed || 1} onChange={v => updLayerAnim(cut.id, layer.id, { swaySpeed: v })} step={0.1} min={0.1} w={50} title={tr('흔들림 속도')} />
             </div>
-            {/* 흔들림2: 곡선을 그려서 흔들리는 tr('모양')을 직접 정한다 (없으면 기본 사인파) */}
+            {/* Sway 2: draw a curve to define the shape of the sway; without one it falls back
+                to a plain sine wave. */}
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 10, color: '#8bd' }}
                 title={tr('물결치듯 곡선을 그리면 그 곡선의 모양과 크기대로 흔들립니다. 그리지 않으면 기본 사인파로 흔들립니다.')}>
                 <span style={{ width: 24 }}>{tr('모양')}</span>
@@ -211,8 +214,8 @@ export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCaptur
                 {a.swayCurve && <button className="small-btn" onClick={() => updLayerAnim(cut.id, layer.id, { swayCurve: null })}>{tr('기본 파형')}</button>}
                 {a.swayCurve && <span style={{ color: '#5a8' }}>{tr('● 곡선')}</span>}
             </div>
-            {/* 지점별 꺾임: 축을 따라 놓인 각 지점의 흔들림 정도(-100~100%).
-                0 = 그 지점은 고정, 부호를 반대로 주면 반대쪽으로 꺾인다. */}
+            {/* Per-point bending: how much each point along the axis sways, from -100 to 100%.
+                Zero holds that point still; a negative value bends it the other way. */}
             {(() => {
                 const prof = Array.isArray(a.swayProfile) ? a.swayProfile : null;
                 const setProf = (arr) => updLayerAnim(cut.id, layer.id, { swayProfile: arr });
@@ -270,8 +273,8 @@ export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCaptur
     );
 }
 
-// 자글자글(boiling line) 효과 설정 — 레이어 단위. 가는 선까지 과하게 떨리는 걸 막기 위해
-// 강도/파장/속도와 '최소 굵기' 문턱값을 직접 조절한다.
+// Boiling-line settings, per layer. Strength, wavelength, speed and a minimum-width
+// threshold are all exposed, the threshold being what stops hairlines shimmering wildly.
 export function JitterPanel({ cut, layer, updLayer }) {
     const on = !!layer.roughen;
     const set = (o) => updLayer(cut.id, layer.id, o);

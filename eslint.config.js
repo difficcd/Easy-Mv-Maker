@@ -1,9 +1,9 @@
 import reactHooks from 'eslint-plugin-react-hooks';
 
-// 훅 전용 검사만 켠다. 목적은 코드 스타일 잔소리가 아니라,
-// 로직을 커스텀 훅으로 옮길 때 생기는 '조용한 버그'를 잡는 것:
-//  - exhaustive-deps: 의존성 배열 누락 → 오래된 값을 붙든 채 도는 stale closure
-//  - rules-of-hooks: 조건문/반복문 안에서 훅 호출 → 호출 순서가 깨짐
+// Only the hook rules are enabled. The point is not style nagging but catching the silent
+// bugs that appear when logic moves into custom hooks:
+//  - exhaustive-deps: a missing dependency leaves a stale closure holding an old value
+//  - rules-of-hooks: a hook called inside a condition or loop breaks the call order
 export default [
     {
         files: ['src/**/*.{js,jsx}'],

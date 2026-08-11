@@ -2,8 +2,8 @@
 @import url('https://fonts.googleapis.com/css2?family=Gowun+Dodum&family=Nanum+Gothic:wght@400;700&family=Noto+Sans+KR:wght@400;700&family=Noto+Serif+KR:wght@400;700&display=swap');
 @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
 
-/* 테마색: 아래 한 색에서 파생된 변수들로 전체 UI 색이 정해진다.
-   JS가 사용자가 고른 색으로 이 값들을 덮어써서 앱 전체 테마를 바꾼다. */
+/* Theme colour: every UI colour is derived from the one colour below.
+   JS overwrites these with whatever the user picked, retheming the whole app. */
 :root {
     --accent: #6d28d9;
     --accent-lo: #5b21b6;
@@ -19,7 +19,8 @@
     --accent-pale2: #e9d5ff;
     --accent-pale3: #ddd6fe;
     --accent-glow: rgba(109, 40, 217, .5);
-    /* UI 중성색(패널·버튼·테두리 배경)의 색조와 채도. 채도를 0%로 두면 완전한 무채색 회색이 된다. */
+    /* Hue and saturation of the UI neutrals (panel, button and border backgrounds).
+       At 0% saturation the UI is a completely neutral grey. */
     --ui-h: 260;
     --ui-s: 18%;
 }
@@ -58,11 +59,12 @@ body {
     border-bottom: 1px solid hsl(var(--ui-h) var(--ui-s) 21%);
     flex-shrink: 0;
     overflow: visible;
-    /* 드롭다운(파일/미디어)이 잘리지 않도록 overflow는 visible 유지.
-       항목은 미디어 메뉴로 묶어 짧으므로 가로 넘침은 거의 없음. */
+    /* overflow stays visible so the File and Media dropdowns are not clipped.
+       The entries are grouped under Media and stay short, so horizontal overflow is rare. */
 }
 
-/* 상단바 항목은 좁아져도 찌그러지지 않고, 넘치면 가로 스크롤 (글씨 깨짐 방지) */
+/* Top-bar items never squash as the bar narrows; they scroll horizontally instead,
+   which keeps the text legible. */
 .top-bar>* {
     flex-shrink: 0;
 }
@@ -79,7 +81,7 @@ body {
     min-width: 8px;
 }
 
-/* 팔레트 미니 버튼 */
+/* Small palette buttons. */
 .pal-btn {
     flex: 1;
     min-width: 0;
@@ -114,7 +116,7 @@ body {
     background-clip: text;
 }
 
-/* 상단바 버튼/드롭다운은 한 줄 유지 */
+/* Top-bar buttons and dropdowns stay on one line. */
 .top-bar .button,
 .top-bar .time-input {
     white-space: nowrap;
@@ -275,7 +277,7 @@ body {
 
 .tool-grid {
     display: grid;
-    /* 고정 2열이 아니라 폭에 맞춰 열 수가 자동 조정된다 (좁히면 1열, 넓히면 3~4열) */
+    /* Not a fixed two columns: the count follows the width, down to one and up to three or four. */
     grid-template-columns: repeat(auto-fit, minmax(38px, 1fr));
     gap: 4px;
     width: 100%;
@@ -440,7 +442,7 @@ body {
     position: absolute;
     min-width: 260px;
     max-width: 560px;
-    /* 컨트롤이 많아 세로로 길어질 수 있으므로, 화면을 넘기면 패널 안에서 스크롤 */
+    /* There are enough controls to run tall, so it scrolls within the panel rather than off-screen. */
     max-height: 80vh;
     overflow-y: auto;
     z-index: 40;
@@ -471,7 +473,7 @@ body {
     color: rgba(255, 255, 255, 0.55);
 }
 
-/* 컨트롤이 많으므로 반드시 줄바꿈시킨다. nowrap이면 서로 밀려 찌그러지고 패널 밖으로 넘침. */
+/* These must wrap. With nowrap the controls squeeze each other and spill out of the panel. */
 .text-editor-row {
     display: flex;
     flex-wrap: wrap;
@@ -480,7 +482,7 @@ body {
     margin-top: 10px;
 }
 
-/* 라벨+입력 묶음이 줄바꿈 지점에서 쪼개지지 않게 */
+/* Keeps a label and its input from being split across a wrap. */
 .text-editor-row label {
     white-space: nowrap;
 }
@@ -585,7 +587,7 @@ canvas {
     display: flex;
     flex-direction: column;
     padding: 10px;
-    /* 아래 타임라인과 경계가 딱 맞물리도록 아래쪽 테두리를 공유한다 */
+    /* Shares its bottom border with the timeline below so the two meet exactly. */
     border-bottom: 1px solid hsl(var(--ui-h) var(--ui-s) 24%);
     overflow: hidden;
 }
@@ -1159,13 +1161,14 @@ html {
     z-index: 99;
 }
 
-/* 진행률을 알 수 없는 구간용 무한 게이지 (파일 읽기/파싱처럼 총량을 모를 때) */
+/* Indeterminate bar for work whose total is unknown, such as reading or parsing a file. */
 @keyframes mvIndet {
     0% { transform: translateX(-100%); }
     100% { transform: translateX(250%); }
 }
 
-/* 색상 패널 (독립 독). 좁은 도구 막대에 욱여넣던 색상 UI를 여기로 옮겨 제대로 배치한다. */
+/* Colour panel, as its own dock. The colour UI used to be crammed into the narrow tool
+   strip; here it gets room to lay out properly. */
 .color-panel {
     min-width: 0;
     flex-shrink: 0;
@@ -1224,7 +1227,7 @@ html {
     align-content: flex-start;
 }
 
-/* 팔레트 '탭' — 클튜처럼 세트를 탭으로 오간다 */
+/* Palette tabs - switch between sets the way Clip Studio does. */
 .pal-tabs {
     display: flex;
     flex-wrap: wrap;
@@ -1270,7 +1273,7 @@ html {
     gap: 4px;
 }
 
-/* 왼쪽 독의 아이콘 줄 (클립스튜디오식 패널 전환) */
+/* Icon rail on the left dock, for switching panels Clip Studio style. */
 .dock-rail {
     width: 30px;
     flex-shrink: 0;
@@ -1307,7 +1310,7 @@ html {
     color: #fff;
 }
 
-/* 색상환 */
+/* Colour wheel. */
 .wheel-wrap {
     align-self: center;
     max-width: 100%;
@@ -1323,7 +1326,7 @@ html {
     cursor: crosshair;
 }
 
-/* 선택 위치 표시 (클릭을 막지 않도록 pointer-events 해제) */
+/* Marks the selected position; pointer-events is off so it does not swallow clicks. */
 .wheel-mark {
     position: absolute;
     width: 11px;
@@ -1360,14 +1363,14 @@ html {
     cursor: pointer;
 }
 
-/* 색상환 캔버스는 전역 canvas 배경(흰색)을 상속하면 안 된다 */
+/* The wheel canvases must not inherit the global white canvas background. */
 .wheel-ring,
 .wheel-sq {
     background: transparent;
     box-shadow: none;
 }
 
-/* 패널 머리글 — 도구 창/색상 창이 같은 모양의 닫기(✕)를 쓰도록 통일 */
+/* Panel header, so the tool and colour panels share the same close (✕) affordance. */
 .panel-head {
     display: flex;
     justify-content: space-between;
@@ -1378,7 +1381,7 @@ html {
     border-bottom: 1px solid hsl(var(--ui-h) var(--ui-s) 21%);
 }
 
-/* 두 창을 동시에 열었을 때 서로 구분되도록 경계를 준다 */
+/* A divider, so the two panels read as separate when both are open. */
 .color-panel {
     border-left: 1px solid hsl(var(--ui-h) var(--ui-s) 24%);
 }
@@ -1387,8 +1390,8 @@ html {
     border-right: 1px solid hsl(var(--ui-h) var(--ui-s) 24%);
 }
 
-/* 폭에 따라 '열 수'가 알아서 바뀐다(리플로우). 버튼 자체는 쓰기 좋은 크기를 유지하고,
-   칸이 좁아 라벨이 들어갈 수 없을 때만 라벨이 빠진다. */
+/* The column count reflows with the width. The buttons keep a comfortable size, and the
+   label is dropped only when the cell is too narrow to hold it. */
 .toolbar .tool-grid {
     grid-template-columns: repeat(auto-fit, minmax(42px, 1fr));
 }
@@ -1412,7 +1415,7 @@ html {
 }
 
 
-/* 아이콘 바: 아이콘을 키우고 클릭 영역도 넓힘 */
+/* Icon rail: larger icons and a bigger hit area. */
 .dock-rail {
     width: 42px;
     padding: 8px 0;
@@ -1425,7 +1428,7 @@ html {
     border-radius: 8px;
 }
 
-/* 설정 창: 글씨/컨트롤을 키워 읽기 쉽게 */
+/* Settings dialog: larger text and controls, for legibility. */
 .settings-modal .pal-tab {
     font-size: 13px;
     padding: 7px 16px;
@@ -1440,7 +1443,7 @@ html {
     font-size: 13px;
 }
 
-/* 테마 색조 선택 라인 */
+/* Theme hue picker strip. */
 .hue-line {
     flex: 1;
     height: 26px;
@@ -1453,7 +1456,7 @@ html {
     touch-action: none;
 }
 
-/* 붓 크기 프리셋: 고정 배치 대신 표(그리드)에 넣어 폭에 맞춰 재배열된다 */
+/* Brush-size presets sit in a grid rather than a fixed layout, so they rearrange with width. */
 .size-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(24px, 1fr));
@@ -1480,7 +1483,7 @@ html {
     border-color: var(--accent-hi);
 }
 
-/* 도구 창 안의 요소는 폭을 넘지 않게 */
+/* Nothing inside the tool panel may exceed its width. */
 .toolbar>* {
     max-width: 100%;
 }
@@ -1489,7 +1492,7 @@ html {
     min-width: 0;
 }
 
-/* 도구 창 내부 요소는 항상 패널 폭을 채운다 (내용 폭으로 고정되지 않게) */
+/* Elements in the tool panel always fill the panel width instead of sizing to their content. */
 .toolbar .tool-grid,
 .toolbar .size-grid,
 .toolbar .slider-wrap,
@@ -1498,7 +1501,7 @@ html {
     min-width: 0;
 }
 
-/* 현재 색: 늘리지 않고 완전한 원으로 유지 (폭을 채우면 타원이 된다) */
+/* Current colour: never stretched, so it stays a circle - filling the width makes it an oval. */
 .toolbar .color-picker {
     width: 34px;
     height: 34px;
@@ -1512,7 +1515,8 @@ html {
     border-radius: 50%;
 }
 
-/* 최근 색: 칸 수를 고정해 두고 빈 칸은 비워 둔다 (색이 늘 때마다 레이아웃이 흔들리지 않게) */
+/* Recent colours: a fixed number of slots, empty ones left blank, so the layout does not
+   shift every time a colour is added. */
 .slot-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(22px, 1fr));
@@ -1539,7 +1543,7 @@ html {
     outline-offset: -2px;
 }
 
-/* 빈 칸은 투명하다는 걸 알 수 있게 옅은 체크무늬 */
+/* A faint chequerboard, so an empty slot reads as transparent. */
 .slot.empty {
     background-image: linear-gradient(45deg, hsl(var(--ui-h) var(--ui-s) 18%) 25%, transparent 25%),
         linear-gradient(-45deg, hsl(var(--ui-h) var(--ui-s) 18%) 25%, transparent 25%),
@@ -1549,7 +1553,8 @@ html {
     background-position: 0 0, 0 4px, 4px -4px, -4px 0;
 }
 
-/* 백그라운드 작업 표시(영상 받기·서버 백업). 화면을 막지 않고 구석에만 뜬다. */
+/* Background-task chips (fetching video, server backup). They sit in the corner rather
+   than blocking the screen. */
 .bg-chip {
     display: flex;
     align-items: center;

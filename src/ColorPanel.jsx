@@ -2,7 +2,7 @@ import React from 'react';
 import { Droplets } from 'lucide-react';
 import { tr } from './i18n';
 
-// --- 색 변환 (HSV <-> HEX) ------------------------------------------------------------
+// --- Colour conversion (HSV <-> HEX) ---------------------------------------------------
 const hex2rgb = (h) => {
     const x = String(h).replace('#', '');
     return { r: parseInt(x.slice(0, 2), 16), g: parseInt(x.slice(2, 4), 16), b: parseInt(x.slice(4, 6), 16) };
@@ -26,10 +26,10 @@ const hsv2rgb = (h, s, v) => {
 };
 const hsv2hex = (h, s, v) => { const { r, g, b } = hsv2rgb(h, s, v); return rgb2hex(r, g, b); };
 
-export const RECENT_SLOTS = 30; // 최근 색 저장 칸 수 (고정)
+export const RECENT_SLOTS = 30; // How many recent-colour slots to keep (fixed).
 
-// 색상환: 바깥 고리 = 색조, 안쪽 사각형 = 채도/명도.
-// 크기는 패널 폭을 따라간다 — 좁혔을 때 잘려서 안 보이는 일이 없게.
+// Colour wheel: the outer ring is hue, the inner square is saturation and value.
+// It sizes with the panel width so narrowing the panel never clips it out of sight.
 function ColorWheel({ color, onPick, size = 168 }) {
     const WHEEL = Math.max(96, Math.round(size));
     const RING = Math.max(9, Math.round(WHEEL * 0.085));
@@ -41,7 +41,7 @@ function ColorWheel({ color, onPick, size = 168 }) {
     const { r, g, b } = hex2rgb(/^#[0-9a-fA-F]{6}$/.test(color) ? color : '#000000');
     const { h, s, v } = rgb2hsv(r, g, b);
 
-    // 고리는 색조만 담으므로 한 번만 그린다.
+    // The ring only carries hue, so it is drawn once.
     React.useEffect(() => {
         const c = ringRef.current; if (!c) return;
         const ctx = c.getContext('2d');
@@ -56,7 +56,7 @@ function ColorWheel({ color, onPick, size = 168 }) {
         }
     }, [WHEEL, RING]);
 
-    // 사각형은 현재 색조에 따라 다시 그린다.
+    // The square is redrawn whenever the hue changes.
     React.useEffect(() => {
         const c = sqRef.current; if (!c) return;
         const ctx = c.getContext('2d');
@@ -82,7 +82,8 @@ function ColorWheel({ color, onPick, size = 168 }) {
         const nv = Math.max(0, Math.min(1, 1 - (e.clientY - r0.top) / SQ));
         onPick(hsv2hex(h, ns, nv));
     };
-    // 포인터를 잡아 밖으로 나가도 계속 따라오게 한다(색 고르는 중 끊기면 답답함).
+    // Capture the pointer so dragging outside the element keeps tracking - losing the drag
+    // mid-pick is maddening.
     const startDrag = (kind) => (e) => {
         e.preventDefault();
         const el = e.currentTarget;
@@ -97,28 +98,28 @@ function ColorWheel({ color, onPick, size = 168 }) {
     const endDrag = () => { dragRef.current = null; };
 
     const ang = h * Math.PI / 180, rMid = (R_OUT + R_IN) / 2;
-    // 위치는 전부 인라인으로 계산한다. CSS의 % + translate 조합에 기대면
-    // 부모 크기가 예상과 달라질 때 사각형이 고리 밖으로 튀어나간다.
+    // Every position is computed inline. Relying on CSS percentages plus translate lets the
+    // square escape the ring as soon as the parent is not the size we assumed.
     const sqLeft = (WHEEL - SQ) / 2, sqTop = (WHEEL - SQ) / 2;
     return (
         <div className="wheel-wrap" style={{ position: 'relative', width: WHEEL, height: WHEEL, flex: '0 0 auto', margin: '0 auto' }}>
             <canvas ref={ringRef} width={WHEEL} height={WHEEL} className="wheel-ring"
                 style={{ position: 'absolute', left: 0, top: 0, width: WHEEL, height: WHEEL }}
                 onPointerDown={startDrag('ring')} onPointerMove={onMove('ring')} onPointerUp={endDrag} onPointerCancel={endDrag} />
-            {/* 색조 위치 표시 */}
+            {/* Hue position marker. */}
             <div className="wheel-mark" style={{ left: WHEEL / 2 + Math.cos(ang) * rMid, top: WHEEL / 2 + Math.sin(ang) * rMid }} />
             <canvas ref={sqRef} width={SQ} height={SQ} className="wheel-sq"
                 style={{ position: 'absolute', left: sqLeft, top: sqTop, width: SQ, height: SQ, transform: 'none' }}
                 onPointerDown={startDrag('sq')} onPointerMove={onMove('sq')} onPointerUp={endDrag} onPointerCancel={endDrag} />
-            {/* 채도·명도 위치 표시 */}
+            {/* Saturation and value position marker. */}
             <div className="wheel-mark" style={{ left: sqLeft + s * SQ, top: sqTop + (1 - v) * SQ }} />
         </div>
     );
 }
 
-// 색상 패널 (클립스튜디오식 독립 패널).
-// 예전에는 96px짜리 좁은 도구 막대 안에 색상·최근색·팔레트를 전부 밀어넣어 디자인이 무너졌다.
-// 여기로 빼면서 스와치를 제대로 된 크기로 놓고, 팔레트를 '탭'으로 보여준다.
+// Colour panel, a standalone panel in the Clip Studio style.
+// It used to cram the wheel, recent colours and palettes into a 96px tool strip, which broke
+// the layout. Pulled out here, the swatches get a real size and palettes become tabs.
 export default function ColorPanel({
     color, applyColor, pickColor, pickingColor,
     recentColors,
@@ -139,10 +140,10 @@ export default function ColorPanel({
                 <button className="icon-btn" onClick={onClose} title={tr('색상 창 닫기')}>✕</button>
             </div>
 
-            {/* 색상환: 바깥 고리로 색조, 안쪽 사각형으로 채도·명도 */}
+            {/* Colour wheel: hue on the outer ring, saturation and value in the inner square. */}
             <ColorWheel color={color} onPick={applyColor} size={Math.max(96, Math.min(240, (width || 200) - 26))} />
 
-            {/* 현재 색 크게 보여주기 + 코드 + 스포이드 */}
+            {/* The current colour shown large, with its code and the eyedropper. */}
             <div className="current-color">
                 <div className="current-color-chip" style={{ background: color }} title={tr('현재 색')} />
                 <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -159,9 +160,9 @@ export default function ColorPanel({
                 </div>
             </div>
 
-            {/* 최근 색 — 실제로 tr('사용한') 색이 쌓인다.
-                칸 수를 30개로 고정해 두고 빈 칸은 비워 둔다: 색이 늘 때마다 영역 크기가
-                들썩이지 않아 레이아웃이 안정적이다. */}
+            {/* Recent colours, collecting only the ones actually used.
+                The slot count is fixed at 30 with the spares left blank, so the area does not
+                jump in size every time a colour is added. */}
             <div className="color-section-label">{tr('최근 사용한 색')}</div>
             <div className="slot-grid">
                 {Array.from({ length: RECENT_SLOTS }, (_, i) => {

@@ -3,9 +3,10 @@ import { ChevronDown, ChevronUp, Pause, Play, Plus, Repeat, Square, Trash2 } fro
 import { safeArray, accentSoft } from './canvasUtils';
 import { tr } from './i18n';
 
-// 하단 타임라인: 재생 컨트롤, 파트 바, 눈금자, 트랙/컷 블록, 오디오·영상 트랙.
-// 스크럽·컷 드래그·핀치줌 핸들러는 App 상태를 직접 건드리므로 App에 남기고 props로 받는다
-// (여기로 옮기면 단순 이동이 아니라 동작 변경이 된다).
+// Bottom timeline: playback controls, the parts bar, the ruler, track and cut blocks,
+// and the audio and video tracks.
+// Scrubbing, cut dragging and pinch zoom touch App state directly, so those handlers stay
+// in App and arrive as props - moving them here would change behaviour, not just location.
 export function Timeline({
     activePartId, audioData, audioFile, audioRef, currentCutId,
     currentTime, cutDragArmedRef, cutDragMovedRef, cutDragTimerRef, cuts,

@@ -1,3 +1,4 @@
+import { tr } from './i18n';
 // Pure helpers extracted from App.jsx: constants, geometry, colour, canvas drawing,
 // layer flattening, and animation math. Kept free of React/component state so App.jsx
 // stays smaller (cheaper to read/edit) and these stay unit-testable.
@@ -44,14 +45,15 @@ export function morphFrames(aImg, bImg, t) {
     return morphSequence(aImg, bImg, [t])[0];
 }
 
-// 여러 중간 프레임을 한 번에. 거리장(sA/sB) 계산이 이 작업의 대부분이고 t와 무관하므로
-// 한 번만 구해 재사용한다 — 프레임마다 morphFrames를 부르면 N배 느려진다.
+// Several in-between frames at once. Computing the distance fields (sA/sB) is most of the
+// work and does not depend on t, so it is done once and reused - calling morphFrames per
+// frame would be N times slower.
 export function morphSequence(aImg, bImg, ts) {
     const f = morphPrepare(aImg, bImg);
     return ts.map(f);
 }
-// 거리장을 한 번 계산해 두고, 중간 프레임 한 장을 만드는 함수를 돌려준다.
-// 호출부가 프레임 사이사이에 진행률을 갱신하거나 UI에 양보할 수 있게 하기 위함.
+// Computes the distance fields once and returns a function that produces a single frame,
+// so the caller can update progress or yield to the UI between frames.
 export function morphPrepare(aImg, bImg) {
     const w = aImg.width, h = aImg.height, N = w * h;
     const A = aImg.data, B = bImg.data;
@@ -65,7 +67,7 @@ export function morphPrepare(aImg, bImg) {
     }
     const cr = an ? ar / an : 0, cg = an ? ag / an : 0, cb = an ? ab / an : 0;
     const dr = bn ? br / bn : cr, dg = bn ? bg / bn : cg, db = bn ? bb / bn : cb;
-    // 한쪽이 비어 있으면 모핑할 형태가 없다 → 알파 크로스페이드로 물러선다.
+    // With one side empty there is no shape to morph, so fall back to an alpha crossfade.
     if (!an || !bn) {
         return (t) => {
             const out = new ImageData(w, h), O = out.data;
@@ -79,10 +81,10 @@ export function morphPrepare(aImg, bImg) {
             return out;
         };
     }
-    // 두 그림이 떨어져 있으면 거리장을 그대로 섞을 때 중간이 통째로 비어버린다
-    // (중간 지점은 양쪽 모두 '바깥'이라 보간값이 계속 양수라서 아무것도 안 그려짐).
-    // 그래서 무게중심을 맞춘 뒤 '형태'만 모핑하고, '이동'은 따로 보간한다
-    // → 중간 프레임이 실제로 옮겨가면서 변형된다.
+    // When the two drawings are far apart, blending the distance fields directly leaves the
+    // middle empty: every point in between is outside both shapes, so the interpolated value
+    // stays positive and nothing is drawn. Aligning the centroids first morphs only the shape,
+    // and the translation is interpolated separately, so the in-betweens actually travel.
     const cax = ax / an, cay = ay / an, cbx = bx / bn, cby = by / bn;
     const shx = Math.round(cax - cbx), shy = Math.round(cay - cby);
     const mB = new Uint8Array(N);
@@ -181,12 +183,13 @@ export function bucketFillTransparentRegion(baseImageData, startX, startY, fillR
     const sy = startY | 0;
     if (sx < 0 || sy < 0 || sx >= w || sy >= h) return null;
 
-    // 클릭한 픽셀과 '같은 색'인 연결 영역을 채운다. 예전에는 투명한 곳만 채워서,
-    // 한 번 칠한 자리에 다른 색으로 덧칠하는 (페인트통의 기본 동작) 것이 아예 불가능했다.
+    // Fills the connected region matching the colour of the clicked pixel. This used to fill
+    // only transparent areas, which made painting over an already-filled region - the basic
+    // behaviour of a bucket tool - impossible.
     const startOff = (sy * w + sx) * 4;
     const s0 = data[startOff], s1 = data[startOff + 1], s2 = data[startOff + 2], s3 = data[startOff + 3];
     const tol = Math.max(0, tolerance);
-    // 투명끼리는 색 성분이 의미 없으므로 알파만 본다.
+    // Between transparent pixels the colour channels are meaningless, so only alpha is compared.
     const matches = (o) => {
         const a = data[o + 3];
         if (s3 < 8) return a < 8;
@@ -194,7 +197,7 @@ export function bucketFillTransparentRegion(baseImageData, startX, startY, fillR
         return Math.abs(data[o] - s0) <= tol && Math.abs(data[o + 1] - s1) <= tol
             && Math.abs(data[o + 2] - s2) <= tol && Math.abs(a - s3) <= tol;
     };
-    // 이미 목표색이면 할 일이 없다 (무한 반복 방지).
+    // Already the target colour: nothing to do, and this prevents an endless refill.
     if (s3 >= 8 && Math.abs(s0 - fillRgb.r) < 2 && Math.abs(s1 - fillRgb.g) < 2
         && Math.abs(s2 - fillRgb.b) < 2 && Math.abs(s3 - fillAlpha) < 2) return null;
 
@@ -202,9 +205,10 @@ export function bucketFillTransparentRegion(baseImageData, startX, startY, fillR
     const q = new Int32Array(w * h);
     let qh = 0;
     let qt = 0;
-    // 반드시 '넣을 때' 방문 표시를 해야 한다. 꺼낼 때 표시하면 한 픽셀이 이웃 4곳에서
-    // 중복으로 들어와 큐 길이가 w*h를 넘고, 타입드 배열은 범위 밖 쓰기를 조용히 버린다
-    // → 채우기가 도중에 끊겨 BFS 진행 모양(마름모)만 칠해졌다.
+    // Pixels must be marked visited on enqueue, not on dequeue. Marking on dequeue lets one
+    // pixel be queued by all four neighbours, the queue grows past w*h, and a typed array drops
+    // out-of-range writes silently - the fill then stopped partway and painted only the diamond
+    // shape the BFS had reached.
     const push = (i) => { if (!mask[i]) { mask[i] = 1; q[qt++] = i; } };
     push(sy * w + sx);
 
@@ -213,7 +217,7 @@ export function bucketFillTransparentRegion(baseImageData, startX, startY, fillR
         const idx = q[qh++];
         const x = idx % w;
         const y = (idx / w) | 0;
-        if (!matches(idx * 4)) continue; // 다른 색(경계): 방문만 하고 넘지 않는다
+        if (!matches(idx * 4)) continue; // A different colour (the boundary): visit it but do not cross it.
 
         if (x < minX) minX = x;
         if (y < minY) minY = y;
@@ -319,26 +323,26 @@ function smoothPoints(pts, passes) {
     return cur;
 }
 
-// 선 자글자글 효과: 매끄러운 경로를 법선 방향으로 흔들어 손그림 같은 떨림을 줌.
-// seed로 결정론적(리페인트마다 동일) — timeSeed를 더하면 재생 중 프레임마다 boil.
+// Boiling-line effect: displaces a smooth path along its normal to give a hand-drawn wobble.
+// Deterministic from the seed, so repaints match; adding timeSeed makes it boil during playback.
 //
-// 둥근 자글거림의 핵심 두 가지:
-//  1) 파장을 '점 개수'가 아니라 '실제 길이(px)' 기준으로 잡는다. 스무딩을 거친 경로는 점 간격이
-//     1px 미만이라, 인덱스 기준 주파수를 쓰면 초고주파가 되어 뾰족뾰족해진다.
-//  2) 점마다 독립적인 백색잡음을 더하지 않는다. 굵은 간격의 제어값을 smoothstep으로 보간한
-//     value noise만 쓰면 각지지 않고 둥글게 물결친다.
+// Two things make the wobble round rather than spiky:
+//  1) The wavelength is measured in real length (px), not in number of points. A smoothed path
+//     has points less than 1px apart, so an index-based frequency becomes ultrasonic and jagged.
+//  2) No independent white noise per point. Value noise - coarsely spaced control values
+//     interpolated with smoothstep - ripples smoothly instead of turning into corners.
 function roughenPoints(pts, amp = 2.2, seed = 0, wave = 1) {
     const n = pts && pts.length;
     if (!n || n < 3) return pts || [];
     let s = (seed * 2654435761) >>> 0;
     const rnd = () => { s ^= s << 13; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; };
 
-    // 경로를 따라간 누적 길이 — 노이즈 좌표이자 끝단 taper 기준.
+    // Cumulative length along the path: both the noise coordinate and the basis for the end taper.
     const arc = new Float64Array(n);
     for (let i = 1; i < n; i++) arc[i] = arc[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
     const total = arc[n - 1] || 1;
 
-    // wl(px)마다 제어값을 하나씩 두고 smoothstep 보간 → 부드러운 물결.
+    // One control value every wl pixels, interpolated with smoothstep, gives a soft ripple.
     const makeOctave = (wl) => {
         const m = Math.max(2, Math.ceil(total / wl) + 2);
         const ctrl = new Array(m);
@@ -351,34 +355,36 @@ function roughenPoints(pts, amp = 2.2, seed = 0, wave = 1) {
         };
     };
     const wl = Math.max(0.2, wave);
-    const big = makeOctave(95 * wl);   // 큰 물결
-    const small = makeOctave(38 * wl); // 잔물결 (약하게만)
+    const big = makeOctave(95 * wl);   // the broad swell
+    const small = makeOctave(38 * wl); // the ripple, kept faint
 
-    // 법선은 넓은 창으로 추정해야 방향이 흔들리지 않아 결과가 매끈하다.
+    // The normal is estimated over a wide window; a narrow one makes its direction jitter and
+    // the result look rough.
     const span = Math.max(1, Math.round(n / Math.max(8, total / 6)));
     const out = new Array(n);
     for (let i = 0; i < n; i++) {
         const a = pts[Math.max(0, i - span)], b = pts[Math.min(n - 1, i + span)];
         let nx = -(b.y - a.y), ny = b.x - a.x;
         const len = Math.hypot(nx, ny) || 1; nx /= len; ny /= len;
-        // 양 끝 12px은 0으로 수렴시켜 선 끝이 튀지 않게. 램프 자체도 smoothstep이라
-        // 경계에서 꺾이지 않는다(선형 램프는 그 지점에 눈에 띄는 각을 남김).
+        // The outer 12px taper to zero so the stroke ends do not flick. The ramp is itself a
+        // smoothstep, so it does not kink at the boundary the way a linear ramp visibly does.
         const d = arc[i];
-        const tr = Math.min(1, Math.min(d, total - d) / 12);
-        const taper = tr * tr * (3 - 2 * tr);
+        const edge = Math.min(1, Math.min(d, total - d) / 12);
+        const taper = edge * edge * (3 - 2 * edge);
         const w = (big(d) + 0.3 * small(d)) * amp * taper;
         out[i] = { x: pts[i].x + nx * w, y: pts[i].y + ny * w, pressure: pts[i].pressure };
     }
     return out;
 }
 
-// 자글자글은 위상이 바뀔 때마다 레이어를 다시 그리는데, smoothPoints(리샘플 + 체이킨 3회로
-// 점이 약 8배)는 위상과 무관하게 항상 같은 결과다. 스트로크별로 캐시해 두면 매 위상마다
-// 재계산하는 비용이 사라진다(자글 레이어 렌더의 대부분을 차지하던 부분).
-// WeakMap이라 스트로크가 사라지면 캐시도 함께 회수된다.
-// 게다가 자글용 경로는 촘촘할 필요가 없다. 떨림 파장은 수십 px인데 스무딩된 경로는 점 간격이
-// 1px 미만이라 15~20배 과표본이다. 6px 간격으로 성기게 만든 뒤 흔들고, 렌더러의 Catmull-Rom
-// 스플라인이 다시 매끄럽게 이어주게 한다 — 결과는 오히려 더 둥글고 비용은 20배 이상 싸다.
+// Boiling redraws the layer on every phase change, but smoothPoints (resample plus three
+// Chaikin passes, roughly eight times the points) returns the same thing regardless of phase.
+// Caching it per stroke removes that recomputation, which was most of the cost of rendering a
+// boiling layer. The cache is a WeakMap, so it is reclaimed with the stroke.
+// The path used for boiling also does not need to be dense: the wobble wavelength is tens of
+// pixels while a smoothed path has points under 1px apart, oversampling it 15-20x. Resampling
+// coarsely at 6px before displacing, and letting the renderer's Catmull-Rom spline smooth it
+// back out, is both rounder-looking and more than twenty times cheaper.
 const JITTER_SPACING = 6;
 const _smoothCache = new WeakMap();
 function jitterBasePoints(stroke) {
@@ -477,12 +483,12 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null,
     if (clear) {
         ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
     }
-    // 레이어 자글 효과: 이미 그려진 선들을 렌더 시점에 흔들어줌 (비파괴적).
-    // roughPhase가 시간에 따라 바뀌면 선이 제자리에서 부글거리는 "모션"이 된다 (boiling line).
+    // Layer-level boiling: displaces already-drawn strokes at render time, non-destructively.
+    // Advancing roughPhase over time turns it into motion - the strokes shimmer in place.
     const layerRough = opts.roughen ? (typeof opts.roughen === 'number' ? opts.roughen : 2.4) : 0;
     const roughPhase = opts.roughPhase || 0;
     const roughWave = opts.roughWave || 1;
-    const roughMinSize = opts.roughMinSize || 0; // 이보다 가는 선은 떨지 않음
+    const roughMinSize = opts.roughMinSize || 0; // strokes thinner than this are left alone
     strokes.forEach(s => {
         if (s.tool === 'text') {
             const fontSize = Math.max(6, Math.min(220, s.fontSize ?? 32));
@@ -553,15 +559,17 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null,
             ctx.globalAlpha = 1.0; return;
         }
         if (!s.points?.length) return;
-        // 자글: 'rough' 펜(개별) 또는 레이어 효과(layerRough)로 매끈한 경로를 흔든다.
-        // 도트펜(pen)도 아래에서 쓰므로 반드시 pen 분기보다 먼저 계산해야 한다.
-        // 가는 선(최소 굵기 미만)은 제외 — 얇은 선일수록 같은 진폭이 과하게 요동쳐 보임.
+        // Boiling, from either the per-stroke "rough" pen or the layer effect (layerRough).
+        // The dot pen uses this below, so it has to be computed before the pen branch.
+        // Strokes under the minimum width are skipped: the thinner the line, the more violent
+        // the same amplitude looks.
         const tooThin = roughMinSize > 0 && (s.size || 0) < roughMinSize;
         const roughAmp = (s.tool === 'rough') ? (s.roughAmp ?? Math.max(1.5, s.size * 0.35)) : ((layerRough && s.tool !== 'eraser' && !tooThin) ? layerRough : 0);
-        // 시드 = 스트로크 고유값 + 시간 위상 → 프레임마다 다른 떨림, 스트로크끼리는 독립적.
+        // Seed = a per-stroke value plus the time phase, so each frame wobbles differently and
+        // strokes stay independent of one another.
         const roughSeed = (s.id || 0) + roughPhase * 7919;
-        // 자글 적용 시에만 캐시를 쓴다: 일반 레이어는 레이어 캔버스가 캐시되어 변경 시 1회만
-        // 그리므로 이득이 없고, 캐시 메모리만 늘어난다.
+        // The cache is only used when boiling. A plain layer already caches its canvas and draws
+        // once per change, so caching there buys nothing and only costs memory.
         const smooth = (p) => {
             if (!roughAmp) return smoothPoints(p);
             return roughenPoints(jitterBasePoints(s), roughAmp, roughSeed, roughWave);
@@ -572,8 +580,9 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null,
             ctx.globalCompositeOperation = 'source-over';
             ctx.globalAlpha = s.opacity ?? 1;
             ctx.fillStyle = s.color;
-            // 도트펜도 필압을 따른다(도장 크기로). 예전엔 크기가 고정이라 타블렛으로 그려도
-            // 필압이 전혀 반영되지 않았다 — 모양은 그대로 각진 픽셀 도장을 유지한다.
+            // The dot pen follows pressure too, through the stamp size. It used to be a fixed
+            // size, so drawing with a tablet showed no pressure at all; the stamp itself stays
+            // the same hard-edged pixel shape.
             const dotHasPr = s.pen === true || s.points.some(p => p.pressure !== undefined && p.pressure !== 0.5);
             const sizeAt = (pr) => Math.max(1, Math.round(base * (dotHasPr ? Math.min(2, Math.max(0.15, pr * 2)) : 1)));
             const stamp = (x, y, size) => { const half = size / 2; ctx.fillRect(Math.round(x - half), Math.round(y - half), size, size); };
@@ -595,8 +604,9 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null,
             return;
         }
         ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-        // 타블렛/S펜으로 그린 스트로크(s.pen)는 압력을 항상 신뢰한다. 값이 우연히 0.5 근처만
-        // 나오면 아래 휴리스틱이 '압력 없음'으로 오판해 굵기 변화가 통째로 사라진다.
+        // Strokes drawn with a tablet or S Pen (s.pen) always trust the pressure values. If they
+        // happen to hover near 0.5, the heuristic below reads that as "no pressure" and the whole
+        // width variation disappears.
         const hasPressure = s.pen === true || s.points.some(p => p.pressure !== undefined && p.pressure !== 0.5);
         const baseColor = s.color;
         const baseOpacity = s.opacity ?? 1;
@@ -707,10 +717,10 @@ export async function extractVideoFrames(file, { fps = 6, maxFrames = 0, start =
     try {
         await new Promise((res, rej) => {
             video.onloadedmetadata = () => res();
-            video.onerror = () => rej(new Error('영상을 읽을 수 없습니다 (형식 미지원)'));
+            video.onerror = () => rej(new Error(tr('영상을 읽을 수 없습니다 (형식 미지원)')));
         });
         const duration = video.duration;
-        if (!isFinite(duration) || duration <= 0) throw new Error('영상 길이를 알 수 없습니다');
+        if (!isFinite(duration) || duration <= 0) throw new Error(tr('영상 길이를 알 수 없습니다'));
         const to = Math.min(end ?? duration, duration);
         const step = 1 / Math.max(0.1, fps);
         const count = Math.max(1, Math.ceil((to - start) / step));
@@ -770,7 +780,7 @@ export async function extractVideoFrames(file, { fps = 6, maxFrames = 0, start =
             for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
             return true;
         };
-        // dedupe는 'exact'(픽셀 완전 동일만 제거) 또는 숫자 임계값 둘 다 받는다.
+        // dedupe takes either "exact" (drop only pixel-identical frames) or a numeric threshold.
         /** @type {any} */ const dd = dedupe;
         const on = dd && dd !== 0;
         const exact = dd === 'exact'; // skip ONLY pixel-identical frames (default)
@@ -904,7 +914,8 @@ export function computeCutAnim(ac, time, cw = CANVAS_W, ch = CANVAS_H) {
     }
     if (a.deformAmount) {
         const t = Math.max(0, Math.min(1, lt / dur));
-        // 왕복(return): oscillate back to original; speed = cycles over the cut, count caps cycles.
+        // Ping-pong (return): oscillates back to the original; speed is cycles across the cut,
+        // count caps how many.
         let prog;
         if (a.deformReturn) { const cyc = (a.deformSpeed || 1) * t; prog = (a.deformCount > 0 && cyc >= a.deformCount) ? 0 : Math.sin(2 * Math.PI * cyc); }
         else prog = applyEase(t, a.ease, a.easePower);
@@ -912,7 +923,7 @@ export function computeCutAnim(ac, time, cw = CANVAS_W, ch = CANVAS_H) {
         if (a.deformAxis === 'x') sx *= f; else sy *= f;
     }
     if (a.moveX || a.moveY) {
-        // Whole-cut movement across its lifetime. One-way ramps to the target; 왕복 goes
+        // Whole-cut movement across its lifetime. One-way ramps to the target; ping-pong goes
         // out and back (0→1→0) at `speed` cycles, capped by `count`.
         const t = Math.max(0, Math.min(1, lt / dur));
         let prog;
@@ -952,18 +963,19 @@ export function samplePath(path, s) {
 
 // Per-layer ("part") transform animated across the cut's local time. Enables cutout /
 // puppet-style motion: move/rotate/scale a part, optionally along a drawn path, with
-// one-way or ping-pong(왕복) playback at a given speed and (optional) repeat count.
-// 흔들림2: 사용자가 그린 곡선을 흔들림 파형으로 변환한다.
-// 진행도는 '그린 순서(누적 길이)', 값은 시작~끝 기준선에 대한 법선 방향 편차 →
-// 되짚어 그린 낙서든 완만한 물결이든 그린 모양 그대로 흔들리게 된다.
-// 반환 amp(px)는 '그 곡선이 얼마나 크게 흔들렸는지'라서 기본 강도로 쓴다.
+// one-way or ping-pong playback at a given speed and an optional repeat count.
+// Sway from a drawn curve: converts what the user drew into a sway waveform.
+// Progress is the drawing order (cumulative length) and the value is the deviation normal to
+// the line from start to end, so anything from a scribble that doubles back to a gentle wave
+// sways exactly as it was drawn.
+// The returned amp (px) is how far that curve actually swung, and is used as the default strength.
 export function curveToWave(pts, samples = 64) {
     if (!pts || pts.length < 3) return null;
     const a = pts[0], b = pts[pts.length - 1];
     let ux = b.x - a.x, uy = b.y - a.y;
     const blen = Math.hypot(ux, uy);
     if (blen < 1) { ux = 1; uy = 0; } else { ux /= blen; uy /= blen; }
-    const nx = -uy, ny = ux; // 기준선의 법선
+    const nx = -uy, ny = ux; // normal of the baseline
     const arc = [0];
     for (let i = 1; i < pts.length; i++) arc.push(arc[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
     const total = arc[arc.length - 1] || 1;
@@ -981,15 +993,16 @@ export function curveToWave(pts, samples = 64) {
     const mean = out.reduce((s, v) => s + v, 0) / samples;
     let amp = 0;
     for (let k = 0; k < samples; k++) { out[k] -= mean; amp = Math.max(amp, Math.abs(out[k])); }
-    if (amp < 0.5) return null; // 사실상 직선 → 흔들 것이 없음
+    if (amp < 0.5) return null; // effectively a straight line: nothing to sway
     for (let k = 0; k < samples; k++) out[k] /= amp;
-    // 끝과 시작을 맞춰 루프 재생 시 툭 튀지 않게 한다.
+    // Match the end to the start so looped playback does not jump.
     const drift = out[samples - 1] - out[0];
     for (let k = 0; k < samples; k++) out[k] -= drift * (k / (samples - 1));
     return { wave: out.map(v => Math.round(v * 1000) / 1000), amp: Math.round(amp) };
 }
-// 흔들림 프로파일: 축을 따라 놓인 제어점들의 가중치(-1..1)를 부드럽게 보간한다.
-// 0이면 그 지점은 '유지'(안 흔들림), 부호가 반대면 반대쪽으로 꺾인다 → 일로 꺾고 절로 꺾기.
+// Sway profile: smoothly interpolates the weights (-1..1) of control points along the axis.
+// Zero holds that point still; a negative weight bends it the other way, so one stretch can
+// bend one direction while the next bends back.
 export function swayWeightAt(profile, p) {
     const n = profile?.length || 0;
     if (!n) return 1;
@@ -997,10 +1010,10 @@ export function swayWeightAt(profile, p) {
     const x = Math.min(1, Math.max(0, p)) * (n - 1);
     const i = Math.min(n - 2, Math.floor(x));
     const f = x - i;
-    const t = f * f * (3 - 2 * f); // smoothstep → 제어점 사이가 각지지 않게
+    const t = f * f * (3 - 2 * f); // smoothstep, so the gaps between control points do not turn into corners
     return profile[i] + (profile[i + 1] - profile[i]) * t;
 }
-// 파형을 0..1 구간에서 순환 샘플링 (선형 보간).
+// Samples the waveform cyclically over 0..1 with linear interpolation.
 export function sampleWave(wave, u) {
     const n = wave.length;
     if (!n) return 0;
@@ -1010,10 +1023,11 @@ export function sampleWave(wave, u) {
     return a + (b - a) * f;
 }
 
-// 텍스트 애니메이션 (MV 자막용). 컷 내 진행도를 받아 그리기에 필요한 값만 돌려준다.
-//  - in/out: 등장·퇴장 (fade/up/down/scale/blur)
-//  - typing: 글자수를 잘라서 타이핑처럼
-//  - emphasis: 계속 반복되는 강조 (pulse/shake/wave)
+// Text animation, for MV subtitles. Takes the progress through the cut and returns just the
+// values needed to draw.
+//  - in/out: entrance and exit (fade/up/down/scale/blur)
+//  - typing: reveals a character at a time by slicing the string
+//  - emphasis: a looping accent (pulse/shake/wave)
 export const TEXT_ANIM_DEFAULT = {
     inType: 'none', inDur: 0.4, outType: 'none', outDur: 0.4,
     typing: false, typeSpeed: 18, emphasis: 'none', emAmount: 20, emSpeed: 2,
@@ -1046,20 +1060,20 @@ export function computeTextAnim(t, ac, time) {
         else if (a.outType === 'scale') { alpha *= (1 - e); scale *= 1 - 0.4 * e; }
         else if (a.outType === 'blur') { alpha *= (1 - e); blur = e * 10; }
     }
-    // 강조: 절대 시간 기준이라 컷 길이와 무관하게 일정한 리듬을 유지한다.
+    // Emphasis runs on absolute time, so its rhythm stays constant whatever the cut length.
     const em = a.emAmount ?? 20, es = a.emSpeed ?? 2;
     if (a.emphasis === 'pulse') scale *= 1 + (em / 100) * 0.5 * Math.sin(2 * Math.PI * es * time);
     else if (a.emphasis === 'shake') { dx += (em / 10) * Math.sin(2 * Math.PI * es * 3.1 * time); dy += (em / 14) * Math.sin(2 * Math.PI * es * 2.3 * time + 1.1); }
     else if (a.emphasis === 'swing') rot += (em / 10) * Math.sin(2 * Math.PI * es * time);
 
-    // 타이핑: 초당 typeSpeed 글자씩 드러낸다 (null = 자르지 않음).
+    // Typing reveals typeSpeed characters per second; null means no slicing.
     let chars = null;
     if (a.typing) chars = Math.max(0, Math.floor(Math.max(0, local) * (a.typeSpeed || 18)));
     return { alpha, dx, dy, scale, blur, rot, chars };
 }
 
-// 키프레임 트위닝: 지정한 시점들 사이를 보간한다 (구간마다 가감속을 따로 줄 수 있음).
-// 이게 애니메이션에서 말하는 본래의 '트위닝'이다.
+// Keyframe tweening: interpolates between the times you set, with per-segment easing.
+// This is tweening in the original animation sense of the word.
 export function sampleKeys(keys, p) {
     const n = keys.length;
     if (p <= keys[0].p) return keys[0];
@@ -1088,7 +1102,8 @@ export function computeLayerAnim(layer, ac, time, cw = CANVAS_W, ch = CANVAS_H) 
     const keys = Array.isArray(a.keys) && a.keys.length >= 2 ? a.keys : null;
     let tx, ty, rot, sc, alpha = 1, prog;
     if (keys) {
-        // 키프레임이 있으면 그것이 이동/회전/크기/투명도를 지배한다 (속도 배수로 재생 빠르기 조절).
+        // When keyframes exist they take over move, rotate, scale and opacity; the speed
+        // multiplier only changes how fast they play.
         const k = sampleKeys(keys, Math.max(0, Math.min(1, t * speed)));
         tx = k.tx || 0; ty = k.ty || 0;
         rot = (k.rot || 0) * Math.PI / 180;
@@ -1111,18 +1126,19 @@ export function computeLayerAnim(layer, ac, time, cw = CANVAS_W, ch = CANVAS_H) 
     }
     // Continuous sway (hair/cloth): a horizontal shear that oscillates by absolute time and grows
     // toward the far end from the pivot — anchor the pivot at the top of the hair for a natural swing.
-    // 흔들림1 = 사인파(기본), 흔들림2 = 사용자가 그린 곡선을 따라가는 파형.
+    // Sway 1 is a plain sine wave; sway 2 follows the waveform of a curve the user drew.
     const sway = a.swayAmount || 0;
     const wave = !sway ? 0
         : (a.swayCurve && a.swayCurve.length > 1)
             ? sampleWave(a.swayCurve, (a.swaySpeed || 1) * time)
             : Math.sin(2 * Math.PI * (a.swaySpeed || 1) * time);
     const shear = (sway / 100) * wave;
-    // 지점별 프로파일이 있으면 단순 기울임(shear) 대신 축을 따라 구간마다 다르게 꺾는다.
-    // 렌더러가 슬라이스 워프로 처리하므로 여기서는 필요한 값만 넘긴다.
+    // With a per-point profile, the bend varies along the axis instead of being a single shear.
+    // The renderer handles it as a slice warp, so only the values it needs are passed on.
     const prof = (sway && Array.isArray(a.swayProfile) && a.swayProfile.length > 1) ? a.swayProfile : null;
     const axis = a.swayAxis === 'x' ? 'x' : 'y';
-    // 프로파일 가중치 1 = 기존 shear가 축 끝에서 만들던 변위와 같은 크기 (감각 유지)
+    // A profile weight of 1 equals the displacement the old shear produced at the end of the
+    // axis, so the feel is unchanged.
     const swayDisp = prof ? (sway / 100) * wave * (axis === 'y' ? ch : cw) : 0;
     if (tx === 0 && ty === 0 && rot === 0 && sc === 1 && shear === 0 && !prof && alpha === 1) return null;
     return {
@@ -1136,7 +1152,7 @@ export function flattenLayersInUiOrder(layers, parentId = null, out = []) {
     const list = layers.filter(l => (l.parentId ?? null) === pid);
     for (const layer of list) {
         if (layer.type === 'folder') {
-            if (layer.visible === false) continue; // 숨긴 폴더는 하위 전체를 숨김 (중첩 포함)
+            if (layer.visible === false) continue; // a hidden folder hides everything under it, nesting included
             flattenLayersInUiOrder(layers, layer.id, out);
         } else {
             out.push(layer);
@@ -1145,8 +1161,8 @@ export function flattenLayersInUiOrder(layers, parentId = null, out = []) {
     return out;
 }
 
-// 캔버스(2D 컨텍스트)는 CSS 변수를 못 쓰므로 계산된 값을 읽어 쓴다 → 선택틀·경로 같은
-// 캔버스 위 표시도 테마색을 따라간다.
+// A 2D canvas context cannot read CSS variables, so the computed value is read out instead.
+// That keeps on-canvas furniture such as selection outlines and paths on the theme colour.
 export const accentSoft = (alpha = 1) => {
     const v = getComputedStyle(document.documentElement).getPropertyValue('--accent-soft').trim() || '#7c8cff';
     if (alpha >= 1) return v;

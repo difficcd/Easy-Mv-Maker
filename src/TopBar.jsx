@@ -2,7 +2,7 @@ import React from 'react';
 import { ChevronDown, Download, Upload, Film, Settings } from 'lucide-react';
 import { tr } from './i18n';
 
-// 상단 메뉴바: 파일/미디어 메뉴, 해상도, 캔버스 줌, 저장 상태, Export.
+// Top menu bar: the File and Media menus, resolution, canvas zoom, save state, Export.
 export function TopBar({
     doNew, doSave, doOpen, doLocalSave, openLocalList,
     doServerSave, openServerList, doServerBackup, openBackupList, backupBusy,
@@ -17,7 +17,7 @@ export function TopBar({
         <div className="top-bar">
             <h1 className="title">Easy MV Maker</h1>
             <div className="menu-divider" />
-            {/* 파일 메뉴 */}
+            {/* File menu. */}
             <div style={{ position: 'relative' }} ref={fileMenuRef}>
                 <button className="button" onClick={() => setShowFileMenu(v => !v)}>{tr('파일')} <ChevronDown size={12} /></button>
                 {showFileMenu && (
@@ -49,7 +49,7 @@ export function TopBar({
                     </div>
                 )}
             </div>
-            {/* 미디어 메뉴 (음원 / 영상 / 유튜브) */}
+            {/* Media menu: audio, video and YouTube. */}
             <div style={{ position: 'relative' }} ref={mediaMenuRef}>
                 <button className="button" onClick={() => setShowMediaMenu(v => !v)}>{tr('미디어')} <ChevronDown size={12} /></button>
                 {showMediaMenu && (
@@ -78,7 +78,7 @@ export function TopBar({
                 )}
             </div>
             <div className="menu-divider" />
-            {/* 해상도 */}
+            {/* Resolution. */}
             <select className="time-input" style={{ height: 30, width: 116 }} title={tr('캔버스 해상도')}
                 value={`${canvasW}x${canvasH}`}
                 onChange={e => {
@@ -98,7 +98,7 @@ export function TopBar({
                 <option value="custom">{tr('직접 입력…')}</option>
             </select>
             <button className="icon-btn" onClick={() => setShowHelp(true)} title={tr('단축키 · 도움말')} style={{ fontSize: 13, fontWeight: 700, width: 24, height: 24 }}>?</button>
-            {/* 캔버스 확대/축소 (해상도 선택란 · 도움말 오른쪽) */}
+            {/* Canvas zoom, to the right of the resolution picker and the help button. */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 2 }} title={`캔버스 확대/축소 (${keymap.zoomOut} / ${keymap.zoomIn})`}>
                 <button className="icon-btn" style={{ width: 24, height: 24, fontSize: 15 }} onClick={() => zoomCanvas(1 / 1.25)}>−</button>
                 <button className="button" style={{ height: 24, padding: '0 6px', fontSize: 11, minWidth: 46, justifyContent: 'center' }}
@@ -111,7 +111,8 @@ export function TopBar({
             {autosaveErr
                 ? <span style={{ fontSize: 11, color: '#f66', fontWeight: 700 }} title={`자동저장 실패: ${autosaveErr}\n저장공간이 가득 찼을 수 있습니다. 파일로 내보내기 또는 서버 저장을 권장합니다.`}>{tr('⚠ 자동저장 실패')}</span>
                 : autoSavedAt && <span style={{ fontSize: 11, color: 'var(--accent-soft)' }} title={tr('브라우저에 자동저장됨')}>● 자동저장 {new Date(autoSavedAt).toLocaleTimeString()}</span>}
-            {/* 서버가 없으면 로컬에만 남는다는 걸 분명히 알린다 — 모르고 작업하다 날리는 게 가장 위험 */}
+            {/* Say plainly that without a server the work stays local. Working on unaware and
+                then losing it is the worst outcome here. */}
             {!serverAvailable
                 ? <span style={{ fontSize: 11, color: '#e0a84e' }} title={tr('API 서버에 연결할 수 없어 서버 저장/백업이 비활성화됩니다. 작업은 이 브라우저에만 저장됩니다.')}>{tr('⚠ 로컬 전용')}</span>
                 : backupAt && <span style={{ fontSize: 11, color: 'var(--accent-pale)' }} title={tr('서버에 백업된 시각 (파일 > 백업에서 되돌리기)')}>⛁ 백업 {new Date(backupAt).toLocaleTimeString()}</span>}

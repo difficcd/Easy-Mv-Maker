@@ -4,8 +4,9 @@ import { safeArray } from './canvasUtils';
 import { CutAnimPanel } from './AnimPanels';
 import { tr } from './i18n';
 
-// CUT / LAYER 패널: 컷 목록, 컷별 레이어 트리, 컷 애니메이션, 텍스트 목록.
-// 레이어 행 자체는 App의 renderLayers가 그린다(드래그 상태가 App에 있어 그대로 위임).
+// CUT / LAYER panel: the cut list, each cut's layer tree, cut animation and text list.
+// The layer rows themselves are drawn by App's renderLayers - the drag state lives in App,
+// so that part stays delegated.
 export function CutLayerPanel({
     collapsedCutIds, copiedCut, currentCutId, cuts, deleteTextObject,
     deleteVideoBatch, dragLayerInfo, expandedCuts, handleAddCut, handleAddFolder,

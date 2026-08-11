@@ -2,10 +2,10 @@ import React from 'react';
 import { Trash2 } from 'lucide-react';
 import { tr } from './i18n';
 
-// App.jsx에서 분리한 오버레이/대화상자들. 상태는 전부 props로 받아 순수 표시 역할만 한다.
-// (App.jsx가 4800줄까지 커져서, 화면 조각을 파일로 나눠 읽고 고치기 쉽게 만든 것)
+// Overlays and dialogs split out of App.jsx. All state arrives as props; these only display.
+// (App.jsx had grown to 4,800 lines, so the screens moved into files you can actually read.)
 
-// 저장된 프로젝트/백업 목록 고르기
+// Picker for the saved project and backup lists.
 export function ProjectPicker({ title, items, onOpen, onDelete, onClose }) {
     return (
         <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -30,7 +30,8 @@ export function ProjectPicker({ title, items, onOpen, onDelete, onClose }) {
     );
 }
 
-// 큰 프로젝트 열기/업로드 진행률. total 0이면 진행률을 알 수 없는 구간(무한 게이지).
+// Progress for opening or uploading a large project. total 0 means the length is unknown,
+// which shows as an indeterminate bar.
 export function ProgressOverlay({ progress }) {
     if (!progress) return null;
     const { label, done, total } = progress;
@@ -53,7 +54,7 @@ export function ProgressOverlay({ progress }) {
     );
 }
 
-// 설정 (테마 / 단축키). 단축키는 항목을 누른 뒤 원하는 키를 누르면 그 조합으로 바뀐다.
+// Settings (theme and shortcuts). To rebind, click an entry then press the key you want.
 export function SettingsModal({
     tab, setTab, onClose,
     themeColor, setThemeColor, themeRecent, defaultTheme,
@@ -90,7 +91,7 @@ export function SettingsModal({
                                 <span style={{ fontSize: 12, color: '#aaa', flex: 1 }}>{themeColor}</span>
                                 <button className="button" style={{ height: 30, padding: '0 12px' }} onClick={() => setThemeColor(defaultTheme)}>{tr('기본')}</button>
                             </div>
-                            {/* 최근 사용한 테마색 (10칸 고정, 처음엔 비어있음) */}
+                            {/* Recent theme colours: ten fixed slots, empty to begin with. */}
                             <div className="color-section-label" style={{ margin: '10px 0 6px' }}>{tr('최근 사용한 테마색')}</div>
                             <div className="slot-grid" style={{ gridTemplateColumns: 'repeat(10, 1fr)', maxWidth: 320 }}>
                                 {Array.from({ length: 10 }, (_, i) => {
@@ -141,7 +142,7 @@ export function SettingsModal({
     );
 }
 
-// 단축키 · 제스처 도움말
+// Shortcut and gesture help.
 export function HelpModal({ keymap, onClose }) {
     return (
         <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -171,8 +172,8 @@ export function HelpModal({ keymap, onClose }) {
     );
 }
 
-// 영상 → 프레임 컷 가져오기 대화상자. 추출 중에는 진행률만 보여주고,
-// '백그라운드로'를 누르면 닫히고 우하단 칩으로 계속 진행된다.
+// The video-to-frame-cuts import dialog. While extracting it shows only progress;
+// pressing "Send to background" closes it and the work continues in the corner chip.
 export function VideoImportModal({
     videoImport, setVideoImport, videoBusy, setVideoBusyBg, videoStopRef,
     runVideoImport, loadVideoOverlay, loadAudioUrl, parseClock, setShowHelp, canvasW, canvasH,
@@ -293,7 +294,7 @@ export function VideoImportModal({
     );
 }
 
-// 장면(컷) 전환 감지 설정. 영상 오버레이가 있을 때만 열린다.
+// Scene-change detection settings. Only opens when there is a video overlay.
 export function SceneDetectModal({ sceneCfg, setSceneCfg, sceneDetect, runSceneDetect }) {
     return (
         <div onClick={() => setSceneCfg(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -330,9 +331,9 @@ export function SceneDetectModal({ sceneCfg, setSceneCfg, sceneDetect, runSceneD
     );
 }
 
-// 링크 입력창. 예전에는 window.prompt로 받았는데, 브라우저가 대화상자를 차단하면
-// (사용자가 '추가 대화상자 차단'을 한 번 체크하면 그 뒤로 계속) prompt가 조용히 null을
-// 반환해 아무 일도 일어나지 않는다 — 눌러도 무반응처럼 보인다. 앱 안에서 직접 받는다.
+// Link input. This used window.prompt, but once the browser blocks dialogs - one tick of
+// "prevent additional dialogs" and it sticks - prompt silently returns null and nothing
+// happens, so the button looks dead. Asking inside the app avoids that entirely.
 export function LinkPromptModal({ title, placeholder, onSubmit, onClose }) {
     const [url, setUrl] = React.useState('');
     const inputRef = React.useRef(null);

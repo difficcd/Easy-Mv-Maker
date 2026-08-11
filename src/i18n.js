@@ -1,15 +1,17 @@
-// 한국어 원문을 그대로 조회 키로 쓴다(gettext 방식).
+// The Korean source text doubles as the lookup key, gettext style.
 //
-// 왜 'addCut' 같은 키를 새로 만들지 않는가: 호출 지점이 400곳이 넘어서, 키를 새로 지으면
-// 그 400곳을 전부 '의미를 해석해서' 고쳐야 하고 한 곳만 틀려도 빈 라벨이 된다. 원문을 키로
-// 두면 교체가 t(...)로 감싸는 기계적 작업이 되고, 사전에 항목이 빠져도 한국어로 표시될 뿐
-// 화면이 비지 않는다. 한국어 모드는 조회 자체를 건너뛰므로 비용도 없다.
+// Why not invent keys like 'addCut': there are over 400 call sites, and new keys would mean
+// editing every one of them by meaning, where a single wrong key yields a blank label. Using
+// the original text makes the conversion a mechanical wrap in tr(...), and a missing dictionary
+// entry simply shows Korean rather than leaving the screen empty. Korean mode skips the lookup
+// altogether, so it costs nothing.
 //
-// 값이 끼어드는 문자열은 {0}, {1} 자리표시자를 쓴다: tr('프레임 업로드 실패 ({0}/{1})', i, n)
+// Strings with values in them use {0}, {1} placeholders: tr('프레임 업로드 실패 ({0}/{1})', i, n)
 //
-// 이름이 t가 아니라 tr인 이유: 이 코드베이스는 t를 지역 변수로 49곳에서 쓴다(텍스트 객체,
-// 타이머 핸들, 보간 파라미터 등). t로 두면 .map(t => ... t('표시') ...)처럼 지역 변수가
-// 번역 함수를 가려 런타임에 터진다. 실제로 변환 중에 그 형태가 나왔다.
+// It is named tr rather than t because this codebase already uses t as a local in 49 places -
+// text objects, timer handles, interpolation parameters. Named t, a pattern like
+// .map(t => ... t('표시') ...) would let the local shadow the function and throw at runtime;
+// that exact shape came up during the conversion.
 
 let lang = 'ko';
 
@@ -27,8 +29,9 @@ export const tr = (s, ...args) => {
     if (lang === 'en') {
         if (EN[s] != null) out = EN[s];
         else {
-            // 코드에는 tr('파일 오류: ') + e.message 처럼 뒤에 공백을 붙여 쓰는 자리가 있다.
-            // 사전 키는 공백 없이 하나만 두고, 앞뒤 공백은 원문 그대로 살려서 붙인다.
+            // Some call sites append a trailing space, as in tr('파일 오류: ') + e.message.
+            // The dictionary keeps one key without the padding, and any surrounding whitespace
+            // from the original is preserved around the translation.
             const core = s.trim();
             const hit = core && EN[core];
             if (hit != null && hit !== undefined) {
@@ -42,7 +45,7 @@ export const tr = (s, ...args) => {
 };
 
 const EN = {
-    // ── 도구 ─────────────────────────────────────────────
+    // -- Tools ---------------------------------------------
     '펜': 'Pen',
     '연필': 'Pencil',
     '에어': 'Air',
@@ -84,7 +87,7 @@ const EN = {
     '제어 지점 개수 (2~8)': 'Control points (2-8)',
     '앵커 {0}개 (누른 채 끌어 미세조정)': '{0} anchors (hold and drag to fine-tune)',
 
-    // ── 색상 패널 ────────────────────────────────────────
+    // -- Colour panel --------------------------------------
     '현재 색': 'Current',
     '배경 색': 'Background',
     '테두리 색': 'Outline',
@@ -104,7 +107,7 @@ const EN = {
     '드래그로 색상 창 너비 조절': 'Drag to resize the colour panel',
     '드래그로 도구 패널 너비 조절': 'Drag to resize the tool panel',
 
-    // ── 컷 / 레이어 ──────────────────────────────────────
+    // -- Cuts and layers -----------------------------------
     '컷': 'Cut',
     '레이어': 'Layer',
     '폴더': 'Folder',
@@ -147,7 +150,7 @@ const EN = {
     '다음 프레임 표시 (원본색)': 'Show the next frame (original colours)',
     'Track {0} 삭제?': 'Delete track {0}?',
 
-    // ── 타임라인 / 재생 ──────────────────────────────────
+    // -- Timeline and playback -----------------------------
     '타임라인': 'Timeline',
     '반복 재생': 'Loop',
     '재생 속도': 'Playback speed',
@@ -167,7 +170,7 @@ const EN = {
     '휠(가운데) 클릭 드래그 = 타임라인 이동': 'Middle-click drag pans the timeline',
     '{0} · {1}컷 (클릭: 이 파트만 재생 / 더블클릭: 이름변경)': '{0} · {1} cuts (click to play just this part, double-click to rename)',
 
-    // ── 파일 / 프로젝트 ──────────────────────────────────
+    // -- Files and projects --------------------------------
     '파일': 'File',
     '미디어': 'Media',
     '프로젝트': 'Project',
@@ -238,7 +241,7 @@ const EN = {
     '브라우저 저장공간 {0}GB / {1}GB 사용 중. 가득 차면 자동저장이 실패할 수 있으니 서버 저장 또는 파일로 내보내기를 권장합니다.': 'Browser storage: {0}GB of {1}GB used. Autosave fails once it is full, so consider saving to the server or exporting to a file.',
     '⚠ 자동저장 실패': '⚠ Autosave failed',
 
-    // ── 내보내기 ─────────────────────────────────────────
+    // -- Export --------------------------------------------
     '화질': 'Quality',
     '배율': 'Scale',
     '초당 프레임': 'Frames per second',
@@ -253,7 +256,7 @@ const EN = {
     '녹화를 시작할 수 없습니다:': 'Could not start recording:',
     '화질/용량 선택. 고화질=원본 해상도 WebP(거의 무손실, 용량 적당) / 무손실=PNG(픽셀 완전 보존, 용량 큼)': 'Quality vs. size. High quality = WebP at the original resolution (near-lossless, moderate size). Lossless = PNG (every pixel preserved, large).',
 
-    // ── 영상 가져오기 ────────────────────────────────────
+    // -- Video import --------------------------------------
     '영상': 'Video',
     '음원': 'Audio',
     '오디오': 'Audio',
@@ -301,7 +304,7 @@ const EN = {
     '거의 같음': 'Nearly identical',
     '(배율 {0}%로 추가 절감)': '({0}% scale saves more still)',
 
-    // ── 장면 감지 ────────────────────────────────────────
+    // -- Scene detection -----------------------------------
     '🎯 장면(컷) 감지': '🎯 Detect scenes (cuts)',
     '장면(컷) 감지 설정': 'Scene detection settings',
     '감지': 'Detect',
@@ -316,7 +319,7 @@ const EN = {
     '장면 {0} ({1})': 'Scene {0} ({1})',
     '노란 표시': 'yellow markers',
 
-    // ── 캔버스 / 상단바 ──────────────────────────────────
+    // -- Canvas and top bar --------------------------------
     '캔버스 해상도': 'Canvas resolution',
     '캔버스 크기 (가로x세로)': 'Canvas size (width × height)',
     '직접 입력…': 'Custom…',
@@ -328,7 +331,7 @@ const EN = {
     '확대': 'Zoom in',
     '축소': 'Zoom out',
 
-    // ── 설정 ─────────────────────────────────────────────
+    // -- Settings ------------------------------------------
     '테마': 'Theme',
     '테마색': 'Theme colour',
     '단축키': 'Shortcuts',
@@ -343,7 +346,7 @@ const EN = {
     '바꿀 항목을 누른 뒤 새 키를 누르세요.': 'Click an entry, then press the new key.',
     'Ctrl+S 저장 · Ctrl+Z/Y 등 기본 조합은 항상 동작합니다': 'Ctrl+S to save; the standard Ctrl+Z / Ctrl+Y combinations always work',
 
-    // ── 도움말 ───────────────────────────────────────────
+    // -- Help ----------------------------------------------
     '단축키 · 제스처': 'Shortcuts and gestures',
     '키보드': 'Keyboard',
     '펜 / 손가락': 'Pen and finger',
@@ -367,7 +370,7 @@ const EN = {
     '화면 위를 드래그': 'Drag across the screen',
     '애니메이션(컷·파츠)은 ▶ 재생 시에만 보입니다. 올가미 → "파츠로 분리"로 부분 애니메이션.': 'Cut and part animations only play under ▶. Lasso a region, then "Split into a part", to animate just that.',
 
-    // ── 애니메이션 ───────────────────────────────────────
+    // -- Animation -----------------------------------------
     '컷 애니메이션 (재생 시 적용)': 'Cut animation (applies during playback)',
     '파츠 애니메이션': 'Part animation',
     '파츠 애니메이션 (재생 시 적용)': 'Part animation (applies during playback)',
@@ -434,7 +437,7 @@ const EN = {
     '지금 설정을 내 프리셋으로 저장 (다른 파츠에서도 사용)': 'Save these settings as a preset (reusable on other parts)',
     '자주 쓰는 움직임을 한 번에 적용합니다. 적용 후 값은 직접 수정할 수 있습니다.': 'Applies a common movement in one click. You can edit the values afterwards.',
 
-    // ── 경로 / 흔들림 ────────────────────────────────────
+    // -- Paths and sway ------------------------------------
     '경로': 'Path',
     '경로 그리기': 'Draw a path',
     '경로 다시 그리기': 'Redraw the path',
@@ -456,7 +459,7 @@ const EN = {
     '축을 따라 지점마다 얼마나 흔들릴지 정합니다. 0 = 고정(유지), 음수 = 반대쪽으로 꺾임.': 'Sets how much each point along the axis sways. 0 holds it still; negative bends it the other way.',
     '{0} {1}% 지점의 흔들림 정도(%)': 'Sway amount (%) at {1}% along {0}',
 
-    // ── 자글자글 ─────────────────────────────────────────
+    // -- Boiling line --------------------------------------
     '자글자글': 'Boil',
     '자글자글 모션 설정 (이미 그린 선이 제자리에서 부글거림)': 'Boiling-line settings (already-drawn strokes shimmer in place)',
     '자글자글 모션 (강도 {0}) — 클릭: 설정 열기': 'Boiling line (strength {0}) — click to open the settings',
@@ -468,7 +471,7 @@ const EN = {
     '이 굵기(px) 미만인 가는 선에는 효과를 주지 않음 — 0이면 전부 적용': 'Strokes thinner than this (px) are left alone — 0 applies it to everything',
     "가는 선까지 떨리면 '최소굵기'를 올리세요.": "If hairlines shimmer too, raise the minimum width.",
 
-    // ── 트위닝 ───────────────────────────────────────────
+    // -- Tweening ------------------------------------------
     '키프레임': 'Keyframes',
     '시점 (컷 내 %)': 'Time (% through the cut)',
     '2개 이상부터 적용': 'applies from two keys onward',
@@ -479,7 +482,7 @@ const EN = {
     '"{0}" → "{1}" 사이에 넣을 중간 프레임 개수 (1~12)': 'How many in-between frames to insert between "{0}" and "{1}" (1-12)',
     "재생 위치를 옮겨가며 '키 추가'를 누르면 그 사이가 자동으로 보간됩니다(트위닝). 키가 2개 이상이면 위의 이동/회전/크기 대신 키프레임이 적용됩니다.": "Move the playhead and press Add key; the gaps are interpolated for you. With two or more keys, the keyframes take over from the move/rotate/scale values above.",
 
-    // ── 텍스트 ───────────────────────────────────────────
+    // -- Text ----------------------------------------------
     '폰트': 'Font',
     '커스텀 폰트': 'Custom font',
     '굵게': 'Bold',
@@ -497,7 +500,7 @@ const EN = {
     '(빈 텍스트)': '(empty text)',
     '텍스트 입력 (Ctrl+Enter 완료, Esc 취소)': 'Enter text (Ctrl+Enter to finish, Esc to cancel)',
 
-    // ── 공통 ─────────────────────────────────────────────
+    // -- Shared --------------------------------------------
     '취소': 'Cancel',
     '완료': 'Done',
     '완료!': 'Done!',

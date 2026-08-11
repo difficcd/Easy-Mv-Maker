@@ -23,17 +23,19 @@ const PEN_TYPES = [
     { id: 'pencil', label: '연필', Icon: PenLine },
     { id: 'soft', label: '에어', Icon: Cloud },
     { id: 'marker', label: 'Marker', Icon: Pen },
-    // 직선/곡선은 자리를 따로 먹지 않게 '자' 하나로 합치고 아래에서 모드로 나눈다.
+    // Line and curve share one Ruler slot rather than taking two, and split into modes below.
     { id: 'ruler', label: '자', Icon: Minus },
     { id: 'mosaic', label: '모자이크', Icon: Grid3x3 },
     { id: 'eraser', label: 'Eraser', Icon: Eraser },
     { id: 'fill', label: 'Fill', Icon: PaintBucket },
 ];
-const BOIL_FPS = 10; // 자글자글(boiling line) 모션이 바뀌는 초당 횟수
+const BOIL_FPS = 10; // how many times a second the boiling-line motion advances
 
-// 단축키: 기본값 + 사용자가 바꾼 값(브라우저 보관). 표기는 'ctrl+[' 처럼 소문자 조합.
-// 테마색: 고른 색 하나에서 밝기/채도를 조절해 파생 색들을 만들고 CSS 변수로 심는다.
-// 이렇게 해야 버튼·활성 탭·글로우까지 전부 한 번에 따라 바뀐다.
+// Shortcuts: the defaults plus whatever the user rebound, kept in the browser.
+// Written as lowercase combinations such as "ctrl+[".
+// Theme colour: one picked colour is varied in lightness and saturation to derive the rest,
+// which are planted as CSS variables. That is what makes buttons, the active tab and the glow
+// all follow at once.
 const hexToHsl = (hex) => {
     const h = String(hex).replace('#', '');
     const r = parseInt(h.slice(0, 2), 16) / 255, g = parseInt(h.slice(2, 4), 16) / 255, b = parseInt(h.slice(4, 6), 16) / 255;
@@ -51,7 +53,8 @@ const hexToHsl = (hex) => {
 };
 const hsl = (h, s, l) => `hsl(${h.toFixed(0)} ${Math.max(0, Math.min(100, s * 100)).toFixed(0)}% ${Math.max(0, Math.min(100, l * 100)).toFixed(0)}%)`;
 const applyTheme = (base, uiSat = 18) => {
-    // 잘못된 값이 들어오면 hsl(NaN ...)이 되어 CSS가 무시되고 기본 보라로 되돌아간다 → 미리 막는다.
+    // A bad value yields hsl(NaN ...), which CSS ignores, silently reverting to the default.
+    // Guard against it up front.
     if (!/^#[0-9a-fA-F]{6}$/.test(String(base))) base = DEFAULT_THEME;
     const { h, s, l } = hexToHsl(base);
     const S = Math.max(0.35, Math.min(0.95, s || 0.6));
@@ -70,17 +73,20 @@ const applyTheme = (base, uiSat = 18) => {
     root.setProperty('--accent-pale2', hsl(h, Math.min(1, S + 0.10), 0.90));
     root.setProperty('--accent-pale3', hsl(h, Math.min(1, S + 0.10), 0.88));
     root.setProperty('--accent-glow', `hsl(${h.toFixed(0)} ${(S * 100).toFixed(0)}% 45% / .55)`);
-    // 패널·버튼 같은 중성 배경도 같은 색조를 쓰되 채도는 사용자가 정한다(0 = 완전 무채색).
+    // Neutral backgrounds (panels, buttons) share the hue, but the user sets the saturation;
+    // 0 is fully achromatic.
     root.setProperty('--ui-h', h.toFixed(0));
     root.setProperty('--ui-s', `${Math.max(0, Math.min(60, uiSat)).toFixed(0)}%`);
 };
-// 차분한 인디고. 원색은 hsl(243 17% 25%)로 어둡고 채도가 낮지만, applyTheme의
-// 하한(채도 0.35 · 명도 0.36)이 걸려 실제 액센트는 hsl(243 35% 36%)로 칠해진다.
+// A muted indigo. The raw colour is hsl(243 17% 25%) - dark and desaturated - but the floors
+// in applyTheme (0.35 saturation, 0.36 lightness) mean the accent actually paints as
+// hsl(243 35% 36%).
 const DEFAULT_THEME = '#36354b';
-// 언어는 훅이 아니라 모듈 변수로 들고 있는다. alert·confirm처럼 컴포넌트 밖 함수에도
-// 번역할 문자열이 40곳 넘게 있어서 훅으로는 닿지 않는다. 첫 렌더 전에 맞춰 둔다.
+// The language lives in a module variable rather than a hook: over forty of these strings sit
+// in alert, confirm and thrown errors, which no hook can reach. Set before the first render.
 setLangValue(loadLang());
-// 색조(0~360)를 테마 기준색으로. 채도·명도는 UI에 어울리는 값으로 고정한다.
+// Turns a hue (0-360) into a theme base colour, holding saturation and lightness at values
+// that suit the UI.
 const hueToHex = (h) => {
     const s = 0.7, l = 0.45;
     const c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = l - c / 2;
@@ -99,7 +105,7 @@ const KEY_LABELS = {
     brushDown: '브러시 작게', brushUp: '브러시 크게',
     zoomOut: '캔버스 축소', zoomIn: '캔버스 확대', resetView: '줌 초기화',
 };
-// 이벤트를 'ctrl+shift+k' 같은 문자열로. 비교를 단순하게 하려고 항상 소문자.
+// Renders an event as a string such as "ctrl+shift+k", always lowercase to keep comparison simple.
 const keyOf = (e) => {
     const p = [];
     if (e.ctrlKey || e.metaKey) p.push('ctrl');
@@ -165,7 +171,7 @@ export default function App() {
     const audioRef = useRef(null);
     const audioB64Ref = useRef(null); // audio as base64 data URL, embedded into saves
     // Video overlay track: play the original video underneath the drawing layers (no per-frame
-    // cuts) — for "덧그리기" over a video. Like audio but drawn onto the canvas each frame.
+    // cuts) - for drawing over a video. Like audio, but painted onto the canvas each frame.
     const [videoOverlay, setVideoOverlay] = useState(null); // { name, startTime, endTime, offset, duration, w, h, cuts? }
     const [sceneDetect, setSceneDetect] = useState(null);   // { done, total } while auto-detecting scene cuts
     const [sceneCfg, setSceneCfg] = useState(null);         // scene-detect settings modal { threshold, rangeOn, startText, endText }
@@ -176,13 +182,13 @@ export default function App() {
     const [recentVideos, setRecentVideos] = useState([]); // fetched/opened videos, reusable without re-downloading
     const [videoBusy, setVideoBusy] = useState(null); // {done, total} while extracting
     const [videoBusyBg, setVideoBusyBg] = useState(false); // extraction moved to a background chip
-    // 유튜브 링크 입력: 네이티브 prompt가 차단되면 조용히 실패하므로 앱 내부 창으로 받는다.
+    // YouTube link input. A native prompt fails silently once blocked, so this asks in-app.
     const [linkPrompt, setLinkPrompt] = useState(null); // {kind:'video'|'audio'}
-    // 실패를 눈에 보이게. alert는 브라우저가 대화상자를 막으면 조용히 삼켜져
-    // '아무 일도 안 일어난 것'처럼 보인다 — 실제로 그래서 원인을 한참 못 찾았다.
+    // Make failures visible. Once the browser blocks dialogs, alert is swallowed and the app
+    // looks like it simply did nothing - which is exactly why one bug here took so long to find.
     const [appError, setAppError] = useState(null);
-    const [toast, setToast] = useState(null);            // 방해 없는 알림
-    const [backupProg, setBackupProg] = useState(null);  // 자동 백업 진행률 (구석 표시)
+    const [toast, setToast] = useState(null);            // unobtrusive notice
+    const [backupProg, setBackupProg] = useState(null);  // automatic-backup progress, shown in the corner
     useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 3000); return () => clearTimeout(t); }, [toast]);
     const videoStopRef = useRef(false);
     const isExporting = useRef(false);
@@ -192,25 +198,27 @@ export default function App() {
     const audioDestRef = useRef(null);
     const exportEndRef = useRef(0);
     const [tool, setTool] = useState('pen');
-    const [rulerMode, setRulerMode] = useState('line'); // tr('자') 도구의 두 옵션: 직선 / 곡선
-    const [softMode, setSoftMode] = useState('soft');   // tr('에어') 도구의 두 옵션: 에어브러시 / 블러
-    // 아래 로직은 예전처럼 'line'/'curve'를 그대로 쓰되, '자' 도구는 모드로 갈라준다.
+    const [rulerMode, setRulerMode] = useState('line'); // the Ruler tool's two options: line and curve
+    const [softMode, setSoftMode] = useState('soft');   // the Air tool's two options: airbrush and blur
+    // The logic below still works in terms of "line" and "curve"; the Ruler tool just picks
+    // between them by mode.
     const etool = tool === 'ruler' ? rulerMode : tool === 'soft' ? softMode : tool;
     const [color, setColor] = useState('#000000');
-    // 최근 색은 '실제로 사용한' 색만 쌓인다(고르기만 한 색은 안 들어감) — 아래 noteColorUsed 참고.
+    // Recent colours only collect colours actually used, not ones merely selected.
+    // See noteColorUsed below.
     const [recentColors, setRecentColors] = useState(() => {
         try { const v = JSON.parse(localStorage.getItem('mv_recent_colors')); if (Array.isArray(v)) return v; } catch { }
         return [];
     });
     useEffect(() => { try { localStorage.setItem('mv_recent_colors', JSON.stringify(recentColors)); } catch { } }, [recentColors]);
     const [pickingColor, setPickingColor] = useState(false); // eyedropper: next canvas click samples a pixel
-    // 팔레트: 빈 상태로 시작한다(기본 프리셋 없음). 사용자가 직접 담는다.
+    // Palettes start empty - no built-in presets. The user fills them.
     const [palettes, setPalettes] = useState(() => {
         try { const s = JSON.parse(localStorage.getItem('mv_palettes')); if (Array.isArray(s) && s.length) return s; } catch { }
         return [{ name: tr('내 팔레트'), colors: [] }];
     });
     const [activePalette, setActivePalette] = useState(0);
-    const [paletteEdit, setPaletteEdit] = useState(false); // on: 스와치 탭 = 삭제 (태블릿용)
+    const [paletteEdit, setPaletteEdit] = useState(false); // when on, tapping a swatch deletes it (for tablets)
     useEffect(() => { try { localStorage.setItem('mv_palettes', JSON.stringify(palettes)); } catch { } }, [palettes]);
     const addToPalette = (c) => setPalettes(ps => ps.map((p, i) => i === activePalette && !p.colors.some(x => x.toLowerCase() === c.toLowerCase()) ? { ...p, colors: [...p.colors, c] } : p));
     const removeFromPalette = (ci) => setPalettes(ps => ps.map((p, i) => i === activePalette ? { ...p, colors: p.colors.filter((_, j) => j !== ci) } : p));
@@ -218,7 +226,7 @@ export default function App() {
     const deletePalette = () => { if (palettes.length <= 1) return; setPalettes(ps => ps.filter((_, i) => i !== activePalette)); setActivePalette(i => Math.max(0, i - 1)); };
     const renamePalette = () => { const n = window.prompt(tr('팔레트 이름'), palettes[activePalette]?.name); if (n) setPalettes(ps => ps.map((p, i) => i === activePalette ? { ...p, name: n } : p)); };
     const applyColor = (c) => { if (!c) return; setColor(c); };
-    // '사용됨' 기준: 실제로 그 색으로 무언가를 그렸을 때만 최근 색에 올린다.
+    // "Used" means something was actually drawn in that colour; only then does it join Recent.
     const noteColorUsed = (c) => {
         if (!c) return;
         setRecentColors(p => (p[0] && p[0].toLowerCase() === c.toLowerCase())
@@ -238,7 +246,7 @@ export default function App() {
     const [renamingCutId, setRenamingCutId] = useState(null);
     const [selectedCutIds, setSelectedCutIds] = useState(new Set());
     const [marquee, setMarquee] = useState(null); // rubber-band rect (content px) while drag-selecting cuts
-    const [activePartId, setActivePartId] = useState(null); // scope playback/editing to one part (null = 전체)
+    const [activePartId, setActivePartId] = useState(null); // scope playback and editing to one part (null = all)
     const lassoClipRef = useRef(null); // copied lasso pixels: { bitmapId, w, h }
     const [hasLassoClip, setHasLassoClip] = useState(false);
     const [showFileMenu, setShowFileMenu] = useState(false);
@@ -251,20 +259,21 @@ export default function App() {
     const liveCanvasRef = useRef(null);   // overlay for the in-progress stroke (drawn without touching layer state)
     const liveStrokeRef = useRef(null);   // the stroke currently being drawn
     const liveClearTokRef = useRef(0);
-    const liveClearPendingRef = useRef(false); // 커밋 후, 레이어 캐시가 새 선을 그린 뒤 오버레이를 지움 (깜빡임/사라짐 방지)
-    const lineStartRef = useRef(null);    // 직선 도구 시작점
-    const drawTargetLayerRef = useRef(null); // 이번 스트로크를 커밋할 실제 레이어 id (활성 레이어 무효화 대비)
-    const layerDragRef = useRef(null);    // move 도구로 전체를 끌 때
-    const [dragTick, setDragTick] = useState(0); // 끄는 동안 원본을 숨긴 채 다시 그리게 하는 신호
-    const liveDrawnRef = useRef(0);       // 라이브 오버레이에 이미 그린 점 개수 (꼬리만 이어 그리기용)
+    const liveClearPendingRef = useRef(false); // after a commit, clear the overlay only once the layer cache has drawn the new stroke,
+    // which avoids a flicker or a vanishing line
+    const lineStartRef = useRef(null);    // start point of the line tool
+    const drawTargetLayerRef = useRef(null); // the layer id this stroke will commit to, in case the active layer changes under us
+    const layerDragRef = useRef(null);    // while dragging everything with the move tool
+    const [dragTick, setDragTick] = useState(0); // signal to redraw with the original hidden while dragging
+    const liveDrawnRef = useRef(0);       // how many points are already on the live overlay, so only the tail is appended
     const liveRafRef = useRef(0);
-    const boilPhaseRef = useRef(0);       // 자글자글 "모션" 위상 — 시간에 따라 바뀌며 선이 제자리에서 부글거림
-    const [boilTick, setBoilTick] = useState(0); // 정지(편집) 중에도 자글 모션을 미리보기 위한 위상 티커
-    const curveAnchorsRef = useRef(null); // 곡선 도구: 탭으로 찍은 앵커점들
-    const curveDraggingRef = useRef(false); // 곡선 앵커를 방금 찍고 드래그로 미세조정 중
-    const [curvePts, setCurvePts] = useState(0); // 곡선 앵커 개수 (완료/취소 바 표시용)
-    const mosaicRectRef = useRef(null);   // 모자이크 드래그 사각형
-    const [mosaicBlock, setMosaicBlock] = useState(14); // 모자이크 블록 크기(px)
+    const boilPhaseRef = useRef(0);       // boiling-motion phase; advancing it over time makes the strokes shimmer in place
+    const [boilTick, setBoilTick] = useState(0); // phase ticker so the boiling motion previews even while paused for editing
+    const curveAnchorsRef = useRef(null); // curve tool: the anchor points tapped out so far
+    const curveDraggingRef = useRef(false); // an anchor was just placed and is being fine-tuned by dragging
+    const [curvePts, setCurvePts] = useState(0); // anchor count, for the done/cancel bar
+    const mosaicRectRef = useRef(null);   // mosaic drag rectangle
+    const [mosaicBlock, setMosaicBlock] = useState(14); // mosaic block size (px)
     const isDrawing = useRef(false);
     const reqRef = useRef(null);
     const isPlayingRef = useRef(false);
@@ -328,18 +337,18 @@ export default function App() {
     const cutDragArmedRef = useRef(false); // long-press must arm before a touch can drag a cut
     const cutDragTimerRef = useRef(null);
     const [animLayer, setAnimLayer] = useState(null); // {cutId, layerId} whose part-anim panel is open
-    const [jitterLayer, setJitterLayer] = useState(null); // {cutId, layerId} whose 자글자글 settings panel is open
-    const [backupAt, setBackupAt] = useState(null);      // 마지막 서버 백업 시각
+    const [jitterLayer, setJitterLayer] = useState(null); // {cutId, layerId} whose boiling-settings panel is open
+    const [backupAt, setBackupAt] = useState(null);      // time of the last server backup
     const [backupBusy, setBackupBusy] = useState(false);
-    const [backupList, setBackupList] = useState(null);  // null = 목록 닫힘
-    const [storageInfo, setStorageInfo] = useState(null); // 로컬 저장 용량 사용률
-    const [autosaveErr, setAutosaveErr] = useState(null); // 자동저장 실패 사유 (조용히 삼키지 않음)
-    const [loadProgress, setLoadProgress] = useState(null); // {label, done, total} · total 0 = 진행률 미상
+    const [backupList, setBackupList] = useState(null);  // null = the list is closed
+    const [storageInfo, setStorageInfo] = useState(null); // local storage usage
+    const [autosaveErr, setAutosaveErr] = useState(null); // why autosave failed - never swallowed silently
+    const [loadProgress, setLoadProgress] = useState(null); // {label, done, total}; total 0 means the length is unknown
     const backupKeyRef = useRef(null);
     const backupBusyRef = useRef(false);
     const lastBackupSigRef = useRef('');
-    // lang 상태는 화면을 다시 그리기 위한 것뿐이고, 실제 조회는 모듈 변수를 본다.
-    // memo로 감싼 컴포넌트가 없어서 여기서 상태가 바뀌면 트리 전체가 새 언어로 다시 그려진다.
+    // The lang state exists only to trigger a redraw; lookups read the module variable.
+    // Nothing here is memoised, so changing it re-renders the whole tree in the new language.
     const [lang, setLang] = useState(loadLang);
     const changeLang = (l) => { setLangValue(l); saveLang(l); setLang(l); };
     const [themeColor, setThemeColor] = useState(() => { try { return localStorage.getItem('mv_theme') || DEFAULT_THEME; } catch { return DEFAULT_THEME; } });
@@ -351,7 +360,7 @@ export default function App() {
         applyTheme(themeColor, uiSat);
         try { localStorage.setItem('mv_theme', themeColor); localStorage.setItem('mv_ui_sat', String(uiSat)); } catch { }
     }, [themeColor, uiSat]);
-    // 고르는 '도중' 값이 계속 바뀌므로, 멈춘 뒤에만 저장고에 넣는다.
+    // The value changes continuously while picking, so it is only recorded once picking stops.
     useEffect(() => {
         if (!/^#[0-9a-fA-F]{6}$/.test(themeColor)) return;
         const t = setTimeout(() => {
@@ -363,15 +372,15 @@ export default function App() {
         }, 800);
         return () => clearTimeout(t);
     }, [themeColor]);
-    const [leftDock, setLeftDock] = useState('color'); // 왼쪽 독에 열린 패널 (null이면 닫힘) — 아이콘으로 전환
+    const [leftDock, setLeftDock] = useState('color'); // which panel is open in the left dock (null = closed); switched from the icon rail
     const [keymap, setKeymap] = useState(loadKeymap);
-    const [showSettings, setShowSettings] = useState(false); // 설정 창 (단축키 · 테마)
-    const [settingsTab, setSettingsTab] = useState('theme'); // 테마부터 보이게
-    const [rebinding, setRebinding] = useState(null);  // 재지정 대기 중인 액션 id
-    const [spaceDown, setSpaceDown] = useState(false); // 스페이스바 = 화면 이동(손바닥) 모드
+    const [showSettings, setShowSettings] = useState(false); // settings dialog (shortcuts and theme)
+    const [settingsTab, setSettingsTab] = useState('theme'); // open on the theme tab
+    const [rebinding, setRebinding] = useState(null);  // id of the action waiting to be rebound
+    const [spaceDown, setSpaceDown] = useState(false); // space = pan (hand) mode
     const spaceDownRef = useRef(false);
     const panningRef = useRef(false);
-    const lastInteractRef = useRef(0); // 마지막 확대/이동 시각 — 자글 미리보기를 잠깐 양보시키는 데 사용
+    const lastInteractRef = useRef(0); // time of the last zoom or pan, used to briefly yield the boiling preview
     const [pathCapture, setPathCapture] = useState(null); // {cutId, layerId} while recording a motion path
     const pathPtsRef = useRef(null);
 
@@ -467,17 +476,19 @@ export default function App() {
 
     const updLayers = (cutId, fn) => setCuts(p => p.map(c => c.id === cutId ? { ...c, ...fn(c) } : c));
 
-    // 그릴 실제 레이어 결정: 활성 레이어가 폴더/없음이면 보이는 최상단 그리기 레이어로 대체.
-    // (활성이 '숨긴 레이어'면 그대로 두되, 커밋 시 자동으로 다시 보이게 함 → 그린 선이 사라지지 않음)
+    // Work out which layer to actually draw into: if the active one is a folder or missing,
+    // fall back to the topmost visible drawing layer. A hidden active layer is kept, but made
+    // visible again on commit, so a stroke never disappears.
     const resolveDrawLayer = (cut) => {
         if (!cut) return null;
         const a = cut.layers.find(l => l.id === cut.activeLayerId);
         if (a && a.type === 'layer') return a;
-        const drawables = flattenLayersInUiOrder(cut.layers); // 보이는 leaf 레이어들
+        const drawables = flattenLayersInUiOrder(cut.layers); // the visible leaf layers
         if (drawables.length) return drawables[drawables.length - 1];
         return cut.layers.find(l => l.type === 'layer') || null;
     };
-    // 스트로크를 대상 레이어에 커밋 + 그 레이어와 상위 폴더들을 강제로 보이게 → 결과가 항상 화면에 보임.
+    // Commit the stroke to its target layer and force that layer and its parent folders
+    // visible, so the result is always on screen.
     const commitStrokeToLayer = (cutId, layerId, st) => {
         updLayers(cutId, c => {
             const byId = new Map(c.layers.map(l => [l.id, l]));
@@ -535,7 +546,7 @@ export default function App() {
 
     const commitSelection = () => commitSelectionImpl(selection);
 
-    // Lasso → 파츠: lift the selected region out of its source layer into a NEW layer,
+    // Lasso to part: lift the selected region out of its source layer into a NEW layer,
     // so that region can be animated on its own (via the layer/part animation panel).
     const extractSelectionToPart = () => {
         const sel = selection;
@@ -587,7 +598,7 @@ export default function App() {
     const handleSetTool = (newTool) => {
         if (selection) return;
         if (textEdit) return;
-        // 곡선 작성 중 다른 도구로 바꾸면 자동 확정.
+        // Switching tools mid-curve commits it automatically.
         if (curveAnchorsRef.current && newTool !== 'ruler') commitCurve();
         setTool(newTool);
     };
@@ -655,7 +666,8 @@ export default function App() {
     useEffect(() => {
         const handleKeyDown = (e) => {
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
-            // 사용자 지정 단축키 먼저. (Ctrl+Z/Y 등 관용 조합은 아래에 그대로 남겨 둔다)
+            // User-defined shortcuts first; the conventional Ctrl+Z / Ctrl+Y combinations are
+            // left in place below.
             const combo = keyOf(e);
             const hit = Object.keys(keymap).find(k => keymap[k] && keymap[k].toLowerCase() === combo);
             if (hit) {
@@ -1082,14 +1094,14 @@ export default function App() {
         // Rebuild the bitmap store before swapping cuts in, so fill/lasso/paste render correctly.
         const store = bitmapStoreRef.current;
         store.clear();
-        // 진행률: 프레임이 많은 프로젝트는 여는 데 한참 걸리므로 게이지로 보여준다.
-        // 작은 프로젝트에서 깜빡이기만 하는 걸 막으려고 일정 개수 이상일 때만 띄운다.
+        // Progress: a project with many frames takes a while to open, so it gets a bar.
+        // Only past a certain count, to stop small projects flashing one up for an instant.
         const assetCount = (assetBase && Array.isArray(data.assets)) ? data.assets.length : 0;
         const bmpCount = data.bitmaps ? Object.keys(data.bitmaps).length : 0;
         const total = assetCount + bmpCount;
         const heavy = total > 12;
         let done = 0, lastPaint = 0;
-        const step = Math.max(1, Math.floor(total / 100)); // 렌더 폭주 방지: 최대 100번만 갱신
+        const step = Math.max(1, Math.floor(total / 100)); // cap at 100 updates so rendering does not run away
         const tick = () => {
             done++;
             if (!heavy) return;
@@ -1192,14 +1204,14 @@ export default function App() {
         const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([json], { type: 'application/json' })), download: 'project.emv' });
         a.click();
     };
-    // 큰 .emv는 읽기·파싱만으로도 한참 멈춘 것처럼 보인다 → 진행률을 알 수 없는 구간은
-    // 라벨만 띄우고(총량 0 = 무한 게이지), 이후 restore가 실제 진행률을 이어받는다.
+    // A large .emv looks frozen during the read and parse alone, so that stretch shows just a
+    // label with an indeterminate bar (total 0); restore then takes over with real progress.
     const readAndRestore = async (getText) => {
         setLoadProgress({ label: tr('파일 읽는 중'), done: 0, total: 0 });
         try {
             const text = await getText();
             setLoadProgress({ label: tr('파일 분석 중'), done: 0, total: 0 });
-            await new Promise(r => setTimeout(r, 0)); // 게이지가 한 번 그려질 틈을 준다
+            await new Promise(r => setTimeout(r, 0)); // give the bar a chance to paint once
             const data = JSON.parse(text);
             await restore(data);
         } catch (err) {
@@ -1356,12 +1368,12 @@ export default function App() {
         } catch (e) { alert(tr('삭제 실패: ') + e.message); }
     };
 
-    // --- Rotating server backups of the autosave (safety net separate from "저장") ---------
+    // --- Rotating server backups of the autosave (a safety net separate from Save) ---------
     // The local IndexedDB autosave protects against a crash/refresh; this protects against the
     // browser profile itself being lost or a project being overwritten. Snapshots are kept as
     // separate timestamped files server-side and rotated, so you can roll back.
     const getBackupKey = () => {
-        if (serverIdRef.current) return serverIdRef.current; // 서버 프로젝트가 있으면 그 아래로 묶는다
+        if (serverIdRef.current) return serverIdRef.current; // group under the server project if there is one
         if (!backupKeyRef.current) {
             let k = null;
             try { k = localStorage.getItem('mv_backup_key'); } catch { }
@@ -1391,15 +1403,15 @@ export default function App() {
         }
         return todo.length;
     };
-    // 자동 백업은 5분마다 알아서 도는 작업이라 절대 화면을 막으면 안 된다.
-    // 예전에는 전체 화면 진행률 오버레이를 띄워 백업 동안 아무것도 못 했다.
+    // The automatic backup runs itself every five minutes, so it must never block the screen.
+    // It used to raise a full-screen progress overlay, which stopped all work while it ran.
     const doServerBackup = async (silent = true) => {
         if (!serverAvailable || backupBusyRef.current) return;
         backupBusyRef.current = true; setBackupBusy(true); setBackupProg(null);
         try {
             const key = getBackupKey();
             const assetSink = [];
-            const data = await buildData(true, assetSink); // 프레임/오디오는 별도 에셋으로 → JSON은 작게
+            const data = await buildData(true, assetSink); // frames and audio go out as separate assets, keeping the JSON small
             if (assetSink.length) await uploadAssetsDeduped(key, assetSink);
             await apiFetch(`/api/backups/${key}`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1420,7 +1432,7 @@ export default function App() {
         try {
             const key = getBackupKey();
             const data = await apiFetch(`/api/backups/${key}/${stamp}`);
-            await restore(data, `/api/projects/${key}`); // 에셋은 같은 키의 저장소에서
+            await restore(data, `/api/projects/${key}`); // assets come from the store under the same key
             setBackupList(null);
         } catch (e) { alert(tr('백업 복구 실패: ') + e.message); }
     };
@@ -1438,7 +1450,7 @@ export default function App() {
         const id = setInterval(() => {
             const cs = liveRef.current?.cuts || [];
             const sig = cs.length + ':' + cs.map(c => safeArray(c.layers).reduce((n, l) => n + safeArray(l.strokes).length, 0)).join(',');
-            if (sig === lastBackupSigRef.current) return; // 바뀐 게 없으면 건너뜀
+            if (sig === lastBackupSigRef.current) return; // nothing changed, so skip
             lastBackupSigRef.current = sig;
             backupFnRef.current?.(true);
         }, 5 * 60 * 1000);
@@ -1509,15 +1521,18 @@ export default function App() {
     // Probe the project-storage API once; hide server menu when absent (static host / APK).
     useEffect(() => {
         let alive = true;
-        // 한 번만 확인하면, 페이지를 열 때 서버가 죽어 있었을 경우 그 세션 내내 '서버 없음'으로 굳는다.
-        // 그러면 유튜브 메뉴 항목이 아예 렌더링되지 않아 눌러도 아무 일이 없고 콘솔에도 안 남는다
-        // (실제로 이것 때문에 원인을 한참 못 찾았다). 서버가 나중에 살아나면 스스로 붙도록 주기적으로 확인한다.
+        // Checking once means that if the server happened to be down when the page loaded, the
+        // app stays convinced it is down for the whole session. The YouTube menu entries then
+        // never render at all, so clicking does nothing and the console stays empty - which is
+        // exactly how one bug here hid for so long. Re-checking periodically lets it reconnect
+        // on its own once the server comes back.
         const probe = () => fetch('/api/projects', { method: 'GET' })
             .then(r => { if (alive) setServerAvailable(r.ok); })
             .catch(() => { if (alive) setServerAvailable(false); });
         probe();
         const id = setInterval(probe, 10000);
-        // 탭으로 돌아오면 즉시 다시 확인 (서버를 켜고 돌아오는 흔한 흐름)
+        // Re-check immediately on refocus, since starting the server and coming back is the
+        // common flow.
         const onFocus = () => probe();
         window.addEventListener('focus', onFocus);
         return () => { alive = false; clearInterval(id); window.removeEventListener('focus', onFocus); };
@@ -1532,7 +1547,8 @@ export default function App() {
             try {
                 gcBitmaps(); // reclaim orphaned bitmaps before encoding the save
                 const data = await buildData(false, null, true); // IDB stores frame Blobs → cheap, low-memory
-                // 자동저장 실패를 조용히 삼키면 사용자는 저장되고 있다고 믿다가 통째로 잃는다.
+                // Swallowing an autosave failure lets the user believe their work is being saved
+                // right up until they lose all of it.
                 saveAutosave(data).then(() => { setAutoSavedAt(Date.now()); setAutosaveErr(null); })
                     .catch(e => setAutosaveErr(String(e?.message || e)));
             } catch (e) { setAutosaveErr(String(e?.message || e)); }
@@ -1668,8 +1684,8 @@ export default function App() {
     };
     // Duplicate a cut as the *next frame*: clone it right after itself and push any
     // later cuts on the same track to make room. This is the core frame-by-frame flow.
-    // #11 트위닝: 현재 컷과 다음 컷 사이를 자동 생성한 중간 프레임으로 채운다.
-    // 단순 크로스페이드가 아니라 거리장 기반 모핑이라 '형태 자체'가 이동/변형된다.
+    // Tweening: fills the gap between this cut and the next with generated in-between frames.
+    // Not a crossfade - distance-field morphing, so the shapes themselves move and deform.
     const flattenCutToImageData = (cut) => {
         const cnv = document.createElement('canvas'); cnv.width = CANVAS_W; cnv.height = CANVAS_H;
         const c2 = cnv.getContext('2d');
@@ -1686,7 +1702,7 @@ export default function App() {
         if (!s) return;
         const n = Math.max(1, Math.min(12, Math.round(+s) || 3));
         setLoadProgress({ label: tr('중간 프레임 만드는 중'), done: 0, total: n });
-        await new Promise(r => setTimeout(r, 30)); // 게이지를 한 번 그리고 시작
+        await new Promise(r => setTimeout(r, 30)); // paint the bar once before starting
         try {
             const make = morphPrepare(flattenCutToImageData(A), flattenCutToImageData(B));
             const dur = A.endTime - A.startTime;
@@ -1702,7 +1718,7 @@ export default function App() {
                     activeLayerId: 1, texts: [],
                 });
                 setLoadProgress({ label: tr('중간 프레임 만드는 중'), done: i + 1, total: n });
-                await new Promise(r => setTimeout(r, 0)); // 각 장마다 UI에 양보 (멈춘 것처럼 보이지 않게)
+                await new Promise(r => setTimeout(r, 0)); // yield to the UI between frames so it does not look frozen
             }
             const shift = n * dur;
             setCuts(prev => [
@@ -1754,8 +1770,10 @@ export default function App() {
         setCuts(p => p.map(c => c.id === cutId ? { ...c, activeLayerId: layerId } : c));
     };
     const handleToggleFolder = (e, cutId, fid) => { e.stopPropagation(); updLayers(cutId, c => ({ layers: c.layers.map(l => l.id === fid ? { ...l, collapsed: !l.collapsed } : l) })); };
-    // 자글자글 효과: 레이어의 이미 그려진 선들을 흔들어줌. 클릭마다 끔→약→강 순환 (비파괴적).
-    // 자글자글 설정 패널 열기/닫기 (강도·파장·속도·최소굵기는 패널에서 직접 입력)
+    // Boiling: wobbles the strokes already on the layer. Each click cycles off, light, strong,
+    // and it never alters the stored strokes.
+    // Opens and closes the boiling settings, where strength, wavelength, speed and the minimum
+    // width are entered directly.
     const updLayerProps = (cutId, layerId, obj) => updLayers(cutId, c => ({ layers: c.layers.map(l => l.id === layerId ? { ...l, ...obj } : l) }));
     const toggleJitterPanel = (e, cutId, layerId) => { e.stopPropagation(); setJitterLayer(j => (j && j.cutId === cutId && j.layerId === layerId) ? null : { cutId, layerId }); };
 
@@ -1776,7 +1794,7 @@ export default function App() {
             const dragged = { ...layers[di] }; layers.splice(di, 1);
             const tl = layers.find(l => l.id === targetId); if (!tl) return c;
             if (position === 'inside' && tl.type === 'folder') {
-                // 중첩 허용하되, 폴더를 자기 자신/자손 안으로 넣는 순환은 금지.
+                // Nesting is allowed, but a folder may not be dropped into itself or a descendant.
                 if (dragged.type === 'folder') {
                     if (targetId === dragged.id) return c;
                     let cur = tl;
@@ -1799,18 +1817,20 @@ export default function App() {
 
     const getPos = (e) => { const c = canvasRef.current, r = c.getBoundingClientRect(); return { x: (e.clientX - r.left) * (c.width / r.width), y: (e.clientY - r.top) * (c.height / r.height), pressure: e.pressure > 0 ? e.pressure : 0.5 }; };
     // Render only the in-progress stroke on the overlay canvas — one stroke, no full-layer rebuild.
-    // 그리는 중 미리보기. 예전에는 손이 움직일 때마다 스트로크 '전체'를 다시 매끈하게 만들어
-    // 다시 그렸다 → 선이 길어질수록 한 번 그리는 비용이 선형으로 늘고 전체는 제곱이 되어,
-    // 빠르게 그릴수록 입력이 밀리고 그 결과 곡선이 각지게 꺾였다.
-    // 이제는 (1) rAF로 한 프레임에 한 번만 그리고 (2) 이미 그린 부분은 지우지 않고 '새로 늘어난
-    // 꼬리'만 이어 그린다 → 손 움직임당 비용이 선 길이와 무관해진다.
+    // Live preview while drawing. This used to re-smooth and redraw the entire stroke on every
+    // pointer move: the cost of one redraw grew with the length of the line and the total grew
+    // quadratically, so drawing fast fell behind the input and the curve came out kinked.
+    // Now it (1) draws at most once per frame via rAF and (2) leaves what is already drawn
+    // alone, appending only the new tail - which makes the cost per movement independent of
+    // how long the stroke is.
     const renderLiveStroke = (full = false) => {
         const lc = liveCanvasRef.current; if (!lc) return;
         const ctx = lc.getContext('2d');
         const st = liveStrokeRef.current;
         if (!st) { ctx.clearRect(0, 0, lc.width, lc.height); liveDrawnRef.current = 0; return; }
         const n = st.points.length;
-        // 전체 재그리기가 필요한 경우(직선/곡선 도구처럼 앞부분이 바뀌는 경우)
+        // Cases needing a full redraw, such as the line and curve tools where the earlier part
+        // of the stroke changes.
         if (full || liveDrawnRef.current === 0 || n < liveDrawnRef.current) {
             ctx.clearRect(0, 0, lc.width, lc.height);
             drawStrokesOnCtx(ctx, [st], false, bitmapStoreRef.current);
@@ -1818,13 +1838,13 @@ export default function App() {
             return;
         }
         if (n === liveDrawnRef.current) return;
-        // 꼬리만: 이전에 그린 지점보다 조금 앞에서 시작해 이어붙이면 이음매가 보이지 않는다.
+        // Tail only: starting slightly before the last drawn point hides the seam.
         const from = Math.max(0, liveDrawnRef.current - 3);
         drawStrokesOnCtx(ctx, [{ ...st, points: st.points.slice(from) }], false, bitmapStoreRef.current);
         liveDrawnRef.current = n;
     };
-    // 전체 이동 미리보기: 옮겨진 모습을 오버레이에 그린다 (원본은 paintFrame이 숨긴다).
-    // 누른 직후에도 한 번 그려야 잠깐 빈 화면이 번쩍이지 않는다.
+    // Move preview: the shifted result is drawn on the overlay while paintFrame hides the
+    // original. It has to draw once on press too, or the screen flashes empty for a moment.
     const renderLayerDragPreview = () => {
         const d = layerDragRef.current; if (!d) return;
         const lc = liveCanvasRef.current; if (!lc) return;
@@ -1834,17 +1854,17 @@ export default function App() {
         const ox = Math.round(d.dx), oy = Math.round(d.dy);
         const order = flattenLayersInUiOrder(cut.layers || []).filter(l => l.type === 'layer' && d.layerIds.includes(l.id));
         for (let i = order.length - 1; i >= 0; i--) {
-            const src = ensureLayerCanvas(cut.id, order[i]); // 캐시에 없으면 즉석 생성
+            const src = ensureLayerCanvas(cut.id, order[i]); // create it on the spot if it is not cached
             if (src) c2.drawImage(src, ox, oy);
         }
     };
 
-    // 한 프레임에 한 번만 그리도록 묶는다 (포인터 이벤트는 프레임보다 훨씬 자주 들어온다).
+    // Coalesce to one draw per frame - pointer events arrive far more often than frames.
     const scheduleLiveRender = () => {
         if (liveRafRef.current) return;
         liveRafRef.current = requestAnimationFrame(() => { liveRafRef.current = 0; renderLiveStroke(); });
     };
-    // 곡선 도구: 찍은 앵커들을 지나는 Catmull-Rom 스플라인으로 촘촘히 샘플링.
+    // Curve tool: densely samples a Catmull-Rom spline through the anchors that were tapped.
     const catmullThrough = (pts, seg = 16) => {
         if (!pts || pts.length < 3) return (pts || []).slice();
         const at = i => pts[Math.max(0, Math.min(pts.length - 1, i))];
@@ -1896,15 +1916,16 @@ export default function App() {
         curveAnchorsRef.current = null; curveDraggingRef.current = false; setCurvePts(0);
         const lc = liveCanvasRef.current; if (lc) lc.getContext('2d').clearRect(0, 0, lc.width, lc.height);
     };
-    // 블러 브러시: 지나간 경로를 마스크로 삼아 그 아래 레이어 픽셀을 흐리게 만든다.
-    // (벡터 스트로크가 아니라 이미 그려진 그림을 '퍼뜨리는' 동작이라 래스터로 처리한다)
+    // Blur brush: uses the path it travels as a mask and blurs the layer pixels beneath it.
+    // This spreads what is already drawn rather than adding a vector stroke, so it works on
+    // raster data.
     const applyBlurStroke = (st) => {
         const cut = cuts.find(c => c.id === currentCutId);
         const layer = cut?.layers.find(l => l.id === drawTargetLayerRef.current);
         if (!cut || !layer) return;
         const src = ensureLayerCanvas(cut.id, layer); if (!src) return;
         const pts = st.points, rad = Math.max(2, st.size);
-        // 영향 범위만 처리해 큰 캔버스에서도 가볍게.
+        // Only the affected region is processed, which keeps large canvases cheap.
         let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
         for (const p of pts) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
         const pad = rad + 4;
@@ -1912,8 +1933,8 @@ export default function App() {
         x1 = Math.min(CANVAS_W, Math.ceil(x1 + pad)); y1 = Math.min(CANVAS_H, Math.ceil(y1 + pad));
         const w = x1 - x0, h = y1 - y0;
         if (w < 2 || h < 2) return;
-        // 1) 해당 영역을 흐리게 만든 판. 한 번 세게 거는 것보다 여러 번 겹쳐 거는 쪽이
-        //    훨씬 매끄럽다(가우시안에 가까워짐).
+        // 1) A blurred copy of the region. Several light passes look far smoother than one
+        //    heavy pass, since repeated blurring approximates a Gaussian.
         const blurred = document.createElement('canvas'); blurred.width = w; blurred.height = h;
         const bctx = blurred.getContext('2d');
         bctx.drawImage(src, x0, y0, w, h, 0, 0, w, h);
@@ -1923,8 +1944,8 @@ export default function App() {
             bctx.drawImage(blurred, 0, 0);
         }
         bctx.filter = 'none';
-        // 2) 붓이 지나간 자리만 남기되, 마스크 가장자리를 부드럽게 흐려 경계가 지지 않게 한다.
-        //    (딱딱한 마스크면 흐린 부분과 원본이 만나는 선이 그대로 보인다)
+        // 2) Keep only what the brush passed over, softening the mask edge so no seam forms.
+        //    A hard mask leaves a visible line where the blurred area meets the original.
         const mask = document.createElement('canvas'); mask.width = w; mask.height = h;
         const mctx = mask.getContext('2d');
         mctx.filter = `blur(${Math.max(1, rad / 3)}px)`;
@@ -1942,7 +1963,7 @@ export default function App() {
         commitStrokeToLayer(currentCutId, layer.id, { id: Date.now(), tool: 'paste', bitmapId, x: x0, y: y0, w, h });
     };
 
-    // 모자이크: 드래그 사각형을 점선으로 미리보기.
+    // Mosaic: previews the drag rectangle as a dashed outline.
     const renderMosaicMarquee = () => {
         const lc = liveCanvasRef.current; if (!lc) return;
         const ctx = lc.getContext('2d');
@@ -1955,7 +1976,8 @@ export default function App() {
         ctx.strokeRect(x, y, w, h);
         ctx.restore();
     };
-    // 사각 영역을 현재 화면(합성 캔버스)에서 읽어 블록 단위로 픽셀화 → 활성 레이어에 붙임.
+    // Reads the rectangle from the composited canvas, pixelates it in blocks, and stamps the
+    // result onto the active layer.
     const applyMosaic = (rect) => {
         const bx = Math.max(0, Math.floor(Math.min(rect.x0, rect.x1)));
         const by = Math.max(0, Math.floor(Math.min(rect.y0, rect.y1)));
@@ -1985,8 +2007,8 @@ export default function App() {
         const [a] = [...touchPtsRef.current.values()];
         pinchRef.current = { mode: 'pan', startPt: { x: a.x, y: a.y }, startView: { ...view } };
     };
-    // PC 화면 이동: 스페이스바를 누른 채 드래그(그림판 공통 관습) 또는 휠(가운데) 버튼 드래그.
-    // 스페이스 중에는 startDraw가 막히므로 그림이 그려지지 않는다.
+    // Panning on desktop: hold space and drag (the usual paint-program convention), or drag
+    // with the middle button. startDraw is blocked while space is held, so nothing is drawn.
     const startMousePan = (e) => {
         const sx = e.clientX, sy = e.clientY, sv = { ...view };
         panningRef.current = true;
@@ -2040,16 +2062,17 @@ export default function App() {
         else if (touchPtsRef.current.size === 0) pinchRef.current = null;
     };
     const resetView = () => setView({ zoom: 1, x: 0, y: 0 });
-    // 단축키 재지정: 대기 중일 때 눌린 키 조합을 그대로 받아 저장한다(다른 처리보다 먼저 가로챔).
+    // Rebinding: while waiting, whatever combination is pressed is captured verbatim, ahead of
+    // any other handling.
     useEffect(() => {
         if (!rebinding) return;
         const h = (e) => {
             e.preventDefault(); e.stopPropagation();
             if (e.key === 'Escape') { setRebinding(null); return; }
-            if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return; // 조합키만 누른 상태는 무시
+            if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return; // ignore a modifier pressed on its own
             const combo = keyOf(e);
             setKeymap(prev => {
-                // 같은 조합을 쓰던 다른 항목은 비워 충돌을 막는다.
+                // Clear any other entry using the same combination, to avoid a conflict.
                 const next = { ...prev };
                 for (const k of Object.keys(next)) if (next[k] === combo) next[k] = '';
                 next[rebinding] = combo;
@@ -2062,7 +2085,7 @@ export default function App() {
         return () => window.removeEventListener('keydown', h, true);
     }, [rebinding]);
 
-    // 화면 중앙 기준 확대/축소 (버튼·단축키용)
+    // Zoom about the centre of the view, for the buttons and shortcuts.
     const zoomCanvas = (factor) => {
         lastInteractRef.current = Date.now();
         setView(v => {
@@ -2072,8 +2095,8 @@ export default function App() {
         });
     };
 
-    // 스페이스바 = 손바닥(화면 이동) 모드. 입력창에 타이핑 중일 땐 무시하고,
-    // 페이지가 스크롤되지 않도록 기본 동작만 막는다.
+    // Space is the hand (pan) mode. Ignored while typing in a field, and the default is
+    // suppressed only so the page does not scroll.
     useEffect(() => {
         const isTyping = () => {
             const a = document.activeElement;
@@ -2086,11 +2109,11 @@ export default function App() {
         };
         const up = (e) => {
             if (e.code !== 'Space') return;
-            // keyup에서도 막아야 한다: 포커스된 버튼이 스페이스로 '클릭'되는 걸 방지.
+            // keyup must be suppressed too, or space "clicks" whichever button has focus.
             if (!isTyping()) e.preventDefault();
             spaceDownRef.current = false; setSpaceDown(false);
         };
-        // 창을 벗어났다 돌아오면 눌린 상태로 남지 않게 초기화
+        // Reset on refocus so the key does not stay stuck down after leaving the window.
         const blur = () => { spaceDownRef.current = false; setSpaceDown(false); };
         window.addEventListener('keydown', down);
         window.addEventListener('keyup', up);
@@ -2104,7 +2127,7 @@ export default function App() {
         const el = canvasAreaRef.current; if (!el) return;
         const h = (e) => {
             e.preventDefault();
-            lastInteractRef.current = Date.now(); // 확대 중에는 자글 미리보기가 끼어들지 않게
+            lastInteractRef.current = Date.now(); // keep the boiling preview out of the way while zooming
             const r = el.getBoundingClientRect();
             const cx = e.clientX - r.left - r.width / 2;
             const cy = e.clientY - r.top - r.height / 2;
@@ -2234,7 +2257,7 @@ export default function App() {
     };
 
     const startDraw = (e) => {
-        // 스페이스바 패닝 / 휠버튼 패닝 중에는 그리지 않는다 (canvas-area가 패닝을 처리).
+        // No drawing while panning with space or the middle button - canvas-area handles that.
         if (spaceDownRef.current || e.button === 1 || panningRef.current) return;
         // Palm rejection: only a stylus (S Pen) or mouse may draw — ignore finger/touch.
         if (e.pointerType === 'touch') return;
@@ -2254,7 +2277,8 @@ export default function App() {
             return;
         }
         const currentCut = cuts.find(c => c.id === currentCutId);
-        // 활성 레이어가 폴더/숨김/무효여도 그릴 수 있는 실제 레이어로 대체 → 그린 선이 반드시 남고 보임.
+        // Even if the active layer is a folder, hidden or invalid, this substitutes a real
+        // drawable layer, so the stroke always survives and stays visible.
         const activeLayer = resolveDrawLayer(currentCut);
         if (!activeLayer) return;
         drawTargetLayerRef.current = activeLayer.id;
@@ -2337,8 +2361,9 @@ export default function App() {
                 e.preventDefault();
                 return;
             }
-            // 텍스트를 안 집었으면 '전체 이동'. 선택 범위가 없어도 끌어서 옮길 수 있어야 한다.
-            // 기본은 이 컷의 보이는 레이어 + 텍스트 전부, Alt를 누르면 활성 레이어만.
+            // With no text grabbed this becomes a move-everything drag; it has to work without
+            // a selection. By default that is every visible layer and text in this cut, or just
+            // the active layer while Alt is held.
             const drawable = flattenLayersInUiOrder(currentCut?.layers || []).filter(l => l.type === 'layer');
             const onlyActive = e.altKey;
             const act = resolveDrawLayer(currentCut);
@@ -2348,15 +2373,16 @@ export default function App() {
                 try { canvasRef.current?.setPointerCapture(e.pointerId); } catch { }
                 isDrawing.current = true;
                 layerDragRef.current = { cutId: currentCutId, layerIds: ids, withTexts: !onlyActive, startPos: { x: pos.x, y: pos.y }, dx: 0, dy: 0 };
-                renderLayerDragPreview();   // 누르자마자 그려 빈 화면 번쩍임 방지
-                setDragTick(v => v + 1);    // 원본은 숨긴다
+                renderLayerDragPreview();   // draw immediately on press so the screen does not flash empty
+                setDragTick(v => v + 1);    // hide the original
                 e.preventDefault();
                 return;
             }
         }
 
         if (etool === 'curve') {
-            // 곡선자: 탭으로 앵커를 찍고(누른 채 끌면 미세조정), 완료 버튼으로 확정.
+            // Curve ruler: tap to place anchors (hold and drag to fine-tune), then confirm with
+            // the done button.
             activePointerIdRef.current = e.pointerId;
             try { canvasRef.current?.setPointerCapture(e.pointerId); } catch { }
             if (!curveAnchorsRef.current) curveAnchorsRef.current = [];
@@ -2392,7 +2418,7 @@ export default function App() {
                 break;
             }
             case 'line': {
-                // 직선자: 시작점을 고정하고 끝점만 따라옴 → 2점 직선.
+                // Line ruler: the start is pinned and only the end follows, giving a two-point line.
                 lineStartRef.current = pos;
                 liveStrokeRef.current = { id: Date.now(), tool: 'brush', color, opacity, size: brushSize, points: [pos, { ...pos }], pen: e.pointerType === 'pen' };
                 liveDrawnRef.current = 0; renderLiveStroke(true);
@@ -2461,12 +2487,12 @@ export default function App() {
 
         if (pathPtsRef.current) { pathPtsRef.current.push(pos); return; }
 
-        // 전체 이동 미리보기: 옮겨진 모습은 오버레이가 그리고, 원본은 paintFrame이 숨긴다.
+        // Move preview: the overlay draws the shifted copy while paintFrame hides the original.
         if (layerDragRef.current) {
             const d = layerDragRef.current;
             d.dx = pos.x - d.startPos.x; d.dy = pos.y - d.startPos.y;
             renderLayerDragPreview();
-            setDragTick(v => v + 1); // 원본 숨김 상태를 유지하며 다시 그리기
+            setDragTick(v => v + 1); // redraw while keeping the original hidden
             return;
         }
 
@@ -2512,7 +2538,7 @@ export default function App() {
             case 'line': {
                 if (liveStrokeRef.current && lineStartRef.current) {
                     liveStrokeRef.current.points = [lineStartRef.current, pos];
-                    renderLiveStroke(true); // 끝점이 바뀌므로 전체 재그리기
+                    renderLiveStroke(true); // the end point moved, so redraw the whole thing
                 }
                 break;
             }
@@ -2557,7 +2583,7 @@ export default function App() {
     };
 
     const stopDraw = () => {
-        // 레이어 전체 이동 확정: 모든 스트로크 좌표에 옮긴 만큼을 더한다.
+        // Committing a whole-layer move: the offset is added to every stroke coordinate.
         if (layerDragRef.current) {
             const d = layerDragRef.current; layerDragRef.current = null;
             isDrawing.current = false;
@@ -2569,7 +2595,7 @@ export default function App() {
                 updLayers(d.cutId, c => ({
                     layers: c.layers.map(l => !d.layerIds.includes(l.id) ? l : ({
                         ...l,
-                        rev: (l.rev || 0) + 1, // 좌표만 바뀌므로 캐시 무효화용 리비전을 올린다
+                        rev: (l.rev || 0) + 1, // only the coordinates changed, so bump the revision to invalidate the cache
                         strokes: safeArray(l.strokes).map(st => st.points
                             ? { ...st, points: st.points.map(p => ({ ...p, x: p.x + dx, y: p.y + dy })) }
                             : { ...st, x: (st.x || 0) + dx, y: (st.y || 0) + dy }),
@@ -2582,7 +2608,7 @@ export default function App() {
             setDragTick(v => v + 1);
             return;
         }
-        // 곡선자: 앵커 하나 찍기/미세조정 끝 — 확정은 완료 버튼에서.
+        // Curve ruler: one anchor placed or fine-tuned; the done button commits it.
         if (etool === 'curve' && curveDraggingRef.current) {
             curveDraggingRef.current = false;
             isDrawing.current = false;
@@ -2591,7 +2617,7 @@ export default function App() {
             renderCurvePreview();
             return;
         }
-        // 모자이크: 드래그한 사각 영역을 픽셀화해 붙임.
+        // Mosaic: pixelates the dragged rectangle and stamps it down.
         if (mosaicRectRef.current) {
             const r = mosaicRectRef.current; mosaicRectRef.current = null;
             isDrawing.current = false;
@@ -2610,7 +2636,8 @@ export default function App() {
             activePointerIdRef.current = null;
             if (pathCapture && pts.length > 1) {
                 if (pathCapture.mode === 'sway') {
-                    // 흔들림2: 그린 곡선을 파형으로 바꿔 저장. 강도는 그린 곡선의 실제 크기를 기본값으로.
+                    // Sway from a drawn curve: the curve is stored as a waveform, and how far it
+                    // actually swung becomes the default strength.
                     const w = curveToWave(pts);
                     if (w) updLayerAnim(pathCapture.cutId, pathCapture.layerId, { swayCurve: w.wave, swayAmount: Math.max(1, Math.round(w.amp / 4)) });
                     else alert(tr('거의 직선이라 흔들림을 만들 수 없습니다. 물결치듯 그려보세요.'));
@@ -2629,15 +2656,17 @@ export default function App() {
             try { if (activePointerIdRef.current !== null) canvasRef.current?.releasePointerCapture(activePointerIdRef.current); } catch { }
             activePointerIdRef.current = null;
             if (st.tool === 'blur') {
-                // 블러는 '잉크를 얹는' 게 아니라 '이미 그려진 걸 퍼뜨리는' 도구다.
-                // 지나간 자리의 레이어 픽셀을 흐리게 만들어 그 위에 덮어 붙인다.
+                // Blur does not lay down ink; it spreads what is already there, blurring the
+                // layer pixels under the path and stamping the result back over them.
                 const lc0 = liveCanvasRef.current; if (lc0) lc0.getContext('2d').clearRect(0, 0, lc0.width, lc0.height);
                 applyBlurStroke(st);
                 return;
             }
             if (st.points.length) {
-                // 그린 선을 메인 캔버스에 즉시 굽고(overlay와 동일 좌표) 오버레이를 바로 지움 →
-                // 상태 반영/리페인트 타이밍과 무관하게 선이 절대 사라지지 않음. 이후 정상 리페인트가 덮어씀(동일 결과).
+                // Bake the stroke straight onto the main canvas at the same coordinates as the
+                // overlay and clear the overlay at once, so the line cannot disappear no matter
+                // how state updates and repaints are timed. The next normal repaint replaces it
+                // with an identical result.
                 const mc = canvasRef.current; if (mc) drawStrokesOnCtx(mc.getContext('2d'), [st], false, bitmapStoreRef.current);
                 const lc = liveCanvasRef.current; if (lc) lc.getContext('2d').clearRect(0, 0, lc.width, lc.height);
                 commitStrokeToLayer(currentCutId, drawTargetLayerRef.current, st);
@@ -2859,10 +2888,12 @@ export default function App() {
                 // Cheap change signature instead of JSON.stringify(strokes): strokes are only
                 // appended/replaced in this app, so length + last-stroke id/points/tool is enough.
                 // Avoids O(n) stringify of a growing stroke on every drawing frame.
-                // 자글 레이어는 위상이 계속 바뀌므로 여기서 미리 굽지 않는다 (ensureLayerCanvas가 매 위상마다 그림).
-                // 썸네일용으로 정지 상태(위상 0) 한 장만 유지.
-                // rev: 스트로크 '개수/마지막 스트로크'가 그대로인 채 좌표만 바뀌는 편집(전체 이동 등)은
-                // strokeSig로 감지되지 않는다. 그런 편집은 rev를 올려 캐시를 확실히 무효화한다.
+                // A boiling layer changes phase constantly, so nothing is baked here;
+                // ensureLayerCanvas redraws it per phase. Only a single still frame (phase 0) is
+                // kept, for the thumbnail.
+                // rev exists because edits that move coordinates without changing the stroke count
+                // or the last stroke - a whole-layer move, say - are invisible to strokeSig.
+                // Bumping rev invalidates the cache for those.
                 const layerStrokes = strokeSig(layer.strokes) + '|r' + (layer.roughen || 0) + '|v' + (layer.rev || 0);
                 if (!canvas || canvas.dataset.strokes !== layerStrokes) {
                     // Skip (don't cache a blank) if a frame isn't decoded yet — the prefetch effect
@@ -2923,7 +2954,7 @@ export default function App() {
     // compact Blob stays, ready to re-decode). Decoding the active part's visible window is left to
     // the prefetch effect — don't bulk-decode the whole part here (hundreds of decodes = update storm).
     useEffect(() => {
-        if (!activePartId) return; // 전체: leave decoded frames as-is; the LRU cap bounds memory
+        if (!activePartId) return; // all parts: leave decoded frames as-is; the LRU cap bounds memory
         const store = bitmapStoreRef.current;
         const keep = new Set(); // frame ids belonging to the active part
         cuts.forEach(c => { if (c.partId === activePartId) safeArray(c.layers).forEach(l => safeArray(l.strokes).forEach(s => { if (s.tool === 'paste' && s.bitmapId) keep.add(s.bitmapId); })); });
@@ -2961,9 +2992,10 @@ export default function App() {
     // Build it synchronously here instead of skipping; the ref map keeps it bounded.
     const ensureLayerCanvas = (cutId, layer) => {
         const key = layerKey(cutId, layer.id);
-        // 자글 레이어는 시간 위상(boil)을 sig에 포함 → 위상이 바뀔 때마다 다시 그려져 "떨리는 모션"이 됨.
-        // 효과가 꺼진 레이어는 sig 형태가 그대로라 기존 캐시가 정상 히트(성능 영향 없음).
-        // 레이어별 속도 배수를 적용한 위상 (속도 0 = 떨림 정지)
+        // A boiling layer folds the time phase into its signature, so it redraws each phase and
+        // the strokes visibly shimmer. Layers with the effect off keep their old signature shape,
+        // so their cache still hits and performance is unchanged.
+        // The phase below has the layer's speed multiplier applied; a speed of 0 stops it.
         const boil = layer.roughen ? Math.floor(boilPhaseRef.current * (layer.roughSpeed ?? 1)) : 0;
         const rOpts = { roughen: layer.roughen || 0, roughPhase: boil, roughWave: layer.roughWave ?? 1, roughMinSize: layer.roughMinSize ?? 0 };
         const sig = strokeSig(layer.strokes) + '|r' + (layer.roughen || 0) + '|v' + (layer.rev || 0) + (layer.roughen ? `|b${boil}|w${rOpts.roughWave}|m${rOpts.roughMinSize}` : '');
@@ -2984,9 +3016,11 @@ export default function App() {
         if (missing.length) {
             if (isPlayingRef.current) requestFrameDecode(missing);
             if (cached || hit) return cached || hit;
-            // 비트맵(영상 프레임 등)이 아직/영영 안 풀려도 레이어를 통째로 건너뛰지 않는다.
-            // 통째로 건너뛰면 같은 레이어에 그린 펜 선까지 사라지고 화면이 하얘짐(서버 asset 불가 시 특히).
-            // 가능한 스트로크만 먼저 그려두고, sig를 '미완성'으로 표시해 디코드 후 다시 그리게 함.
+            // If a bitmap (a video frame, say) has not decoded yet - or never will - the layer
+            // is still not skipped wholesale. Skipping it would take the pen strokes on the same
+            // layer with it and leave the screen blank, which is what happened when a server
+            // asset was unavailable. Instead the strokes that can be drawn are drawn, and the
+            // signature is marked incomplete so it redraws once the decode finishes.
             const part = document.createElement('canvas');
             part.width = CANVAS_W; part.height = CANVAS_H;
             drawStrokesOnCtx(part.getContext('2d'), layer.strokes, true, store, rOpts);
@@ -3007,8 +3041,9 @@ export default function App() {
     const paintFrame = useCallback((t, playing) => {
         const canvas = canvasRef.current; if (!canvas) return;
         const ctx = canvas.getContext('2d');
-        // 자글자글 모션 위상: 전통 애니의 boiling line처럼 초당 ~10회만 바뀌게 양자화.
-        // 매 프레임 바꾸면 노이즈처럼 보이고, 이 정도가 '손그림이 살아 움직이는' 느낌을 냄.
+        // Boiling phase, quantised to about ten changes a second like a traditional boiling line.
+        // Changing it every frame just reads as noise; this rate is what makes the drawing feel
+        // alive.
         boilPhaseRef.current = t * BOIL_FPS + boilTick;
         const primary = cuts.find(c => c.id === currentCutId);
         let activeCuts = cuts.filter(c => t >= c.startTime && t < c.endTime);
@@ -3081,7 +3116,7 @@ export default function App() {
                 const la = playing ? computeLayerAnim(l, ac, t, CANVAS_W, CANVAS_H) : null;
                 ctx.save();
                 if (la) {
-                    if (la.alpha != null && la.alpha < 1) ctx.globalAlpha *= la.alpha; // 키프레임 투명도
+                    if (la.alpha != null && la.alpha < 1) ctx.globalAlpha *= la.alpha; // keyframe opacity
                     ctx.translate(la.px + la.tx, la.py + la.ty);
                     ctx.rotate(la.rot);
                     ctx.scale(la.sc, la.sc);
@@ -3094,13 +3129,17 @@ export default function App() {
                 const mb = maskEntry?.imageBitmap;
                 const mi = maskEntry?.imageData;
 
-                // 전체 이동 중인 레이어는 오버레이가 대신 그린다(원본은 잠시 숨김) → 잔상 방지.
+                // A layer being dragged is drawn by the overlay instead, with the original hidden,
+                // which prevents a ghost trailing behind it.
                 if (layerDragRef.current && layerDragRef.current.cutId === ac.id
                     && layerDragRef.current.layerIds.includes(l.id)) { ctx.restore(); continue; }
                 if (la?.swayProfile && (!shouldMask || (!mb && !mi))) {
-                    // 지점별 흔들림: 축을 따라 잘라 구간마다 다른 양으로 휜다(비-어파인이라 단일 shear로는 불가).
-                    // 핵심: 각 조각을 통째로 '옮기면' 경계에서 어긋나 찢어진다. 조각마다 기울기(shear)를 줘
-                    // 변위가 조각 안에서 연속으로 변하게 하고, 경계값을 이웃과 정확히 같게 맞춘다 → 이음매 없음.
+                    // Per-point sway: the layer is sliced along the axis and each slice bends by a
+                    // different amount. That is non-affine, so a single shear cannot express it.
+                    // The key is that translating each slice as a rigid block makes the edges
+                    // mismatch and the image tear. Giving each slice a shear instead makes the
+                    // displacement vary continuously within it, and matching the boundary value to
+                    // the neighbour exactly leaves no seam.
                     const SLICES = 64;
                     const vertical = la.swayAxis === 'y';
                     const span = vertical ? CANVAS_H : CANVAS_W;
@@ -3110,10 +3149,11 @@ export default function App() {
                         const a1 = Math.round((sIdx + 1) * span / SLICES);
                         const len = a1 - a0; if (len <= 0) continue;
                         const d0 = dispAt(a0), d1 = dispAt(a1);
-                        const k = (d1 - d0) / len;  // 조각 내부 기울기
-                        const m = d0 - k * a0;      // a0에서 정확히 d0이 되도록
+                        const k = (d1 - d0) / len;  // gradient within the slice
+                        const m = d0 - k * a0;      // so that it equals d0 exactly at a0
                         ctx.save();
-                        // 축 방향 좌표는 그대로 두므로(대각 성분 1, 해당 비대각 0) 조각들이 빈틈 없이 붙는다.
+                        // The coordinate along the axis is left untouched (diagonal term 1, that
+                        // off-diagonal 0), so the slices butt together without gaps.
                         if (vertical) { ctx.transform(1, 0, k, 1, m, 0); ctx.drawImage(layerCanvas, 0, a0, CANVAS_W, len, 0, a0, CANVAS_W, len); }
                         else { ctx.transform(1, k, 0, 1, 0, m); ctx.drawImage(layerCanvas, a0, 0, len, CANVAS_H, a0, 0, len, CANVAS_H); }
                         ctx.restore();
@@ -3158,10 +3198,10 @@ export default function App() {
                 ctx.scale(anim.sx, anim.sy);
                 ctx.translate(-CANVAS_W / 2, -CANVAS_H / 2);
             }
-            const t2 = t; // 아래 루프의 t는 tr('텍스트')라 시간 t를 가린다 → 미리 잡아둔다
+            const t2 = t; // the loop below names its text object t, shadowing the time t
             for (const t of safeArray(ac.texts)) {
                 if (!t || t.visible === false) continue;
-                // 텍스트 애니메이션은 컷 애니메이션과 같이 재생 중에만 적용한다.
+                // Text animation only applies during playback, like cut animation.
                 const ta = playing ? computeTextAnim(t, ac, t2) : null;
                 if (ta && ta.alpha <= 0.001) continue;
                 const fontSize = Math.max(6, Math.min(400, t.fontSize ?? 32));
@@ -3172,7 +3212,7 @@ export default function App() {
                 ctx.globalCompositeOperation = 'source-over';
                 ctx.globalAlpha = (t.opacity ?? 1) * (anim ? anim.alpha : 1) * (ta ? ta.alpha : 1);
                 if (ta && box) {
-                    // 이동·확대·회전은 텍스트 박스 중심 기준으로 건다.
+                    // Move, scale and rotate all pivot on the centre of the text box.
                     const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
                     ctx.translate(cx + ta.dx, cy + ta.dy);
                     if (ta.scale !== 1) ctx.scale(ta.scale, ta.scale);
@@ -3180,12 +3220,12 @@ export default function App() {
                     ctx.translate(-cx, -cy);
                     if (ta.blur > 0.05) ctx.filter = `blur(${ta.blur.toFixed(1)}px)`;
                 }
-                // 회전: 텍스트 박스 중심 기준.
+                // Rotation, about the centre of the text box.
                 if (t.rotation && box) {
                     const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
                     ctx.translate(cx, cy); ctx.rotate((t.rotation * Math.PI) / 180); ctx.translate(-cx, -cy);
                 }
-                // 배경 박스 (하이라이트).
+                // Background box (the highlight).
                 if (t.bgColor && box) {
                     const pad = Math.round(fontSize * 0.22);
                     ctx.fillStyle = t.bgColor;
@@ -3199,12 +3239,12 @@ export default function App() {
                 ctx.font = textFontOf(t);
                 try { ctx.letterSpacing = `${t.letterSpacing || 0}px`; } catch { }
                 let lines = String(t.text ?? '').split('\n');
-                // 타이핑: 전체 글자수 기준으로 잘라 한 글자씩 드러낸다(줄바꿈 유지).
+                // Typing: slices by total character count to reveal one at a time, keeping newlines.
                 if (ta && ta.chars != null) {
                     let left = ta.chars;
                     lines = lines.map(ln => { const take = Math.max(0, Math.min(ln.length, left)); left -= ln.length; return ln.slice(0, take); });
                 }
-                // 그라데이션 채우기 (세로 2색) 또는 단색.
+                // Either a vertical two-colour gradient or a flat fill.
                 let fillStyle = t.color ?? '#000';
                 if (t.gradient && box) {
                     const g = ctx.createLinearGradient(0, box.y, 0, box.y + box.h);
@@ -3333,24 +3373,26 @@ export default function App() {
         }
     }, [paintFrame, cuts, currentCutId, isPlaying, currentTime, lassoPoints, selection, selectedText, animLayer]);
 
-    // 자글자글은 '모션'이라 정지 화면에선 안 보인다 → 편집 중에도 위상만 천천히 돌려 미리보기.
-    // 다만 이 미리보기는 전체 레이어를 다시 그리므로, 사용자가 실제로 조작 중일 때는 멈춘다.
-    // (그리는 중·화면 이동/확대 직후에 같이 돌면 조작이 뚝뚝 끊겨 체감이 매우 나빠짐)
+    // Boiling is motion, so it is invisible on a still frame; the phase is advanced slowly
+    // while editing to preview it. That preview redraws the whole layer, though, so it stops
+    // whenever the user is actually doing something - letting it run while drawing or right
+    // after a pan or zoom makes the interaction stutter badly.
     useEffect(() => {
         if (isPlaying) return;
         const cut = cuts.find(c => c.id === currentCutId);
         if (!cut || !safeArray(cut.layers).some(l => l.roughen && l.visible !== false)) return;
         const id = setInterval(() => {
-            if (document.hidden) return;                      // 탭이 안 보이면 낭비
-            if (isDrawing.current || panningRef.current) return; // 그리는 중/화면 이동 중
-            if (Date.now() - lastInteractRef.current < 400) return; // 확대·축소 직후 잠깐 양보
+            if (document.hidden) return;                      // pointless while the tab is hidden
+            if (isDrawing.current || panningRef.current) return; // mid-stroke or mid-pan
+            if (Date.now() - lastInteractRef.current < 400) return; // yield briefly right after a zoom
             setBoilTick(v => (v + 1) % 100000);
         }, Math.round(1000 / BOIL_FPS));
         return () => clearInterval(id);
     }, [isPlaying, cuts, currentCutId]);
 
-    // 라이브 오버레이 클리어를 타이머가 아니라 "레이어 캐시가 갱신된 뒤"로 확정 → 커밋한 선이
-    // 메인 캔버스에 그려진 다음에만 오버레이를 지워, 컴퓨터/속도와 무관하게 선이 사라지지 않음.
+    // The live overlay is cleared once the layer cache has updated, not on a timer, so the
+    // committed stroke is already on the main canvas before the overlay goes. That makes it
+    // independent of how fast the machine is - the line cannot vanish in between.
     useEffect(() => {
         if (liveClearPendingRef.current && !isDrawing.current && !liveStrokeRef.current) {
             liveClearPendingRef.current = false;
@@ -3388,8 +3430,8 @@ export default function App() {
         const target = dir > 0 ? times.find(t => t > cur + 0.02) : [...times].reverse().find(t => t < cur - 0.02);
         if (target != null) seekToTime(target);
     };
-    // 마우스 휠(가운데) 클릭 드래그 = 타임라인 패닝. 어디를 눌러도(컷 위 포함) 동작하도록
-    // 캡처 단계에서 처리하고, 브라우저 기본 auto-scroll은 막는다.
+    // Middle-click drag pans the timeline. Handled in the capture phase so it works wherever
+    // the press lands, cuts included, and the browser's own auto-scroll is suppressed.
     const startTimelinePan = (e) => {
         if (e.button !== 1) return;
         const el = timelineRef.current; if (!el) return;
@@ -3579,9 +3621,10 @@ export default function App() {
     // Recents keep only the source key/link, never the video data — the downloaded file is
     // dropped right after extraction, so re-importing the same link re-downloads it.
     const openVideoImport = (file, name, src) => {
-        // 새 가져오기는 언제나 설정 창을 띄운다. 창은 videoImport && !videoBusyBg 일 때만 뜨는데,
-        // 이전 추출에서 '백그라운드로'를 눌렀다가 그 추출이 정상 종료되지 못하면 플래그가 true로
-        // 남아 이후 가져오기에서 창이 영영 안 뜬다 → 시작 시점에 반드시 내려준다.
+        // A new import must always raise the settings dialog. That dialog only shows while
+        // videoImport && !videoBusyBg, so if an earlier extraction was sent to the background and
+        // then failed to finish cleanly, the flag stays true and no later import ever opens the
+        // dialog again. Clearing it here at the start prevents that.
         setVideoBusyBg(false);
         const label = (name || file.name).replace(/\.[^.]+$/, '').slice(0, 24);
         const srcKey = src?.key || `f:${file.name}:${file.size}`;
@@ -3660,7 +3703,7 @@ export default function App() {
     // Local-only: pull a video by URL through the API, then reuse the frame-import dialog.
     const loadYoutubeVideo = async (presetUrl) => {
         const url = typeof presetUrl === 'string' ? presetUrl : null;
-        if (!url) { setLinkPrompt({ kind: 'video' }); return; } // 입력창을 띄우고 여기서 끝낸다
+        if (!url) { setLinkPrompt({ kind: 'video' }); return; } // raise the input dialog and stop here
         setVideoBusy({ done: 0, total: 0, fetching: true });
         try {
             const res = await fetch('/api/youtube-video?url=' + encodeURIComponent(url) + '&maxHeight=1080');
@@ -3845,7 +3888,7 @@ export default function App() {
         });
     };
 
-    // 도구 창: 버튼 크기는 쓰기 좋은 값으로 두고, 폭에 따라 '열 수'가 알아서 바뀌게 한다.
+    // Tool panel: the buttons keep a comfortable size and the column count follows the width.
     const toolW = Math.max(56, leftW || 96);
     const currentCut = cuts.find(c => c.id === currentCutId);
     const isSelectionTool = tool === 'lasso' || !!selection;
@@ -3876,8 +3919,8 @@ export default function App() {
                     onDelete={(stamp) => doBackupDelete(stamp)}
                     onClose={() => setBackupList(null)} />
             )}
-            {/* 영상 받기·자동 백업은 오래 걸리는 작업이라 화면을 막지 않는다.
-                예전에는 전체 화면 오버레이라 받는 동안 아무 작업도 못 했다. */}
+            {/* Fetching a video and the automatic backup both take a while, so neither blocks
+                the screen. They used to raise a full-screen overlay that stopped all work. */}
             {(videoBusy?.fetching || backupProg || toast) && (
                 <div style={{ position: 'fixed', right: 16, bottom: 16, zIndex: 1500, display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
                     {videoBusy?.fetching && (
@@ -3906,8 +3949,8 @@ export default function App() {
                     <button className="button" style={{ height: 26, padding: '0 8px' }} onClick={() => { videoStopRef.current = true; }}>{tr('중지')}</button>
                 </div>
             )}
-            {/* 실패 배너: 오류를 화면에 남긴다. 이번 건처럼 API 서버가 죽어 있으면
-                예전에는 차단된 alert 때문에 tr('아무 반응 없음')으로만 보였다. */}
+            {/* Failure banner: keeps the error on screen. With the API server down, a blocked
+                alert used to make it look as though nothing had happened at all. */}
             {appError && (
                 <div style={{ position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', zIndex: 3000,
                     maxWidth: 640, background: '#3a1414', border: '1px solid #a33', color: '#ffd9d9',
@@ -3954,7 +3997,7 @@ export default function App() {
                 setCanvasSize={setCanvasSize} setShowHelp={setShowHelp} setShowSettings={setShowSettings}
                 keymap={keymap} view={view} zoomCanvas={zoomCanvas} resetView={resetView} autoSavedAt={autoSavedAt}
                 autosaveErr={autosaveErr} backupAt={backupAt} storageInfo={storageInfo} handleExport={handleExport} />
-            {/* 프로젝트(문서) 탭 바 — 파일/미디어 메뉴 아래 */}
+            {/* Project (document) tab bar, below the File and Media menus. */}
             <div className="doc-tabs" style={{ display: 'flex', alignItems: 'stretch', gap: 2, background: 'hsl(var(--ui-h) var(--ui-s) 11%)', borderBottom: '1px solid hsl(var(--ui-h) var(--ui-s) 20%)', padding: '3px 6px 0', overflowX: 'auto', flexShrink: 0 }}>
                 {tabs.map(t => (
                     <div key={t.id} onClick={() => switchTab(t.id)}
@@ -3969,7 +4012,8 @@ export default function App() {
             </div>
 
             <div className="main-content">
-                {/* 맨 왼쪽 아이콘 바: 창 전환 (클립스튜디오식). 위=메인 설정, 아래=색상 창. */}
+                {/* Far-left icon rail for switching panels, Clip Studio style: tools on top,
+                    colour below. */}
                 <div className="dock-rail">
                     <button className={`dock-icon${showLeft ? ' active' : ''}`} title={tr('도구 창 (펜 · 지우개 · 스포이드 등)')}
                         onClick={() => setShowLeft(v => !v)}><Menu size={20} /></button>
@@ -4077,10 +4121,10 @@ export default function App() {
                 )}
                 {showLeft && <div className="splitter-v" style={{ touchAction: 'none' }} title={tr('드래그로 도구 패널 너비 조절')} onPointerDown={e => { try { e.currentTarget.setPointerCapture(e.pointerId); } catch { } setSplitter({ type: 'left', startX: e.clientX, startW: leftW }); }} />}
 
-                {/* 스페이스 이동 중에는 이 영역의 스크롤을 잠근다. 열어두면 스페이스/드래그가
-                    화면을 아래로 스크롤시켜 tr('이동')이 아니라 그냥 내려가 버린다. */}
+                {/* Scrolling is locked here while panning with space. Left open, space and drag
+                    scroll the page down instead of moving the canvas. */}
                 <div className="canvas-area" ref={canvasAreaRef} style={{ touchAction: 'none', position: 'relative', cursor: spaceDown ? 'grab' : undefined, overflow: spaceDown ? 'hidden' : 'auto' }}
-                    onMouseDown={e => { if (e.button === 1) e.preventDefault(); }} /* 가운데클릭 자동스크롤 방지 */
+                    onMouseDown={e => { if (e.button === 1) e.preventDefault(); }} /* suppress middle-click auto-scroll */
                     onAuxClick={e => { if (e.button === 1) e.preventDefault(); }}
                     onPointerDown={onAreaPointerDown} onPointerMove={onAreaPointerMove} onPointerUp={onAreaPointerUp} onPointerCancel={onAreaPointerUp}>
                     {pathCapture && (
@@ -4106,8 +4150,10 @@ export default function App() {
                         <canvas ref={canvasRef} width={CANVAS_W} height={CANVAS_H}
                             onPointerDown={startDraw} onPointerMove={onDraw} onPointerUp={stopDraw} onPointerCancel={stopDraw} onPointerLeave={onPointerLeaveCanvas}
                             style={{ cursor: spaceDown ? 'grab' : selection ? 'move' : tool === 'fill' ? 'cell' : tool === 'lasso' ? 'crosshair' : 'crosshair', touchAction: 'none' }} />
-                        {/* 라이브 오버레이는 반드시 투명해야 함. 전역 `canvas { background:#fff }` 규칙을
-                            그대로 받으면 메인 캔버스를 흰색으로 덮어 그림이 안 보이고, 커밋 시 선이 사라진 것처럼 보임. */}
+                        {/* The live overlay must be transparent. Inheriting the global
+                            `canvas { background:#fff }` rule paints white over the main canvas,
+                            hiding the drawing and making committed strokes look as if they
+                            vanished. */}
                         <canvas ref={liveCanvasRef} width={CANVAS_W} height={CANVAS_H} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', background: 'transparent', boxShadow: 'none' }} />
                         {selection && (
                             <div className="selection-actions">
@@ -4210,7 +4256,7 @@ export default function App() {
                                     {textEdit.bgColor && <input type="color" value={textEdit.bgColor.startsWith('#') ? textEdit.bgColor : '#ffffff'} onChange={e => setTextEdit(te => te ? ({ ...te, bgColor: e.target.value }) : te)} className="text-editor-color" title={tr('배경 색')} />}
                                     <input type="number" className="time-input" style={{ width: 54 }} title={tr('회전(도)')} value={textEdit.rotation ?? 0} step={5}
                                         onChange={e => { let v = parseFloat(e.target.value); if (isNaN(v)) v = 0; setTextEdit(te => te ? ({ ...te, rotation: v }) : te); }} />
-                                    {/* 텍스트 애니메이션 (재생 시에만 보임) */}
+                                    {/* Text animation, visible only during playback. */}
                                     {(() => {
                                         const an = { ...TEXT_ANIM_DEFAULT, ...(textEdit.anim || {}) };
                                         const on = !!textEdit.anim;
