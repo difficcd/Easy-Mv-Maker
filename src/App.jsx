@@ -13,6 +13,7 @@ import { tr, loadLang, saveLang, setLangValue } from './i18n';
 import { moveLayer } from './layerOps.js';
 import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, offsetLayers } from './layerOps.js';
 import { closeLassoPath, lassoBounds } from './lassoOps.js';
+import { measureTextBox as measureTextBoxPure, textNeedsBox, drawTextObject } from './textRender.js';
 import { unusedBitmapIds } from './bitmapRefs.js';
 import { dragCut, resizeCut } from './cutOps.js';
 import {
@@ -2205,24 +2206,9 @@ export default function App() {
         return textMeasureCtxRef.current;
     };
 
-    const textFontOf = (t) => {
-        const fontSize = Math.max(6, Math.min(400, t.fontSize ?? 32));
-        return `${t.italic ? 'italic ' : ''}${t.bold ? 'bold ' : ''}${fontSize}px ${t.fontFamily ?? 'sans-serif'}`;
-    };
-    const measureTextBox = (t) => {
-        const ctx = getTextMeasureCtx();
-        const fontSize = Math.max(6, Math.min(400, t.fontSize ?? 32));
-        ctx.font = textFontOf(t);
-        const lineHeight = Math.round(fontSize * (t.lineHeight ?? 1.25));
-        const lines = String(t.text ?? '').split('\n');
-        let w = 0;
-        for (const ln of lines) w = Math.max(w, ctx.measureText(ln).width);
-        w = Math.max(1, Math.ceil(w));
-        const h = Math.max(1, Math.max(1, lines.length) * lineHeight);
-        const align = t.align || 'left';
-        const x = (t.x ?? 0) - (align === 'center' ? w / 2 : align === 'right' ? w : 0);
-        return { x, y: t.y ?? 0, w, h };
-    };
+    // Measuring and drawing text live in textRender; this only supplies the scratch context that
+    // measureText needs.
+    const measureTextBox = (t) => measureTextBoxPure(t, getTextMeasureCtx());
 
     const hitTestText = (pos, cut) => {
         const texts = safeArray(cut?.texts);
@@ -3232,67 +3218,11 @@ export default function App() {
                 // Text animation only applies during playback, like cut animation.
                 const ta = playing ? computeTextAnim(t, ac, t2) : null;
                 if (ta && ta.alpha <= 0.001) continue;
-                const fontSize = Math.max(6, Math.min(400, t.fontSize ?? 32));
-                const lineHeight = Math.round(fontSize * (t.lineHeight ?? 1.25));
-                const needBox = t.gradient || t.bgColor || t.rotation || ta;
-                const box = needBox ? measureTextBox(t) : null;
-                ctx.save();
-                ctx.globalCompositeOperation = 'source-over';
-                ctx.globalAlpha = (t.opacity ?? 1) * (anim ? anim.alpha : 1) * (ta ? ta.alpha : 1);
-                if (ta && box) {
-                    // Move, scale and rotate all pivot on the centre of the text box.
-                    const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
-                    ctx.translate(cx + ta.dx, cy + ta.dy);
-                    if (ta.scale !== 1) ctx.scale(ta.scale, ta.scale);
-                    if (ta.rot) ctx.rotate(ta.rot * Math.PI / 180);
-                    ctx.translate(-cx, -cy);
-                    if (ta.blur > 0.05) ctx.filter = `blur(${ta.blur.toFixed(1)}px)`;
-                }
-                // Rotation, about the centre of the text box.
-                if (t.rotation && box) {
-                    const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
-                    ctx.translate(cx, cy); ctx.rotate((t.rotation * Math.PI) / 180); ctx.translate(-cx, -cy);
-                }
-                // Background box (the highlight).
-                if (t.bgColor && box) {
-                    const pad = Math.round(fontSize * 0.22);
-                    ctx.fillStyle = t.bgColor;
-                    const bx = box.x - pad, by = box.y - pad, bw = box.w + pad * 2, bh = box.h + pad * 2, r = Math.min(bh / 2, 12);
-                    ctx.beginPath();
-                    if (ctx.roundRect) ctx.roundRect(bx, by, bw, bh, r); else ctx.rect(bx, by, bw, bh);
-                    ctx.fill();
-                }
-                ctx.textBaseline = 'top';
-                ctx.textAlign = t.align || 'left';
-                ctx.font = textFontOf(t);
-                try { ctx.letterSpacing = `${t.letterSpacing || 0}px`; } catch { }
-                let lines = String(t.text ?? '').split('\n');
-                // Typing: slices by total character count to reveal one at a time, keeping newlines.
-                if (ta && ta.chars != null) {
-                    let left = ta.chars;
-                    lines = lines.map(ln => { const take = Math.max(0, Math.min(ln.length, left)); left -= ln.length; return ln.slice(0, take); });
-                }
-                // Either a vertical two-colour gradient or a flat fill.
-                let fillStyle = t.color ?? '#000';
-                if (t.gradient && box) {
-                    const g = ctx.createLinearGradient(0, box.y, 0, box.y + box.h);
-                    g.addColorStop(0, t.color ?? '#000');
-                    g.addColorStop(1, t.color2 || '#ffffff');
-                    fillStyle = g;
-                }
-                if (t.shadow) { ctx.shadowColor = t.shadowColor || 'rgba(0,0,0,0.5)'; ctx.shadowBlur = t.shadowBlur ?? 6; ctx.shadowOffsetX = t.shadowDX ?? 2; ctx.shadowOffsetY = t.shadowDY ?? 2; }
-                if (t.outline) {
-                    ctx.lineJoin = 'round'; ctx.lineWidth = Math.max(2, fontSize / 6);
-                    ctx.strokeStyle = t.outlineColor || '#ffffff';
-                    for (let i = 0; i < lines.length; i++) ctx.strokeText(lines[i], t.x ?? 0, (t.y ?? 0) + i * lineHeight);
-                }
-                ctx.fillStyle = fillStyle;
-                for (let i = 0; i < lines.length; i++) {
-                    ctx.fillText(lines[i], t.x ?? 0, (t.y ?? 0) + i * lineHeight);
-                    if (i === 0 && t.shadow) { ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0; } // shadow once, not per line stack
-                }
-                try { ctx.letterSpacing = '0px'; } catch { }
-                ctx.restore();
+                drawTextObject(ctx, t, {
+                    anim: ta,
+                    box: textNeedsBox(t, ta) ? measureTextBox(t) : null,
+                    alpha: anim ? anim.alpha : 1,
+                });
             }
             ctx.restore();
         });
