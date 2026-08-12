@@ -3,18 +3,46 @@
 Frame-by-frame MV/animation app. Vite + React 18, single big component. Capacitor wraps it for Android.
 
 ## Files
-- `src/App.jsx` — the whole `App()` component (state + handlers + JSX). Large; use the section map below to jump.
-- `src/canvasUtils.js` — **pure** helpers (no React/state). Put new pure logic here, not in App.jsx:
-  - constants `DEFAULT_CUT_DURATION, CANVAS_W=854, CANVAS_H=480, FONT_PRESETS`
-  - geometry/colour: `pointInPolygon, dist, safeArray, hexToRgb, bucketFillTransparentRegion`
-  - canvas: `drawStrokesOnCtx(ctx, strokes, clear, bitmapStore)` (handles tools: text/eraseBitmap/paste/fill/pen=dot/marker=temp-composite/eraser/default), `layerKey(cutId,layerId)`, `imageDataToDataURL`, `dataURLToImageData`, `flattenForCanvas`, `flattenLayersInUiOrder`
-  - animation: `ANIM_DEFAULT`, `computeCutAnim(cut,time)`, `LAYER_ANIM_DEFAULT`, `computeLayerAnim(layer,cut,time)`, `applyEase(t,type,power)`, `triwave`, `samplePath`
-- `src/AnimPanels.jsx` — `CutAnimPanel` / `LayerAnimPanel` (the animation control UI + option lists). Edit animation panel UI here, not in App.jsx.
+
+`App.jsx` is still the component, but the logic worth testing has been moved out of it. **Put new
+pure logic in a module, not in App.jsx** — anything that is a function of its arguments belongs
+next to its tests. The modules below are all pure (no React, no DOM beyond a passed-in context).
+
+- `src/App.jsx` — the `App()` component: state, handlers, JSX. Use the section map below to jump.
+- `src/canvasUtils.js` — the big one. Geometry (`pointInPolygon`, `dist`, `fitRect`), colour
+  (`hexToRgb`), fill (`bucketFillTransparentRegion`, `dilateMask`), canvas
+  (`drawStrokesOnCtx`, `sizeCanvas`, `layerKey`, `imageDataToDataURL`, `flattenLayersInUiOrder`),
+  animation (`ANIM_DEFAULT`/`computeCutAnim`, `LAYER_ANIM_DEFAULT`/`computeLayerAnim`,
+  `TEXT_ANIM_DEFAULT`/`computeTextAnim`, `applyEase`, `triwave`, `samplePath`, `sampleKeys`),
+  video import sizing (`targetCanvasFor`, `extractVideoFrames`). Constants: `CANVAS_W=1920`,
+  `CANVAS_H=1080`, `DEFAULT_CUT_DURATION`, `FONT_PRESETS`.
+- `src/layerOps.js` — layer tree and stroke placement: `moveLayer` (drag/drop, refuses cycles),
+  `resolveDrawLayer` + `commitStroke` (**the rules behind "the line I drew disappeared"**),
+  `insertFill` (paint goes under the ink), `offsetLayers` (move-everything commit).
+- `src/cutOps.js` — `dragCut`, `resizeCut` on the timeline, with snapping.
+- `src/lassoOps.js` — `closeLassoPath`, `lassoBounds`, `applyResize` (selection handles).
+- `src/textRender.js` — measuring and drawing text objects: `measureTextBox`, `textFontOf`,
+  `textNeedsBox`, `revealLines` (typing), `drawTextObject`.
+- `src/projectFormat.js` — opening a saved file: `migrateCuts` (**format history lives here**),
+  `projectSettings`, `makeLoadProgress`.
+- `src/bitmapRefs.js` — `collectUsedBitmapIds` / `unusedBitmapIds`. Every reference source is
+  named in one place; miss one and the collector frees pixels undo or paste still needs.
+- `src/numInput.js` + `src/NumField.jsx` — a number input that can actually be typed into
+  (clamps on blur, not per keystroke). Use `NumField` for any new numeric field.
+- `src/i18n.js` — `tr()` plus the English dictionary. Korean source text is the lookup key, so
+  write UI strings in Korean and add the English to the dictionary. Called `tr`, not `t` — `t` is
+  a local variable in dozens of places.
+
+UI, split out of App.jsx by panel: `AnimPanels.jsx` (`CutAnimPanel`, `LayerAnimPanel`,
+`JitterPanel`), `CutLayerPanel.jsx`, `ColorPanel.jsx`, `Timeline.jsx`, `TopBar.jsx`, `Modals.jsx`.
+
 - `src/db.js` — IndexedDB autosave (`saveAutosave`, `loadAutosave`, plus project CRUD).
-- `server/index.js` — Express file-backed project DB on :8787, files under `server/data/`. Proxied at `/api` (vite.config). `npm run dev` runs api+web via concurrently.
-- `src/main.jsx` — boot + service-worker register (PWA, skipped in Capacitor) + fatal-error overlay.
+- `server/index.js` — Express file-backed project DB on :8787, files under `server/data/`.
+  Proxied at `/api` (vite.config).
+- `src/main.jsx` — boot + service-worker register (PWA, skipped in Capacitor) + fatal-error
+  overlay. That overlay is how a render crash shows up — check the page text for "Unhandled".
 - `public/` — `manifest.webmanifest`, `icon.svg`, `sw.js` (caches app shell; `/api` excluded).
-- `android/`, `capacitor.config.json` — Capacitor Android wrapper (`npm run android:sync|open|run`).
+- `android/`, `capacitor.config.json` — Capacitor Android wrapper. The APK build needs **JDK 21**.
 
 ## Data model
 - `cuts`: `[{ id, name, startTime, endTime, track, layers, activeLayerId, texts, anim }]`
@@ -30,16 +58,40 @@ Frame-by-frame MV/animation app. Vite + React 18, single big component. Capacito
 - Selection (lasso): `commitSelectionImpl`, `extractSelectionToPart` (lasso → new layer).
 - Cuts: `handleAddCut`, `handleDuplicateCut` (Ctrl+D), `handleCopyCut`/`handlePasteCut`, `handleClearCut`, `cloneCutContents`.
 - Layers: `handleAddLayer/handleAddFolder/handleDeleteLayer`, drag `onLayerDrag*`, `renderLayers`.
-- Anim updaters: `updCutAnim`, `updLayerAnim`. Option lists: `DUR_OPTS/COUNT_OPTS/MOVE_OPTS/ROT_OPTS/SCALE_OPTS/EASE_OPTS`, `optionList`.
+- Anim updaters: `updCutAnim`, `updLayerAnim`. The panels take free numeric input (`NumField`);
+  the old fixed-value dropdowns and their option lists are gone.
+- Gestures: `beginGesture`/`endGesture` wrap pointer capture — **always use them.**
+  `setPointerCapture` and `releasePointerCapture` *throw* on a pointer that has already gone, and
+  optional chaining does not help (it guards a missing method, not a throw). An uncaught throw out
+  of a pointer handler takes the whole app down; it has happened.
 - Timeline: `seekToClientX`, `startTimelineScrub` (mouse), `onTimelinePointer*` (touch: 1=pan/tap-seek, 2=pinch zoom pps). Cut blocks: drag = long-press on touch (`cutDragArmedRef`), resize = absolute delta (`initialStart/initialEnd`). `splitter` for panel resize.
 - Canvas nav: `onAreaPointer*` (1-finger pan / 2-finger pinch), `view={zoom,x,y}`.
 - Playback: rAF effect; bounds `contentStart..contentEnd` (NOT maxTime); `loopPlay` repeats.
 - Files: `buildData/restore/doSave/doOpen/doNew`; server `doServerSave/openServerList/doServerOpen/doServerDelete`; autosave effect + crash-recovery effect.
 - History: `historyRef`/`historyIndexRef`, `globalUndo/globalRedo` (JSON snapshots of cuts).
 
-## Run
-- Web + API: `npm run dev` (web :5173 with LAN host + QR, api :8787). Build: `npm run build`. Android: `npm run android:sync` then `android:open`.
+## Run and verify
+- Web + API: `npm run dev` (web :5173 with LAN host + QR, api :8787).
+- `npm run check` — typecheck, tests, hook-lint baseline, build. **Run this before reporting done.**
+- `npm test` alone runs the suite (Node's built-in runner, no test framework dependency).
+- Build: `npm run build`. Android: `npm run android:sync` then `android:open`.
+
+**A green build proves very little here.** A component that returns `undefined` is legal React and
+valid JS, so `tsc` and a build both pass while a modal renders nothing — that has happened. For a
+structural change, confirm the affected screen actually mounts.
 
 ## Gotchas
-- Bitmap store has no GC (would need to scan cuts+history+copiedCut+selection). Leak is non-fatal.
-- Server `/api` only exists with the local Express server running; in a packaged APK it’s absent (calls fail with an alert — degrade gracefully).
+- **Layer ids are not unique across cuts.** Always key per-cut with `layerKey(cutId, layerId)`.
+- **`canvas.width = n` reallocates the backing store even when n is unchanged** — 8MB at this
+  canvas size. Use `sizeCanvas`, which only resizes when the size actually differs. Assigning it
+  unconditionally on a canvas redrawn ten times a second is what once ran the tab out of memory.
+- Boiling (`layer.roughen`) redraws a layer per phase, and phases cycle through `BOIL_PHASES` so
+  the redraws are cached rather than endless. Its canvases are keyed `cut:layer#phase`; anything
+  invalidating the layer cache has to account for the suffix.
+- Pixel data for fill/lasso/paste lives in `bitmapStoreRef`, not in `cuts`. It *is* collected now
+  (`gcBitmaps` → `bitmapRefs`), so a new place that holds a bitmap id must be added as a source
+  there or its pixels will be freed while still referenced.
+- Animations apply **only while `isPlaying`** (editing is at rest); export captures them via
+  playback. Scrubbing renders like playback so the animation can be seen while dragging.
+- Server `/api` only exists with the local Express server running; in a packaged APK it is absent
+  (calls fail with an alert — degrade gracefully).
