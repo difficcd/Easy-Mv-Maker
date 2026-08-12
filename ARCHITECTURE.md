@@ -16,6 +16,12 @@ next to its tests. The modules below are all pure (no React, no DOM beyond a pas
   `TEXT_ANIM_DEFAULT`/`computeTextAnim`, `applyEase`, `triwave`, `samplePath`, `sampleKeys`),
   video import sizing (`targetCanvasFor`, `extractVideoFrames`). Constants: `CANVAS_W=1920`,
   `CANVAS_H=1080`, `DEFAULT_CUT_DURATION`, `FONT_PRESETS`.
+- `src/cutsReducer.js` — **every change to the document goes through here.** `cuts` is a
+  `useReducer`, and the actions are built by exported creator functions (`updateCut`,
+  `upsertText`, `moveLayers`, …) rather than object literals, so a mistyped action is a type
+  error rather than a silent no-op. Adding a mutation means adding an action, not a lambda —
+  `patchCut`/`patchCuts` exist only as "this has not been given a name yet". Invariants live here
+  too: `moveLayers` bumps `rev` so the canvas cache cannot go stale.
 - `src/layerOps.js` — layer tree and stroke placement: `moveLayer` (drag/drop, refuses cycles),
   `resolveDrawLayer` + `commitStroke` (**the rules behind "the line I drew disappeared"**),
   `insertFill` (paint goes under the ink), `offsetLayers` (move-everything commit).
@@ -82,6 +88,10 @@ structural change, confirm the affected screen actually mounts.
 
 ## Gotchas
 - **Layer ids are not unique across cuts.** Always key per-cut with `layerKey(cutId, layerId)`.
+- **Never do work inside a state updater.** React invokes updater and reducer functions twice
+  under StrictMode, so a `setX(prev => { sideEffect(); return prev })` runs the effect twice —
+  and using a setter to *read* current state is the usual reason someone writes one. `liveRef`
+  holds the current document, audio and track count for exactly that read.
 - **`canvas.width = n` reallocates the backing store even when n is unchanged** — 8MB at this
   canvas size. Use `sizeCanvas`, which only resizes when the size actually differs. Assigning it
   unconditionally on a canvas redrawn ten times a second is what once ran the tab out of memory.
