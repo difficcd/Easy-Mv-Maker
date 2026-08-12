@@ -12,11 +12,16 @@ import { Timeline } from './Timeline';
 import { ProjectPicker, ProgressOverlay, SettingsModal, HelpModal, VideoImportModal, SceneDetectModal, LinkPromptModal } from './Modals';
 import { tr, loadLang, saveLang, setLangValue } from './i18n';
 import { moveLayer } from './layerOps.js';
-import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, offsetLayers } from './layerOps.js';
+import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill } from './layerOps.js';
 import { closeLassoPath, lassoBounds, applyResize } from './lassoOps.js';
 import { useTimelineGestures } from './useTimelineGestures.js';
 import { fmt, parseClock } from './timeCode.js';
-import { derivePartsFrom, deriveVideoBatches, assignPart, renamePartIn, ungroupPartIn, removeVideoBatch } from './partOps.js';
+import { derivePartsFrom, deriveVideoBatches } from './partOps.js';
+import {
+    cutsReducer, replaceCuts, addCuts, updateCut, setCutAnim, clearCut,
+    updateLayer, setLayerAnim, moveLayers, upsertText, moveText, deleteText, toggleTextVisible as toggleTextVisibleAction,
+    assignPartTo, renamePart as renamePartAction, ungroupPart as ungroupPartAction, removeBatch, patchCut, patchCuts,
+} from './cutsReducer.js';
 import { measureTextBox as measureTextBoxPure, textNeedsBox, drawTextObject } from './textRender.js';
 import { migrateCuts, projectSettings, makeLoadProgress } from './projectFormat.js';
 import { unusedBitmapIds } from './bitmapRefs.js';
@@ -26,7 +31,7 @@ import {
     pointInPolygon, dist, safeArray, hexToRgb, bucketFillTransparentRegion,
     layerKey, imageDataToDataURL, dataURLToImageData, drawStrokesOnCtx, sizeCanvas,
     flattenForCanvas, flattenLayersInUiOrder, strokeSig, extractVideoFrames, fitRect, detectSceneCuts, curveToWave, swayWeightAt, morphPrepare,
-    accentSoft, ANIM_DEFAULT, computeCutAnim, LAYER_ANIM_DEFAULT, computeLayerAnim, TEXT_ANIM_DEFAULT, computeTextAnim,
+    accentSoft, computeCutAnim, computeLayerAnim, TEXT_ANIM_DEFAULT, computeTextAnim,
     targetCanvasFor,
 } from './canvasUtils';
 
@@ -164,7 +169,12 @@ function LayerThumbnail({ layer, cutId, layerCanvasCache }) {
 
 export default function App() {
     const mkLayer = (id) => ({ id, name: `L${id}`, type: 'layer', strokes: [], redoStrokes: [], visible: true, parentId: null });
-    const [cuts, setCuts] = useState([{ id: 1, name: 'Cut 1', startTime: 0, endTime: 1, track: 0, layers: [mkLayer(1)], activeLayerId: 1, texts: [] }]);
+    // The document. Changes go through cutsReducer's named actions - see that file for why, and
+    // prefer a named action to patchCut/patchCuts when adding one.
+    const [cuts, dispatchCuts] = React.useReducer(cutsReducer, [{ id: 1, name: 'Cut 1', startTime: 0, endTime: 1, track: 0, layers: [mkLayer(1)], activeLayerId: 1, texts: [] }]);
+    // Shim for the call sites still passing a lambda, so they can be converted one at a time
+    // rather than all at once. Every remaining use is an operation waiting for a name.
+    const setCuts = (next) => dispatchCuts(typeof next === 'function' ? patchCuts(next) : replaceCuts(next));
     const [numTracks, setNumTracks] = useState(2);
     const [onionPrev, setOnionPrev] = useState(false);
     const [onionNext, setOnionNext] = useState(false);
@@ -560,7 +570,7 @@ export default function App() {
     const isUndoRedoRef = useRef(false);
     const isDraggingOrResizingRef = useRef(false);
 
-    const updLayers = (cutId, fn) => setCuts(p => p.map(c => c.id === cutId ? { ...c, ...fn(c) } : c));
+    const updLayers = (cutId, fn) => dispatchCuts(patchCut(cutId, fn));
 
     // Work out which layer to actually draw into: if the active one is a folder or missing,
     // fall back to the topmost visible drawing layer. A hidden active layer is kept, but made
@@ -685,7 +695,7 @@ export default function App() {
     const applyHistory = (snap) => {
         const s = JSON.parse(JSON.stringify(snap));
         isUndoRedoRef.current = true;
-        setCuts(s.cuts);
+        dispatchCuts(replaceCuts(s.cuts));
         setAudioData(s.audioData ?? null);
         setNumTracks(s.numTracks ?? 2);
     };
@@ -988,12 +998,15 @@ export default function App() {
                     });
                     return;
                 }
-                // The geometry is in cutOps and unit tested; only the guide line is a side effect.
-                setCuts(prev => {
-                    const r = resizeCut(prev, { cutId: resizingData.cutId, edge: resizingData.edge, initialStart: i0, initialEnd: i1 }, dt, pps);
-                    setSnapLinePos(r.snapAt == null ? null : r.snapAt * pps + 60);
-                    return r.cuts;
-                });
+                // The geometry is in cutOps and unit tested; only the guide line is a side
+                // effect, and it is done out here. Setting state from inside an updater looks
+                // harmless but React invokes updaters twice in StrictMode, and a reducer that is
+                // not pure is a reducer that cannot be reasoned about or replayed. resizeCut
+                // works from the edges the drag started at plus the delta, so reading the
+                // document from liveRef gives the same answer as the updater's argument would.
+                const r = resizeCut(liveRef.current.cuts, { cutId: resizingData.cutId, edge: resizingData.edge, initialStart: i0, initialEnd: i1 }, dt, pps);
+                setSnapLinePos(r.snapAt == null ? null : r.snapAt * pps + 60);
+                dispatchCuts(replaceCuts(r.cuts));
             } else if (draggingCutData) {
                 // A cut only moves once the press is "armed" (long-press on touch, immediate
                 // for mouse/pen). Before arming, a small move cancels the long-press so a
@@ -1022,18 +1035,19 @@ export default function App() {
                     const cto = Math.max(-minTrack, Math.min(numTracks - 1 - maxTrack, trackOff));
                     const byId = new Map(grp.map(g => [g.id, g]));
                     setSnapLinePos(null);
-                    setCuts(prev => prev.map(c => {
+                    dispatchCuts(patchCuts(prev => prev.map(c => {
                         const g = byId.get(c.id); if (!g) return c;
                         const ns = Math.max(0, g.startTime + cdt), dur = g.endTime - g.startTime;
                         return { ...c, startTime: ns, endTime: ns + dur, track: g.track + cto };
-                    }));
+                    })));
                     return;
                 }
-                setCuts(prev => {
-                    const r = dragCut(prev, draggingCutData, dt, trackOff, numTracks, pps);
-                    setSnapLinePos(r.snapAt == null ? null : r.snapAt * pps + 60);
-                    return r.cuts;
-                });
+                // Same as the resize above: the guide line is set out here so the state change
+                // stays pure. dragCut places the cut at initialStart + dt, reading the others
+                // only to snap against them, and they do not move during the drag.
+                const r = dragCut(liveRef.current.cuts, draggingCutData, dt, trackOff, numTracks, pps);
+                setSnapLinePos(r.snapAt == null ? null : r.snapAt * pps + 60);
+                dispatchCuts(replaceCuts(r.cuts));
             }
         };
         const up = () => {
@@ -1041,20 +1055,33 @@ export default function App() {
             clearTimeout(cutDragTimerRef.current);
             cutDragArmedRef.current = false;
             setResizingData(null); setDraggingCutData(null); setSnapLinePos(null);
-            setCuts(prev => {
-                const lv = liveRef.current;
-                const snapshot = JSON.stringify({ cuts: prev, audioData: lv.audioData, numTracks: lv.numTracks });
-                if (historyRef.current.length > 0 && JSON.stringify(historyRef.current[historyIndexRef.current]) === snapshot) return prev;
-                historyRef.current = historyRef.current.slice(0, historyIndexRef.current + 1);
-                historyRef.current.push(JSON.parse(snapshot));
-                historyIndexRef.current = historyRef.current.length - 1;
-                if (historyRef.current.length > 80) { historyRef.current.shift(); historyIndexRef.current--; }
-                return prev;
-            });
+            pushHistorySnapshot();
         };
         window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
         return () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); };
     }, [resizingData, draggingCutData, pps, numTracks]);
+
+    // Record an undo point for whatever is on screen now.
+    //
+    // This used to be written as setCuts(prev => { ...push...; return prev; }) - a state setter
+    // abused to read the current state, doing its real work as a side effect and returning the
+    // document unchanged. React invokes updater functions twice in StrictMode, so the push ran
+    // twice and only the duplicate check below stopped a doubled history entry. liveRef already
+    // holds the current document for exactly this kind of read, so nothing needs to pretend to
+    // be a state update.
+    const HISTORY_LIMIT = 80;
+    const pushHistorySnapshot = () => {
+        const lv = liveRef.current;
+        const snapshot = JSON.stringify({ cuts: lv.cuts, audioData: lv.audioData, numTracks: lv.numTracks });
+        // Nothing actually changed - a drag that ended where it started - so there is nothing to
+        // undo back to.
+        if (historyRef.current.length > 0 && JSON.stringify(historyRef.current[historyIndexRef.current]) === snapshot) return;
+        // Anything that was undone past is dropped: the new action becomes the future.
+        historyRef.current = historyRef.current.slice(0, historyIndexRef.current + 1);
+        historyRef.current.push(JSON.parse(snapshot));
+        historyIndexRef.current = historyRef.current.length - 1;
+        if (historyRef.current.length > HISTORY_LIMIT) { historyRef.current.shift(); historyIndexRef.current--; }
+    };
 
     // Free bitmaps no longer referenced by any cut, history snapshot, clipboard, or selection.
     // Scans ALL reference sources so undo/paste never lose their pixels.
@@ -1183,7 +1210,7 @@ export default function App() {
         }
         // Older files are brought up to the current shape in projectFormat, where the renames and
         // added fields are written down and tested.
-        setCuts(migrateCuts(data.cuts));
+        dispatchCuts(replaceCuts(migrateCuts(data.cuts)));
         setActivePartId(null);
         const s = projectSettings(data);
         if (s.canvas) setCanvasSize(s.canvas);
@@ -1273,7 +1300,7 @@ export default function App() {
     const resetToEmpty = () => {
         fileHandleRef.current = null;
         bitmapStoreRef.current.clear();
-        setCuts([{ id: 1, name: 'Cut 1', startTime: 0, endTime: 1, track: 0, layers: [mkLayer(1)], activeLayerId: 1, texts: [] }]);
+        dispatchCuts(replaceCuts([{ id: 1, name: 'Cut 1', startTime: 0, endTime: 1, track: 0, layers: [mkLayer(1)], activeLayerId: 1, texts: [] }]));
         setNumTracks(2); setCurrentCutId(1); setCurrentTime(0); setExpandedCuts(new Set());
         setCopiedCut(null); setSelectedCutIds(new Set()); setActivePartId(null);
         setLayerCanvasCache({});
@@ -1628,12 +1655,12 @@ export default function App() {
         const ns = last?.endTime ?? 0, trk = last?.track ?? 0;
         if (trk >= numTracks) setNumTracks(trk + 1);
         const nc = { id: Date.now(), name: `Cut ${cuts.length + 1}`, startTime: ns, endTime: ns + DEFAULT_CUT_DURATION, track: trk, layers: [mkLayer(1)], activeLayerId: 1, texts: [] };
-        setCuts(p => [...p, nc]); setCurrentCutId(nc.id); setCurrentTime(ns);
+        dispatchCuts(addCuts([nc])); setCurrentCutId(nc.id); setCurrentTime(ns);
     };
     const handleDeleteCut = (id) => {
         const ids = (selectedCutIds.size > 1 && selectedCutIds.has(id)) ? new Set(selectedCutIds) : new Set([id]);
         const nc = cuts.filter(c => !ids.has(c.id));
-        setCuts(nc);
+        dispatchCuts(replaceCuts(nc));
         if (ids.has(currentCutId)) setCurrentCutId(nc.length > 0 ? nc[0].id : null);
         setSelectedCutIds(new Set());
     };
@@ -1641,18 +1668,16 @@ export default function App() {
     const handleClearCut = () => {
         if (!currentCutId) return;
         if (!window.confirm(tr('현재 컷의 모든 그림과 텍스트를 지울까요?'))) return;
-        setCuts(p => p.map(c => c.id === currentCutId
-            ? { ...c, texts: [], layers: c.layers.map(l => l.type === 'layer' ? { ...l, strokes: [], redoStrokes: [] } : l) }
-            : c));
+        dispatchCuts(clearCut(currentCutId));
         cancelSelection();
         setSelectedText(null);
     };
-    const updCutTime = (id, field, val) => { let v = Math.max(0, parseFloat(val) || 0); if (field === 'track') { v = Math.round(v); if (v >= numTracks) setNumTracks(v + 1); } setCuts(p => p.map(c => c.id === id ? { ...c, [field]: v } : c)); };
+    const updCutTime = (id, field, val) => { let v = Math.max(0, parseFloat(val) || 0); if (field === 'track') { v = Math.round(v); if (v >= numTracks) setNumTracks(v + 1); } dispatchCuts(updateCut(id, { [field]: v })); };
     const toggleCutSettings = (id) => setExpandedCuts(p => { const s = new Set(p); s.has(id) ? s.delete(id) : s.add(id); return s; });
     const toggleCutCollapse = (id) => setCollapsedCutIds(p => { const s = new Set(p); s.has(id) ? s.delete(id) : s.add(id); return s; });
-    const renameCut = (id, name) => setCuts(p => p.map(c => c.id === id ? { ...c, name } : c));
-    const updCutAnim = (id, patch) => setCuts(p => p.map(c => c.id === id ? { ...c, anim: { ...ANIM_DEFAULT, ...c.anim, ...patch } } : c));
-    const updLayerAnim = (cutId, layerId, patch) => updLayers(cutId, c => ({ layers: c.layers.map(l => l.id === layerId ? { ...l, anim: { ...LAYER_ANIM_DEFAULT, ...l.anim, ...patch } } : l) }));
+    const renameCut = (id, name) => dispatchCuts(updateCut(id, { name }));
+    const updCutAnim = (id, patch) => dispatchCuts(setCutAnim(id, patch));
+    const updLayerAnim = (cutId, layerId, patch) => dispatchCuts(setLayerAnim(cutId, layerId, patch));
     const handleAddTrack = () => setNumTracks(p => p + 1);
     const handleDeleteTrack = (i) => { if (numTracks <= 1) return; if (!window.confirm(tr('Track {0} 삭제?', i))) return; setCuts(p => p.filter(c => c.track !== i).map(c => c.track > i ? { ...c, track: c.track - 1 } : c)); setNumTracks(p => p - 1); };
     // Click a cut in the list: plain = select one, Ctrl/Cmd = toggle, Shift = range (timeline order).
@@ -1712,7 +1737,7 @@ export default function App() {
             cursor += dur;
             return nc;
         });
-        setCuts(p => [...p, ...made]);
+        dispatchCuts(addCuts(made));
         const last = made[made.length - 1];
         setCurrentCutId(last.id);
         setCurrentTime(last.startTime);
@@ -1802,14 +1827,14 @@ export default function App() {
         e.stopPropagation();
         const cut = cuts.find(c => c.id === cutId); if (!cut) return;
         const layer = cut.layers.find(l => l.id === layerId); if (!layer || layer.type === 'folder') return;
-        setCuts(p => p.map(c => c.id === cutId ? { ...c, activeLayerId: layerId } : c));
+        dispatchCuts(updateCut(cutId, { activeLayerId: layerId }));
     };
     const handleToggleFolder = (e, cutId, fid) => { e.stopPropagation(); updLayers(cutId, c => ({ layers: c.layers.map(l => l.id === fid ? { ...l, collapsed: !l.collapsed } : l) })); };
     // Boiling: wobbles the strokes already on the layer. Each click cycles off, light, strong,
     // and it never alters the stored strokes.
     // Opens and closes the boiling settings, where strength, wavelength, speed and the minimum
     // width are entered directly.
-    const updLayerProps = (cutId, layerId, obj) => updLayers(cutId, c => ({ layers: c.layers.map(l => l.id === layerId ? { ...l, ...obj } : l) }));
+    const updLayerProps = (cutId, layerId, obj) => dispatchCuts(updateLayer(cutId, layerId, obj));
     const toggleJitterPanel = (e, cutId, layerId) => { e.stopPropagation(); setJitterLayer(j => (j && j.cutId === cutId && j.layerId === layerId) ? null : { cutId, layerId }); };
 
     const onLayerDragStart = (e, cutId, layerId) => { e.stopPropagation(); setDragLayerInfo({ cutId, layerId }); e.dataTransfer.effectAllowed = 'move'; };
@@ -2499,11 +2524,7 @@ export default function App() {
             const dy = pos.y - startPos.y;
             if (clickToEdit && !textDragRef.current.moved && Math.hypot(dx, dy) <= 4) return;
             textDragRef.current.moved = true;
-            setCuts(p => p.map(c => {
-                if (c.id !== cutId) return c;
-                const texts = safeArray(c.texts);
-                return { ...c, texts: texts.map(t => t.id === textId ? ({ ...t, x: Math.round(startText.x + dx), y: Math.round(startText.y + dy) }) : t) };
-            }));
+            dispatchCuts(moveText(cutId, textId, Math.round(startText.x + dx), Math.round(startText.y + dy)));
             return;
         }
 
@@ -2580,7 +2601,7 @@ export default function App() {
             endGesture();
             const dx = Math.round(d.dx), dy = Math.round(d.dy);
             clearLiveOverlay();
-            if (dx || dy) updLayers(d.cutId, c => offsetLayers(c, d.layerIds, dx, dy, d.withTexts));
+            if (dx || dy) dispatchCuts(moveLayers(d.cutId, d.layerIds, dx, dy, d.withTexts));
             setDragTick(v => v + 1);
             return;
         }
@@ -2750,13 +2771,7 @@ export default function App() {
             rotation: textEdit.rotation ?? 0,
             anim: textEdit.anim || null,
         };
-        setCuts(p => p.map(c => {
-            if (c.id !== textEdit.cutId) return c;
-            const texts = safeArray(c.texts);
-            const idx = texts.findIndex(tt => tt.id === id);
-            const nextTexts = idx >= 0 ? texts.map(tt => tt.id === id ? { ...tt, ...obj } : tt) : [...texts, obj];
-            return { ...c, texts: nextTexts };
-        }));
+        dispatchCuts(upsertText(textEdit.cutId, obj));
         setSelectedText({ cutId: textEdit.cutId, textId: id });
         setTextEdit(null);
     };
@@ -2802,15 +2817,12 @@ export default function App() {
     };
 
     const deleteTextObject = (cutId, textId) => {
-        setCuts(p => p.map(c => c.id === cutId ? ({ ...c, texts: safeArray(c.texts).filter(t => t.id !== textId) }) : c));
+        dispatchCuts(deleteText(cutId, textId));
         if (selectedText?.cutId === cutId && selectedText?.textId === textId) setSelectedText(null);
     };
 
     const toggleTextVisible = (cutId, textId) => {
-        setCuts(p => p.map(c => {
-            if (c.id !== cutId) return c;
-            return { ...c, texts: safeArray(c.texts).map(t => t.id === textId ? ({ ...t, visible: t.visible === false ? true : false }) : t) };
-        }));
+        dispatchCuts(toggleTextVisibleAction(cutId, textId));
     };
 
     useEffect(() => {
@@ -3427,11 +3439,9 @@ export default function App() {
     const deleteVideoBatch = (batchId) => {
         const b = videoBatches.find(x => x.id === batchId);
         if (!b || !window.confirm(tr('"{0}" 프레임 {1}컷을 삭제할까요?', b.label, b.count))) return;
-        setCuts(p => {
-            const left = removeVideoBatch(p, batchId);
-            if (!left.some(c => c.id === currentCutId)) setCurrentCutId(left[0]?.id ?? null);
-            return left;
-        });
+        const left = cuts.filter(c => c.videoBatch !== batchId);
+        dispatchCuts(removeBatch(batchId));
+        if (!left.some(c => c.id === currentCutId)) setCurrentCutId(left[0]?.id ?? null);
         setSelectedCutIds(new Set());
         setTimeout(gcBitmaps, 0); // free the frame bitmaps right away
     };
@@ -3453,18 +3463,18 @@ export default function App() {
         const name = window.prompt(tr('새 파트 이름:'), tr('파트 {0}', parts.length + 1));
         if (name == null) return;
         const pid = 'part_' + Date.now().toString(36);
-        setCuts(p => assignPart(p, selectedCutIds, pid, name));
+        dispatchCuts(assignPartTo(selectedCutIds, pid, name));
         setActivePartId(pid);
     };
     const renamePart = (partId) => {
         const p = parts.find(x => x.id === partId); if (!p) return;
         const name = window.prompt(tr('파트 이름 변경:'), p.name);
         if (name == null) return;
-        setCuts(prev => renamePartIn(prev, partId, name));
+        dispatchCuts(renamePartAction(partId, name));
     };
     // Ungroup a part (cuts stay, just lose their part membership).
     const ungroupPart = (partId) => {
-        setCuts(prev => ungroupPartIn(prev, partId));
+        dispatchCuts(ungroupPartAction(partId));
         if (activePartId === partId) setActivePartId(null);
     };
 
