@@ -14,6 +14,7 @@ import { moveLayer } from './layerOps.js';
 import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, offsetLayers } from './layerOps.js';
 import { closeLassoPath, lassoBounds, applyResize } from './lassoOps.js';
 import { measureTextBox as measureTextBoxPure, textNeedsBox, drawTextObject } from './textRender.js';
+import { migrateCuts, projectSettings, makeLoadProgress } from './projectFormat.js';
 import { unusedBitmapIds } from './bitmapRefs.js';
 import { dragCut, resizeCut } from './cutOps.js';
 import {
@@ -1148,14 +1149,7 @@ export default function App() {
         const assetCount = (assetBase && Array.isArray(data.assets)) ? data.assets.length : 0;
         const bmpCount = data.bitmaps ? Object.keys(data.bitmaps).length : 0;
         const total = assetCount + bmpCount;
-        const heavy = total > 12;
-        let done = 0, lastPaint = 0;
-        const step = Math.max(1, Math.floor(total / 100)); // cap at 100 updates so rendering does not run away
-        const tick = () => {
-            done++;
-            if (!heavy) return;
-            if (done - lastPaint >= step || done === total) { lastPaint = done; setLoadProgress({ label, done, total }); }
-        };
+        const { heavy, tick } = makeLoadProgress(total, p => setLoadProgress({ label, ...p }));
         if (heavy) setLoadProgress({ label, done: 0, total });
         try {
         // Externalized frame assets (server projects): fetch one at a time and keep as a Blob
@@ -1192,17 +1186,14 @@ export default function App() {
             }));
             entries.forEach(e => { if (e) store.set(e[0], e[1]); });
         }
-        setCuts(data.cuts.map(c => ({
-            ...c,
-            // Migrate older projects: a video import (videoBatch) becomes a part.
-            partId: c.partId ?? c.videoBatch, partName: c.partName ?? c.videoLabel,
-            texts: safeArray(c.texts),
-            layers: c.layers.map(l => ({ type: 'layer', parentId: null, ...l, redoStrokes: [] }))
-        })));
+        // Older files are brought up to the current shape in projectFormat, where the renames and
+        // added fields are written down and tested.
+        setCuts(migrateCuts(data.cuts));
         setActivePartId(null);
-        if (data.canvas?.w && data.canvas?.h) setCanvasSize({ w: data.canvas.w, h: data.canvas.h });
-        setNumTracks(data.numTracks || 2); setCurrentCutId(data.cuts[0]?.id || 1); setCurrentTime(0);
-        setOnionPrev(data.onionPrev ?? false); setOnionNext(data.onionNext ?? false); setPps(data.pps ?? 50); setExpandedCuts(new Set());
+        const s = projectSettings(data);
+        if (s.canvas) setCanvasSize(s.canvas);
+        setNumTracks(s.numTracks); setCurrentCutId(s.currentCutId); setCurrentTime(0);
+        setOnionPrev(s.onionPrev); setOnionNext(s.onionNext); setPps(s.pps); setExpandedCuts(new Set());
         setCopiedCut(null); // clipboard may reference bitmaps from the old project
         setLayerCanvasCache({}); // Clear cache on new project
         // Restore audio: embedded (dataUrl) or externalized as a server asset. Either way we end
