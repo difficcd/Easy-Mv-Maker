@@ -12,7 +12,7 @@ import { ProjectPicker, ProgressOverlay, SettingsModal, HelpModal, VideoImportMo
 import { tr, loadLang, saveLang, setLangValue } from './i18n';
 import { moveLayer } from './layerOps.js';
 import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, offsetLayers } from './layerOps.js';
-import { closeLassoPath, lassoBounds } from './lassoOps.js';
+import { closeLassoPath, lassoBounds, applyResize } from './lassoOps.js';
 import { measureTextBox as measureTextBoxPure, textNeedsBox, drawTextObject } from './textRender.js';
 import { unusedBitmapIds } from './bitmapRefs.js';
 import { dragCut, resizeCut } from './cutOps.js';
@@ -2242,36 +2242,6 @@ export default function App() {
         return inside ? { type: 'move' } : null;
     };
 
-    const applyResize = (handle, startSel, dx, dy) => {
-        const minSize = 2;
-        let left = startSel.tx, top = startSel.ty, right = startSel.tx + startSel.tw, bottom = startSel.ty + startSel.th;
-
-        const moveLeft = handle.includes('w');
-        const moveRight = handle.includes('e');
-        const moveTop = handle.includes('n');
-        const moveBottom = handle.includes('s');
-
-        if (moveLeft) left += dx;
-        if (moveRight) right += dx;
-        if (moveTop) top += dy;
-        if (moveBottom) bottom += dy;
-
-        if (handle === 'n' || handle === 's') { left = startSel.tx; right = startSel.tx + startSel.tw; }
-        if (handle === 'w' || handle === 'e') { top = startSel.ty; bottom = startSel.ty + startSel.th; }
-
-        const w = right - left;
-        const h = bottom - top;
-        if (w < minSize) {
-            if (moveLeft && !moveRight) left = right - minSize;
-            if (moveRight && !moveLeft) right = left + minSize;
-        }
-        if (h < minSize) {
-            if (moveTop && !moveBottom) top = bottom - minSize;
-            if (moveBottom && !moveTop) bottom = top + minSize;
-        }
-
-        return { tx: left, ty: top, tw: Math.max(minSize, right - left), th: Math.max(minSize, bottom - top) };
-    };
 
     // A press that claims the canvas. Every branch of startDraw that takes over the pointer does
     // these three things together: remember which pointer owns the gesture, capture it so moves

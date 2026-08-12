@@ -50,3 +50,56 @@ export function lassoBounds(pts, canvasW, canvasH) {
     const bottom = Math.min(canvasH, Math.ceil(maxY));
     return { x, y, w: Math.max(0, right - x), h: Math.max(0, bottom - y) };
 }
+
+/** Smallest a selection may be dragged to, in pixels. Below this it is impossible to grab again. */
+export const MIN_SELECTION_SIZE = 2;
+
+/**
+ * Resize a selection by dragging one of its handles.
+ *
+ * The handle names read as compass points, so which edges move falls out of the letters: 'nw'
+ * moves the top and left, 'e' moves the right edge alone. An edge handle must leave the other
+ * axis exactly as it was rather than letting the perpendicular delta leak into it, which is what
+ * the two lines pinning the opposite pair are for.
+ *
+ * Dragging an edge past its opposite would otherwise invert the rectangle, and a zero-width
+ * selection cannot be grabbed to undo the mistake. So the moving edge is stopped a minimum apart
+ * from the fixed one - the *moving* edge, which is the detail worth having a test for: pushing
+ * the left edge rightwards must park the left edge, not drag the right one along with it.
+ *
+ * @param {string} handle one of n, s, e, w, ne, nw, se, sw
+ * @param {{tx:number,ty:number,tw:number,th:number}} startSel the selection when the drag began
+ * @param {number} dx pointer movement since then
+ * @param {number} dy
+ * @returns {{tx:number,ty:number,tw:number,th:number}}
+ */
+export function applyResize(handle, startSel, dx, dy) {
+    const min = MIN_SELECTION_SIZE;
+    let left = startSel.tx, top = startSel.ty;
+    let right = startSel.tx + startSel.tw, bottom = startSel.ty + startSel.th;
+
+    const moveLeft = handle.includes('w');
+    const moveRight = handle.includes('e');
+    const moveTop = handle.includes('n');
+    const moveBottom = handle.includes('s');
+
+    if (moveLeft) left += dx;
+    if (moveRight) right += dx;
+    if (moveTop) top += dy;
+    if (moveBottom) bottom += dy;
+
+    // An edge handle constrains one axis only.
+    if (handle === 'n' || handle === 's') { left = startSel.tx; right = startSel.tx + startSel.tw; }
+    if (handle === 'w' || handle === 'e') { top = startSel.ty; bottom = startSel.ty + startSel.th; }
+
+    if (right - left < min) {
+        if (moveLeft && !moveRight) left = right - min;
+        if (moveRight && !moveLeft) right = left + min;
+    }
+    if (bottom - top < min) {
+        if (moveTop && !moveBottom) top = bottom - min;
+        if (moveBottom && !moveTop) bottom = top + min;
+    }
+
+    return { tx: left, ty: top, tw: Math.max(min, right - left), th: Math.max(min, bottom - top) };
+}

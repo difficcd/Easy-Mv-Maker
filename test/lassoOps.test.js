@@ -4,7 +4,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { closeLassoPath, lassoBounds } from '../src/lassoOps.js';
+import { closeLassoPath, lassoBounds, applyResize, MIN_SELECTION_SIZE } from '../src/lassoOps.js';
 import { pointInPolygon } from '../src/canvasUtils.js';
 
 const P = (x, y) => ({ x, y });
@@ -83,4 +83,69 @@ test('lassoBounds: no points means an empty rectangle, not NaN', () => {
 test('lassoBounds: a single point encloses no area', () => {
     const b = lassoBounds([P(100, 100)], 1920, 1080);
     assert.deepEqual(b, { x: 100, y: 100, w: 0, h: 0 });
+});
+
+// ── resizing a selection ───────────────────────────────────────────────────
+const SEL = { tx: 100, ty: 100, tw: 200, th: 100 }; // right edge 300, bottom 200
+
+test('applyResize: a corner handle moves both of its edges and no others', () => {
+    assert.deepEqual(applyResize('se', SEL, 50, 20), { tx: 100, ty: 100, tw: 250, th: 120 });
+    // nw moves the origin, so the size changes by the opposite amount
+    assert.deepEqual(applyResize('nw', SEL, 50, 20), { tx: 150, ty: 120, tw: 150, th: 80 });
+    assert.deepEqual(applyResize('ne', SEL, 50, 20), { tx: 100, ty: 120, tw: 250, th: 80 });
+    assert.deepEqual(applyResize('sw', SEL, 50, 20), { tx: 150, ty: 100, tw: 150, th: 120 });
+});
+
+test('applyResize: an edge handle leaves the other axis untouched', () => {
+    // The perpendicular delta must not leak in, however far the pointer wandered off-axis.
+    assert.deepEqual(applyResize('e', SEL, 50, 999), { tx: 100, ty: 100, tw: 250, th: 100 });
+    assert.deepEqual(applyResize('w', SEL, 50, -999), { tx: 150, ty: 100, tw: 150, th: 100 });
+    assert.deepEqual(applyResize('n', SEL, 999, 20), { tx: 100, ty: 120, tw: 200, th: 80 });
+    assert.deepEqual(applyResize('s', SEL, -999, 20), { tx: 100, ty: 100, tw: 200, th: 120 });
+});
+
+test('applyResize: dragging an edge past its opposite stops instead of inverting', () => {
+    // A negative or zero size cannot be grabbed again to undo the mistake.
+    const out = applyResize('e', SEL, -500, 0);
+    assert.equal(out.tw, 2, 'held at the minimum');
+    assert.ok(out.tw > 0 && out.th > 0);
+});
+
+test('applyResize: the edge being dragged is the one that stops', () => {
+    // Pushing the left edge far right must park the left edge against the right one; moving the
+    // right edge instead would slide the whole selection away from the pointer.
+    const out = applyResize('w', SEL, 500, 0);
+    assert.equal(out.tx, 298, 'the left edge parked two pixels short of the fixed right edge');
+    assert.equal(out.tx + out.tw, 300, 'and the right edge never moved');
+});
+
+test('applyResize: the same holds vertically, in both directions', () => {
+    const up = applyResize('s', SEL, 0, -500);
+    assert.equal(up.ty, 100, 'the top edge is the fixed one here');
+    assert.equal(up.th, 2);
+    const down = applyResize('n', SEL, 0, 500);
+    assert.equal(down.ty, 198, 'the dragged top edge stops just short of the bottom');
+    assert.equal(down.ty + down.th, 200);
+});
+
+test('applyResize: no movement is not a resize', () => {
+    for (const h of ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']) {
+        assert.deepEqual(applyResize(h, SEL, 0, 0), SEL, `${h} with no delta`);
+    }
+});
+
+test('applyResize: never returns a selection too small to grab', () => {
+    for (const h of ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']) {
+        for (const [dx, dy] of [[-9999, -9999], [9999, 9999], [-9999, 9999], [9999, -9999]]) {
+            const out = applyResize(h, SEL, dx, dy);
+            assert.ok(out.tw >= MIN_SELECTION_SIZE, `${h} width stayed grabbable`);
+            assert.ok(out.th >= MIN_SELECTION_SIZE, `${h} height stayed grabbable`);
+        }
+    }
+});
+
+test('applyResize: does not mutate the selection it started from', () => {
+    const before = { ...SEL };
+    applyResize('nw', SEL, 30, 30);
+    assert.deepEqual(SEL, before);
 });
