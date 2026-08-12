@@ -4,7 +4,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { moveLayer, isDescendantOf, resolveDrawLayer, commitStroke } from '../src/layerOps.js';
+import { moveLayer, isDescendantOf, resolveDrawLayer, commitStroke, insertFill } from '../src/layerOps.js';
 import { flattenLayersInUiOrder } from '../src/canvasUtils.js';
 
 // f1 > a, b   then c at the root
@@ -193,4 +193,45 @@ test('commitStroke: a parentId cycle cannot hang the reveal walk', () => {
     ];
     const out = commitStroke(layers, 'a', { id: 's1' });
     assert.ok(out, 'returns rather than looping forever');
+});
+
+// ── bucket fill placement ──────────────────────────────────────────────────
+// Paint belongs under the ink so a fill can bleed past the line that bounds it: on a boiling
+// layer the ink walks about, and paint that stopped exactly at the old edge leaves a gap.
+test('insertFill: paint on a blank region goes under the ink', () => {
+    const strokes = [{ id: 1, tool: 'pen' }, { id: 2, tool: 'pen' }];
+    const fill = { id: 9, tool: 'paste' };
+    assert.deepEqual(insertFill(strokes, fill, false).map(s => s.id), [9, 1, 2]);
+});
+
+test('insertFill: recolouring existing paint goes on top, or it would be hidden by it', () => {
+    const strokes = [{ id: 1, tool: 'pen' }, { id: 2, tool: 'paste' }];
+    const fill = { id: 9, tool: 'paste' };
+    assert.deepEqual(insertFill(strokes, fill, true).map(s => s.id), [1, 2, 9]);
+});
+
+test('insertFill: never slides beneath an eraser, which would eat it', () => {
+    // An eraser composites destination-out against what is below it.
+    const strokes = [{ id: 1, tool: 'pen' }, { id: 2, tool: 'eraser' }, { id: 3, tool: 'pen' }];
+    const out = insertFill(strokes, { id: 9, tool: 'paste' }, false).map(s => s.id);
+    assert.deepEqual(out, [1, 2, 9, 3]);
+    assert.ok(out.indexOf(9) > out.indexOf(2), 'above the eraser');
+    assert.ok(out.indexOf(9) < out.indexOf(3), 'still under ink drawn after it');
+});
+
+test('insertFill: sits above earlier paint, including an imported video frame', () => {
+    const strokes = [{ id: 1, tool: 'paste' }, { id: 2, tool: 'pen' }];
+    assert.deepEqual(insertFill(strokes, { id: 9, tool: 'paste' }, false).map(s => s.id), [1, 9, 2]);
+});
+
+test('insertFill: an empty or missing layer is not a special case for the caller', () => {
+    assert.deepEqual(insertFill([], { id: 9 }, false).map(s => s.id), [9]);
+    assert.deepEqual(insertFill(undefined, { id: 9 }, false).map(s => s.id), [9]);
+});
+
+test('insertFill: does not mutate the list it was given', () => {
+    const strokes = [{ id: 1, tool: 'pen' }];
+    const copy = [...strokes];
+    insertFill(strokes, { id: 9, tool: 'paste' }, false);
+    assert.deepEqual(strokes, copy);
 });

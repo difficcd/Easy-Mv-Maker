@@ -102,3 +102,33 @@ export function commitStroke(layers, layerId, stroke) {
         }),
     };
 }
+
+/**
+ * Where a bucket fill belongs in a layer's stroke list.
+ *
+ * Paint goes *under* the ink. That is how ink-and-paint has always worked, and here it is what
+ * lets a fill bleed a few pixels past the line that bounds it: the line covers the overspill, so
+ * when a boiling layer walks the line about, there is still paint underneath and the shape does
+ * not read as hollow.
+ *
+ * Two things stop it being simply "put it at the bottom":
+ *
+ *  - Recolouring. Filling a region that is already painted produces paint over exactly the old
+ *    paint's pixels; underneath, it would be completely hidden by the colour it is replacing.
+ *    Those go on top, as before.
+ *  - Erasers. An eraser composites destination-out against whatever is below it, so paint slid
+ *    beneath an earlier eraser stroke would be eaten by it. The fill sits above the last eraser.
+ *
+ * @param {Array} strokes the layer's strokes
+ * @param {object} fill the new fill stroke
+ * @param {boolean} [overPaint] true when the fill is recolouring existing paint
+ */
+export function insertFill(strokes, fill, overPaint) {
+    const list = Array.isArray(strokes) ? strokes : [];
+    if (overPaint) return [...list, fill];
+    let at = 0;
+    for (let i = list.length - 1; i >= 0; i--) {
+        if (list[i] && (list[i].tool === 'eraser' || list[i].tool === 'paste')) { at = i + 1; break; }
+    }
+    return [...list.slice(0, at), fill, ...list.slice(at)];
+}

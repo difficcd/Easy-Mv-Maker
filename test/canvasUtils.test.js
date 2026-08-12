@@ -13,7 +13,7 @@ import assert from 'node:assert/strict';
 import {
     pointInPolygon, dist, safeArray, hexToRgb, fitRect, layerKey, strokeSig,
     applyEase, triwave, swayWeightAt, sampleWave, sampleKeys, targetCanvasFor,
-    computeCutAnim, flattenLayersInUiOrder, sizeCanvas,
+    computeCutAnim, flattenLayersInUiOrder, sizeCanvas, dilateMask,
 } from '../src/canvasUtils.js';
 
 const near = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) < eps, `${a} ≈ ${b}`);
@@ -195,4 +195,41 @@ test('sizeCanvas: a true return means the canvas is already blank, so callers ma
     const cnv = { width: 300, height: 150 };
     assert.equal(sizeCanvas(cnv, 1920, 1080), true, 'resized, and a resize blanks the bitmap');
     assert.equal(sizeCanvas(cnv, 1920, 1080), false, 'second call is a no-op, caller must clear');
+});
+
+// ── fill bleed ─────────────────────────────────────────────────────────────
+// A bucket fill stops exactly at the ink that bounds it, which is fine until the layer boils:
+// the ink is displaced, the paint is a bitmap and cannot follow, and a gap opens along every
+// edge that wobbled outwards. Growing the painted region a few pixels puts paint under the line.
+const grid = (rows) => {
+    const h = rows.length, w = rows[0].length;
+    const m = new Uint8Array(w * h);
+    rows.forEach((r, y) => [...r].forEach((c, x) => { if (c === '#') m[y * w + x] = 1; }));
+    return { m, w, h };
+};
+const show = (m, w, h) => Array.from({ length: h }, (_, y) => Array.from({ length: w }, (_, x) => m[y * w + x] ? '#' : '.').join(''));
+
+test('dilateMask: grows a single pixel into a square of the given radius', () => {
+    const { m, w, h } = grid(['.....', '.....', '..#..', '.....', '.....']);
+    assert.deepEqual(show(dilateMask(m, w, h, 1), w, h), ['.....', '.###.', '.###.', '.###.', '.....']);
+});
+
+test('dilateMask: radius 0 or less is a no-op, and the input is never mutated', () => {
+    const { m, w, h } = grid(['...', '.#.', '...']);
+    assert.equal(dilateMask(m, w, h, 0), m, 'returns the same mask untouched');
+    const before = show(m, w, h);
+    dilateMask(m, w, h, 2);
+    assert.deepEqual(show(m, w, h), before, 'the original is left alone');
+});
+
+test('dilateMask: clips at the edges instead of wrapping to the other side', () => {
+    const { m, w, h } = grid(['#...', '....', '....']);
+    const out = show(dilateMask(m, w, h, 1), w, h);
+    assert.deepEqual(out, ['##..', '##..', '....']);
+    assert.ok(!out.some(row => row.endsWith('#')), 'nothing wrapped round to the right edge');
+});
+
+test('dilateMask: an empty mask stays empty', () => {
+    const { m, w, h } = grid(['...', '...']);
+    assert.deepEqual(show(dilateMask(m, w, h, 2), w, h), ['...', '...']);
 });

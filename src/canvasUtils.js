@@ -175,7 +175,43 @@ export function hexToRgb(hex) {
     return { r: 0, g: 0, b: 0 };
 }
 
-export function bucketFillTransparentRegion(baseImageData, startX, startY, fillRgb, fillAlpha, tolerance = 24) {
+/**
+ * Grow a bitmask outwards by r pixels (square structuring element, done separably so it stays
+ * O(w*h) whatever r is).
+ *
+ * Used to bleed a bucket fill under the line that bounds it. A filled region stops exactly at
+ * the ink, which is fine while the ink holds still - but a boiling layer displaces the ink and
+ * leaves the paint behind, opening a gap along every edge that wobbles outwards. Traditional
+ * ink-and-paint has the same problem and the same answer: spread the paint a little past the
+ * line and let the line cover it.
+ */
+export function dilateMask(mask, w, h, r) {
+    if (!(r > 0)) return mask;
+    const pass = (src, dst, stride, outer, inner) => {
+        for (let o = 0; o < outer; o++) {
+            const base = o * (stride === 1 ? w : 1);
+            let since = -1; // pixels travelled since the last set one; -1 = none seen yet
+            for (let i = 0; i < inner; i++) {
+                const idx = base + i * stride;
+                if (src[idx]) since = 0; else if (since >= 0) since++;
+                if (since >= 0 && since <= r) dst[idx] = 1;
+            }
+            since = -1;
+            for (let i = inner - 1; i >= 0; i--) {
+                const idx = base + i * stride;
+                if (src[idx]) since = 0; else if (since >= 0) since++;
+                if (since >= 0 && since <= r) dst[idx] = 1;
+            }
+        }
+    };
+    const tmp = new Uint8Array(w * h);
+    pass(mask, tmp, 1, h, w);   // horizontal
+    const out = new Uint8Array(w * h);
+    pass(tmp, out, w, w, h);    // vertical
+    return out;
+}
+
+export function bucketFillTransparentRegion(baseImageData, startX, startY, fillRgb, fillAlpha, tolerance = 24, spread = 0) {
     const w = baseImageData.width;
     const h = baseImageData.height;
     const data = baseImageData.data;
@@ -232,6 +268,21 @@ export function bucketFillTransparentRegion(baseImageData, startX, startY, fillR
 
     if (maxX < minX || maxY < minY) return null;
 
+    // The BFS marks a pixel on enqueue, so `mask` already carries a one-pixel rim of boundary
+    // pixels that `matches` then rejects below. Painting spreads out from the region proper.
+    const paint = new Uint8Array(w * h);
+    for (let y = minY; y <= maxY; y++) {
+        for (let x = minX; x <= maxX; x++) {
+            const idx = y * w + x;
+            if (mask[idx] && matches(idx * 4)) paint[idx] = 1;
+        }
+    }
+    const grown = spread > 0 ? dilateMask(paint, w, h, spread) : paint;
+    if (spread > 0) {
+        minX = Math.max(0, minX - spread); minY = Math.max(0, minY - spread);
+        maxX = Math.min(w - 1, maxX + spread); maxY = Math.min(h - 1, maxY + spread);
+    }
+
     const cw = (maxX - minX + 1) | 0;
     const ch = (maxY - minY + 1) | 0;
     const out = new ImageData(cw, ch);
@@ -242,8 +293,7 @@ export function bucketFillTransparentRegion(baseImageData, startX, startY, fillR
     for (let y = minY; y <= maxY; y++) {
         for (let x = minX; x <= maxX; x++) {
             const idx = y * w + x;
-            if (!mask[idx]) continue;
-            if (!matches(idx * 4)) continue;
+            if (!grown[idx]) continue;
             const o = ((y - minY) * cw + (x - minX)) * 4;
             outData[o] = r;
             outData[o + 1] = g;
@@ -252,7 +302,10 @@ export function bucketFillTransparentRegion(baseImageData, startX, startY, fillR
         }
     }
 
-    return { imageData: out, x: minX, y: minY };
+    // overPaint distinguishes the two things a bucket does: colouring blank space inside line
+    // art, where the paint belongs under the ink, and recolouring something already painted,
+    // where it has to go on top or it would be hidden by what it is meant to replace.
+    return { imageData: out, x: minX, y: minY, overPaint: s3 >= 8 };
 }
 
 // Cache canvases are keyed per (cut, layer) because layer ids are NOT unique

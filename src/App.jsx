@@ -11,7 +11,7 @@ import { Timeline } from './Timeline';
 import { ProjectPicker, ProgressOverlay, SettingsModal, HelpModal, VideoImportModal, SceneDetectModal, LinkPromptModal } from './Modals';
 import { tr, loadLang, saveLang, setLangValue } from './i18n';
 import { moveLayer } from './layerOps.js';
-import { resolveDrawLayer as resolveDrawLayerPure, commitStroke } from './layerOps.js';
+import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill } from './layerOps.js';
 import { unusedBitmapIds } from './bitmapRefs.js';
 import { dragCut, resizeCut } from './cutOps.js';
 import {
@@ -2364,14 +2364,19 @@ export default function App() {
         const base = tctx.getImageData(0, 0, CANVAS_W, CANVAS_H);
         const fillRgb = hexToRgb(color);
         const fillAlpha = Math.round(Math.max(0, Math.min(1, opacity)) * 255);
-        const region = bucketFillTransparentRegion(base, Math.round(pos.x), Math.round(pos.y), fillRgb, fillAlpha);
+        // Bleed the paint under the line by a little more than the line can wobble. A fill is a
+        // bitmap and cannot boil with the strokes around it, so on a boiling layer the ink walks
+        // off a fill that stops exactly at its edge and the shape reads as hollow. Even with
+        // boiling off the bleed costs nothing, because the paint goes beneath the ink.
+        const spread = Math.min(8, Math.max(3, Math.ceil((activeLayer.roughen || 0) * 1.5)));
+        const region = bucketFillTransparentRegion(base, Math.round(pos.x), Math.round(pos.y), fillRgb, fillAlpha, 24, spread);
         if (!region) return;
 
         const bitmapId = storeBitmap(region.imageData);
         const stroke = { id: Date.now(), tool: 'paste', bitmapId, x: region.x, y: region.y };
         noteColorUsed(color);
         updLayers(currentCutId, c => ({
-            layers: c.layers.map(l => l.id === activeLayer.id ? { ...l, strokes: [...l.strokes, stroke] } : l)
+            layers: c.layers.map(l => l.id === activeLayer.id ? { ...l, strokes: insertFill(l.strokes, stroke, region.overPaint) } : l)
         }));
     };
 
