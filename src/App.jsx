@@ -16,6 +16,7 @@ import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, off
 import { closeLassoPath, lassoBounds, applyResize } from './lassoOps.js';
 import { useTimelineGestures } from './useTimelineGestures.js';
 import { fmt, parseClock } from './timeCode.js';
+import { derivePartsFrom, deriveVideoBatches, assignPart, renamePartIn, ungroupPartIn, removeVideoBatch } from './partOps.js';
 import { measureTextBox as measureTextBoxPure, textNeedsBox, drawTextObject } from './textRender.js';
 import { migrateCuts, projectSettings, makeLoadProgress } from './projectFormat.js';
 import { unusedBitmapIds } from './bitmapRefs.js';
@@ -706,16 +707,7 @@ export default function App() {
     const contentStart = (cuts.length || videoOverlay) ? Math.max(0, Math.min(videoOverlay?.startTime ?? Infinity, ...cuts.map(c => c.startTime), audioData?.startTime ?? Infinity)) : 0;
     // Parts (scenes): cuts grouped by partId. Each video import is one part; cuts can also be
     // grouped manually. Selecting a part scopes playback (and dims the rest) to it.
-    const parts = (() => {
-        const m = new Map();
-        for (const c of cuts) {
-            if (!c.partId) continue;
-            const p = m.get(c.partId) || { id: c.partId, name: c.partName || tr('파트'), count: 0, start: Infinity, end: 0 };
-            p.count++; p.start = Math.min(p.start, c.startTime); p.end = Math.max(p.end, c.endTime);
-            m.set(c.partId, p);
-        }
-        return [...m.values()].sort((a, b) => a.start - b.start);
-    })();
+    const parts = derivePartsFrom(cuts, tr('파트'));
     const activePart = activePartId ? parts.find(p => p.id === activePartId) : null;
     // Playback runs within the active part when one is selected, else across all content.
     const playStart = activePart ? activePart.start : contentStart;
@@ -3431,21 +3423,12 @@ export default function App() {
     };
 
     // Imported frame sets, derived from the cuts themselves (so they survive save/load).
-    const videoBatches = (() => {
-        const m = new Map();
-        for (const c of cuts) {
-            if (!c.videoBatch) continue;
-            const b = m.get(c.videoBatch) || { id: c.videoBatch, label: c.videoLabel || tr('영상'), count: 0, start: c.startTime, end: c.endTime };
-            b.count++; b.start = Math.min(b.start, c.startTime); b.end = Math.max(b.end, c.endTime);
-            m.set(c.videoBatch, b);
-        }
-        return [...m.values()];
-    })();
+    const videoBatches = deriveVideoBatches(cuts, tr('영상'));
     const deleteVideoBatch = (batchId) => {
         const b = videoBatches.find(x => x.id === batchId);
         if (!b || !window.confirm(tr('"{0}" 프레임 {1}컷을 삭제할까요?', b.label, b.count))) return;
         setCuts(p => {
-            const left = p.filter(c => c.videoBatch !== batchId);
+            const left = removeVideoBatch(p, batchId);
             if (!left.some(c => c.id === currentCutId)) setCurrentCutId(left[0]?.id ?? null);
             return left;
         });
@@ -3470,18 +3453,18 @@ export default function App() {
         const name = window.prompt(tr('새 파트 이름:'), tr('파트 {0}', parts.length + 1));
         if (name == null) return;
         const pid = 'part_' + Date.now().toString(36);
-        setCuts(p => p.map(c => selectedCutIds.has(c.id) ? { ...c, partId: pid, partName: name } : c));
+        setCuts(p => assignPart(p, selectedCutIds, pid, name));
         setActivePartId(pid);
     };
     const renamePart = (partId) => {
         const p = parts.find(x => x.id === partId); if (!p) return;
         const name = window.prompt(tr('파트 이름 변경:'), p.name);
         if (name == null) return;
-        setCuts(prev => prev.map(c => c.partId === partId ? { ...c, partName: name } : c));
+        setCuts(prev => renamePartIn(prev, partId, name));
     };
     // Ungroup a part (cuts stay, just lose their part membership).
     const ungroupPart = (partId) => {
-        setCuts(prev => prev.map(c => c.partId === partId ? { ...c, partId: undefined, partName: undefined } : c));
+        setCuts(prev => ungroupPartIn(prev, partId));
         if (activePartId === partId) setActivePartId(null);
     };
 
