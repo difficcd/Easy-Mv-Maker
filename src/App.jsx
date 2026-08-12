@@ -2286,6 +2286,95 @@ export default function App() {
         return { tx: left, ty: top, tw: Math.max(minSize, right - left), th: Math.max(minSize, bottom - top) };
     };
 
+    // A press that claims the canvas. Every branch of startDraw that takes over the pointer does
+    // these three things together: remember which pointer owns the gesture, capture it so moves
+    // keep arriving even once it leaves the canvas, and mark a drag in progress.
+    //
+    // setPointerCapture needs the try/catch. It throws when the pointer id is already gone -
+    // optional chaining does not help, that guards a missing method, not a throw - and an
+    // uncaught throw out of a pointerdown handler takes the whole app down. That happened.
+    const beginGesture = (e) => {
+        activePointerIdRef.current = e.pointerId;
+        try { canvasRef.current?.setPointerCapture(e.pointerId); } catch { }
+        isDrawing.current = true;
+    };
+
+    // Grab a text object to drag. The text tool and the move tool both do this and differ in one
+    // way: under the text tool, releasing without having moved opens the editor, so the drag
+    // starts out "not yet moved". The move tool has no editor to open, so it never needs to know.
+    const startTextDrag = (e, pos, hit, clickToEdit) => {
+        setSelectedText({ cutId: currentCutId, textId: hit.text.id });
+        beginGesture(e);
+        textDragRef.current = {
+            cutId: currentCutId,
+            textId: hit.text.id,
+            startPos: { x: pos.x, y: pos.y },
+            startText: { x: hit.text.x ?? 0, y: hit.text.y ?? 0 },
+            moved: !clickToEdit,
+            clickToEdit,
+        };
+        e.preventDefault();
+    };
+
+    // Open the text editor over this point. Its position is in CSS pixels relative to the
+    // displayed canvas, which is scaled to fit and zoomed independently of the drawing
+    // resolution - hence converting through the bounding rect and the zoom rather than using
+    // the canvas coordinates directly.
+    const openTextEditorAt = (pos, currentCut) => {
+        const c = canvasRef.current;
+        const r = c.getBoundingClientRect();
+        const sx = r.width / c.width;
+        const sy = r.height / c.height;
+        setTextEdit({
+            cutId: currentCutId,
+            layerId: currentCut.activeLayerId,
+            textId: null,
+            x: pos.x,
+            y: pos.y,
+            cssX: (pos.x * sx / view.zoom),
+            cssY: (pos.y * sy / view.zoom),
+            text: '',
+            fontSize: 36,
+            fontFamily: 'sans-serif',
+            color,
+            opacity,
+            visible: true,
+        });
+    };
+
+    // Bucket fill. The region is worked out against what is actually visible at and above the
+    // active layer, so a line drawn on a layer above still acts as a boundary, and the result
+    // lands as a pasted bitmap rather than a stroke - a filled region has no path to store.
+    const floodFillAt = (pos, currentCut, activeLayer) => {
+        const tmpCanvas = document.createElement('canvas');
+        sizeCanvas(tmpCanvas, CANVAS_W, CANVAS_H);
+        const tctx = tmpCanvas.getContext('2d');
+
+        const activeCanvas = layerCanvasCache[layerKey(currentCut.id, activeLayer.id)];
+        if (activeCanvas) tctx.drawImage(activeCanvas, 0, 0);
+        else drawStrokesOnCtx(tctx, activeLayer.strokes, false, bitmapStoreRef.current);
+
+        const stack = flattenLayersInUiOrder(currentCut?.layers || []).filter(l => l.type === 'layer' && l.visible !== false);
+        const activeIndex = stack.findIndex(l => l.id === activeLayer.id);
+        for (let i = 0; i < activeIndex; i++) {
+            const lc = layerCanvasCache[layerKey(currentCut.id, stack[i].id)];
+            if (lc) tctx.drawImage(lc, 0, 0);
+        }
+
+        const base = tctx.getImageData(0, 0, CANVAS_W, CANVAS_H);
+        const fillRgb = hexToRgb(color);
+        const fillAlpha = Math.round(Math.max(0, Math.min(1, opacity)) * 255);
+        const region = bucketFillTransparentRegion(base, Math.round(pos.x), Math.round(pos.y), fillRgb, fillAlpha);
+        if (!region) return;
+
+        const bitmapId = storeBitmap(region.imageData);
+        const stroke = { id: Date.now(), tool: 'paste', bitmapId, x: region.x, y: region.y };
+        noteColorUsed(color);
+        updLayers(currentCutId, c => ({
+            layers: c.layers.map(l => l.id === activeLayer.id ? { ...l, strokes: [...l.strokes, stroke] } : l)
+        }));
+    };
+
     const startDraw = (e) => {
         // No drawing while panning with space or the middle button - canvas-area handles that.
         if (spaceDownRef.current || e.button === 1 || panningRef.current) return;
@@ -2299,9 +2388,7 @@ export default function App() {
         }
         // Recording a motion path for a part animation: capture the stroke as a path.
         if (pathCapture) {
-            activePointerIdRef.current = e.pointerId;
-            try { canvasRef.current?.setPointerCapture(e.pointerId); } catch { }
-            isDrawing.current = true;
+            beginGesture(e);
             pathPtsRef.current = [pos];
             e.preventDefault();
             return;
@@ -2319,9 +2406,7 @@ export default function App() {
         if (selection) {
             const hit = hitTestSelection(pos);
             if (hit) {
-                activePointerIdRef.current = e.pointerId;
-                try { canvasRef.current?.setPointerCapture(e.pointerId); } catch { }
-                isDrawing.current = true;
+                beginGesture(e);
                 selectionDragRef.current = { hit, startPos: { x: pos.x, y: pos.y }, startSel: { ...selection } };
                 e.preventDefault();
                 return;
@@ -2332,42 +2417,8 @@ export default function App() {
 
         if (tool === 'text') {
             const hit = hitTestText(pos, currentCut);
-            if (hit) {
-                setSelectedText({ cutId: currentCutId, textId: hit.text.id });
-                activePointerIdRef.current = e.pointerId;
-                try { canvasRef.current?.setPointerCapture(e.pointerId); } catch { }
-                isDrawing.current = true;
-                textDragRef.current = {
-                    cutId: currentCutId,
-                    textId: hit.text.id,
-                    startPos: { x: pos.x, y: pos.y },
-                    startText: { x: hit.text.x ?? 0, y: hit.text.y ?? 0 },
-                    moved: false,
-                    clickToEdit: true,
-                };
-                e.preventDefault();
-                return;
-            }
-            // Position editor in CSS pixels relative to the displayed canvas.
-            const c = canvasRef.current;
-            const r = c.getBoundingClientRect();
-            const sx = r.width / c.width;
-            const sy = r.height / c.height;
-            setTextEdit({
-                cutId: currentCutId,
-                layerId: currentCut.activeLayerId,
-                textId: null,
-                x: pos.x,
-                y: pos.y,
-                cssX: (pos.x * sx / view.zoom),
-                cssY: (pos.y * sy / view.zoom),
-                text: '',
-                fontSize: 36,
-                fontFamily: 'sans-serif',
-                color,
-                opacity,
-                visible: true,
-            });
+            if (hit) { startTextDrag(e, pos, hit, true); return; }
+            openTextEditorAt(pos, currentCut);
             isDrawing.current = false;
             e.preventDefault();
             return;
@@ -2375,22 +2426,7 @@ export default function App() {
 
         if (tool === 'move') {
             const hit = hitTestText(pos, currentCut);
-            if (hit) {
-                setSelectedText({ cutId: currentCutId, textId: hit.text.id });
-                activePointerIdRef.current = e.pointerId;
-                try { canvasRef.current?.setPointerCapture(e.pointerId); } catch { }
-                isDrawing.current = true;
-                textDragRef.current = {
-                    cutId: currentCutId,
-                    textId: hit.text.id,
-                    startPos: { x: pos.x, y: pos.y },
-                    startText: { x: hit.text.x ?? 0, y: hit.text.y ?? 0 },
-                    moved: true,
-                    clickToEdit: false,
-                };
-                e.preventDefault();
-                return;
-            }
+            if (hit) { startTextDrag(e, pos, hit, false); return; }
             // With no text grabbed this becomes a move-everything drag; it has to work without
             // a selection. By default that is every visible layer and text in this cut, or just
             // the active layer while Alt is held.
@@ -2399,9 +2435,7 @@ export default function App() {
             const act = resolveDrawLayer(currentCut);
             const ids = onlyActive ? (act ? [act.id] : []) : drawable.map(l => l.id);
             if (ids.length) {
-                activePointerIdRef.current = e.pointerId;
-                try { canvasRef.current?.setPointerCapture(e.pointerId); } catch { }
-                isDrawing.current = true;
+                beginGesture(e);
                 layerDragRef.current = { cutId: currentCutId, layerIds: ids, withTexts: !onlyActive, startPos: { x: pos.x, y: pos.y }, dx: 0, dy: 0 };
                 renderLayerDragPreview();   // draw immediately on press so the screen does not flash empty
                 setDragTick(v => v + 1);    // hide the original
@@ -2413,23 +2447,19 @@ export default function App() {
         if (etool === 'curve') {
             // Curve ruler: tap to place anchors (hold and drag to fine-tune), then confirm with
             // the done button.
-            activePointerIdRef.current = e.pointerId;
-            try { canvasRef.current?.setPointerCapture(e.pointerId); } catch { }
+            beginGesture(e);
             if (!curveAnchorsRef.current) curveAnchorsRef.current = [];
             curveAnchorsRef.current.push({ x: pos.x, y: pos.y, pressure: pos.pressure });
             curveDraggingRef.current = true;
-            isDrawing.current = true;
             setCurvePts(curveAnchorsRef.current.length);
             renderCurvePreview();
             e.preventDefault();
             return;
         }
 
-        activePointerIdRef.current = e.pointerId;
-        try { canvasRef.current?.setPointerCapture(e.pointerId); } catch { }
+        beginGesture(e);
         if (tool !== 'move' && tool !== 'text' && selectedText) setSelectedText(null);
 
-        isDrawing.current = true;
         switch (etool) {
             case 'lasso':
                 setLassoPoints([pos]);
@@ -2468,43 +2498,10 @@ export default function App() {
                 break;
             }
             case 'fill':
-                {
-                    isDrawing.current = false;
-                    const tmpCanvas = document.createElement('canvas');
-                    tmpCanvas.width = CANVAS_W;
-                    tmpCanvas.height = CANVAS_H;
-                    const tctx = tmpCanvas.getContext('2d');
-                    tctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
-
-                    // Base for fill: active layer, plus obstacle pixels from layers above (so lines on upper layers can act as boundaries).
-                    const activeCanvas = layerCanvasCache[layerKey(currentCut.id, activeLayer.id)];
-                    if (activeCanvas) tctx.drawImage(activeCanvas, 0, 0);
-                    else drawStrokesOnCtx(tctx, activeLayer.strokes, false, bitmapStoreRef.current);
-
-                    const stack = flattenLayersInUiOrder(currentCut?.layers || []).filter(l => l.type === 'layer' && l.visible !== false);
-                    const activeIndex = stack.findIndex(l => l.id === activeLayer.id);
-                    if (activeIndex > 0) {
-                        for (let i = 0; i < activeIndex; i++) {
-                            const lc = layerCanvasCache[layerKey(currentCut.id, stack[i].id)];
-                            if (lc) tctx.drawImage(lc, 0, 0);
-                        }
-                    }
-
-                    const base = tctx.getImageData(0, 0, CANVAS_W, CANVAS_H);
-
-                    const fillRgb = hexToRgb(color);
-                    const fillAlpha = Math.round(Math.max(0, Math.min(1, opacity)) * 255);
-                    const region = bucketFillTransparentRegion(base, Math.round(pos.x), Math.round(pos.y), fillRgb, fillAlpha);
-                    if (!region) break;
-
-                    const bitmapId = storeBitmap(region.imageData);
-                    const stroke = { id: Date.now(), tool: 'paste', bitmapId, x: region.x, y: region.y };
-                    noteColorUsed(color);
-                    updLayers(currentCutId, c => ({
-                        layers: c.layers.map(l => l.id === activeLayer.id ? { ...l, strokes: [...l.strokes, stroke] } : l)
-                    }));
-                    break;
-                }
+                // A fill is a single act, not a drag.
+                isDrawing.current = false;
+                floodFillAt(pos, currentCut, activeLayer);
+                break;
             case 'move':
                 isDrawing.current = false;
                 break;
