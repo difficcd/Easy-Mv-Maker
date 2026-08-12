@@ -4,7 +4,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { moveLayer, isDescendantOf, resolveDrawLayer, commitStroke, insertFill } from '../src/layerOps.js';
+import { moveLayer, isDescendantOf, resolveDrawLayer, commitStroke, insertFill, offsetLayers } from '../src/layerOps.js';
 import { flattenLayersInUiOrder } from '../src/canvasUtils.js';
 
 // f1 > a, b   then c at the root
@@ -234,4 +234,56 @@ test('insertFill: does not mutate the list it was given', () => {
     const copy = [...strokes];
     insertFill(strokes, { id: 9, tool: 'paste' }, false);
     assert.deepEqual(strokes, copy);
+});
+
+// ── moving whole layers ────────────────────────────────────────────────────
+test('offsetLayers: moves path strokes point by point and placed bitmaps by their origin', () => {
+    const cut = {
+        layers: [
+            { id: 'a', strokes: [{ id: 1, points: [{ x: 10, y: 20, pressure: 0.5 }, { x: 30, y: 40 }] }] },
+            { id: 'b', strokes: [{ id: 2, tool: 'paste', x: 100, y: 200 }] },
+        ],
+        texts: [],
+    };
+    const out = offsetLayers(cut, ['a', 'b'], 5, -3, false);
+    assert.deepEqual(out.layers[0].strokes[0].points, [{ x: 15, y: 17, pressure: 0.5 }, { x: 35, y: 37 }],
+        'pressure and any other point field survive the move');
+    assert.deepEqual({ x: out.layers[1].strokes[0].x, y: out.layers[1].strokes[0].y }, { x: 105, y: 197 });
+});
+
+test('offsetLayers: bumps rev, because a move is invisible to the stroke signature', () => {
+    // strokeSig is built from stroke count and the last stroke's identity, so coordinates
+    // changing underneath it would leave the cached canvas drawing at the old position.
+    const cut = { layers: [{ id: 'a', rev: 2, strokes: [{ id: 1, points: [{ x: 0, y: 0 }] }] }], texts: [] };
+    assert.equal(offsetLayers(cut, ['a'], 1, 1, false).layers[0].rev, 3);
+    const noRev = { layers: [{ id: 'a', strokes: [] }], texts: [] };
+    assert.equal(offsetLayers(noRev, ['a'], 1, 1, false).layers[0].rev, 1, 'starts from nothing');
+});
+
+test('offsetLayers: layers not being dragged are left exactly as they were', () => {
+    const other = { id: 'z', rev: 7, strokes: [{ id: 9, points: [{ x: 1, y: 1 }] }] };
+    const cut = { layers: [{ id: 'a', strokes: [] }, other], texts: [] };
+    const out = offsetLayers(cut, ['a'], 10, 10, false);
+    assert.equal(out.layers[1], other, 'the very same object, not a copy');
+});
+
+test('offsetLayers: texts move only when the drag includes them', () => {
+    const cut = { layers: [], texts: [{ id: 't', x: 10, y: 10 }] };
+    assert.deepEqual(offsetLayers(cut, [], 5, 5, true).texts, [{ id: 't', x: 15, y: 15 }]);
+    assert.deepEqual(offsetLayers(cut, [], 5, 5, false).texts, [{ id: 't', x: 10, y: 10 }]);
+    // A text with no position yet starts from the origin rather than becoming NaN.
+    const noPos = { layers: [], texts: [{ id: 't' }] };
+    assert.deepEqual(offsetLayers(noPos, [], 5, 5, true).texts, [{ id: 't', x: 5, y: 5 }]);
+});
+
+test('offsetLayers: does not mutate the cut it was given', () => {
+    const cut = { layers: [{ id: 'a', strokes: [{ id: 1, points: [{ x: 10, y: 20 }] }] }], texts: [{ id: 't', x: 1, y: 2 }] };
+    const before = JSON.parse(JSON.stringify(cut));
+    offsetLayers(cut, ['a'], 100, 100, true);
+    assert.deepEqual(cut, before);
+});
+
+test('offsetLayers: a cut with nothing in it is not a special case for the caller', () => {
+    assert.deepEqual(offsetLayers({}, ['a'], 1, 1, true), { layers: [], texts: [] });
+    assert.deepEqual(offsetLayers(undefined, undefined, 1, 1, false), { layers: [], texts: [] });
 });

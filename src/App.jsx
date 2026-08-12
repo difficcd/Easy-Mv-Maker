@@ -11,7 +11,8 @@ import { Timeline } from './Timeline';
 import { ProjectPicker, ProgressOverlay, SettingsModal, HelpModal, VideoImportModal, SceneDetectModal, LinkPromptModal } from './Modals';
 import { tr, loadLang, saveLang, setLangValue } from './i18n';
 import { moveLayer } from './layerOps.js';
-import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill } from './layerOps.js';
+import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, offsetLayers } from './layerOps.js';
+import { closeLassoPath, lassoBounds } from './lassoOps.js';
 import { unusedBitmapIds } from './bitmapRefs.js';
 import { dragCut, resizeCut } from './cutOps.js';
 import {
@@ -2299,6 +2300,22 @@ export default function App() {
         isDrawing.current = true;
     };
 
+    // The other half of beginGesture: give the pointer back and stop treating moves as drawing.
+    // Every branch of stopDraw ends this way. releasePointerCapture throws on a pointer that is
+    // already gone, exactly as its counterpart does, so it needs the same guard.
+    const endGesture = () => {
+        isDrawing.current = false;
+        try { if (activePointerIdRef.current !== null) canvasRef.current?.releasePointerCapture(activePointerIdRef.current); } catch { }
+        activePointerIdRef.current = null;
+    };
+
+    // Wipe the in-progress-stroke overlay. It sits above the main canvas, so anything left on it
+    // is drawn twice - once live, once committed - which reads as a doubled or smeared line.
+    const clearLiveOverlay = () => {
+        const lc = liveCanvasRef.current;
+        if (lc) lc.getContext('2d').clearRect(0, 0, lc.width, lc.height);
+    };
+
     // Grab a text object to drag. The text tool and the move tool both do this and differ in one
     // way: under the text tool, releasing without having moved opens the editor, so the drag
     // starts out "not yet moved". The move tool has no editor to open, so it never needs to know.
@@ -2618,43 +2635,24 @@ export default function App() {
         // Committing a whole-layer move: the offset is added to every stroke coordinate.
         if (layerDragRef.current) {
             const d = layerDragRef.current; layerDragRef.current = null;
-            isDrawing.current = false;
-            try { if (activePointerIdRef.current !== null) canvasRef.current?.releasePointerCapture(activePointerIdRef.current); } catch { }
-            activePointerIdRef.current = null;
+            endGesture();
             const dx = Math.round(d.dx), dy = Math.round(d.dy);
-            const lc = liveCanvasRef.current; if (lc) lc.getContext('2d').clearRect(0, 0, lc.width, lc.height);
-            if (dx || dy) {
-                updLayers(d.cutId, c => ({
-                    layers: c.layers.map(l => !d.layerIds.includes(l.id) ? l : ({
-                        ...l,
-                        rev: (l.rev || 0) + 1, // only the coordinates changed, so bump the revision to invalidate the cache
-                        strokes: safeArray(l.strokes).map(st => st.points
-                            ? { ...st, points: st.points.map(p => ({ ...p, x: p.x + dx, y: p.y + dy })) }
-                            : { ...st, x: (st.x || 0) + dx, y: (st.y || 0) + dy }),
-                    })),
-                    texts: d.withTexts
-                        ? safeArray(c.texts).map(t => ({ ...t, x: (t.x || 0) + dx, y: (t.y || 0) + dy }))
-                        : safeArray(c.texts),
-                }));
-            }
+            clearLiveOverlay();
+            if (dx || dy) updLayers(d.cutId, c => offsetLayers(c, d.layerIds, dx, dy, d.withTexts));
             setDragTick(v => v + 1);
             return;
         }
         // Curve ruler: one anchor placed or fine-tuned; the done button commits it.
         if (etool === 'curve' && curveDraggingRef.current) {
             curveDraggingRef.current = false;
-            isDrawing.current = false;
-            try { if (activePointerIdRef.current !== null) canvasRef.current?.releasePointerCapture(activePointerIdRef.current); } catch { }
-            activePointerIdRef.current = null;
+            endGesture();
             renderCurvePreview();
             return;
         }
         // Mosaic: pixelates the dragged rectangle and stamps it down.
         if (mosaicRectRef.current) {
             const r = mosaicRectRef.current; mosaicRectRef.current = null;
-            isDrawing.current = false;
-            try { if (activePointerIdRef.current !== null) canvasRef.current?.releasePointerCapture(activePointerIdRef.current); } catch { }
-            activePointerIdRef.current = null;
+            endGesture();
             applyMosaic(r);
             liveClearPendingRef.current = true;
             return;
@@ -2663,9 +2661,7 @@ export default function App() {
         if (pathPtsRef.current) {
             const pts = pathPtsRef.current;
             pathPtsRef.current = null;
-            isDrawing.current = false;
-            try { if (activePointerIdRef.current !== null) canvasRef.current?.releasePointerCapture(activePointerIdRef.current); } catch { }
-            activePointerIdRef.current = null;
+            endGesture();
             if (pathCapture && pts.length > 1) {
                 if (pathCapture.mode === 'sway') {
                     // Sway from a drawn curve: the curve is stored as a waveform, and how far it
@@ -2684,13 +2680,11 @@ export default function App() {
         // after the layer has repainted so there's no flicker.
         if (liveStrokeRef.current) {
             const st = liveStrokeRef.current; liveStrokeRef.current = null;
-            isDrawing.current = false;
-            try { if (activePointerIdRef.current !== null) canvasRef.current?.releasePointerCapture(activePointerIdRef.current); } catch { }
-            activePointerIdRef.current = null;
+            endGesture();
             if (st.tool === 'blur') {
                 // Blur does not lay down ink; it spreads what is already there, blurring the
                 // layer pixels under the path and stamping the result back over them.
-                const lc0 = liveCanvasRef.current; if (lc0) lc0.getContext('2d').clearRect(0, 0, lc0.width, lc0.height);
+                clearLiveOverlay();
                 applyBlurStroke(st);
                 return;
             }
@@ -2700,21 +2694,17 @@ export default function App() {
                 // how state updates and repaints are timed. The next normal repaint replaces it
                 // with an identical result.
                 const mc = canvasRef.current; if (mc) drawStrokesOnCtx(mc.getContext('2d'), [st], false, bitmapStoreRef.current);
-                const lc = liveCanvasRef.current; if (lc) lc.getContext('2d').clearRect(0, 0, lc.width, lc.height);
+                clearLiveOverlay();
                 commitStrokeToLayer(currentCutId, drawTargetLayerRef.current, st);
                 if (st.tool !== 'eraser') noteColorUsed(st.color);
-            } else { const lc = liveCanvasRef.current; if (lc) lc.getContext('2d').clearRect(0, 0, lc.width, lc.height); }
+            } else clearLiveOverlay();
             return;
         }
         selectionDragRef.current = null;
         const endedTextDrag = textDragRef.current;
         textDragRef.current = null;
         if (!isDrawing.current) return;
-        isDrawing.current = false;
-        try {
-            if (activePointerIdRef.current !== null) canvasRef.current?.releasePointerCapture(activePointerIdRef.current);
-        } catch { }
-        activePointerIdRef.current = null;
+        endGesture();
 
         if (endedTextDrag?.clickToEdit && !endedTextDrag.moved) {
             openEditText(endedTextDrag.cutId, endedTextDrag.textId);
@@ -2722,70 +2712,59 @@ export default function App() {
         }
 
         if (tool === 'lasso' && lassoPoints.length > 1) {
-            const currentCut = cuts.find(c => c.id === currentCutId);
-            const activeLayer = currentCut?.layers.find(l => l.id === currentCut.activeLayerId);
-            if (activeLayer) {
-                // Render from the latest strokes to avoid stale cache mismatches.
-                const tmpCanvas = document.createElement('canvas');
-                tmpCanvas.width = CANVAS_W;
-                tmpCanvas.height = CANVAS_H;
-                const ctx = tmpCanvas.getContext('2d');
-                drawStrokesOnCtx(ctx, activeLayer.strokes, true, bitmapStoreRef.current);
-                let pts = lassoPoints;
-                if (pts.length >= 2 && dist(pts[0], pts[pts.length - 1]) > 8) {
-                    pts = [...pts, pts[0]];
-                } else if (pts.length >= 2) {
-                    pts = [...pts.slice(0, -1), pts[0]];
-                }
-                const poly = pts.map(p => [p.x, p.y]);
-                const minX = Math.max(0, Math.floor(Math.min(...lassoPoints.map(p => p.x))));
-                const minY = Math.max(0, Math.floor(Math.min(...lassoPoints.map(p => p.y))));
-                const maxX = Math.min(CANVAS_W, Math.ceil(Math.max(...lassoPoints.map(p => p.x))));
-                const maxY = Math.min(CANVAS_H, Math.ceil(Math.max(...lassoPoints.map(p => p.y))));
-                const w = maxX - minX, h = maxY - minY;
-
-                if (w > 0 && h > 0) {
-                    const layerImageData = ctx.getImageData(minX, minY, w, h);
-                    const selectionImageData = new ImageData(w, h);
-                    const eraseMaskImageData = new ImageData(w, h);
-                    let hasContent = false;
-                    for (let y = 0; y < h; y++) {
-                        for (let x = 0; x < w; x++) {
-                            const i = (y * w + x) * 4;
-                            const inside = pointInPolygon([minX + x + 0.5, minY + y + 0.5], poly);
-                            const a = layerImageData.data[i + 3];
-                            if (!inside || a === 0) continue;
-                            hasContent = true;
-                            selectionImageData.data[i] = layerImageData.data[i];
-                            selectionImageData.data[i + 1] = layerImageData.data[i + 1];
-                            selectionImageData.data[i + 2] = layerImageData.data[i + 2];
-                            selectionImageData.data[i + 3] = a;
-                            eraseMaskImageData.data[i + 3] = 255;
-                        }
-                    }
-
-                    if (hasContent) {
-                        const selectionBitmapId = storeBitmap(selectionImageData);
-                        const eraseMaskBitmapId = storeBitmap(eraseMaskImageData);
-                        setSelection({
-                            cutId: currentCutId,
-                            sourceLayerId: activeLayer.id,
-                            bitmapId: selectionBitmapId,
-                            maskBitmapId: eraseMaskBitmapId,
-                            x: minX,
-                            y: minY,
-                            w,
-                            h,
-                            tx: minX,
-                            ty: minY,
-                            tw: w,
-                            th: h,
-                        });
-                    }
-                }
-            }
+            liftLassoSelection(lassoPoints);
             setLassoPoints([]);
         }
+    };
+
+    // Lift what the lasso encloses into a floating selection: the enclosed pixels, plus a mask
+    // of exactly which ones, so committing the move knows what to erase from the source layer.
+    const liftLassoSelection = (points) => {
+        const currentCut = cuts.find(c => c.id === currentCutId);
+        const activeLayer = currentCut?.layers.find(l => l.id === currentCut.activeLayerId);
+        if (!activeLayer) return;
+
+        // Rendered from the current strokes rather than the cached canvas, which may be a
+        // repaint behind.
+        const tmpCanvas = document.createElement('canvas');
+        sizeCanvas(tmpCanvas, CANVAS_W, CANVAS_H);
+        const ctx = tmpCanvas.getContext('2d');
+        drawStrokesOnCtx(ctx, activeLayer.strokes, true, bitmapStoreRef.current);
+
+        const poly = closeLassoPath(points).map(p => [p.x, p.y]);
+        const { x: minX, y: minY, w, h } = lassoBounds(points, CANVAS_W, CANVAS_H);
+        if (w <= 0 || h <= 0) return;
+
+        const layerImageData = ctx.getImageData(minX, minY, w, h);
+        const selectionImageData = new ImageData(w, h);
+        const eraseMaskImageData = new ImageData(w, h);
+        let hasContent = false;
+        for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+                const i = (y * w + x) * 4;
+                // Tested at the pixel centre: on the boundary itself the crossing test could go
+                // either way, and a half-pixel offset makes the answer definite.
+                if (!pointInPolygon([minX + x + 0.5, minY + y + 0.5], poly)) continue;
+                const a = layerImageData.data[i + 3];
+                if (a === 0) continue;
+                hasContent = true;
+                selectionImageData.data[i] = layerImageData.data[i];
+                selectionImageData.data[i + 1] = layerImageData.data[i + 1];
+                selectionImageData.data[i + 2] = layerImageData.data[i + 2];
+                selectionImageData.data[i + 3] = a;
+                eraseMaskImageData.data[i + 3] = 255;
+            }
+        }
+        if (!hasContent) return;
+
+        setSelection({
+            cutId: currentCutId,
+            sourceLayerId: activeLayer.id,
+            bitmapId: storeBitmap(selectionImageData),
+            maskBitmapId: storeBitmap(eraseMaskImageData),
+            x: minX, y: minY, w, h,
+            tx: minX, ty: minY, tw: w, th: h,
+        });
     };
 
     const onPointerLeaveCanvas = () => {

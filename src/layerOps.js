@@ -132,3 +132,38 @@ export function insertFill(strokes, fill, overPaint) {
     }
     return [...list.slice(0, at), fill, ...list.slice(at)];
 }
+
+/**
+ * Shift whole layers, and optionally the cut's texts, by a pixel offset.
+ *
+ * This is what a move-everything drag commits. Two things are easy to get wrong and are the
+ * reason it lives here rather than inline in the pointer-up handler:
+ *
+ *  - A stroke is either a path or a placed bitmap, and they carry position differently: one in
+ *    every point, the other in a single x/y. Both have to move.
+ *  - Only coordinates change, so the cached canvas signature - built from stroke count and the
+ *    last stroke's identity - does not notice, and the layer would keep drawing at its old
+ *    position. Bumping rev is what invalidates it.
+ *
+ * @param {object} cut the cut being edited
+ * @param {Array} layerIds ids of the layers to move
+ * @param {number} dx
+ * @param {number} dy
+ * @param {boolean} [withTexts] move the cut's text objects too
+ * @returns {{layers: Array, texts: Array}} the changed fields, for the caller to merge
+ */
+export function offsetLayers(cut, layerIds, dx, dy, withTexts) {
+    const ids = new Set(layerIds || []);
+    const layers = Array.isArray(cut?.layers) ? cut.layers : [];
+    const texts = Array.isArray(cut?.texts) ? cut.texts : [];
+    return {
+        layers: layers.map(l => !ids.has(l.id) ? l : ({
+            ...l,
+            rev: (l.rev || 0) + 1,
+            strokes: (Array.isArray(l.strokes) ? l.strokes : []).map(st => st.points
+                ? { ...st, points: st.points.map(p => ({ ...p, x: p.x + dx, y: p.y + dy })) }
+                : { ...st, x: (st.x || 0) + dx, y: (st.y || 0) + dy }),
+        })),
+        texts: withTexts ? texts.map(t => ({ ...t, x: (t.x || 0) + dx, y: (t.y || 0) + dy })) : texts,
+    };
+}
