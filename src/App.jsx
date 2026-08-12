@@ -20,7 +20,8 @@ import { derivePartsFrom, deriveVideoBatches } from './partOps.js';
 import {
     cutsReducer, replaceCuts, addCuts, updateCut, setCutAnim, clearCut,
     updateLayer, setLayerAnim, moveLayers, upsertText, moveText, deleteText, toggleTextVisible as toggleTextVisibleAction,
-    assignPartTo, renamePart as renamePartAction, ungroupPart as ungroupPartAction, removeBatch, patchCut, patchCuts,
+    assignPartTo, renamePart as renamePartAction, ungroupPart as ungroupPartAction, removeBatch,
+    insertCutsShifting, deleteTrack, moveCutGroup, replaceBatchCuts, patchCut, patchCuts,
 } from './cutsReducer.js';
 import { measureTextBox as measureTextBoxPure, textNeedsBox, drawTextObject } from './textRender.js';
 import { migrateCuts, projectSettings, makeLoadProgress } from './projectFormat.js';
@@ -172,9 +173,6 @@ export default function App() {
     // The document. Changes go through cutsReducer's named actions - see that file for why, and
     // prefer a named action to patchCut/patchCuts when adding one.
     const [cuts, dispatchCuts] = React.useReducer(cutsReducer, [{ id: 1, name: 'Cut 1', startTime: 0, endTime: 1, track: 0, layers: [mkLayer(1)], activeLayerId: 1, texts: [] }]);
-    // Shim for the call sites still passing a lambda, so they can be converted one at a time
-    // rather than all at once. Every remaining use is an operation waiting for a name.
-    const setCuts = (next) => dispatchCuts(typeof next === 'function' ? patchCuts(next) : replaceCuts(next));
     const [numTracks, setNumTracks] = useState(2);
     const [onionPrev, setOnionPrev] = useState(false);
     const [onionNext, setOnionNext] = useState(false);
@@ -1029,17 +1027,8 @@ export default function App() {
                 // relative layout), clamped so none crosses t=0 or the track range.
                 const grp = draggingCutData.group;
                 if (grp && grp.length > 1) {
-                    const minStart = Math.min(...grp.map(g => g.startTime));
-                    const minTrack = Math.min(...grp.map(g => g.track)), maxTrack = Math.max(...grp.map(g => g.track));
-                    const cdt = Math.max(dt, -minStart);
-                    const cto = Math.max(-minTrack, Math.min(numTracks - 1 - maxTrack, trackOff));
-                    const byId = new Map(grp.map(g => [g.id, g]));
                     setSnapLinePos(null);
-                    dispatchCuts(patchCuts(prev => prev.map(c => {
-                        const g = byId.get(c.id); if (!g) return c;
-                        const ns = Math.max(0, g.startTime + cdt), dur = g.endTime - g.startTime;
-                        return { ...c, startTime: ns, endTime: ns + dur, track: g.track + cto };
-                    })));
+                    dispatchCuts(moveCutGroup(grp, dt, trackOff, numTracks));
                     return;
                 }
                 // Same as the resize above: the guide line is set out here so the state change
@@ -1679,7 +1668,7 @@ export default function App() {
     const updCutAnim = (id, patch) => dispatchCuts(setCutAnim(id, patch));
     const updLayerAnim = (cutId, layerId, patch) => dispatchCuts(setLayerAnim(cutId, layerId, patch));
     const handleAddTrack = () => setNumTracks(p => p + 1);
-    const handleDeleteTrack = (i) => { if (numTracks <= 1) return; if (!window.confirm(tr('Track {0} 삭제?', i))) return; setCuts(p => p.filter(c => c.track !== i).map(c => c.track > i ? { ...c, track: c.track - 1 } : c)); setNumTracks(p => p - 1); };
+    const handleDeleteTrack = (i) => { if (numTracks <= 1) return; if (!window.confirm(tr('Track {0} 삭제?', i))) return; dispatchCuts(deleteTrack(i)); setNumTracks(p => p - 1); };
     // Click a cut in the list: plain = select one, Ctrl/Cmd = toggle, Shift = range (timeline order).
     const handleCutClick = (e, id) => {
         if (e.ctrlKey || e.metaKey) {
@@ -1780,12 +1769,7 @@ export default function App() {
                 setLoadProgress({ label: tr('중간 프레임 만드는 중'), done: i + 1, total: n });
                 await new Promise(r => setTimeout(r, 0)); // yield to the UI between frames so it does not look frozen
             }
-            const shift = n * dur;
-            setCuts(prev => [
-                ...prev.map(c => (c.track === A.track && c.startTime >= A.endTime - 1e-9)
-                    ? { ...c, startTime: c.startTime + shift, endTime: c.endTime + shift } : c),
-                ...newCuts,
-            ]);
+            dispatchCuts(insertCutsShifting(A.track, A.endTime, n * dur, newCuts));
         } catch (e) { alert(tr('트위닝 실패: ') + e.message); }
         finally { setLoadProgress(null); }
     };
@@ -1797,12 +1781,8 @@ export default function App() {
         const insertAt = cut.endTime;
         const newId = Date.now();
         const { layers, activeLayerId, texts } = cloneCutContents(cut);
-        setCuts(prev => {
-            const shifted = prev.map(c => (c.track === cut.track && c.id !== cut.id && c.startTime >= insertAt - 1e-9)
-                ? { ...c, startTime: c.startTime + dur, endTime: c.endTime + dur } : c);
-            const nc = { id: newId, name: `${cut.name}+`, startTime: insertAt, endTime: insertAt + dur, track: cut.track, layers, activeLayerId, texts };
-            return [...shifted, nc];
-        });
+        const nc = { id: newId, name: `${cut.name}+`, startTime: insertAt, endTime: insertAt + dur, track: cut.track, layers, activeLayerId, texts };
+        dispatchCuts(insertCutsShifting(cut.track, insertAt, dur, [nc], cut.id));
         setCurrentCutId(newId);
         setCurrentTime(insertAt);
     };
@@ -3553,7 +3533,7 @@ export default function App() {
                     layers: [{ id: 1, name: 'L1', type: 'layer', parentId: null, visible: true, redoStrokes: [], strokes: [{ id: baseId + 100000 + i, tool: 'paste', bitmapId, x: px, y: py, w: pw, h: ph }] }],
                 });
             }
-            setCuts(p => [...p.filter(c => c.videoSrc !== srcKey), ...made]);
+            dispatchCuts(replaceBatchCuts(srcKey, made));
             setCurrentCutId(made[0].id);
             setCurrentTime(made[0].startTime);
             // Audio (if asked) is the only thing that keeps the video bytes alive past this point.
@@ -4130,7 +4110,7 @@ export default function App() {
                 playbackRate={playbackRate} playheadRef={playheadRef} pps={pps}
                 removeVideoOverlay={removeVideoOverlay} renamePart={renamePart} sceneDetect={sceneDetect}
                 seekToTime={seekToTime} selectPart={selectPart} selectedCutIds={selectedCutIds}
-                setCurrentCutId={setCurrentCutId} setCurrentTime={setCurrentTime} setCuts={setCuts}
+                setCurrentCutId={setCurrentCutId} setCurrentTime={setCurrentTime} addCuts={cs => dispatchCuts(addCuts(cs))}
                 setDraggingCutData={setDraggingCutData} setLoopPlay={setLoopPlay} setPlaybackRate={setPlaybackRate}
                 setResizingData={setResizingData} setSceneCfg={setSceneCfg} setSelectedCutIds={setSelectedCutIds}
                 setShowBottom={setShowBottom} showBottom={showBottom} snapLinePos={snapLinePos}

@@ -16,7 +16,7 @@ export function Timeline({
     onTimelinePointerDown, onTimelinePointerMove, onTimelinePointerUp, parts, playbackRate,
     playheadRef, pps, removeVideoOverlay, renamePart, sceneDetect,
     seekToTime, selectPart, selectedCutIds, setCurrentCutId, setCurrentTime,
-    setCuts, setDraggingCutData, setLoopPlay, setPlaybackRate, setResizingData,
+    addCuts, setDraggingCutData, setLoopPlay, setPlaybackRate, setResizingData,
     setSceneCfg, setSelectedCutIds, setShowBottom, showBottom, snapLinePos,
     startTimelinePan, timelineH, timelineRef, tlWin, ungroupPart,
     videoOverlay, zoomTimelineAt,
@@ -99,7 +99,7 @@ export function Timeline({
                                     for (const c of trackCuts) { if (c.startTime > t) { gapEnd = c.startTime; break; } }
                                     if (gapEnd - gapStart < 0.05) return;
                                     const newCut = { id: Date.now(), name: `Cut ${cuts.length + 1}`, startTime: gapStart, endTime: gapEnd, track: ti, layers: [mkLayer(1)], activeLayerId: 1 };
-                                    setCuts(p => [...p, newCut]);
+                                    addCuts([newCut]);
                                     setCurrentCutId(newCut.id);
                                     setCurrentTime(gapStart);
                                 }}

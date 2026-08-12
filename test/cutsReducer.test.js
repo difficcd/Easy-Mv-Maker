@@ -11,6 +11,7 @@ import {
     updateLayer, setLayerAnim, moveLayers,
     upsertText, moveText, deleteText, toggleTextVisible,
     assignPartTo, renamePart, ungroupPart, removeBatch,
+    insertCutsShifting, deleteTrack, moveCutGroup, replaceBatchCuts,
     patchCut, patchCuts,
 } from '../src/cutsReducer.js';
 
@@ -184,4 +185,72 @@ test('no action mutates the document it was given', () => {
         cutsReducer(before, action);
         assert.equal(JSON.stringify(before), snapshot, `${action.type} mutated the input`);
     }
+});
+
+// ── arranging cuts on the timeline ─────────────────────────────────────────
+const at = (id, track, startTime, endTime, extra = {}) => ({ id, track, startTime, endTime, ...extra });
+
+test('insertCutsShifting: later cuts on that track move aside to make room', () => {
+    const d = [at(1, 0, 0, 1), at(2, 0, 1, 2), at(3, 1, 1, 2)];
+    const out = cutsReducer(d, insertCutsShifting(0, 1, 1, [at(9, 0, 1, 2)]));
+    const byId = Object.fromEntries(out.map(c => [c.id, c]));
+    assert.deepEqual([byId[2].startTime, byId[2].endTime], [2, 3], 'pushed along');
+    assert.deepEqual([byId[1].startTime, byId[1].endTime], [0, 1], 'earlier cut stays put');
+    assert.deepEqual([byId[3].startTime, byId[3].endTime], [1, 2], 'another track is untouched');
+    assert.deepEqual([byId[9].startTime, byId[9].endTime], [1, 2], 'the new cut takes the gap');
+});
+
+test('insertCutsShifting: a cut sitting exactly on the boundary is moved, not left behind', () => {
+    // Floating-point times mean "starts exactly at the insert point" needs an epsilon.
+    const out = cutsReducer([at(2, 0, 0.1 + 0.2, 2)], insertCutsShifting(0, 0.3, 1, []));
+    assert.ok(out[0].startTime > 1.29, `0.1+0.2 was still shifted (${out[0].startTime})`);
+});
+
+test('insertCutsShifting: the cut being duplicated is not pushed by its own copy', () => {
+    const src = at(1, 0, 0, 1);
+    const out = cutsReducer([src], insertCutsShifting(0, 1, 1, [at(9, 0, 1, 2)], 1));
+    assert.deepEqual([out[0].startTime, out[0].endTime], [0, 1]);
+});
+
+test('deleteTrack: removes its cuts and pulls the lower tracks up', () => {
+    const d = [at(1, 0, 0, 1), at(2, 1, 0, 1), at(3, 2, 0, 1)];
+    const out = cutsReducer(d, deleteTrack(1));
+    assert.deepEqual(out.map(c => c.id), [1, 3]);
+    assert.deepEqual(out.map(c => c.track), [0, 1], 'track 2 became track 1, closing the gap');
+});
+
+test('moveCutGroup: the selection keeps its relative layout', () => {
+    const group = [at(1, 0, 2, 3), at(2, 0, 5, 6)];
+    const out = cutsReducer(group, moveCutGroup(group, 1, 0, 2));
+    assert.deepEqual(out.map(c => c.startTime), [3, 6], 'both moved by the same amount');
+    assert.deepEqual(out.map(c => c.endTime - c.startTime), [1, 1], 'durations unchanged');
+});
+
+test('moveCutGroup: clamps as a group at t=0, so the layout is not squashed', () => {
+    // Clamping each cut on its own would pile them all onto zero.
+    const group = [at(1, 0, 2, 3), at(2, 0, 5, 6)];
+    const out = cutsReducer(group, moveCutGroup(group, -100, 0, 2));
+    assert.deepEqual(out.map(c => c.startTime), [0, 3], 'the leading cut stops at 0, the gap survives');
+});
+
+test('moveCutGroup: clamps to the track range at both ends', () => {
+    const group = [at(1, 0, 0, 1), at(2, 1, 0, 1)];
+    assert.deepEqual(cutsReducer(group, moveCutGroup(group, 0, 5, 3)).map(c => c.track), [1, 2], 'stopped by the last track');
+    assert.deepEqual(cutsReducer(group, moveCutGroup(group, 0, -5, 3)).map(c => c.track), [0, 1], 'and by the first');
+});
+
+test('moveCutGroup: cuts outside the selection do not move', () => {
+    const group = [at(1, 0, 0, 1)];
+    const out = cutsReducer([...group, at(2, 0, 5, 6)], moveCutGroup(group, 1, 0, 2));
+    assert.equal(out[1].startTime, 5);
+});
+
+test('replaceBatchCuts: swaps one import, leaving other imports and hand-drawn cuts alone', () => {
+    const d = [
+        { id: 1, videoSrc: 'a', startTime: 0, endTime: 1 },
+        { id: 2, videoSrc: 'b', startTime: 1, endTime: 2 },
+        { id: 3, startTime: 2, endTime: 3 },
+    ];
+    const out = cutsReducer(d, replaceBatchCuts('a', [{ id: 9, videoSrc: 'a', startTime: 0, endTime: 1 }]));
+    assert.deepEqual(out.map(c => c.id), [2, 3, 9]);
 });

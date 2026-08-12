@@ -55,6 +55,19 @@ export const renamePart = (partId, name) => ({ type: 'renamePart', partId, name 
 export const ungroupPart = (partId) => ({ type: 'ungroupPart', partId });
 export const removeBatch = (batchId) => ({ type: 'removeBatch', batchId });
 
+/**
+ * Insert cuts at a point on a track, pushing everything later on that track along to make room.
+ * Duplicating a cut and filling a gap with tweened frames are the same operation.
+ */
+export const insertCutsShifting = (track, at, shift, newCuts, exceptId) =>
+    ({ type: 'insertCutsShifting', track, at, shift, newCuts, exceptId });
+/** Delete a track, closing the gap by pulling every track below it up one. */
+export const deleteTrack = (track) => ({ type: 'deleteTrack', track });
+/** Move several cuts together, keeping their relative layout and staying in bounds. */
+export const moveCutGroup = (group, dt, trackOff, numTracks) => ({ type: 'moveCutGroup', group, dt, trackOff, numTracks });
+/** Replace the cuts imported from one video source with a fresh set. */
+export const replaceBatchCuts = (videoSrc, newCuts) => ({ type: 'replaceBatchCuts', videoSrc, newCuts });
+
 /** Escape hatch: run a function over one cut. Prefer a named action. */
 export const patchCut = (cutId, fn) => ({ type: 'patchCut', cutId, fn });
 /** Escape hatch: run a function over the whole list. Prefer a named action. */
@@ -123,6 +136,40 @@ export function cutsReducer(cuts, action) {
             return ungroupPartIn(list, action.partId);
         case 'removeBatch':
             return removeVideoBatch(list, action.batchId);
+
+        case 'insertCutsShifting': {
+            const { track, at, shift, exceptId } = action;
+            // The epsilon keeps a cut that starts exactly where the new ones end from being left
+            // behind by floating-point noise in the times.
+            const shifted = list.map(c => (c.track === track && c.id !== exceptId && c.startTime >= at - 1e-9)
+                ? { ...c, startTime: c.startTime + shift, endTime: c.endTime + shift }
+                : c);
+            return [...shifted, ...safeArray(action.newCuts)];
+        }
+        case 'deleteTrack':
+            return list
+                .filter(c => c.track !== action.track)
+                .map(c => c.track > action.track ? { ...c, track: c.track - 1 } : c);
+        case 'moveCutGroup': {
+            const group = safeArray(action.group);
+            if (!group.length) return list;
+            // Clamped as a group, not per cut: the whole selection stops when its leading edge
+            // reaches t=0 or its outermost cut reaches the last track, so the layout is kept.
+            const minStart = Math.min(...group.map(g => g.startTime));
+            const minTrack = Math.min(...group.map(g => g.track));
+            const maxTrack = Math.max(...group.map(g => g.track));
+            const dt = Math.max(action.dt, -minStart);
+            const trackOff = Math.max(-minTrack, Math.min(action.numTracks - 1 - maxTrack, action.trackOff));
+            const byId = new Map(group.map(g => [g.id, g]));
+            return list.map(c => {
+                const g = byId.get(c.id);
+                if (!g) return c;
+                const start = Math.max(0, g.startTime + dt);
+                return { ...c, startTime: start, endTime: start + (g.endTime - g.startTime), track: g.track + trackOff };
+            });
+        }
+        case 'replaceBatchCuts':
+            return [...list.filter(c => c.videoSrc !== action.videoSrc), ...safeArray(action.newCuts)];
 
         case 'patchCut':
             return mapCut(list, action.cutId, c => ({ ...c, ...action.fn(c) }));
