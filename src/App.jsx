@@ -7,12 +7,15 @@ import { NumField, clampNum } from './NumField';
 import ColorPanel, { RECENT_SLOTS } from './ColorPanel';
 import { TopBar } from './TopBar';
 import { CutLayerPanel } from './CutLayerPanel';
+import { ToolsPanel } from './ToolsPanel';
 import { Timeline } from './Timeline';
 import { ProjectPicker, ProgressOverlay, SettingsModal, HelpModal, VideoImportModal, SceneDetectModal, LinkPromptModal } from './Modals';
 import { tr, loadLang, saveLang, setLangValue } from './i18n';
 import { moveLayer } from './layerOps.js';
 import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, offsetLayers } from './layerOps.js';
 import { closeLassoPath, lassoBounds, applyResize } from './lassoOps.js';
+import { useTimelineGestures } from './useTimelineGestures.js';
+import { fmt, parseClock } from './timeCode.js';
 import { measureTextBox as measureTextBoxPure, textNeedsBox, drawTextObject } from './textRender.js';
 import { migrateCuts, projectSettings, makeLoadProgress } from './projectFormat.js';
 import { unusedBitmapIds } from './bitmapRefs.js';
@@ -3319,174 +3322,23 @@ export default function App() {
         }
     }, [layerCanvasCache]);
 
-    const seekToClientX = (clientX) => {
-        const el = timelineRef.current; if (!el) return;
-        const rect = el.getBoundingClientRect();
-        const x = clientX - rect.left + el.scrollLeft - 60;
-        const t = Math.min(maxTime, Math.max(0, x / pps));
-        setCurrentTime(t);
-        currentTimeRef.current = t;
-        // Scrubbing while playing: hand the target to the loop (it re-seeks audio and keeps going).
-        if (isPlayingRef.current) seekRef.current = t;
-        else if (audioRef.current && audioUrl) { try { audioRef.current.currentTime = audioData ? Math.max(0, (t - audioData.startTime) + audioData.offset) : t; } catch { } }
-        const active = cuts.filter(c => t >= c.startTime && t < c.endTime);
-        if (active.length) setCurrentCutId(active.reduce((p, c) => p.track > c.track ? p : c).id);
-    };
-    // Seek the playhead to an absolute timeline time (used by scene-cut markers, prev/next scene).
-    const seekToTime = (t) => {
-        t = Math.min(maxTime, Math.max(0, t));
-        setCurrentTime(t); currentTimeRef.current = t;
-        if (isPlayingRef.current) seekRef.current = t;
-        else if (audioRef.current && audioUrl) { try { audioRef.current.currentTime = audioData ? Math.max(0, (t - audioData.startTime) + audioData.offset) : t; } catch { } }
-        const active = cuts.filter(c => t >= c.startTime && t < c.endTime);
-        if (active.length) setCurrentCutId(active.reduce((p, c) => p.track > c.track ? p : c).id);
-    };
-    // Timeline times of the detected scene cuts (mapped from video time).
-    const sceneTimelineTimes = () => safeArray(videoOverlay?.cuts).map(vt => (videoOverlay.cutStart || 0) + (vt - (videoOverlay.cutOffset || 0))).filter(t => t >= 0).sort((a, b) => a - b);
-    const goToScene = (dir) => {
-        const times = sceneTimelineTimes(); if (!times.length) return;
-        const cur = currentTimeRef.current ?? currentTime;
-        const target = dir > 0 ? times.find(t => t > cur + 0.02) : [...times].reverse().find(t => t < cur - 0.02);
-        if (target != null) seekToTime(target);
-    };
-    // Middle-click drag pans the timeline. Handled in the capture phase so it works wherever
-    // the press lands, cuts included, and the browser's own auto-scroll is suppressed.
-    const startTimelinePan = (e) => {
-        if (e.button !== 1) return;
-        const el = timelineRef.current; if (!el) return;
-        e.preventDefault(); e.stopPropagation();
-        const sx = e.clientX, sy = e.clientY, sl = el.scrollLeft, st = el.scrollTop;
-        el.style.cursor = 'grabbing';
-        const mv = (ev) => {
-            el.scrollLeft = Math.max(0, sl - (ev.clientX - sx));
-            el.scrollTop = Math.max(0, st - (ev.clientY - sy));
-            ev.preventDefault();
-        };
-        const up = () => {
-            el.style.cursor = '';
-            window.removeEventListener('pointermove', mv);
-            window.removeEventListener('pointerup', up);
-        };
-        window.addEventListener('pointermove', mv);
-        window.addEventListener('pointerup', up);
-    };
-    // Drag-to-scrub the playhead. Clicking a cut/handle stops propagation, so this
-    // only fires on the ruler and empty track space.
-    const startTimelineScrub = (e) => {
-        if (e.button !== undefined && e.button !== 0) return;
-        // Dragging the playhead should look like playback, not like the editing view. paintFrame
-        // only evaluates cut/part/text animation when it is told it is playing, so a scrub used to
-        // show static artwork sliding past instead of the animation at that instant.
-        setScrubbing(true);
-        seekToClientX(e.clientX);
-        const mv = (ev) => seekToClientX(ev.clientX);
-        const up = () => {
-            setScrubbing(false);
-            window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up);
-        };
-        window.addEventListener('pointermove', mv);
-        window.addEventListener('pointerup', up);
-    };
-    // Timeline touch: 1 finger drag = pan (scroll), 1 finger tap = seek playhead,
-    // 2 fingers = pinch-zoom (pps) anchored under the fingers. Mouse/pen = window-listener scrub.
-    // Drag on empty track area = rubber-band select cuts (like a file manager); a click without
-    // dragging seeks the playhead. The ruler always scrubs.
-    const startMarqueeOrSeek = (e) => {
-        if (e.button !== undefined && e.button !== 0) return;
-        const el = timelineRef.current; if (!el) return;
-        const rect = el.getBoundingClientRect();
-        const sx = e.clientX - rect.left + el.scrollLeft, sy = e.clientY - rect.top + el.scrollTop;
-        const additive = e.shiftKey || e.ctrlKey || e.metaKey;
-        const base = additive ? new Set(selectedCutIds) : new Set();
-        let dragging = false;
-        const mv = (ev) => {
-            const cx = ev.clientX - rect.left + el.scrollLeft, cy = ev.clientY - rect.top + el.scrollTop;
-            if (!dragging && Math.abs(cx - sx) < 5 && Math.abs(cy - sy) < 5) return;
-            dragging = true;
-            const x = Math.min(sx, cx), y = Math.min(sy, cy), w = Math.abs(cx - sx), h = Math.abs(cy - sy);
-            setMarquee({ x, y, w, h });
-            const mL = ev.clientX < e.clientX ? ev.clientX : e.clientX;
-            const mR = ev.clientX < e.clientX ? e.clientX : ev.clientX;
-            const mT = ev.clientY < e.clientY ? ev.clientY : e.clientY;
-            const mB = ev.clientY < e.clientY ? e.clientY : ev.clientY;
-            const sel = new Set(base);
-            el.querySelectorAll('.cut-block[data-cutid]').forEach(node => {
-                const r = node.getBoundingClientRect();
-                if (r.right >= mL && r.left <= mR && r.bottom >= mT && r.top <= mB) {
-                    const cut = cuts.find(c => String(c.id) === node.getAttribute('data-cutid'));
-                    if (cut) { sel.add(cut.id); }
-                }
-            });
-            setSelectedCutIds(sel);
-            if (sel.size) { const first = [...sel][0]; if (first !== currentCutId) setCurrentCutId(first); }
-        };
-        const up = () => {
-            window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up);
-            setMarquee(null);
-            if (!dragging) { if (!additive) setSelectedCutIds(new Set()); seekToClientX(e.clientX); }
-        };
-        window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
-    };
-    const onTimelinePointerDown = (e) => {
-        if (e.pointerType !== 'touch') {
-            if (e.target.closest?.('.ruler')) startTimelineScrub(e);   // ruler = scrub playhead
-            else startMarqueeOrSeek(e);                                 // track area = marquee / click-seek
-            return;
-        }
-        const el = timelineRef.current;
-        tlTouchRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-        if (tlTouchRef.current.size === 2) {
-            const [a, b] = [...tlTouchRef.current.values()];
-            const midX = (a.x + b.x) / 2;
-            const contentX = midX - el.getBoundingClientRect().left + el.scrollLeft - 60;
-            tlPinchRef.current = { mode: 'pinch', startDist: Math.hypot(a.x - b.x, a.y - b.y) || 1, startPps: pps, anchorTime: Math.max(0, contentX / pps) };
-        } else if (tlTouchRef.current.size === 1) {
-            tlPinchRef.current = { mode: 'pan', startClientX: e.clientX, startClientY: e.clientY, startScroll: el ? el.scrollLeft : 0, moved: false };
-        }
-    };
-    const onTimelinePointerMove = (e) => {
-        if (e.pointerType !== 'touch' || !tlTouchRef.current.has(e.pointerId)) return;
-        tlTouchRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-        const el = timelineRef.current; if (!el) return;
-        const p = tlPinchRef.current;
-        if (tlTouchRef.current.size >= 2 && p?.mode === 'pinch') {
-            const [a, b] = [...tlTouchRef.current.values()];
-            const dist = Math.hypot(a.x - b.x, a.y - b.y);
-            const np = Math.max(10, Math.min(300, p.startPps * (dist / p.startDist)));
-            setPps(np);
-            const midX = (a.x + b.x) / 2;
-            el.scrollLeft = Math.max(0, p.anchorTime * np + 60 - (midX - el.getBoundingClientRect().left));
-            e.preventDefault();
-        } else if (tlTouchRef.current.size === 1 && p?.mode === 'pan') {
-            const dx = e.clientX - p.startClientX;
-            if (Math.abs(dx) > 4 || Math.abs(e.clientY - p.startClientY) > 4) p.moved = true;
-            el.scrollLeft = Math.max(0, p.startScroll - dx);
-            e.preventDefault();
-        }
-    };
-    const onTimelinePointerUp = (e) => {
-        if (e.pointerType !== 'touch') return;
-        const p = tlPinchRef.current;
-        const wasTap = tlTouchRef.current.size === 1 && p?.mode === 'pan' && !p.moved;
-        const upX = e.clientX;
-        tlTouchRef.current.delete(e.pointerId);
-        if (wasTap) seekToClientX(upX);
-        if (tlTouchRef.current.size === 1) {
-            const el = timelineRef.current;
-            const [a] = [...tlTouchRef.current.values()];
-            tlPinchRef.current = { mode: 'pan', startClientX: a.x, startClientY: a.y, startScroll: el ? el.scrollLeft : 0, moved: true };
-        } else if (tlTouchRef.current.size === 0) {
-            tlPinchRef.current = null;
-        }
-    };
-    const fmt = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}.${String(Math.floor((s % 1) * 100)).padStart(2, '0')}`;
-    // Parse "m:ss", "h:mm:ss", or a plain seconds number into seconds.
-    const parseClock = (str) => {
-        const parts = String(str).trim().split(':').map(p => +p || 0);
-        if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-        if (parts.length === 2) return parts[0] * 60 + parts[1];
-        return parts[0] || 0;
-    };
+    // Every way the timeline can be pointed at - scrub, marquee, middle-click pan, one-finger
+    // pan/tap, two-finger pinch - lives in useTimelineGestures, where the overlaps between them
+    // are visible.
+    const {
+        seekToTime, seekToClientX, goToScene,
+        startTimelinePan, startTimelineScrub,
+        onTimelinePointerDown, onTimelinePointerMove, onTimelinePointerUp,
+    } = useTimelineGestures({
+        timelineRef, tlTouchRef, tlPinchRef,
+        cuts, currentCutId, setCurrentCutId, maxTime,
+        pps, setPps,
+        setCurrentTime, currentTimeRef, isPlayingRef, seekRef,
+        audioRef, audioUrl, audioData,
+        setScrubbing, setMarquee, selectedCutIds, setSelectedCutIds,
+        videoOverlay,
+    });
+
     const loadAudioUrl = (url, name, startAt = 0, offset = 0, clipDur = null) => {
         setAudioFile({ name }); setAudioUrl(url);
         const audio = new Audio(url);
@@ -3877,94 +3729,19 @@ export default function App() {
     // The tool panel body lives in a variable so the same markup can be mounted in the left
     // dock, the right dock, or a floating window without being duplicated.
     const toolsPanelEl = (
-                <div className="toolbar" style={{ width: toolW, flexShrink: 0 }}>
-                    <div className="panel-head">
-                        <span className="panel-title">TOOLS</span>
-                        <button className="icon-btn" onClick={() => setShowLeft(false)} title={tr('도구 창 닫기')}>✕</button>
-                    </div>
-                    <div className="tool-grid">
-                        {TOOL_TYPES.map(pt => (
-                            <button key={pt.id} className={`tool-btn${tool === pt.id ? ' active' : ''}`} onClick={() => handleSetTool(pt.id)} title={tr(pt.label)}>
-                                <pt.Icon size={15} />
-                                <span className="tool-label">{tr(pt.label)}</span>
-                            </button>
-                        ))}
-                        <button className={`tool-btn${onionPrev ? ' onion-prev-active' : ''}`} onClick={() => setOnionPrev(v => !v)} title={tr('이전 프레임 표시 (연보라)')}><Layers size={15} /><span className="tool-label">◀Onion</span></button>
-                        <button className={`tool-btn${onionNext ? ' onion-next-active' : ''}`} onClick={() => setOnionNext(v => !v)} title={tr('다음 프레임 표시 (원본색)')}><Layers size={15} /><span className="tool-label">Onion▶</span></button>
-                        <button className="tool-btn" onClick={globalUndo} title="Undo"><Undo size={15} /><span className="tool-label">Undo</span></button>
-                        <button className="tool-btn" onClick={globalRedo} title="Redo"><Redo size={15} /><span className="tool-label">Redo</span></button>
-                        <button className="tool-btn" onClick={handleClearCut} title={tr('현재 컷 전체 비우기')}><Trash size={15} /><span className="tool-label">{tr('비우기')}</span></button>
-                        <button className="tool-btn" onClick={doTween} title={tr('현재 컷과 다음 컷 사이를 자동 중간 프레임으로 채웁니다 (형태 모핑)')}><Repeat size={15} /><span className="tool-label">{tr('트위닝')}</span></button>
-                        {hasLassoClip && <button className="tool-btn" onClick={pasteLassoSelection} title={tr('복사한 올가미 선택을 현재 레이어에 붙여넣기')}><ClipboardPaste size={15} /><span className="tool-label">{tr('올가미↓')}</span></button>}
-                        <button className={`tool-btn${pickingColor ? ' active' : ''}`} onClick={pickColor} title={tr('스포이드 (화면에서 색 추출)')} disabled={isSelectionTool}><Pipette size={15} /><span className="tool-label">{tr('스포이드')}</span></button>
-                    </div>
-                    <div className="tool-divider" />
-                    <input type="color" className="color-picker" value={color} onChange={e => applyColor(e.target.value)} title={tr('색상')} disabled={isSelectionTool} />
-                    <div className="slider-wrap">
-                        {tool === 'soft' ? (
-                            <>
-                                <span className="slider-label">{tr('에어 모드')}</span>
-                                <div style={{ display: 'flex', gap: 3, width: '100%' }}>
-                                    <button className={`pal-btn${softMode === 'soft' ? ' active' : ''}`} onClick={() => setSoftMode('soft')} title={tr('부드럽게 뿌리는 에어브러시')}>{tr('에어')}</button>
-                                    <button className={`pal-btn${softMode === 'blur' ? ' active' : ''}`} onClick={() => setSoftMode('blur')} title={tr('이미 그린 것을 문질러 퍼뜨림')}>{tr('블러')}</button>
-                                </div>
-                                <span style={{ fontSize: 9, color: '#888', textAlign: 'center' }}>{softMode === 'soft' ? tr('색을 뿌립니다') : tr('그려진 걸 퍼뜨립니다')}</span>
-                            </>
-                        ) : tool === 'ruler' ? (
-                            <>
-                                <span className="slider-label">{tr('자 모드')}</span>
-                                <div style={{ display: 'flex', gap: 3, width: '100%' }}>
-                                    <button className={`pal-btn${rulerMode === 'line' ? ' active' : ''}`} onClick={() => setRulerMode('line')} title={tr('정확한 직선')}>{tr('직선')}</button>
-                                    <button className={`pal-btn${rulerMode === 'curve' ? ' active' : ''}`} onClick={() => { commitCurve(); setRulerMode('curve'); }} title={tr('점을 찍어 만드는 곡선')}>{tr('곡선')}</button>
-                                </div>
-                                <span style={{ fontSize: 9, color: '#888', textAlign: 'center' }}>{rulerMode === 'line' ? tr('드래그로 직선') : tr('탭으로 점 찍기')}</span>
-                            </>
-                        ) : tool === 'mosaic' ? (
-                            <>
-                                <span className="slider-label">{tr('모자이크')}</span>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 2, justifyContent: 'center' }}>
-                                    <input type="number" min="2" max="120" value={mosaicBlock}
-                                        onChange={e => setMosaicBlock(Math.max(2, Math.min(120, Math.round(+e.target.value) || 2)))} style={{ width: 46, textAlign: 'center' }} className="time-input" />
-                                    <span style={{ fontSize: 10, color: '#888' }}>px</span>
-                                </div>
-                                <input type="range" min="2" max="80" value={Math.min(80, mosaicBlock)} onChange={e => setMosaicBlock(+e.target.value)} className="v-slider" />
-                                <span style={{ fontSize: 9, color: '#888', textAlign: 'center' }}>{tr('화면 위를 드래그')}</span>
-                            </>
-                        ) : (() => {
-                            const curSize = tool === 'eraser' ? eraserSize : brushSize;
-                            const setSize = (v) => { const n = Math.max(1, Math.min(200, Math.round(v) || 1)); tool === 'eraser' ? setEraserSize(n) : setBrushSize(n); };
-                            return (<>
-                                <span className="slider-label">{tool === 'eraser' ? tr('지우개') : 'Size'}</span>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 2, justifyContent: 'center' }}>
-                                    <input type="number" min="1" max="200" value={curSize} disabled={isSelectionTool}
-                                        onChange={e => setSize(+e.target.value)} style={{ width: 46, textAlign: 'center' }} className="time-input" />
-                                    <span style={{ fontSize: 10, color: '#888' }}>px</span>
-                                </div>
-                                <div className="size-grid" style={{ margin: '4px 0' }}>
-                                    {[1, 2, 3, 5, 8, 12, 16, 24, 32, 48, 64, 90, 120, 160].map(s => {
-                                        const d = Math.max(2, Math.min(16, s));
-                                        return (
-                                            <button key={s} className={`size-cell${curSize === s ? ' active' : ''}`} onClick={() => setSize(s)} disabled={isSelectionTool} title={`${s}px`}>
-                                                <span style={{ width: d, height: d, maxWidth: '80%', maxHeight: '80%', borderRadius: '50%', background: '#ddd', display: 'block' }} />
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                                <input type="range" min="1" max="80" value={Math.min(80, curSize)} onChange={e => setSize(+e.target.value)} className="v-slider" disabled={isSelectionTool} />
-                            </>);
-                        })()}
-                    </div>
-                    <div className="slider-wrap">
-                        <span className="slider-label">Opacity</span>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 2, justifyContent: 'center' }}>
-                            <input type="number" min="0" max="100" value={Math.round(opacity * 100)} disabled={isSelectionTool}
-                                onChange={e => setOpacity(Math.max(0, Math.min(100, Math.round(+e.target.value) || 0)) / 100)}
-                                style={{ width: 46, textAlign: 'center' }} className="time-input" />
-                            <span style={{ fontSize: 10, color: '#888' }}>%</span>
-                        </div>
-                        <input type="range" min="0" max="100" value={Math.round(opacity * 100)} onChange={e => setOpacity(+e.target.value / 100)} className="v-slider" disabled={isSelectionTool} />
-                    </div>
-                </div>
+        <ToolsPanel
+            width={toolW} onClose={() => setShowLeft(false)}
+            TOOL_TYPES={TOOL_TYPES} tool={tool} handleSetTool={handleSetTool}
+            onionPrev={onionPrev} setOnionPrev={setOnionPrev} onionNext={onionNext} setOnionNext={setOnionNext}
+            globalUndo={globalUndo} globalRedo={globalRedo} handleClearCut={handleClearCut} doTween={doTween}
+            hasLassoClip={hasLassoClip} pasteLassoSelection={pasteLassoSelection}
+            pickingColor={pickingColor} pickColor={pickColor} isSelectionTool={isSelectionTool}
+            color={color} applyColor={applyColor} opacity={opacity} setOpacity={setOpacity}
+            softMode={softMode} setSoftMode={setSoftMode}
+            rulerMode={rulerMode} setRulerMode={setRulerMode} commitCurve={commitCurve}
+            mosaicBlock={mosaicBlock} setMosaicBlock={setMosaicBlock}
+            brushSize={brushSize} setBrushSize={setBrushSize}
+            eraserSize={eraserSize} setEraserSize={setEraserSize} />
     );
 
     const colorPanelEl = (
