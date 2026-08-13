@@ -27,40 +27,57 @@ That is how `measureTextBox` takes a context, `cloneCutContents` takes a bitmap 
 `loadKeymap` takes its storage.
 
 - `src/App.jsx` — the `App()` component: state, handlers, JSX. Use the section map below to jump.
-- `src/canvasUtils.js` — the big one. Geometry (`pointInPolygon`, `dist`, `fitRect`), colour
-  (`hexToRgb`), fill (`bucketFillTransparentRegion`, `dilateMask`), canvas
-  (`drawStrokesOnCtx`, `sizeCanvas`, `layerKey`, `imageDataToDataURL`, `flattenLayersInUiOrder`),
-  animation (`ANIM_DEFAULT`/`computeCutAnim`, `LAYER_ANIM_DEFAULT`/`computeLayerAnim`,
-  `TEXT_ANIM_DEFAULT`/`computeTextAnim`, `applyEase`, `triwave`, `samplePath`, `sampleKeys`),
-  video import sizing (`targetCanvasFor`, `extractVideoFrames`). Constants: `CANVAS_W=1920`,
-  `CANVAS_H=1080`, `DEFAULT_CUT_DURATION`, `FONT_PRESETS`.
-- `src/cutsReducer.js` — **every change to the document goes through here.** `cuts` is a
-  `useReducer`, and the actions are built by exported creator functions (`updateCut`,
-  `upsertText`, `moveLayers`, …) rather than object literals, so a mistyped action is a type
-  error rather than a silent no-op. Adding a mutation means adding an action, not a lambda —
-  `patchCut`/`patchCuts` exist only as "this has not been given a name yet". Invariants live here
-  too: `moveLayers` bumps `rev` so the canvas cache cannot go stale.
-- `src/layerOps.js` — layer tree and stroke placement: `moveLayer` (drag/drop, refuses cycles),
-  `resolveDrawLayer` + `commitStroke` (**the rules behind "the line I drew disappeared"**),
-  `insertFill` (paint goes under the ink), `offsetLayers` (move-everything commit).
-- `src/cutOps.js` — `dragCut`, `resizeCut` on the timeline, with snapping.
-- `src/lassoOps.js` — `closeLassoPath`, `lassoBounds`, `applyResize` (selection handles).
-- `src/textRender.js` — measuring and drawing text objects: `measureTextBox`, `textFontOf`,
-  `textNeedsBox`, `revealLines` (typing), `drawTextObject`.
-- `src/projectFormat.js` — opening a saved file: `migrateCuts` (**format history lives here**),
-  `projectSettings`, `makeLoadProgress`.
-- `src/bitmapRefs.js` — `collectUsedBitmapIds` / `unusedBitmapIds`. Every reference source is
-  named in one place; miss one and the collector frees pixels undo or paste still needs.
-- `src/numInput.js` + `src/NumField.jsx` — a number input that can actually be typed into
-  (clamps on blur, not per keystroke). Use `NumField` for any new numeric field.
 - `src/i18n.js` — `tr()` plus the English dictionary. Korean source text is the lookup key, so
   write UI strings in Korean and add the English to the dictionary. Called `tr`, not `t` — `t` is
   a local variable in dozens of places.
-
-UI, split out of App.jsx by panel: `AnimPanels.jsx` (`CutAnimPanel`, `LayerAnimPanel`,
-`JitterPanel`), `CutLayerPanel.jsx`, `ColorPanel.jsx`, `Timeline.jsx`, `TopBar.jsx`, `Modals.jsx`.
-
 - `src/db.js` — IndexedDB autosave (`saveAutosave`, `loadAutosave`, plus project CRUD).
+
+**core/** — pure logic, all of it tested.
+
+- `cutsReducer.js` — **every change to the document goes through here.** `cuts` is a `useReducer`
+  and the actions are built by exported creator functions (`updateCut`, `upsertText`,
+  `moveLayers`, …) rather than object literals, so a mistyped action is a type error rather than
+  a silent no-op. Adding a mutation means adding an action, not a lambda — `patchCut`/`patchCuts`
+  exist only as "this has not been given a name yet". Invariants live here too: `moveLayers`
+  bumps `rev` so the canvas cache cannot go stale.
+- `layerOps.js` — layer tree and stroke placement: `moveLayer` (drag/drop, refuses cycles),
+  `resolveDrawLayer` + `commitStroke` (**the rules behind "the line I drew disappeared"**),
+  `insertFill` (paint goes under the ink), `offsetLayers` (move-everything commit, bumps `rev`).
+- `cutOps.js` — `dragCut`, `resizeCut` on the timeline, with snapping.
+- `partOps.js` — parts (scenes): `derivePartsFrom`, `deriveVideoBatches`, and the group/rename/
+  ungroup operations. A part's time range is recomputed, never stored, or it drifts when a cut moves.
+- `lassoOps.js` — `closeLassoPath`, `lassoBounds`, `applyResize` (selection handles).
+- `cutClone.js` — copying a cut: renumbers layer ids and copies stroke pixels, or the duplicate
+  aliases the original.
+- `projectFormat.js` — opening a saved file: `migrateCuts` (**format history lives here**),
+  `projectSettings`, `makeLoadProgress`.
+- `historyOps.js` — undo/redo. `pushSnapshot` sizes how far back it reaches by memory rather than
+  a step count, since a snapshot copies the whole document.
+- `shortcuts.js` — `DEFAULT_KEYS`, `keyOf`, `matchShortcut`, `loadKeymap`.
+- `timeCode.js` — `fmt` / `parseClock` for the timeline clock.
+- `numInput.js` — the rules behind a number field that can be typed into.
+- `bitmapRefs.js` — `collectUsedBitmapIds` / `unusedBitmapIds`. Every reference source is named in
+  one place; miss one and the collector frees pixels undo or paste still needs.
+
+**canvas/**
+
+- `canvasUtils.js` — the big one. Geometry (`pointInPolygon`, `dist`, `fitRect`), colour
+  (`hexToRgb`), fill (`bucketFillTransparentRegion`, `dilateMask`), canvas (`drawStrokesOnCtx`,
+  `sizeCanvas`, `layerKey`, `imageDataToDataURL`, `flattenLayersInUiOrder`), animation
+  (`ANIM_DEFAULT`/`computeCutAnim`, `LAYER_ANIM_DEFAULT`/`computeLayerAnim`,
+  `TEXT_ANIM_DEFAULT`/`computeTextAnim`, `applyEase`, `triwave`, `samplePath`, `sampleKeys`),
+  video import sizing (`targetCanvasFor`, `extractVideoFrames`). Constants: `CANVAS_W=1920`,
+  `CANVAS_H=1080`, `DEFAULT_CUT_DURATION`, `FONT_PRESETS`.
+- `textRender.js` — measuring and drawing text: `measureTextBox`, `textNeedsBox`, `revealLines`
+  (typing), `drawTextObject`.
+
+**ui/** — panels split out of App.jsx: `AnimPanels.jsx` (`CutAnimPanel`, `LayerAnimPanel`,
+`JitterPanel`), `CutLayerPanel.jsx`, `ColorPanel.jsx`, `ToolsPanel.jsx`, `Timeline.jsx`,
+`TopBar.jsx`, `Modals.jsx`, and `NumField.jsx` — **use NumField for any new numeric field.**
+
+**hooks/** — `useTimelineGestures.js`: every way the timeline can be pointed at (ruler scrub,
+marquee, middle-click pan, one-finger pan/tap, two-finger pinch) in one place.
+
 - `server/index.js` — Express file-backed project DB on :8787, files under `server/data/`.
   Proxied at `/api` (vite.config).
 - `src/main.jsx` — boot + service-worker register (PWA, skipped in Capacitor) + fatal-error
@@ -92,7 +109,7 @@ UI, split out of App.jsx by panel: `AnimPanels.jsx` (`CutAnimPanel`, `LayerAnimP
 - Canvas nav: `onAreaPointer*` (1-finger pan / 2-finger pinch), `view={zoom,x,y}`.
 - Playback: rAF effect; bounds `contentStart..contentEnd` (NOT maxTime); `loopPlay` repeats.
 - Files: `buildData/restore/doSave/doOpen/doNew`; server `doServerSave/openServerList/doServerOpen/doServerDelete`; autosave effect + crash-recovery effect.
-- History: `historyRef`/`historyIndexRef`, `globalUndo/globalRedo` (JSON snapshots of cuts).
+- History: `historyRef`/`historyIndexRef` + `recordHistoryRef`; the arithmetic is in `core/historyOps`.
 
 ## Run and verify
 - Web + API: `npm run dev` (web :5173 with LAN host + QR, api :8787).
