@@ -2,34 +2,34 @@ import React, { useState, useEffect, useRef, useCallback, useLayoutEffect } from
 import { Plus, Trash2, PenLine, Pen, Feather, Eraser, Undo, Redo, Layers, Trash, ChevronRight, ChevronDown, Folder, FolderOpen, Eye, EyeOff, ClipboardPaste, GitBranch, Move, Type, Cloud, Film, Repeat, Minus, Waves, Grid3x3, Palette, Menu, PaintBucket, Pipette } from 'lucide-react';
 import './App.css';
 import { saveAutosave, loadAutosave, saveProject, loadProject, listProjects, deleteProject, autosaveKey } from './db';
-import { CutAnimPanel, LayerAnimPanel, JitterPanel } from './AnimPanels';
-import { NumField, clampNum } from './NumField';
-import ColorPanel, { RECENT_SLOTS } from './ColorPanel';
-import { TopBar } from './TopBar';
-import { CutLayerPanel } from './CutLayerPanel';
-import { ToolsPanel } from './ToolsPanel';
-import { Timeline } from './Timeline';
-import { ProjectPicker, ProgressOverlay, SettingsModal, HelpModal, VideoImportModal, SceneDetectModal, LinkPromptModal } from './Modals';
+import { CutAnimPanel, LayerAnimPanel, JitterPanel } from './ui/AnimPanels';
+import { NumField, clampNum } from './ui/NumField';
+import ColorPanel, { RECENT_SLOTS } from './ui/ColorPanel';
+import { TopBar } from './ui/TopBar';
+import { CutLayerPanel } from './ui/CutLayerPanel';
+import { ToolsPanel } from './ui/ToolsPanel';
+import { Timeline } from './ui/Timeline';
+import { ProjectPicker, ProgressOverlay, SettingsModal, HelpModal, VideoImportModal, SceneDetectModal, LinkPromptModal } from './ui/Modals';
 import { tr, loadLang, saveLang, setLangValue } from './i18n';
-import { moveLayer } from './layerOps.js';
-import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill } from './layerOps.js';
-import { closeLassoPath, lassoBounds, applyResize } from './lassoOps.js';
-import { useTimelineGestures } from './useTimelineGestures.js';
-import { fmt, parseClock } from './timeCode.js';
-import { pushSnapshot, step } from './historyOps.js';
-import { cloneCutContents as cloneCutContentsPure } from './cutClone.js';
-import { DEFAULT_KEYS, KEY_LABELS, keyOf, matchShortcut, loadKeymap } from './shortcuts.js';
-import { derivePartsFrom, deriveVideoBatches } from './partOps.js';
+import { moveLayer } from './core/layerOps.js';
+import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill } from './core/layerOps.js';
+import { closeLassoPath, lassoBounds, applyResize } from './core/lassoOps.js';
+import { useTimelineGestures } from './hooks/useTimelineGestures.js';
+import { fmt, parseClock } from './core/timeCode.js';
+import { pushSnapshot, step } from './core/historyOps.js';
+import { cloneCutContents as cloneCutContentsPure } from './core/cutClone.js';
+import { DEFAULT_KEYS, KEY_LABELS, keyOf, matchShortcut, loadKeymap } from './core/shortcuts.js';
+import { derivePartsFrom, deriveVideoBatches } from './core/partOps.js';
 import {
     cutsReducer, replaceCuts, addCuts, updateCut, setCutAnim, clearCut,
     updateLayer, setLayerAnim, moveLayers, upsertText, moveText, deleteText, toggleTextVisible as toggleTextVisibleAction,
     assignPartTo, renamePart as renamePartAction, ungroupPart as ungroupPartAction, removeBatch,
     insertCutsShifting, deleteTrack, moveCutGroup, replaceBatchCuts, patchCut, patchCuts,
-} from './cutsReducer.js';
-import { measureTextBox as measureTextBoxPure, textNeedsBox, drawTextObject } from './textRender.js';
-import { migrateCuts, projectSettings, makeLoadProgress } from './projectFormat.js';
-import { unusedBitmapIds } from './bitmapRefs.js';
-import { dragCut, resizeCut } from './cutOps.js';
+} from './core/cutsReducer.js';
+import { measureTextBox as measureTextBoxPure, textNeedsBox, drawTextObject } from './canvas/textRender.js';
+import { migrateCuts, projectSettings, makeLoadProgress } from './core/projectFormat.js';
+import { unusedBitmapIds } from './core/bitmapRefs.js';
+import { dragCut, resizeCut } from './core/cutOps.js';
 import {
     DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT, FONT_PRESETS,
     pointInPolygon, dist, safeArray, hexToRgb, bucketFillTransparentRegion,
@@ -37,7 +37,7 @@ import {
     flattenForCanvas, flattenLayersInUiOrder, strokeSig, extractVideoFrames, fitRect, detectSceneCuts, curveToWave, swayWeightAt, morphPrepare,
     accentSoft, computeCutAnim, computeLayerAnim, TEXT_ANIM_DEFAULT, computeTextAnim,
     targetCanvasFor,
-} from './canvasUtils';
+} from './canvas/canvasUtils';
 
 const PEN_TYPES = [
     { id: 'pen', label: 'Dot', Icon: PenLine },

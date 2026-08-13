@@ -6,7 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
     derivePartsFrom, deriveVideoBatches, assignPart, renamePartIn, ungroupPartIn, removeVideoBatch,
-} from '../src/partOps.js';
+} from '../src/core/partOps.js';
 
 const cut = (id, partId, startTime, endTime, partName) => ({ id, partId, partName, startTime, endTime });
 

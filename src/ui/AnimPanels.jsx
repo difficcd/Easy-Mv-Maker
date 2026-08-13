@@ -1,7 +1,7 @@
 import React from 'react';
-import { ANIM_DEFAULT, LAYER_ANIM_DEFAULT } from './canvasUtils';
+import { ANIM_DEFAULT, LAYER_ANIM_DEFAULT } from '../canvas/canvasUtils';
 import { NumField } from './NumField';
-import { tr } from './i18n';
+import { tr } from '../i18n';
 
 // Animation control panels, split out of App.jsx so editing the (frequently-tweaked)
 // animation UI doesn't require loading the whole component.

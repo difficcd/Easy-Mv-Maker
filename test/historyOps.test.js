@@ -4,7 +4,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { pushSnapshot, canUndo, canRedo, step, limitFor, HISTORY_LIMIT } from '../src/historyOps.js';
+import { pushSnapshot, canUndo, canRedo, step, limitFor, HISTORY_LIMIT } from '../src/core/historyOps.js';
 
 // Build a history by pushing in order, the way the app does.
 const build = (...snaps) => snaps.reduce(

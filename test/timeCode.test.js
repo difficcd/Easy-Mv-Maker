@@ -4,7 +4,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fmt, parseClock } from '../src/timeCode.js';
+import { fmt, parseClock } from '../src/core/timeCode.js';
 
 test('fmt: minutes, seconds and hundredths, always padded', () => {
     assert.equal(fmt(0), '00:00.00');

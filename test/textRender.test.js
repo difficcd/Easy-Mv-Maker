@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import {
     clampFontSize, textFontOf, textLineHeight, measureTextBox,
     textNeedsBox, revealLines, drawTextObject,
-} from '../src/textRender.js';
+} from '../src/canvas/textRender.js';
 
 // A context that writes down what it was asked to do. Width is faked as 10px per character,
 // which is enough for the geometry to be checkable without a font engine.

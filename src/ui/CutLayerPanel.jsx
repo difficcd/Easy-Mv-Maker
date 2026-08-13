@@ -1,8 +1,8 @@
 import React from 'react';
 import { Plus, FolderPlus, Trash2, Copy, CopyPlus, ClipboardPaste, Eye, EyeOff, Settings, ChevronDown, ChevronRight } from 'lucide-react';
-import { safeArray } from './canvasUtils';
+import { safeArray } from '../canvas/canvasUtils';
 import { CutAnimPanel } from './AnimPanels';
-import { tr } from './i18n';
+import { tr } from '../i18n';
 
 // CUT / LAYER panel: the cut list, each cut's layer tree, cut animation and text list.
 // The layer rows themselves are drawn by App's renderLayers - the drag state lives in App,

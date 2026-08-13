@@ -13,7 +13,7 @@ import {
     assignPartTo, renamePart, ungroupPart, removeBatch,
     insertCutsShifting, deleteTrack, moveCutGroup, replaceBatchCuts,
     patchCut, patchCuts,
-} from '../src/cutsReducer.js';
+} from '../src/core/cutsReducer.js';
 
 const layer = (id, extra = {}) => ({ id, type: 'layer', parentId: null, visible: true, strokes: [], ...extra });
 const cut = (id, extra = {}) => ({ id, name: `Cut ${id}`, startTime: 0, endTime: 1, track: 0, layers: [layer('L1')], activeLayerId: 'L1', texts: [], ...extra });

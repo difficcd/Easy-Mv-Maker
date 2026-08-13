@@ -3,7 +3,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { keyOf, matchShortcut, loadKeymap, DEFAULT_KEYS, KEY_LABELS } from '../src/shortcuts.js';
+import { keyOf, matchShortcut, loadKeymap, DEFAULT_KEYS, KEY_LABELS } from '../src/core/shortcuts.js';
 
 const ev = (key, mods = {}) => ({ key, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...mods });
 

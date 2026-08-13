@@ -21,7 +21,7 @@
 
 import { offsetLayers } from './layerOps.js';
 import { assignPart, renamePartIn, ungroupPartIn, removeVideoBatch } from './partOps.js';
-import { ANIM_DEFAULT, LAYER_ANIM_DEFAULT, safeArray } from './canvasUtils.js';
+import { ANIM_DEFAULT, LAYER_ANIM_DEFAULT, safeArray } from '../canvas/canvasUtils.js';
 
 // ── action creators ────────────────────────────────────────────────────────
 

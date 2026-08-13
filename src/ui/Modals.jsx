@@ -1,7 +1,7 @@
 import React from 'react';
 import { Trash2 } from 'lucide-react';
-import { tr } from './i18n';
-import { targetCanvasFor } from './canvasUtils';
+import { tr } from '../i18n';
+import { targetCanvasFor } from '../canvas/canvasUtils';
 
 // Overlays and dialogs split out of App.jsx. All state arrives as props; these only display.
 // (App.jsx had grown to 4,800 lines, so the screens moved into files you can actually read.)

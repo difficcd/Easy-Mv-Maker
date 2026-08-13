@@ -1,4 +1,4 @@
-import { tr } from './i18n.js';
+import { tr } from '../i18n.js';
 // Pure helpers extracted from App.jsx: constants, geometry, colour, canvas drawing,
 // layer flattening, and animation math. Kept free of React/component state so App.jsx
 // stays smaller (cheaper to read/edit) and these stay unit-testable.

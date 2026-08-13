@@ -6,7 +6,25 @@ Frame-by-frame MV/animation app. Vite + React 18, single big component. Capacito
 
 `App.jsx` is still the component, but the logic worth testing has been moved out of it. **Put new
 pure logic in a module, not in App.jsx** — anything that is a function of its arguments belongs
-next to its tests. The modules below are all pure (no React, no DOM beyond a passed-in context).
+next to its tests.
+
+The folders say what a file is allowed to touch, which is the quickest way to know where
+something belongs:
+
+```
+src/
+  App.jsx  main.jsx  i18n.js  db.js  *.css      the component, boot, strings, storage
+  core/     pure logic — no React, no DOM, no canvas. Every file here has tests.
+  canvas/   drawing. Pure apart from the 2D context it is handed.
+  ui/       components.
+  hooks/    React hooks that wire state to behaviour.
+test/       one file per module, same name
+```
+
+A file in `core/` importing React or reaching for `document` is the sign it is in the wrong
+folder — or that the part which needs them should stay behind in the component and be passed in.
+That is how `measureTextBox` takes a context, `cloneCutContents` takes a bitmap copier, and
+`loadKeymap` takes its storage.
 
 - `src/App.jsx` — the `App()` component: state, handlers, JSX. Use the section map below to jump.
 - `src/canvasUtils.js` — the big one. Geometry (`pointInPolygon`, `dist`, `fitRect`), colour

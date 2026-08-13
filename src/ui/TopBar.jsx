@@ -1,6 +1,6 @@
 import React from 'react';
 import { ChevronDown, Download, Upload, Film, Settings } from 'lucide-react';
-import { tr } from './i18n';
+import { tr } from '../i18n';
 
 // Top menu bar: the File and Media menus, resolution, canvas zoom, save state, Export.
 export function TopBar({

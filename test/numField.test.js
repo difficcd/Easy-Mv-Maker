@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { clampNum, liveNumber, commitNumber } from '../src/numInput.js';
+import { clampNum, liveNumber, commitNumber } from '../src/core/numInput.js';
 
 // The bug these guard against: a number field that clamps on every keystroke cannot be typed
 // into. The split is liveNumber (what to report mid-edit, never clamped) versus commitNumber

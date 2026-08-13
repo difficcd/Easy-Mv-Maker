@@ -4,8 +4,8 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { closeLassoPath, lassoBounds, applyResize, MIN_SELECTION_SIZE } from '../src/lassoOps.js';
-import { pointInPolygon } from '../src/canvasUtils.js';
+import { closeLassoPath, lassoBounds, applyResize, MIN_SELECTION_SIZE } from '../src/core/lassoOps.js';
+import { pointInPolygon } from '../src/canvas/canvasUtils.js';
 
 const P = (x, y) => ({ x, y });
 

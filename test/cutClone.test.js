@@ -4,7 +4,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cloneCutContents } from '../src/cutClone.js';
+import { cloneCutContents } from '../src/core/cutClone.js';
 
 // Stands in for the real one: hands back a new id per distinct old id, sharing within a call.
 const fakeCloneBitmap = () => {

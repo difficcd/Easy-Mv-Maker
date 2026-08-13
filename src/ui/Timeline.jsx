@@ -1,7 +1,7 @@
 import React from 'react';
 import { ChevronDown, ChevronUp, Pause, Play, Plus, Repeat, Square, Trash2 } from 'lucide-react';
-import { safeArray, accentSoft } from './canvasUtils';
-import { tr } from './i18n';
+import { safeArray, accentSoft } from '../canvas/canvasUtils';
+import { tr } from '../i18n';
 
 // Bottom timeline: playback controls, the parts bar, the ruler, track and cut blocks,
 // and the audio and video tracks.

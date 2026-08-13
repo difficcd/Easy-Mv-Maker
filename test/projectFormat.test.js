@@ -5,7 +5,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { projectSettings, migrateCuts, makeLoadProgress } from '../src/projectFormat.js';
+import { projectSettings, migrateCuts, makeLoadProgress } from '../src/core/projectFormat.js';
 
 // ── settings ───────────────────────────────────────────────────────────────
 test('projectSettings: takes what the file says', () => {

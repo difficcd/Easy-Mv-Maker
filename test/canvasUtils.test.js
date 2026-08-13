@@ -14,7 +14,7 @@ import {
     pointInPolygon, dist, safeArray, hexToRgb, fitRect, layerKey, strokeSig,
     applyEase, triwave, swayWeightAt, sampleWave, sampleKeys, targetCanvasFor,
     computeCutAnim, flattenLayersInUiOrder, sizeCanvas, dilateMask,
-} from '../src/canvasUtils.js';
+} from '../src/canvas/canvasUtils.js';
 
 const near = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) < eps, `${a} ≈ ${b}`);
 

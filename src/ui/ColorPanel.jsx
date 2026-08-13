@@ -1,6 +1,6 @@
 import React from 'react';
 import { Droplets } from 'lucide-react';
-import { tr } from './i18n';
+import { tr } from '../i18n';
 
 // --- Colour conversion (HSV <-> HEX) ---------------------------------------------------
 const hex2rgb = (h) => {

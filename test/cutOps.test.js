@@ -3,7 +3,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { dragCut, resizeCut } from '../src/cutOps.js';
+import { dragCut, resizeCut } from '../src/core/cutOps.js';
 
 const PPS = 50;                       // pixels per second; 8px snap ≈ 0.16s
 const cut = (id, start, end, track = 0) => ({ id, startTime: start, endTime: end, track });
