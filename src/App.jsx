@@ -17,6 +17,7 @@ import { closeLassoPath, lassoBounds, applyResize } from './lassoOps.js';
 import { useTimelineGestures } from './useTimelineGestures.js';
 import { fmt, parseClock } from './timeCode.js';
 import { pushSnapshot, step } from './historyOps.js';
+import { DEFAULT_KEYS, KEY_LABELS, keyOf, matchShortcut, loadKeymap } from './shortcuts.js';
 import { derivePartsFrom, deriveVideoBatches } from './partOps.js';
 import {
     cutsReducer, replaceCuts, addCuts, updateCut, setCutAnim, clearCut,
@@ -123,31 +124,6 @@ const hueToHex = (h) => {
     return '#' + t.map(v => Math.round((v + m) * 255).toString(16).padStart(2, '0')).join('');
 };
 
-const DEFAULT_KEYS = {
-    undo: 'j', redo: 'k',
-    brushDown: '[', brushUp: ']',
-    zoomOut: 'ctrl+[', zoomIn: 'ctrl+]',
-    resetView: 'ctrl+0',
-};
-const KEY_LABELS = {
-    undo: '실행 취소', redo: '다시 실행',
-    brushDown: '브러시 작게', brushUp: '브러시 크게',
-    zoomOut: '캔버스 축소', zoomIn: '캔버스 확대', resetView: '줌 초기화',
-};
-// Renders an event as a string such as "ctrl+shift+k", always lowercase to keep comparison simple.
-const keyOf = (e) => {
-    const p = [];
-    if (e.ctrlKey || e.metaKey) p.push('ctrl');
-    if (e.altKey) p.push('alt');
-    if (e.shiftKey) p.push('shift');
-    const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-    p.push(k);
-    return p.join('+');
-};
-const loadKeymap = () => {
-    try { const v = JSON.parse(localStorage.getItem('mv_keymap')); return v && typeof v === 'object' ? { ...DEFAULT_KEYS, ...v } : { ...DEFAULT_KEYS }; }
-    catch { return { ...DEFAULT_KEYS }; }
-};
 const TOOL_TYPES = [
     { id: 'lasso', label: 'Lasso', Icon: GitBranch },
     { id: 'move', label: 'Move', Icon: Move },
@@ -755,8 +731,7 @@ export default function App() {
             }
             // User-defined shortcuts first; the conventional Ctrl+Z / Ctrl+Y combinations are
             // left in place below.
-            const combo = keyOf(e);
-            const hit = Object.keys(keymap).find(k => keymap[k] && keymap[k].toLowerCase() === combo);
+            const hit = matchShortcut(keymap, keyOf(e));
             if (hit) {
                 e.preventDefault();
                 if (hit === 'undo') globalUndo();
