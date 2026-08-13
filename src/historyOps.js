@@ -8,8 +8,26 @@
 // A snapshot is whatever the caller wants restored - here, the cuts, the audio placement and the
 // track count - compared as JSON, since that is also how they are stored.
 
-/** How many snapshots are kept. Older ones are dropped from the front. */
-export const HISTORY_LIMIT = 80;
+// How far back undo reaches.
+//
+// A snapshot is a copy of the whole document, so the honest limit is memory rather than a step
+// count: eighty steps is generous for a few strokes and reckless for a long project with
+// thousands of them. The budget is spent on whatever the snapshots actually cost, so a light
+// project gets hundreds of steps and a heavy one still cannot fill the tab.
+//
+// Bitmaps are not in a snapshot - strokes only carry ids - so what is measured here is mostly
+// stroke coordinates.
+const HISTORY_BUDGET = 24 * 1024 * 1024; // of serialised snapshot, roughly
+const MIN_HISTORY = 20;   // even a very heavy project keeps a usable amount of undo
+const MAX_HISTORY = 400;  // and a trivial one does not keep an unbounded amount
+
+/** Steps affordable at this snapshot size. Exported for the tests and for anyone tuning it. */
+export function limitFor(snapshotBytes, budget = HISTORY_BUDGET) {
+    return Math.max(MIN_HISTORY, Math.min(MAX_HISTORY, Math.floor(budget / Math.max(1, snapshotBytes))));
+}
+
+/** The old fixed cap, kept as the default when no size is known. */
+export const HISTORY_LIMIT = MAX_HISTORY;
 
 /**
  * Record a snapshot, returning the new list and position.
@@ -19,11 +37,11 @@ export const HISTORY_LIMIT = 80;
  * @param {Array} history snapshots, oldest first
  * @param {number} index which one is currently on screen, or -1 for none
  * @param {object} snapshot the state to record
- * @param {number} [limit]
+ * @param {number} [limit] fixed step cap; omit to size it by what a snapshot costs
  * @returns {{history: Array, index: number, changed: boolean}} changed is false when the
  *   snapshot matches what is already on screen and nothing was recorded
  */
-export function pushSnapshot(history, index, snapshot, limit = HISTORY_LIMIT) {
+export function pushSnapshot(history, index, snapshot, limit = null) {
     const list = Array.isArray(history) ? history : [];
     const json = JSON.stringify(snapshot);
     // Nothing actually changed - a drag that ended where it started, an effect firing again -
@@ -36,8 +54,10 @@ export function pushSnapshot(history, index, snapshot, limit = HISTORY_LIMIT) {
     const next = list.slice(0, index + 1);
     next.push(JSON.parse(json));
     let at = next.length - 1;
+    // How many of these we can afford, judged by the one just taken.
+    const cap = limit == null ? limitFor(json.length) : limit;
     // Dropping the oldest shifts every position down one, the current one included.
-    while (next.length > limit) { next.shift(); at--; }
+    while (next.length > cap) { next.shift(); at--; }
     return { history: next, index: at, changed: true };
 }
 

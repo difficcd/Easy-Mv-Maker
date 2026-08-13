@@ -50,6 +50,8 @@ const PEN_TYPES = [
     { id: 'fill', label: 'Fill', Icon: PaintBucket },
 ];
 const BOIL_FPS = 10; // how many times a second the boiling-line motion advances
+const TIMELINE_MIN_SPAN = 240; // seconds of ruler even with nothing in the project
+const TIMELINE_TAIL_PAD = 60;  // empty room past the end, to drag into
 // How many distinct wobbles the boiling line cycles through. A hand-drawn boiling line is a
 // handful of drawings alternating, not a new one every frame, so this reads right - and it is
 // what keeps the effect affordable, since each phase is rasterised once and then cached.
@@ -716,7 +718,10 @@ export default function App() {
     const globalUndo = () => stepHistory(-1);
     const globalRedo = () => stepHistory(1);
 
-    const maxTime = Math.max(60, audioData?.endTime ?? audioDuration, videoOverlay?.endTime ?? 0, ...cuts.map(c => c.endTime)) + 60;
+    // The ruler runs to the content plus a tail of empty room to drag into, and never less than
+    // TIMELINE_MIN_SPAN - a music video is three to five minutes, so a timeline that stops at two
+    // leaves nowhere to place anything before the audio is loaded.
+    const maxTime = Math.max(TIMELINE_MIN_SPAN, audioData?.endTime ?? audioDuration, videoOverlay?.endTime ?? 0, ...cuts.map(c => c.endTime)) + TIMELINE_TAIL_PAD;
     // Actual content bounds (where cuts/audio live) — playback & loop run between these,
     // not out to maxTime (which has empty padding for the timeline ruler).
     const contentEnd = Math.max(0, audioData?.endTime ?? 0, videoOverlay?.endTime ?? 0, ...cuts.map(c => c.endTime));

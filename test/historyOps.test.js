@@ -4,7 +4,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { pushSnapshot, canUndo, canRedo, step, HISTORY_LIMIT } from '../src/historyOps.js';
+import { pushSnapshot, canUndo, canRedo, step, limitFor, HISTORY_LIMIT } from '../src/historyOps.js';
 
 // Build a history by pushing in order, the way the app does.
 const build = (...snaps) => snaps.reduce(
@@ -48,13 +48,47 @@ test('pushSnapshot: a new action after undoing drops the branch that was undone 
 test('pushSnapshot: the oldest is dropped when full, and the index comes down with it', () => {
     let acc = { history: [], index: -1 };
     for (let i = 0; i < HISTORY_LIMIT + 10; i++) {
-        const r = pushSnapshot(acc.history, acc.index, { n: i });
+        const r = pushSnapshot(acc.history, acc.index, { n: i }, HISTORY_LIMIT);
         acc = { history: r.history, index: r.index };
     }
     assert.equal(acc.history.length, HISTORY_LIMIT, 'capped');
     assert.equal(acc.index, HISTORY_LIMIT - 1, 'still pointing at the newest');
     assert.deepEqual(acc.history[acc.index], { n: HISTORY_LIMIT + 9 });
     assert.deepEqual(acc.history[0], { n: 10 }, 'the oldest ten fell off the front');
+});
+
+// ── how far back undo reaches ──────────────────────────────────────────────
+// A snapshot copies the whole document, so the limit that matters is memory, not a step count.
+
+test('limitFor: a light project gets far more undo than a heavy one', () => {
+    const light = limitFor(2 * 1024);          // a few strokes
+    const heavy = limitFor(2 * 1024 * 1024);   // a long, dense drawing
+    assert.ok(light > heavy, `${light} > ${heavy}`);
+    assert.ok(light >= 100, 'a small project should not run out of undo at eighty steps');
+});
+
+test('limitFor: the budget is respected, between the two bounds', () => {
+    // As many 10KiB snapshots as fit in 1MiB.
+    assert.equal(limitFor(10 * 1024, 1024 * 1024), 102);
+    assert.equal(limitFor(1, 1024 * 1024), 400, 'but never unbounded');
+    assert.equal(limitFor(1024 * 1024 * 1024, 1024 * 1024), 20, 'and never so few as to be useless');
+});
+
+test('limitFor: a zero-sized snapshot does not divide by zero', () => {
+    assert.equal(limitFor(0), 400);
+});
+
+test('pushSnapshot: sizes its own limit when none is given', () => {
+    // A huge snapshot should fall back to the minimum rather than the maximum.
+    const big = { blob: 'x'.repeat(2 * 1024 * 1024) };
+    let acc = { history: [], index: -1 };
+    for (let i = 0; i < 30; i++) {
+        const r = pushSnapshot(acc.history, acc.index, { ...big, n: i });
+        acc = { history: r.history, index: r.index };
+    }
+    assert.ok(acc.history.length <= 20, `heavy snapshots were capped low (${acc.history.length})`);
+    assert.equal(acc.index, acc.history.length - 1, 'and the index still points at the newest');
+    assert.equal(acc.history[acc.index].n, 29);
 });
 
 test('pushSnapshot: a smaller limit still leaves the index on the newest', () => {
