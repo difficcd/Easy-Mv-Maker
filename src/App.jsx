@@ -17,6 +17,7 @@ import { closeLassoPath, lassoBounds, applyResize } from './lassoOps.js';
 import { useTimelineGestures } from './useTimelineGestures.js';
 import { fmt, parseClock } from './timeCode.js';
 import { pushSnapshot, step } from './historyOps.js';
+import { cloneCutContents as cloneCutContentsPure } from './cutClone.js';
 import { DEFAULT_KEYS, KEY_LABELS, keyOf, matchShortcut, loadKeymap } from './shortcuts.js';
 import { derivePartsFrom, deriveVideoBatches } from './partOps.js';
 import {
@@ -1678,25 +1679,10 @@ export default function App() {
     };
     // Deep-clone a cut's contents: remap layer ids to 1..N (rewriting parentId so
     // folder hierarchy survives), clone referenced bitmaps to fresh ids, copy texts.
-    const cloneCutContents = (srcCut) => {
-        const idMap = new Map();
-        let next = 1;
-        srcCut.layers.forEach(l => idMap.set(l.id, next++));
-        const bmpCache = new Map();
-        const layers = srcCut.layers.map(l => {
-            const cl = JSON.parse(JSON.stringify(l));
-            cl.id = idMap.get(l.id);
-            cl.parentId = (l.parentId != null && idMap.has(l.parentId)) ? idMap.get(l.parentId) : null;
-            cl.redoStrokes = [];
-            if (Array.isArray(cl.strokes)) {
-                cl.strokes = cl.strokes.map(s => s.bitmapId ? { ...s, bitmapId: cloneBitmapId(s.bitmapId, bmpCache) } : s);
-            }
-            return cl;
-        });
-        const activeLayerId = idMap.get(srcCut.activeLayerId) ?? layers.find(l => l.type === 'layer')?.id ?? 1;
-        const texts = safeArray(srcCut.texts).map(t => JSON.parse(JSON.stringify(t)));
-        return { layers, activeLayerId, texts };
-    };
+    // Layer ids are renumbered and stroke pixels are copied - see cutClone for why both are
+    // necessary. cloneBitmapId is passed in because it is the one part that touches the store.
+    const cloneCutContents = (srcCut) => cloneCutContentsPure(srcCut, cloneBitmapId);
+
     const handlePasteCut = () => {
         if (!copiedCut) return;
         const arr = Array.isArray(copiedCut) ? copiedCut : [copiedCut];
