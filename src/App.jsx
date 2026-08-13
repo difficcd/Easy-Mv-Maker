@@ -17,6 +17,7 @@ import { closeLassoPath, lassoBounds, applyResize } from './core/lassoOps.js';
 import { useTimelineGestures } from './hooks/useTimelineGestures.js';
 import { fmt, parseClock } from './core/timeCode.js';
 import { pushSnapshot, step } from './core/historyOps.js';
+import { nextProbeDelay } from './core/probeBackoff.js';
 import { cloneCutContents as cloneCutContentsPure } from './core/cutClone.js';
 import { DEFAULT_KEYS, KEY_LABELS, keyOf, matchShortcut, loadKeymap } from './core/shortcuts.js';
 import { derivePartsFrom, deriveVideoBatches } from './core/partOps.js';
@@ -1564,16 +1565,36 @@ export default function App() {
         // never render at all, so clicking does nothing and the console stays empty - which is
         // exactly how one bug here hid for so long. Re-checking periodically lets it reconnect
         // on its own once the server comes back.
+        //
+        // The interval backs off as failures pile up (see probeBackoff). A deployment has no
+        // server and never will until one is hosted, so a fixed poll there is a request failing
+        // every ten seconds for as long as the tab is open. Focus still forces an immediate
+        // check, so starting the server locally and switching back does not wait for the timer.
+        let failures = 0;
+        let timer = /** @type {any} */ (0);
+        const schedule = () => {
+            if (!alive) return;
+            clearTimeout(timer);
+            timer = setTimeout(probe, nextProbeDelay(failures));
+        };
         const probe = () => fetch('/api/projects', { method: 'GET' })
-            .then(r => { if (alive) setServerAvailable(r.ok); })
-            .catch(() => { if (alive) setServerAvailable(false); });
+            .then(r => {
+                if (!alive) return;
+                failures = r.ok ? 0 : failures + 1;
+                setServerAvailable(r.ok);
+            })
+            .catch(() => {
+                if (!alive) return;
+                failures++;
+                setServerAvailable(false);
+            })
+            .finally(schedule);
         probe();
-        const id = setInterval(probe, 10000);
-        // Re-check immediately on refocus, since starting the server and coming back is the
-        // common flow.
-        const onFocus = () => probe();
+        // Coming back to the tab is the moment the server has most likely just been started, so
+        // the backoff is reset rather than merely interrupted.
+        const onFocus = () => { failures = 0; probe(); };
         window.addEventListener('focus', onFocus);
-        return () => { alive = false; clearInterval(id); window.removeEventListener('focus', onFocus); };
+        return () => { alive = false; clearTimeout(timer); window.removeEventListener('focus', onFocus); };
     }, []);
 
     // Debounced autosave to IndexedDB so a refresh/crash never loses work.
@@ -3861,7 +3882,7 @@ export default function App() {
                 handleAudioUpload={handleAudioUpload} loadYoutubeAudio={loadYoutubeAudio}
                 handleDeleteAudio={handleDeleteAudio} audioFile={audioFile} openVideoImport={openVideoImport}
                 loadYoutubeVideo={loadYoutubeVideo} videoFileRef={videoFileRef} recentVideos={recentVideos}
-                reimportRecent={reimportRecent} serverAvailable={serverAvailable} showFileMenu={showFileMenu}
+                reimportRecent={reimportRecent} serverAvailable={serverAvailable} setToast={setToast} showFileMenu={showFileMenu}
                 setShowFileMenu={setShowFileMenu} showMediaMenu={showMediaMenu} setShowMediaMenu={setShowMediaMenu}
                 fileMenuRef={fileMenuRef} mediaMenuRef={mediaMenuRef} canvasW={CANVAS_W} canvasH={CANVAS_H}
                 setCanvasSize={setCanvasSize} setShowHelp={setShowHelp} setShowSettings={setShowSettings}
