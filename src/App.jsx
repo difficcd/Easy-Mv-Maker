@@ -565,6 +565,7 @@ export default function App() {
     };
 
     const historyRef = useRef([]);
+    const recordHistoryRef = useRef(/** @type {(s: any) => void} */(() => { }));
     const historyIndexRef = useRef(-1);
     const isUndoRedoRef = useRef(false);
     const isDraggingOrResizingRef = useRef(false);
@@ -683,7 +684,7 @@ export default function App() {
     useEffect(() => {
         if (isDrawing.current || isDraggingOrResizingRef.current || selectionDragRef.current) return;
         if (isUndoRedoRef.current) { isUndoRedoRef.current = false; return; }
-        recordHistory({ cuts, audioData, numTracks });
+        recordHistoryRef.current({ cuts, audioData, numTracks });
     }, [cuts, audioData, numTracks]);
 
     // The one place history is written. It was two copies of the same arithmetic, one of which
@@ -694,6 +695,10 @@ export default function App() {
         historyRef.current = r.history;
         historyIndexRef.current = r.index;
     };
+    // The recording effect reaches it through a ref, the way paintFrame and the prefetch already
+    // do: naming the function in the dependency list would re-run the effect on every render,
+    // since it is rebuilt each time.
+    recordHistoryRef.current = recordHistory;
 
     const applyHistory = (snap) => {
         const s = JSON.parse(JSON.stringify(snap));
@@ -1056,7 +1061,10 @@ export default function App() {
             clearTimeout(cutDragTimerRef.current);
             cutDragArmedRef.current = false;
             setResizingData(null); setDraggingCutData(null); setSnapLinePos(null);
-            pushHistorySnapshot();
+            // liveRef holds the current document precisely so this does not have to reach for
+            // a state setter to read it, and the ref keeps the effect's dependency list honest.
+            const lv = liveRef.current;
+            recordHistoryRef.current({ cuts: lv.cuts, audioData: lv.audioData, numTracks: lv.numTracks });
         };
         window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
         return () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); };
@@ -1070,11 +1078,6 @@ export default function App() {
     // twice and only the duplicate check below stopped a doubled history entry. liveRef already
     // holds the current document for exactly this kind of read, so nothing needs to pretend to
     // be a state update.
-    const pushHistorySnapshot = () => {
-        const lv = liveRef.current;
-        recordHistory({ cuts: lv.cuts, audioData: lv.audioData, numTracks: lv.numTracks });
-    };
-
     // Free bitmaps no longer referenced by any cut, history snapshot, clipboard, or selection.
     // Scans ALL reference sources so undo/paste never lose their pixels.
     const gcBitmaps = () => {
