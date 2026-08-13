@@ -16,6 +16,7 @@ import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill } fr
 import { closeLassoPath, lassoBounds, applyResize } from './lassoOps.js';
 import { useTimelineGestures } from './useTimelineGestures.js';
 import { fmt, parseClock } from './timeCode.js';
+import { pushSnapshot, step } from './historyOps.js';
 import { derivePartsFrom, deriveVideoBatches } from './partOps.js';
 import {
     cutsReducer, replaceCuts, addCuts, updateCut, setCutAnim, clearCut,
@@ -682,13 +683,17 @@ export default function App() {
     useEffect(() => {
         if (isDrawing.current || isDraggingOrResizingRef.current || selectionDragRef.current) return;
         if (isUndoRedoRef.current) { isUndoRedoRef.current = false; return; }
-        const snapshot = JSON.stringify({ cuts, audioData, numTracks });
-        if (historyRef.current.length > 0 && JSON.stringify(historyRef.current[historyIndexRef.current]) === snapshot) return;
-        historyRef.current = historyRef.current.slice(0, historyIndexRef.current + 1);
-        historyRef.current.push(JSON.parse(snapshot));
-        historyIndexRef.current = historyRef.current.length - 1;
-        if (historyRef.current.length > 80) { historyRef.current.shift(); historyIndexRef.current--; }
+        recordHistory({ cuts, audioData, numTracks });
     }, [cuts, audioData, numTracks]);
+
+    // The one place history is written. It was two copies of the same arithmetic, one of which
+    // had the limit inlined as a bare 80 - the kind of pair where only one gets fixed.
+    const recordHistory = (snapshot) => {
+        const r = pushSnapshot(historyRef.current, historyIndexRef.current, snapshot);
+        if (!r.changed) return;
+        historyRef.current = r.history;
+        historyIndexRef.current = r.index;
+    };
 
     const applyHistory = (snap) => {
         const s = JSON.parse(JSON.stringify(snap));
@@ -697,16 +702,14 @@ export default function App() {
         setAudioData(s.audioData ?? null);
         setNumTracks(s.numTracks ?? 2);
     };
-    const globalUndo = () => {
-        if (historyIndexRef.current <= 0) return;
-        historyIndexRef.current--;
-        applyHistory(historyRef.current[historyIndexRef.current]);
+    const stepHistory = (dir) => {
+        const r = step(historyRef.current, historyIndexRef.current, dir);
+        if (!r) return;                       // already at that end
+        historyIndexRef.current = r.index;
+        applyHistory(r.snapshot);
     };
-    const globalRedo = () => {
-        if (historyIndexRef.current >= historyRef.current.length - 1) return;
-        historyIndexRef.current++;
-        applyHistory(historyRef.current[historyIndexRef.current]);
-    };
+    const globalUndo = () => stepHistory(-1);
+    const globalRedo = () => stepHistory(1);
 
     const maxTime = Math.max(60, audioData?.endTime ?? audioDuration, videoOverlay?.endTime ?? 0, ...cuts.map(c => c.endTime)) + 60;
     // Actual content bounds (where cuts/audio live) — playback & loop run between these,
@@ -1067,18 +1070,9 @@ export default function App() {
     // twice and only the duplicate check below stopped a doubled history entry. liveRef already
     // holds the current document for exactly this kind of read, so nothing needs to pretend to
     // be a state update.
-    const HISTORY_LIMIT = 80;
     const pushHistorySnapshot = () => {
         const lv = liveRef.current;
-        const snapshot = JSON.stringify({ cuts: lv.cuts, audioData: lv.audioData, numTracks: lv.numTracks });
-        // Nothing actually changed - a drag that ended where it started - so there is nothing to
-        // undo back to.
-        if (historyRef.current.length > 0 && JSON.stringify(historyRef.current[historyIndexRef.current]) === snapshot) return;
-        // Anything that was undone past is dropped: the new action becomes the future.
-        historyRef.current = historyRef.current.slice(0, historyIndexRef.current + 1);
-        historyRef.current.push(JSON.parse(snapshot));
-        historyIndexRef.current = historyRef.current.length - 1;
-        if (historyRef.current.length > HISTORY_LIMIT) { historyRef.current.shift(); historyIndexRef.current--; }
+        recordHistory({ cuts: lv.cuts, audioData: lv.audioData, numTracks: lv.numTracks });
     };
 
     // Free bitmaps no longer referenced by any cut, history snapshot, clipboard, or selection.
