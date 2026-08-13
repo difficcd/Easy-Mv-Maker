@@ -1,29 +1,30 @@
 ---
-name: 버그
-about: 잘못 동작하는 것
+name: Bug
+about: Something behaves wrongly
 labels: bug
 ---
 
-## 증상
+## Symptom
 
-<!-- 무엇이 잘못됐는지 한두 줄. -->
+<!-- A line or two on what is wrong. -->
 
-## 재현
+## Steps to reproduce
 
-<!-- 순서대로. 이게 곧 스펙이고, 고쳤는지 판단하는 기준입니다.
-     조건이 중요하면 꼭 적어주세요 — "자글자글 켠 상태", "펜으로 빠르게" 같은 것들이
-     실제로 원인이었던 적이 여러 번 있습니다. -->
+<!-- In order. This is the spec, and the test for whether it is fixed.
+     Include the conditions if they matter — in this project the cause has several times
+     turned out to be a condition ("with boiling on", "drawing quickly with the pen")
+     rather than the action. -->
 
 1.
 2.
 
-**기대:**
-**실제:**
+**Expected:**
+**Actual:**
 
-## 환경
+## Environment
 
-<!-- 해당하는 것만. 태블릿/펜, 배포본(Vercel)인지 로컬인지, 프로젝트 크기 등 -->
+<!-- Only what applies: tablet/pen, deployed (Vercel) or local, project size. -->
 
-## 짐작 (선택)
+## Guess (optional)
 
-<!-- 없으면 비워두세요. 틀린 짐작은 조사를 엉뚱한 데로 보냅니다. -->
+<!-- Leave empty if you have none. A wrong guess sends the investigation the wrong way. -->
