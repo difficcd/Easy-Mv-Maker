@@ -22,6 +22,26 @@ gh pr checks                          # CI
 gh pr merge --squash --delete-branch
 ```
 
+## `main` is protected
+
+Pushing straight to `main` is rejected — including for the repository owner, which is the only
+setting that makes the rule mean anything on a one-person project. Everything lands through a
+pull request whose `check` run has passed, and force pushes and branch deletion are off.
+
+```
+remote: error: GH006: Protected branch update failed for refs/heads/main.
+```
+
+If you ever genuinely need to bypass it:
+
+```bash
+gh api -X DELETE repos/difficcd/Easy-Mv-Maker/branches/main/protection/enforce_admins
+# ... push ...
+gh api -X POST   repos/difficcd/Easy-Mv-Maker/branches/main/protection/enforce_admins
+```
+
+Turning it back on is the part that gets forgotten, so do both in one sitting.
+
 ## Verifying
 
 ```bash
