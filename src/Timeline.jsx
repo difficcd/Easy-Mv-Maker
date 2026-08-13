@@ -157,7 +157,7 @@ export function Timeline({
                                 <button className="icon-btn del-btn" onClick={e => { e.stopPropagation(); removeVideoOverlay(); }} title={tr('영상 트랙 삭제')}><Trash2 size={9} /></button></div>
                             <div className="cut-block" style={{ left: `${videoOverlay.startTime * pps + 60}px`, width: `${(videoOverlay.endTime - videoOverlay.startTime) * pps}px`, background: '#155e75', borderColor: '#22d3ee55', cursor: draggingCutData?.cutId === 'video' ? 'grabbing' : 'grab', touchAction: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                                 onPointerDown={e => { e.stopPropagation(); cutDragMovedRef.current = false; clearTimeout(cutDragTimerRef.current); cutDragArmedRef.current = e.pointerType !== 'touch'; if (e.pointerType === 'touch') cutDragTimerRef.current = setTimeout(() => { cutDragArmedRef.current = true; }, 350); try { e.currentTarget.setPointerCapture(e.pointerId); } catch { } setDraggingCutData({ cutId: 'video', startX: e.clientX, startY: e.clientY, initialStart: videoOverlay.startTime, initialTrack: 0 }); }}>
-                                🎬 {videoOverlay.name}
+                                {videoOverlay.name}
                                 {/* scene-cut markers: click to jump the playhead to that scene */}
                                 {safeArray(videoOverlay.cuts).map((vt, i) => {
                                     const rel = (vt - (videoOverlay.cutOffset || 0));

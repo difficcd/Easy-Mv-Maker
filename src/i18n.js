@@ -288,7 +288,7 @@ const EN = {
     '프레임으로 가져오기': 'Import as frames',
     '영상을 프레임별 컷으로 가져오기': 'Import the video as one cut per frame',
     '영상 위에 덧그리기': 'Draw over the video',
-    '🎬 영상 그대로 깔기(+음원)': '🎬 Lay the video down as-is (+audio)',
+    '영상 그대로 깔기(+음원)': 'Lay the video down as-is (+audio)',
     '가져온 영상 프레임': 'Imported video frames',
     '이 영상 프레임 전체 삭제': 'Delete all of these video frames',
     '다시 가져오기 (프레임 교체)': 'Import again (replace the frames)',

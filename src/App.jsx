@@ -1883,6 +1883,22 @@ export default function App() {
     };
 
     // Coalesce to one draw per frame - pointer events arrive far more often than frames.
+    // Coalesce a text drag to one document update per frame. The last position wins, so nothing
+    // is lost by dropping the ones in between: each is absolute, computed from where the drag
+    // started plus the total delta.
+    const textDragRafRef = useRef(0);
+    const flushTextDrag = () => {
+        textDragRafRef.current = 0;
+        const p = textDragRef.current?.pending;
+        if (!p) return;
+        textDragRef.current.pending = null;
+        dispatchCuts(moveText(p.cutId, p.textId, p.x, p.y));
+    };
+    const scheduleTextDrag = () => {
+        if (textDragRafRef.current) return;
+        textDragRafRef.current = requestAnimationFrame(flushTextDrag);
+    };
+
     const scheduleLiveRender = () => {
         if (liveRafRef.current) return;
         liveRafRef.current = requestAnimationFrame(() => { liveRafRef.current = 0; renderLiveStroke(); });
@@ -2504,7 +2520,13 @@ export default function App() {
             const dy = pos.y - startPos.y;
             if (clickToEdit && !textDragRef.current.moved && Math.hypot(dx, dy) <= 4) return;
             textDragRef.current.moved = true;
-            dispatchCuts(moveText(cutId, textId, Math.round(startText.x + dx), Math.round(startText.y + dy)));
+            // One update per frame, not one per event. A pen reports well over a hundred moves a
+            // second and each write to the document is a React render plus a full repaint, so
+            // most of that work is thrown away before it can be seen - and the drag ends up
+            // lagging the pointer rather than following it. The strokes were fixed the same way
+            // (see scheduleLiveRender); this is the same problem on the text path.
+            textDragRef.current.pending = { cutId, textId, x: Math.round(startText.x + dx), y: Math.round(startText.y + dy) };
+            scheduleTextDrag();
             return;
         }
 
@@ -2643,6 +2665,9 @@ export default function App() {
             } else clearLiveOverlay();
             return;
         }
+        // A drag can end between frames with a move still queued; flush it or the text snaps
+        // back to wherever the last painted frame left it.
+        if (textDragRafRef.current) { cancelAnimationFrame(textDragRafRef.current); flushTextDrag(); }
         selectionDragRef.current = null;
         const endedTextDrag = textDragRef.current;
         textDragRef.current = null;
@@ -3850,7 +3875,7 @@ export default function App() {
                     videoBusy={videoBusy} setVideoBusyBg={setVideoBusyBg} videoStopRef={videoStopRef}
                     runVideoImport={runVideoImport}
                     loadVideoOverlay={loadVideoOverlay} loadAudioUrl={loadAudioUrl} parseClock={parseClock}
-                    setShowHelp={setShowHelp} canvasW={CANVAS_W} canvasH={CANVAS_H} />
+                    setShowHelp={setShowHelp} canvasW={CANVAS_W} canvasH={CANVAS_H} setCanvasSize={setCanvasSize} />
             )}
             {sceneCfg && videoOverlay && (
                 <SceneDetectModal sceneCfg={sceneCfg} setSceneCfg={setSceneCfg}
@@ -3952,14 +3977,14 @@ export default function App() {
                                 <div className="text-editor-row">
                                     <div className="te-section">{tr('글꼴')}</div>
                                     <label className="text-editor-label">Size</label>
-                                    {/* The range is applied when the field is left, not per
-                                        keystroke - clamping as you type makes a size of 100
-                                        impossible to enter, because "1" becomes 6 before the
-                                        zeros arrive. commitText clamps again for the Ctrl+Enter
-                                        path, which never blurs this field. */}
+                                    {/* No range at all while editing - not per keystroke, and not
+                                        on blur either. Any clamp during editing makes 100
+                                        unreachable: "1" becomes 6 before the zeros arrive, and
+                                        clamping when the field is left does the same thing a
+                                        keystroke later if focus moves between digits. The size is
+                                        held to 6..400 where it is used instead - textRender clamps
+                                        for drawing, and commitText clamps what gets saved. */}
                                     <NumField
-                                        min={6}
-                                        max={400}
                                         value={textEdit.fontSize}
                                         onChange={v => setTextEdit(te => te ? ({ ...te, fontSize: v }) : te)}
                                         className="text-editor-num"

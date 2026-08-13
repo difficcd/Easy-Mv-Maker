@@ -177,7 +177,7 @@ export function HelpModal({ keymap, onClose }) {
 // pressing "Send to background" closes it and the work continues in the corner chip.
 export function VideoImportModal({
     videoImport, setVideoImport, videoBusy, setVideoBusyBg, videoStopRef,
-    runVideoImport, loadVideoOverlay, loadAudioUrl, parseClock, setShowHelp, canvasW, canvasH,
+    runVideoImport, loadVideoOverlay, loadAudioUrl, parseClock, setShowHelp, canvasW, canvasH, setCanvasSize,
 }) {
     return (
         <div onClick={() => { if (!videoBusy) setVideoImport(null); }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -297,11 +297,16 @@ export function VideoImportModal({
                                 const useRange = videoImport.rangeOn && parseClock(videoImport.endText) > parseClock(videoImport.startText);
                                 const off = useRange ? parseClock(videoImport.startText) : 0;
                                 const clip = useRange ? (parseClock(videoImport.endText) - parseClock(videoImport.startText)) : null;
+                                // The canvas-size choice above applies here too. Without it a
+                                // portrait clip laid down as-is is letterboxed into a landscape
+                                // canvas - the same thing the frame importer does with it.
+                                const tgt = targetCanvasFor(videoImport, canvasW, canvasH);
+                                if (tgt.w !== canvasW || tgt.h !== canvasH) setCanvasSize({ w: tgt.w, h: tgt.h });
                                 loadVideoOverlay(videoImport.file, videoImport.label || videoImport.file.name, 0, off, clip);
                                 // The overlay <video> is muted; always bring the audio via a synced audio track.
                                 loadAudioUrl(URL.createObjectURL(videoImport.file), (videoImport.label || tr('영상')) + tr(' (음원)'), 0, off, clip);
                                 setVideoImport(null);
-                            }}>{tr('🎬 영상 그대로 깔기(+음원)')}</button>
+                            }}>{tr('영상 그대로 깔기(+음원)')}</button>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
                             <button className="button" onClick={() => setVideoImport(null)}>{tr('취소')}</button>
