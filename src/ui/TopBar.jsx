@@ -7,7 +7,7 @@ export function TopBar({
     doNew, doSave, doOpen, doLocalSave, openLocalList,
     doServerSave, openServerList, doServerBackup, openBackupList, backupBusy,
     handleAudioUpload, loadYoutubeAudio, handleDeleteAudio, audioFile, openVideoImport,
-    loadYoutubeVideo, videoFileRef, recentVideos, reimportRecent, serverAvailable,
+    loadYoutubeVideo, videoFileRef, recentVideos, reimportRecent, serverAvailable, setToast,
     showFileMenu, setShowFileMenu, showMediaMenu, setShowMediaMenu, fileMenuRef,
     mediaMenuRef, canvasW, canvasH, setCanvasSize, setShowHelp,
     setShowSettings, keymap, view, zoomCanvas, resetView,
@@ -114,7 +114,11 @@ export function TopBar({
             {/* Say plainly that without a server the work stays local. Working on unaware and
                 then losing it is the worst outcome here. */}
             {!serverAvailable
-                ? <span style={{ fontSize: 11, color: '#e0a84e' }} title={tr('API 서버에 연결할 수 없어 서버 저장/백업이 비활성화됩니다. 작업은 이 브라우저에만 저장됩니다.')}>{tr('⚠ 로컬 전용')}</span>
+                ? <button className="badge-btn" style={{ fontSize: 11, color: '#e0a84e' }}
+                    title={tr('API 서버에 연결할 수 없어 서버 저장/백업이 비활성화됩니다. 작업은 이 브라우저에만 저장됩니다.')}
+                    onClick={() => setToast(tr('서버가 없어 서버 저장·백업은 쓸 수 없습니다. 작업은 이 브라우저에 자동저장되고, 파일로 저장하면 안전하게 보관됩니다.'))}>
+                    {tr('⚠ 로컬 전용')}
+                </button>
                 : backupAt && <span style={{ fontSize: 11, color: 'var(--accent-pale)' }} title={tr('서버에 백업된 시각 (파일 > 백업에서 되돌리기)')}>⛁ {tr('백업')} {new Date(backupAt).toLocaleTimeString()}</span>}
             {storageInfo && storageInfo.pct > 0.8 && (
                 <span style={{ fontSize: 11, color: storageInfo.pct > 0.92 ? '#f66' : '#e0a84e' }}
