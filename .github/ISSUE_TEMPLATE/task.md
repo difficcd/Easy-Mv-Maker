@@ -1,26 +1,26 @@
 ---
-name: 작업
-about: 기능, 리팩토링, 성능 등 버그가 아닌 것
+name: Task
+about: A feature, refactor, or anything that is not a bug
 labels: enhancement
 ---
 
-## 무엇을
+## What
 
-<!-- 한두 줄. -->
+<!-- A line or two. -->
 
-## 왜
+## Why
 
-<!-- 지금 무엇이 불편한지. 이게 없으면 나중에 "이거 왜 하려던 거지"가 됩니다. -->
+<!-- What is awkward today. Without this it becomes "why were we doing this again?". -->
 
-## 범위
+## Scope
 
-<!-- 포함되는 것과 **포함되지 않는 것**. 후자가 스코프 크립을 막습니다. -->
+<!-- What is included, and **what is not**. The second part is what stops scope creep. -->
 
 - [ ]
 - [ ]
 
-**하지 않을 것:**
+**Not doing:**
 
-## 완료 기준
+## Done when
 
-<!-- 무엇을 보면 끝났다고 판단할지. 성능이면 숫자로. -->
+<!-- What you would look at to call it finished. Numbers, if it is about performance. -->

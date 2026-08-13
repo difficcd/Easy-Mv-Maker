@@ -1,22 +1,22 @@
-## 무엇을 / 왜
+## What / why
 
-<!-- 무엇을 했는지는 diff가 말해줍니다. 여기에는 **왜**를 쓰세요. -->
+<!-- The diff says what changed. Use this for **why**. -->
 
 Closes #
 
-## 검증
+## Verified
 
-- [ ] `npm run check` 통과 (타입체크 · 테스트 · 훅 기준선 · 빌드)
-- [ ] 브라우저에서 직접 확인
+- [ ] `npm run check` passes (typecheck · tests · hook baseline · build)
+- [ ] Checked in the browser
 
-<!-- 성능 변경이면 before/after 숫자를 넣으세요. 문장보다 훨씬 잘 전달됩니다.
-     예)  p95 프레임 27.8ms -> 10.9ms (획 15개, 일시정지) -->
+<!-- For a performance change, put the before/after numbers here. They carry far better
+     than a sentence.  e.g.  p95 frame 27.8ms -> 10.9ms (15 strokes, paused) -->
 
-## 직접 봐야 하는 것
+## Needs looking at
 
-<!-- 자동 검사가 못 잡는 부분. 무엇을 클릭하고 무엇을 봐야 하는지.
-     "빌드 통과"가 증명하는 게 거의 없는 코드베이스입니다. -->
+<!-- What the automated checks cannot catch: what to click, what to look for.
+     A green `npm run check` proves very little in this codebase. -->
 
-## 남긴 것 (선택)
+## Left out (optional)
 
-<!-- 일부러 안 한 것과 그 이유. -->
+<!-- Anything deliberately not done, and why. -->
