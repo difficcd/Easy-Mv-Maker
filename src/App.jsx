@@ -777,11 +777,20 @@ export default function App() {
         if (selectedText && selectedText.cutId !== currentCutId) setSelectedText(null);
     }, [currentCutId, selectedText]);
 
+    // Put the cursor in the textarea when the editor opens - once, when it opens.
+    //
+    // Depending on `textEdit` itself meant this ran on every keystroke in every other field of
+    // the editor, because they all patch the same object. Typing a size then jumped the cursor
+    // back into the textarea and the remaining digits were typed into the text.
+    //
+    // The session key is which text is being edited, so switching straight from one text to
+    // another still focuses, while editing the current one never steals the cursor back.
+    const textEditSession = textEdit ? `${textEdit.cutId}:${textEdit.textId ?? 'new'}` : null;
     useEffect(() => {
-        if (!textEdit) return;
-        // Focus after rendering overlay.
+        if (!textEditSession) return;
+        // After the overlay has rendered, or there is nothing to focus yet.
         queueMicrotask(() => textAreaRef.current?.focus());
-    }, [textEdit]);
+    }, [textEditSession]);
 
     useEffect(() => {
         if (isPlaying) {
