@@ -510,6 +510,8 @@ const EN = {
     '추가': 'Add',
     '끄기': 'Off',
     '켜기': 'On',
+    '필압': 'Pressure',
+    '끄면 세게 눌러도 굵기가 일정합니다. 이미 그린 선은 그대로입니다.': 'Off draws an even line however hard you press. Strokes already drawn are unchanged.',
     '그리는 중…': 'Drawing…',
     '(없음)': '(none)',
     '사용한': 'used',

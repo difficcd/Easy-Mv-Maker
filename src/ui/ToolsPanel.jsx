@@ -20,6 +20,7 @@ function ToolSettings({
     mosaicBlock = undefined, setMosaicBlock = undefined,
     brushSize = undefined, setBrushSize = undefined,
     eraserSize = undefined, setEraserSize = undefined,
+    pressureOn = true, setPressureOn = undefined,
 }) {
     if (tool === 'soft') {
         return (<>
@@ -75,6 +76,13 @@ function ToolSettings({
             ))}
         </div>
         <input type="range" min="1" max="80" value={Math.min(80, curSize)} onChange={e => setSize(+e.target.value)} className="v-slider" disabled={isSelectionTool} />
+        {/* The eraser is included: its width goes through the same pressure term as a brush
+            (canvasUtils, `s.size * (hasPressure ? pr * 2 : 1)`), so an even eraser is exactly as
+            useful as an even line. */}
+        <label className="te-check" style={{ justifyContent: 'center', marginTop: 2 }}
+            title={tr('끄면 세게 눌러도 굵기가 일정합니다. 이미 그린 선은 그대로입니다.')}>
+            <input type="checkbox" checked={!!pressureOn} onChange={e => setPressureOn(e.target.checked)} /> {tr('필압')}
+        </label>
     </>);
 }
 
@@ -84,6 +92,7 @@ export function ToolsPanel({
     globalUndo, globalRedo, handleClearCut, doTween,
     hasLassoClip, pasteLassoSelection, pickingColor, pickColor, isSelectionTool,
     color, applyColor, opacity, setOpacity,
+    pressureOn = true, setPressureOn = undefined,
     ...settings
 }) {
     return (
@@ -111,7 +120,7 @@ export function ToolsPanel({
             <div className="tool-divider" />
             <input type="color" className="color-picker" value={color} onChange={e => applyColor(e.target.value)} title={tr('색상')} disabled={isSelectionTool} />
             <div className="slider-wrap">
-                <ToolSettings tool={tool} isSelectionTool={isSelectionTool} {...settings} />
+                <ToolSettings tool={tool} isSelectionTool={isSelectionTool} pressureOn={pressureOn} setPressureOn={setPressureOn} {...settings} />
             </div>
             <div className="slider-wrap">
                 <span className="slider-label">Opacity</span>

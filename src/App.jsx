@@ -295,6 +295,12 @@ export default function App() {
         else setPickingColor(true);
     };
     const [brushSize, setBrushSize] = useState(5);
+    // Pen pressure. Off means an even line however hard the pen is pressed - wanted for lineart,
+    // and for pens that report pressure unevenly.
+    const [pressureOn, setPressureOn] = useState(() => {
+        try { return localStorage.getItem('mv_pressure') !== 'off'; } catch { return true; }
+    });
+    useEffect(() => { try { localStorage.setItem('mv_pressure', pressureOn ? 'on' : 'off'); } catch { } }, [pressureOn]);
     const [eraserSize, setEraserSize] = useState(20);
     const [opacity, setOpacity] = useState(1.0);
     const [expandedCuts, setExpandedCuts] = useState(new Set());
@@ -1838,7 +1844,15 @@ export default function App() {
     };
     const onLayerDragEnd = () => { setDragLayerInfo(null); setDropInfo(null); };
 
-    const getPos = (e) => { const c = canvasRef.current, r = c.getBoundingClientRect(); return { x: (e.clientX - r.left) * (c.width / r.width), y: (e.clientY - r.top) * (c.height / r.height), pressure: e.pressure > 0 ? e.pressure : 0.5 }; };
+    // Pressure is flattened here rather than at render time, so it is baked into the stroke and
+    // the drawing keeps the shape it had when it was made. Turning the preference off later does
+    // not go back and change work that is already on the canvas.
+    // 0.5 is the neutral value the renderer treats as "no pressure information".
+    const getPos = (e) => {
+        const c = canvasRef.current, r = c.getBoundingClientRect();
+        const pressure = pressureOn && e.pressure > 0 ? e.pressure : 0.5;
+        return { x: (e.clientX - r.left) * (c.width / r.width), y: (e.clientY - r.top) * (c.height / r.height), pressure };
+    };
     // Render only the in-progress stroke on the overlay canvas — one stroke, no full-layer rebuild.
     // Live preview while drawing. This used to re-smooth and redraw the entire stroke on every
     // pointer move: the cost of one redraw grew with the length of the line and the total grew
@@ -2458,14 +2472,14 @@ export default function App() {
             case 'rough':
             case 'calligraphy': {
                 // Draw on the live overlay only — no layer-state writes per move (that was the lag).
-                liveStrokeRef.current = { id: Date.now(), tool: etool, color, opacity, size: brushSize, points: [pos], pen: e.pointerType === 'pen' };
+                liveStrokeRef.current = { id: Date.now(), tool: etool, color, opacity, size: brushSize, points: [pos], pen: pressureOn && e.pointerType === 'pen' };
                 liveDrawnRef.current = 0; renderLiveStroke(true);
                 break;
             }
             case 'line': {
                 // Line ruler: the start is pinned and only the end follows, giving a two-point line.
                 lineStartRef.current = pos;
-                liveStrokeRef.current = { id: Date.now(), tool: 'brush', color, opacity, size: brushSize, points: [pos, { ...pos }], pen: e.pointerType === 'pen' };
+                liveStrokeRef.current = { id: Date.now(), tool: 'brush', color, opacity, size: brushSize, points: [pos, { ...pos }], pen: pressureOn && e.pointerType === 'pen' };
                 liveDrawnRef.current = 0; renderLiveStroke(true);
                 break;
             }
@@ -3739,7 +3753,8 @@ export default function App() {
             rulerMode={rulerMode} setRulerMode={setRulerMode} commitCurve={commitCurve}
             mosaicBlock={mosaicBlock} setMosaicBlock={setMosaicBlock}
             brushSize={brushSize} setBrushSize={setBrushSize}
-            eraserSize={eraserSize} setEraserSize={setEraserSize} />
+            eraserSize={eraserSize} setEraserSize={setEraserSize}
+            pressureOn={pressureOn} setPressureOn={setPressureOn} />
     );
 
     const colorPanelEl = (
