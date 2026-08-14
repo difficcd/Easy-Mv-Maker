@@ -18,6 +18,10 @@ import { useTimelineGestures } from './hooks/useTimelineGestures.js';
 import { fmt, parseClock } from './core/timeCode.js';
 import { pushSnapshot, step } from './core/historyOps.js';
 import { nextProbeDelay } from './core/probeBackoff.js';
+import {
+    mediaReducer, EMPTY_MEDIA, loadAudio, setAudioDuration, setAudioClip, clearAudio,
+    loadVideo, clearVideo, setVideoCuts, moveTrack, resizeAudio,
+} from './core/mediaReducer.js';
 import { cloneCutContents as cloneCutContentsPure } from './core/cutClone.js';
 import { DEFAULT_KEYS, KEY_LABELS, keyOf, matchShortcut, loadKeymap } from './core/shortcuts.js';
 import { derivePartsFrom, deriveVideoBatches } from './core/partOps.js';
@@ -215,15 +219,16 @@ export default function App() {
     const [panelDrag, setPanelDrag] = useState(null);
 
     const [snapLinePos, setSnapLinePos] = useState(null);
-    const [audioFile, setAudioFile] = useState(null);
-    const [audioUrl, setAudioUrl] = useState(null);
-    const [audioDuration, setAudioDuration] = useState(30);
-    const [audioData, setAudioData] = useState(null);
+    // The audio and video tracks move together - loading audio sets four of these at once - so
+    // they are one reducer. Destructured here so every read site keeps the name it always had;
+    // only the writes go through an action. See core/mediaReducer.
+    const [media, dispatchMedia] = React.useReducer(mediaReducer, EMPTY_MEDIA);
+    const { audioFile, audioUrl, audioDuration, audioData } = media;
     const audioRef = useRef(null);
     const audioB64Ref = useRef(null); // audio as base64 data URL, embedded into saves
     // Video overlay track: play the original video underneath the drawing layers (no per-frame
     // cuts) - for drawing over a video. Like audio, but painted onto the canvas each frame.
-    const [videoOverlay, setVideoOverlay] = useState(null); // { name, startTime, endTime, offset, duration, w, h, cuts? }
+    const { videoOverlay } = media; // { name, startTime, endTime, offset, duration, w, h, cuts? }
     const [sceneDetect, setSceneDetect] = useState(null);   // { done, total } while auto-detecting scene cuts
     const [sceneCfg, setSceneCfg] = useState(null);         // scene-detect settings modal { threshold, rangeOn, startText, endText }
     const videoElRef = useRef(null);      // hidden <video> element that decodes/plays the overlay
@@ -690,7 +695,7 @@ export default function App() {
         const s = JSON.parse(JSON.stringify(snap));
         isUndoRedoRef.current = true;
         dispatchCuts(replaceCuts(s.cuts));
-        setAudioData(s.audioData ?? null);
+        dispatchMedia(setAudioClip(s.audioData ?? null));
         setNumTracks(s.numTracks ?? 2);
     };
     const stepHistory = (dir) => {
@@ -994,11 +999,14 @@ export default function App() {
                 const dt = (e.clientX - resizingData.startX) / pps;
                 const i0 = resizingData.initialStart, i1 = resizingData.initialEnd;
                 if (resizingData.cutId === 'audio') {
-                    setAudioData(prev => {
-                        if (!prev) return prev;
-                        if (resizingData.edge === 'left') { const ns = Math.max(0, Math.min(i1 - 0.1, i0 + dt)); return { ...prev, startTime: ns, offset: Math.max(0, (resizingData.initialOffset ?? 0) + (ns - i0)) }; }
-                        return { ...prev, endTime: Math.max(i0 + 0.1, i1 + dt) };
-                    });
+                    // Both edges are computed from where the drag began plus the delta, so the
+                    // result does not depend on the previous value and the reducer stays pure.
+                    if (resizingData.edge === 'left') {
+                        const ns = Math.max(0, Math.min(i1 - 0.1, i0 + dt));
+                        dispatchMedia(resizeAudio('left', ns, null, (resizingData.initialOffset ?? 0) + (ns - i0)));
+                    } else {
+                        dispatchMedia(resizeAudio('right', null, Math.max(i0 + 0.1, i1 + dt), null));
+                    }
                     return;
                 }
                 // The geometry is in cutOps and unit tested; only the guide line is a side
@@ -1023,10 +1031,10 @@ export default function App() {
                 cutDragMovedRef.current = true;
                 const dt = (e.clientX - draggingCutData.startX) / pps, trackOff = Math.round((e.clientY - draggingCutData.startY) / 60);
                 if (draggingCutData.cutId === 'audio') {
-                    setAudioData(prev => { if (!prev) return prev; const ns = Math.max(0, draggingCutData.initialStart + dt); return { ...prev, startTime: ns, endTime: ns + (prev.endTime - prev.startTime) }; }); return;
+                    dispatchMedia(moveTrack('audio', draggingCutData.initialStart + dt)); return;
                 }
                 if (draggingCutData.cutId === 'video') {
-                    setVideoOverlay(prev => { if (!prev) return prev; const ns = Math.max(0, draggingCutData.initialStart + dt); return { ...prev, startTime: ns, endTime: ns + (prev.endTime - prev.startTime) }; }); return;
+                    dispatchMedia(moveTrack('video', draggingCutData.initialStart + dt)); return;
                 }
                 // Multi-cut drag: move the whole selected group by the same delta (keeps their
                 // relative layout), clamped so none crosses t=0 or the track range.
@@ -1212,15 +1220,14 @@ export default function App() {
         }
         if (audioDataUrl) {
             audioB64Ref.current = audioDataUrl;
-            setAudioFile({ name: data.audio.name || tr('오디오') });
-            setAudioUrl(audioDataUrl);
-            setAudioDuration(data.audio.duration || 30);
-            setAudioData({ startTime: data.audio.startTime ?? 0, endTime: data.audio.endTime ?? (data.audio.duration || 30), offset: data.audio.offset ?? 0 });
+            dispatchMedia(loadAudio(data.audio.name || tr('오디오'), audioDataUrl));
+            dispatchMedia(setAudioDuration(data.audio.duration || 30));
+            dispatchMedia(setAudioClip({ startTime: data.audio.startTime ?? 0, endTime: data.audio.endTime ?? (data.audio.duration || 30), offset: data.audio.offset ?? 0 }));
             if (audioRef.current) audioRef.current.src = audioDataUrl;
         } else {
             audioB64Ref.current = null;
             if (audioRef.current) { audioRef.current.pause(); try { audioRef.current.removeAttribute('src'); audioRef.current.load(); } catch { } }
-            setAudioFile(null); setAudioUrl(null); setAudioData(null);
+            dispatchMedia(clearAudio());
         }
         // Restore the video overlay track (Blob from IDB / server asset / embedded dataURL).
         let videoBlob = null;
@@ -1232,9 +1239,9 @@ export default function App() {
             const url = URL.createObjectURL(videoBlob);
             const v = videoElRef.current;
             if (v) { v.muted = true; v.playsInline = true; v.src = url; v.onseeked = () => setFrameDecodeTick(t => t + 1); v.onloadedmetadata = () => { try { v.currentTime = data.video.offset || 0; } catch { } }; }
-            setVideoOverlay({ name: data.video.name || tr('영상'), startTime: data.video.startTime ?? 0, endTime: data.video.endTime ?? (data.video.duration || 0), offset: data.video.offset ?? 0, duration: data.video.duration || 0, w: data.video.w || 0, h: data.video.h || 0, cuts: data.video.cuts, cutStart: data.video.cutStart, cutOffset: data.video.cutOffset });
+            dispatchMedia(loadVideo({ name: data.video.name || tr('영상'), startTime: data.video.startTime ?? 0, endTime: data.video.endTime ?? (data.video.duration || 0), offset: data.video.offset ?? 0, duration: data.video.duration || 0, w: data.video.w || 0, h: data.video.h || 0, cuts: data.video.cuts, cutStart: data.video.cutStart, cutOffset: data.video.cutOffset }));
         } else {
-            videoBlobRef.current = null; setVideoOverlay(null);
+            videoBlobRef.current = null; dispatchMedia(clearVideo());
             if (videoElRef.current) { try { videoElRef.current.pause(); videoElRef.current.removeAttribute('src'); videoElRef.current.load(); } catch { } }
         }
         } finally { setLoadProgress(null); }
@@ -1289,8 +1296,8 @@ export default function App() {
         setLayerCanvasCache({});
         serverIdRef.current = null; serverNameRef.current = '';
         if (audioRef.current) { audioRef.current.pause(); try { audioRef.current.removeAttribute('src'); audioRef.current.load(); } catch { } }
-        audioB64Ref.current = null; setAudioFile(null); setAudioUrl(null); setAudioData(null);
-        videoBlobRef.current = null; setVideoOverlay(null); setSceneCfg(null);
+        audioB64Ref.current = null; dispatchMedia(clearAudio());
+        videoBlobRef.current = null; dispatchMedia(clearVideo()); setSceneCfg(null);
         if (videoElRef.current) { try { videoElRef.current.pause(); videoElRef.current.removeAttribute('src'); videoElRef.current.load(); } catch { } }
     };
     const doNew = () => {
@@ -3356,15 +3363,15 @@ export default function App() {
     });
 
     const loadAudioUrl = (url, name, startAt = 0, offset = 0, clipDur = null) => {
-        setAudioFile({ name }); setAudioUrl(url);
+        dispatchMedia(loadAudio(name, url));
         const audio = new Audio(url);
         // startAt aligns the track to a given timeline position (e.g. the first imported video frame);
         // offset/clipDur select a sub-range of the source audio (used when only a video segment is
         // imported), so audio + frames extracted together stay mechanically in sync.
         audio.onloadedmetadata = () => {
-            setAudioDuration(audio.duration);
+            dispatchMedia(setAudioDuration(audio.duration));
             const dur = clipDur != null ? Math.min(clipDur, Math.max(0, audio.duration - offset)) : Math.max(0, audio.duration - offset);
-            setAudioData({ startTime: startAt, endTime: startAt + dur, offset });
+            dispatchMedia(setAudioClip({ startTime: startAt, endTime: startAt + dur, offset }));
             if (audioRef.current) audioRef.current.src = url;
         };
         // Capture base64 once so the project can be saved "with the music".
@@ -3383,7 +3390,7 @@ export default function App() {
         v.muted = true; v.playsInline = true; v.src = url;
         v.onloadedmetadata = () => {
             const dur = clipDur != null ? Math.min(clipDur, Math.max(0, v.duration - offset)) : Math.max(0, v.duration - offset);
-            setVideoOverlay({ name: name || tr('영상'), startTime: startAt, endTime: startAt + dur, offset, duration: v.duration, w: v.videoWidth, h: v.videoHeight });
+            dispatchMedia(loadVideo({ name: name || tr('영상'), startTime: startAt, endTime: startAt + dur, offset, duration: v.duration, w: v.videoWidth, h: v.videoHeight }));
             // Prime the first frame so a paused canvas shows something immediately.
             try { v.currentTime = offset; } catch { }
         };
@@ -3402,12 +3409,12 @@ export default function App() {
         const rEnd = rangeOn && rEndRaw > rStart ? rEndRaw : null;
         setSceneDetect({ done: 0, total: 0 });
         detectSceneCuts(blob, { start: rStart, end: rEnd, threshold, onProgress: (d, t) => setSceneDetect({ done: d, total: t }) })
-            .then(cuts => setVideoOverlay(prev => prev ? { ...prev, cuts, cutStart: cs, cutOffset: co } : prev))
+            .then(cuts => dispatchMedia(setVideoCuts(cuts, cs, co)))
             .catch(() => { })
             .finally(() => setSceneDetect(null));
     };
     const removeVideoOverlay = () => {
-        setVideoOverlay(null); videoBlobRef.current = null; setSceneCfg(null);
+        dispatchMedia(clearVideo()); videoBlobRef.current = null; setSceneCfg(null);
         const v = videoElRef.current; if (v) { try { v.pause(); v.removeAttribute('src'); v.load(); } catch { } }
     };
     // Remember fetched/opened videos so they can be re-imported with different settings
@@ -3587,7 +3594,7 @@ export default function App() {
         if (audioRef.current) { audioRef.current.pause(); try { audioRef.current.removeAttribute('src'); audioRef.current.load(); } catch { } }
         if (audioUrl && audioUrl.startsWith('blob:')) { try { URL.revokeObjectURL(audioUrl); } catch { } }
         audioB64Ref.current = null;
-        setAudioFile(null); setAudioUrl(null); setAudioData(null);
+        dispatchMedia(clearAudio());
     };
     const loadYoutubeAudio = async (presetUrl) => {
         const url = typeof presetUrl === 'string' ? presetUrl : null;
