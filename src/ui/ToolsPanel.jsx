@@ -20,6 +20,7 @@ function ToolSettings({
     mosaicBlock = undefined, setMosaicBlock = undefined,
     brushSize = undefined, setBrushSize = undefined,
     eraserSize = undefined, setEraserSize = undefined,
+    pressureOn = true, setPressureOn = undefined,
 }) {
     if (tool === 'soft') {
         return (<>
@@ -75,6 +76,14 @@ function ToolSettings({
             ))}
         </div>
         <input type="range" min="1" max="80" value={Math.min(80, curSize)} onChange={e => setSize(+e.target.value)} className="v-slider" disabled={isSelectionTool} />
+        {/* The eraser takes its size from the same control but does not vary with pressure, so
+            offering the switch there would be a control that does nothing. */}
+        {tool !== 'eraser' && (
+            <label className="te-check" style={{ justifyContent: 'center', marginTop: 2 }}
+                title={tr('끄면 세게 눌러도 굵기가 일정합니다. 이미 그린 선은 그대로입니다.')}>
+                <input type="checkbox" checked={!!pressureOn} onChange={e => setPressureOn(e.target.checked)} /> {tr('필압')}
+            </label>
+        )}
     </>);
 }
 
@@ -84,6 +93,7 @@ export function ToolsPanel({
     globalUndo, globalRedo, handleClearCut, doTween,
     hasLassoClip, pasteLassoSelection, pickingColor, pickColor, isSelectionTool,
     color, applyColor, opacity, setOpacity,
+    pressureOn = true, setPressureOn = undefined,
     ...settings
 }) {
     return (
@@ -111,7 +121,7 @@ export function ToolsPanel({
             <div className="tool-divider" />
             <input type="color" className="color-picker" value={color} onChange={e => applyColor(e.target.value)} title={tr('색상')} disabled={isSelectionTool} />
             <div className="slider-wrap">
-                <ToolSettings tool={tool} isSelectionTool={isSelectionTool} {...settings} />
+                <ToolSettings tool={tool} isSelectionTool={isSelectionTool} pressureOn={pressureOn} setPressureOn={setPressureOn} {...settings} />
             </div>
             <div className="slider-wrap">
                 <span className="slider-label">Opacity</span>
