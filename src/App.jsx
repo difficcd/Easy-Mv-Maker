@@ -36,7 +36,7 @@ import { migrateCuts, projectSettings, makeLoadProgress } from './core/projectFo
 import { unusedBitmapIds } from './core/bitmapRefs.js';
 import { dragCut, resizeCut } from './core/cutOps.js';
 import {
-    DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT, FONT_PRESETS,
+    DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT, FONT_PRESETS, fontGroups,
     pointInPolygon, dist, safeArray, hexToRgb, bucketFillTransparentRegion,
     layerKey, imageDataToDataURL, dataURLToImageData, drawStrokesOnCtx, sizeCanvas,
     flattenForCanvas, flattenLayersInUiOrder, strokeSig, extractVideoFrames, fitRect, detectSceneCuts, curveToWave, swayWeightAt, morphPrepare,
@@ -4023,8 +4023,15 @@ export default function App() {
                                                     title={tr('폰트')}
                                                 >
                                                     <option value="__custom__">Custom</option>
-                                                    {FONT_PRESETS.map(f => (
-                                                        <option key={f.value} value={f.value}>{f.label}</option>
+                                                    {/* Grouped by script: a flat list of twenty
+                                                        is harder to use than a short one. Each
+                                                        option previews its own face. */}
+                                                    {fontGroups().map(([group, fonts]) => (
+                                                        <optgroup key={group} label={group}>
+                                                            {fonts.map(f => (
+                                                                <option key={f.value} value={f.value} style={{ fontFamily: f.value }}>{f.label}</option>
+                                                            ))}
+                                                        </optgroup>
                                                     ))}
                                                 </select>
                                                 {!isPreset && (

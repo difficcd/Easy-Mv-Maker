@@ -13,7 +13,7 @@ import assert from 'node:assert/strict';
 import {
     pointInPolygon, dist, safeArray, hexToRgb, fitRect, layerKey, strokeSig,
     applyEase, triwave, swayWeightAt, sampleWave, sampleKeys, targetCanvasFor,
-    computeCutAnim, flattenLayersInUiOrder, sizeCanvas, dilateMask,
+    computeCutAnim, flattenLayersInUiOrder, sizeCanvas, dilateMask, FONT_PRESETS, fontGroups,
 } from '../src/canvas/canvasUtils.js';
 
 const near = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) < eps, `${a} ≈ ${b}`);
@@ -232,4 +232,34 @@ test('dilateMask: clips at the edges instead of wrapping to the other side', () 
 test('dilateMask: an empty mask stays empty', () => {
     const { m, w, h } = grid(['...', '...']);
     assert.deepEqual(show(dilateMask(m, w, h, 2), w, h), ['...', '...']);
+});
+
+// ── fonts ──────────────────────────────────────────────────────────────────
+test('fontGroups: keeps the list order and groups runs together', () => {
+    const presets = [
+        { value: 'a', label: 'A', group: 'One' },
+        { value: 'b', label: 'B', group: 'One' },
+        { value: 'c', label: 'C', group: 'Two' },
+    ];
+    assert.deepEqual(fontGroups(presets).map(([g, fs]) => [g, fs.length]), [['One', 2], ['Two', 1]]);
+});
+
+test('fontGroups: a group name repeated later stays a separate run, not merged', () => {
+    // Merging would silently reorder the list out from under whoever wrote it.
+    const presets = [{ value: 'a', group: 'X' }, { value: 'b', group: 'Y' }, { value: 'c', group: 'X' }];
+    assert.deepEqual(fontGroups(presets).map(([g]) => g), ['X', 'Y', 'X']);
+});
+
+test('fontGroups: every shipped preset lands in exactly one group, none lost', () => {
+    const flat = fontGroups().flatMap(([, fs]) => fs);
+    assert.equal(flat.length, FONT_PRESETS.length);
+    assert.deepEqual(flat.map(f => f.value), FONT_PRESETS.map(f => f.value));
+});
+
+test('the shipped presets have unique values and cover Japanese', () => {
+    // A duplicate value would make the select show the wrong entry as chosen.
+    const values = FONT_PRESETS.map(f => f.value);
+    assert.equal(new Set(values).size, values.length, 'duplicate font values');
+    assert.ok(FONT_PRESETS.some(f => f.group === '日本語'), 'no Japanese group');
+    assert.ok(FONT_PRESETS.every(f => f.value && f.label), 'every preset needs a value and a label');
 });
