@@ -23,7 +23,7 @@ import {
     loadVideo, clearVideo, setVideoCuts, moveTrack, resizeAudio,
 } from './core/mediaReducer.js';
 import { cloneCutContents as cloneCutContentsPure } from './core/cutClone.js';
-import { DEFAULT_KEYS, KEY_LABELS, keyOf, matchShortcut, loadKeymap } from './core/shortcuts.js';
+import { DEFAULT_KEYS, KEY_LABELS, keyOf, matchShortcut, loadKeymap, toolFromAction, findConflicts } from './core/shortcuts.js';
 import { derivePartsFrom, deriveVideoBatches } from './core/partOps.js';
 import {
     cutsReducer, replaceCuts, addCuts, updateCut, setCutAnim, clearCut,
@@ -747,6 +747,11 @@ export default function App() {
             const hit = matchShortcut(keymap, keyOf(e));
             if (hit) {
                 e.preventDefault();
+                // Tools are routed by prefix rather than by a list of ids kept in step with the
+                // toolbar; handleSetTool already does the tidying up a switch needs (committing a
+                // curve in progress, refusing while the text editor is open).
+                const toolId = toolFromAction(hit);
+                if (toolId) { handleSetTool(toolId); return; }
                 if (hit === 'undo') globalUndo();
                 else if (hit === 'redo') globalRedo();
                 else if (hit === 'zoomIn') zoomCanvas(1.25);
@@ -3818,7 +3823,7 @@ export default function App() {
                     onClose={() => { setShowSettings(false); setRebinding(null); }}
                     themeColor={themeColor} setThemeColor={setThemeColor} themeRecent={themeRecent} defaultTheme={DEFAULT_THEME}
                     uiSat={uiSat} setUiSat={setUiSat}
-                    keymap={keymap} setKeymap={setKeymap} defaultKeys={DEFAULT_KEYS} keyLabels={KEY_LABELS}
+                    keymap={keymap} setKeymap={setKeymap} defaultKeys={DEFAULT_KEYS} keyLabels={KEY_LABELS} conflicts={findConflicts(keymap)}
                     lang={lang} changeLang={changeLang}
                     rebinding={rebinding} setRebinding={setRebinding} />
             )}
