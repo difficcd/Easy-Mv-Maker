@@ -9,7 +9,7 @@ import { TopBar } from './ui/TopBar';
 import { CutLayerPanel } from './ui/CutLayerPanel';
 import { ToolsPanel } from './ui/ToolsPanel';
 import { Timeline } from './ui/Timeline';
-import { ProjectPicker, ProgressOverlay, SettingsModal, HelpModal, VideoImportModal, SceneDetectModal, LinkPromptModal } from './ui/Modals';
+import { ProjectPicker, ProgressOverlay, SettingsModal, HelpModal, VideoImportModal, SceneDetectModal, LinkPromptModal, ToolKeysModal } from './ui/Modals';
 import { tr, loadLang, saveLang, setLangValue } from './i18n';
 import { moveLayer } from './core/layerOps.js';
 import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill } from './core/layerOps.js';
@@ -238,6 +238,7 @@ export default function App() {
     });
     const toggleTrackHidden = (which) => setHiddenTracks(h => ({ ...h, [which]: !h[which] }));
     useEffect(() => { try { localStorage.setItem('mv_hidden_tracks', JSON.stringify(hiddenTracks)); } catch { } }, [hiddenTracks]);
+    const [showToolKeys, setShowToolKeys] = useState(false);
     const sceneStopRef = useRef(false);   // set to ask a running scene detection to stop
     const [sceneCfg, setSceneCfg] = useState(null);         // scene-detect settings modal { threshold, rangeOn, startText, endText }
     const [autoSceneDetect, setAutoSceneDetect] = useState(() => {
@@ -820,7 +821,16 @@ export default function App() {
 
     useEffect(() => {
         isPlayingRef.current = isPlaying;
-        if (!isPlaying) { if (audioRef.current) audioRef.current.pause(); cancelAnimationFrame(reqRef.current); return; }
+        if (!isPlaying) {
+            if (audioRef.current) audioRef.current.pause();
+            // The video has to be stopped here too. Only `finish` paused it, which is the path
+            // for reaching the end - stopping any other way left the element rolling. Nothing
+            // showed it, because a paused canvas is not being repainted; the moment drawing began
+            // the repaints resumed and the overlay was discovered to have been playing all along.
+            if (videoElRef.current) videoElRef.current.pause();
+            cancelAnimationFrame(reqRef.current);
+            return;
+        }
         // Export must record at real time; preview honors the chosen playback speed.
         const rate = isExporting.current ? 1 : playbackRate;
         const audio = audioRef.current;
@@ -3855,6 +3865,7 @@ export default function App() {
                     uiSat={uiSat} setUiSat={setUiSat}
                     keymap={keymap} setKeymap={setKeymap} defaultKeys={DEFAULT_KEYS} keyLabels={KEY_LABELS} conflicts={findConflicts(keymap)}
                     videoOpacity={videoOverlay ? (videoOverlay.opacity ?? 1) : null} setVideoOpacity={v => dispatchMedia(setVideoOpacity(v))}
+                    setShowToolKeys={setShowToolKeys}
                     lang={lang} changeLang={changeLang}
                     rebinding={rebinding} setRebinding={setRebinding} />
             )}
@@ -3935,6 +3946,11 @@ export default function App() {
                     videoOpacity={videoOverlay.opacity ?? 1} setVideoOpacity={v => dispatchMedia(setVideoOpacity(v))}
                     cancelSceneDetect={() => { sceneStopRef.current = true; }}
                     hasCuts={!!videoOverlay.cuts?.length} clearVideoCuts={() => dispatchMedia(clearVideoCuts())} />
+            )}
+            {showToolKeys && (
+                <ToolKeysModal keymap={keymap} setKeymap={setKeymap} defaultKeys={DEFAULT_KEYS} keyLabels={KEY_LABELS}
+                    conflicts={findConflicts(keymap)} rebinding={rebinding} setRebinding={setRebinding}
+                    onClose={() => { setShowToolKeys(false); setRebinding(null); }} />
             )}
             {showHelp && <HelpModal keymap={keymap} onClose={() => setShowHelp(false)} />}
             <TopBar

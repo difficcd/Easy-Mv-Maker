@@ -1,6 +1,7 @@
 import React from 'react';
-import { Trash2, AlertTriangle } from 'lucide-react';
+import { Trash2, AlertTriangle, X } from 'lucide-react';
 import { tr } from '../i18n';
+import { TOOL_PREFIX } from '../core/shortcuts.js';
 import { targetCanvasFor } from '../canvas/canvasUtils';
 
 // Overlays and dialogs split out of App.jsx. All state arrives as props; these only display.
@@ -61,7 +62,7 @@ export function SettingsModal({
     themeColor, setThemeColor, themeRecent, defaultTheme,
     uiSat, setUiSat,
     keymap, setKeymap, defaultKeys, keyLabels, conflicts, rebinding, setRebinding,
-    lang, changeLang, videoOpacity, setVideoOpacity,
+    lang, changeLang, videoOpacity, setVideoOpacity, setShowToolKeys,
 }) {
     const saveKeymap = (next) => { setKeymap(next); try { localStorage.setItem('mv_keymap', JSON.stringify(next)); } catch { } };
     return (
@@ -143,7 +144,7 @@ export function SettingsModal({
                                 <AlertTriangle size={11} style={{ verticalAlign: '-1px' }} /> {tr('{0} 키가 겹칩니다: {1} — 하나만 동작합니다.', key, actions.map(a => tr(keyLabels[a] || a)).join(', '))}
                             </div>
                         ))}
-                        {Object.keys(defaultKeys).map(id => (
+                        {Object.keys(defaultKeys).filter(id => !id.startsWith(TOOL_PREFIX)).map(id => (
                             <div key={id} className="key-row" style={{ display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid hsl(var(--ui-h) var(--ui-s) 20%)' }}>
                                 <span style={{ flex: 1, color: '#ddd' }}>{tr(keyLabels[id])}</span>
                                 <button className="button" style={{ height: 30, minWidth: 110, justifyContent: 'center', background: rebinding === id ? 'var(--accent)' : undefined }}
@@ -157,6 +158,7 @@ export function SettingsModal({
                         ))}
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
                             <span style={{ fontSize: 10, color: '#777' }}>{tr('Ctrl+S 저장 · Ctrl+Z/Y 등 기본 조합은 항상 동작합니다')}</span>
+                            <button className="button" onClick={() => setShowToolKeys(true)}>{tr('도구 단축키…')}</button>
                             <button className="button" onClick={() => saveKeymap({ ...defaultKeys })}>{tr('전체 기본값')}</button>
                         </div>
                     </>
@@ -422,6 +424,56 @@ export function LinkPromptModal({ title, placeholder, onSubmit, onClose }) {
                     <button className="button" onClick={onClose}>{tr('취소')}</button>
                     <button className="button button-primary" style={{ background: 'var(--accent)', borderColor: 'var(--accent-hi)', color: '#fff' }}
                         disabled={!url.trim()} onClick={submit}>{tr('가져오기')}</button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+
+/**
+ * The tool bindings, on their own.
+ *
+ * Twelve of them next to the seven general ones made the shortcuts list long enough that neither
+ * group could be scanned, and they are looked for at different times: the general ones once, the
+ * tool ones while deciding how to work.
+ */
+export function ToolKeysModal({ keymap, setKeymap, defaultKeys, keyLabels, conflicts, rebinding, setRebinding, onClose }) {
+    const saveKeymap = (next) => {
+        setKeymap(next);
+        try { localStorage.setItem('mv_keymap', JSON.stringify(next)); } catch { }
+    };
+    const ids = Object.keys(defaultKeys).filter(id => id.startsWith(TOOL_PREFIX));
+    return (
+        <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1001, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div onClick={e => e.stopPropagation()} style={{ width: 400, maxHeight: '80vh', overflow: 'auto', background: 'hsl(var(--ui-h) var(--ui-s) 15%)', border: '1px solid #333', borderRadius: 8, padding: 18, color: '#ccc', fontSize: 12.5 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <span className="panel-title">{tr('도구 단축키')}</span>
+                    <button className="icon-btn" onClick={onClose}><X size={14} /></button>
+                </div>
+                <div style={{ fontSize: 11, color: '#888', marginBottom: 10 }}>
+                    {rebinding ? tr('원하는 키를 누르세요 (Esc = 취소)') : tr('바꿀 항목을 누르세요')}
+                </div>
+                {Object.entries(conflicts || {}).map(([key, actions]) => (
+                    <div key={key} style={{ fontSize: 11, color: '#e0a84e', padding: '4px 0' }}>
+                        <AlertTriangle size={11} style={{ verticalAlign: '-1px' }} /> {tr('{0} 키가 겹칩니다: {1} — 하나만 동작합니다.', key, actions.map(a => tr(keyLabels[a] || a)).join(', '))}
+                    </div>
+                ))}
+                {ids.map(id => (
+                    <div key={id} className="key-row" style={{ display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid hsl(var(--ui-h) var(--ui-s) 20%)', padding: '6px 0' }}>
+                        <span style={{ flex: 1, color: '#ddd' }}>{tr(keyLabels[id])}</span>
+                        <button className="button" style={{ height: 30, minWidth: 110, justifyContent: 'center', fontFamily: 'monospace' }}
+                            onClick={() => setRebinding(rebinding === id ? null : id)}>
+                            {rebinding === id ? tr('키 입력 대기…') : (keymap[id] || tr('(없음)'))}
+                        </button>
+                        {keymap[id] !== defaultKeys[id] && (
+                            <button className="small-btn" title={tr('기본값으로')} onClick={() => saveKeymap({ ...keymap, [id]: defaultKeys[id] })}>{tr('되돌리기')}</button>
+                        )}
+                    </div>
+                ))}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 12 }}>
+                    <button className="button" onClick={() => saveKeymap({ ...keymap, ...Object.fromEntries(ids.map(id => [id, defaultKeys[id]])) })}>{tr('도구 기본값')}</button>
+                    <button className="button button-primary" onClick={onClose}>{tr('닫기')}</button>
                 </div>
             </div>
         </div>
