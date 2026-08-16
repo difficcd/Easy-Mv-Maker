@@ -3,7 +3,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { keyOf, matchShortcut, loadKeymap, DEFAULT_KEYS, KEY_LABELS } from '../src/core/shortcuts.js';
+import { keyOf, matchShortcut, loadKeymap, toolFromAction, findConflicts, DEFAULT_KEYS, KEY_LABELS } from '../src/core/shortcuts.js';
 
 const ev = (key, mods = {}) => ({ key, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...mods });
 
@@ -82,5 +82,70 @@ test('loadKeymap: returns a copy, so editing it cannot corrupt the defaults', ()
 });
 
 test('every binding has a label, and every label a binding', () => {
+    assert.deepEqual(Object.keys(DEFAULT_KEYS).sort(), Object.keys(KEY_LABELS).sort());
+});
+
+// ── tool bindings ──────────────────────────────────────────────────────────
+// Selecting a tool is a binding like any other, marked by a prefix so the handler can route it
+// without keeping a list of tool ids in step with the toolbar.
+
+test('toolFromAction: recognises a tool binding and ignores the rest', () => {
+    assert.equal(toolFromAction('tool.eraser'), 'eraser');
+    assert.equal(toolFromAction('tool.brush'), 'brush');
+    assert.equal(toolFromAction('undo'), null);
+    assert.equal(toolFromAction(''), null);
+    assert.equal(toolFromAction(undefined), null);
+    assert.equal(toolFromAction(null), null);
+});
+
+test('toolFromAction: a tool id containing a dot survives', () => {
+    assert.equal(toolFromAction('tool.a.b'), 'a.b', 'only the first prefix is stripped');
+});
+
+test('every tool binding routes to a tool, and nothing else does', () => {
+    for (const action of Object.keys(DEFAULT_KEYS)) {
+        const id = toolFromAction(action);
+        if (action.startsWith('tool.')) assert.ok(id, `${action} should route`);
+        else assert.equal(id, null, `${action} must not be treated as a tool`);
+    }
+});
+
+test('the shipped defaults contain no duplicate keys', () => {
+    // The whole point of adding twelve more bindings is that this stops being obvious by eye.
+    assert.deepEqual(findConflicts(DEFAULT_KEYS), {});
+});
+
+test('tool keys are single presses, since the other hand is on the pen', () => {
+    for (const [action, key] of Object.entries(DEFAULT_KEYS)) {
+        if (!action.startsWith('tool.')) continue;
+        assert.equal(key.includes('+'), false, `${action} is bound to a chord (${key})`);
+        assert.equal(key.length, 1, `${action} should be one key, got "${key}"`);
+    }
+});
+
+test('findConflicts: reports only the keys with more than one action', () => {
+    const c = findConflicts({ undo: 'b', 'tool.brush': 'b', 'tool.eraser': 'e' });
+    assert.deepEqual(Object.keys(c), ['b']);
+    assert.deepEqual(c.b.sort(), ['tool.brush', 'undo']);
+});
+
+test('findConflicts: comparison is case-insensitive, like matching is', () => {
+    // Otherwise a clash saved as "B" by an older version would be invisible and still broken.
+    assert.deepEqual(Object.keys(findConflicts({ a: 'B', b: 'b' })), ['b']);
+});
+
+test('findConflicts: an unbound action is not a clash with another unbound one', () => {
+    assert.deepEqual(findConflicts({ a: '', b: '', c: null }), {});
+    assert.deepEqual(findConflicts({}), {});
+    assert.deepEqual(findConflicts(null), {});
+});
+
+test('a tool key round-trips from a key event to the tool it selects', () => {
+    const action = matchShortcut(DEFAULT_KEYS, keyOf(ev('e')));
+    assert.equal(toolFromAction(action), 'eraser');
+});
+
+test('every binding still has a label', () => {
+    // The settings panel builds its list from DEFAULT_KEYS, so a missing label renders blank.
     assert.deepEqual(Object.keys(DEFAULT_KEYS).sort(), Object.keys(KEY_LABELS).sort());
 });

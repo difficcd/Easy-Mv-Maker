@@ -32,3 +32,6 @@ server/data/
 # Claude Code local config
 .claude/
 .playwright-mcp/
+
+# Dev-server output, written when the server is started with its log redirected.
+*.log
