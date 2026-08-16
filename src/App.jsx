@@ -3911,7 +3911,9 @@ export default function App() {
             )}
             {sceneCfg && videoOverlay && (
                 <SceneDetectModal sceneCfg={sceneCfg} setSceneCfg={setSceneCfg}
-                    sceneDetect={sceneDetect} runSceneDetect={runSceneDetect} />
+                    sceneDetect={sceneDetect} runSceneDetect={runSceneDetect}
+                    autoSceneDetect={autoSceneDetect} setAutoSceneDetect={setAutoSceneDetect}
+                    hasCuts={!!videoOverlay.cuts?.length} clearVideoCuts={() => dispatchMedia(clearVideoCuts())} />
             )}
             {showHelp && <HelpModal keymap={keymap} onClose={() => setShowHelp(false)} />}
             <TopBar
@@ -4166,6 +4168,7 @@ export default function App() {
                 onTimelinePointerMove={onTimelinePointerMove} onTimelinePointerUp={onTimelinePointerUp} parts={parts}
                 playbackRate={playbackRate} playheadRef={playheadRef} pps={pps}
                 removeVideoOverlay={removeVideoOverlay} renamePart={renamePart} sceneDetect={sceneDetect}
+                setVideoOpacity={v => dispatchMedia(setVideoOpacity(v))}
                 seekToTime={seekToTime} selectPart={selectPart} selectedCutIds={selectedCutIds}
                 setCurrentCutId={setCurrentCutId} setCurrentTime={setCurrentTime} addCuts={cs => dispatchCuts(addCuts(cs))}
                 setDraggingCutData={setDraggingCutData} setLoopPlay={setLoopPlay} setPlaybackRate={setPlaybackRate}

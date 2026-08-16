@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import {
     mediaReducer, EMPTY_MEDIA,
     loadAudio, setAudioDuration, setAudioClip, clearAudio,
-    loadVideo, clearVideo, setVideoCuts, moveTrack, resizeAudio,
+    loadVideo, clearVideo, setVideoCuts, setVideoOpacity, clearVideoCuts, moveTrack, resizeAudio,
     restoreMedia, clearMedia,
 } from '../src/core/mediaReducer.js';
 
@@ -151,4 +151,39 @@ test('an unknown action changes nothing, and no state is mutated', () => {
 test('a missing state falls back to empty rather than throwing', () => {
     assert.deepEqual(mediaReducer(undefined, clearAudio()).audioFile, null);
     assert.deepEqual(mediaReducer(null, setAudioDuration(60)).audioDuration, 60);
+});
+
+// ── overlay opacity and markers ────────────────────────────────────────────
+test('setVideoOpacity: stored as given, within range', () => {
+    const s = mediaReducer(withVideo(), setVideoOpacity(0.35));
+    assert.equal(s.videoOverlay.opacity, 0.35);
+    assert.equal(s.videoOverlay.name, 'clip.mp4', 'the rest of the overlay survives');
+});
+
+test('setVideoOpacity: clamped, because it ends up as globalAlpha', () => {
+    // Outside 0..1 the whole frame silently vanishes, so this is not a value to trust callers on.
+    assert.equal(mediaReducer(withVideo(), setVideoOpacity(5)).videoOverlay.opacity, 1);
+    assert.equal(mediaReducer(withVideo(), setVideoOpacity(-2)).videoOverlay.opacity, 0);
+    assert.equal(mediaReducer(withVideo(), setVideoOpacity(0)).videoOverlay.opacity, 0, 'fully hidden is a real setting');
+});
+
+test('setVideoOpacity: nonsense falls back to fully visible rather than hiding the video', () => {
+    for (const bad of [NaN, undefined, null, 'x']) {
+        assert.equal(mediaReducer(withVideo(), setVideoOpacity(/** @type {any} */(bad))).videoOverlay.opacity, 1, String(bad));
+    }
+});
+
+test('setVideoOpacity: with no video loaded there is nothing to fade', () => {
+    assert.equal(mediaReducer(EMPTY_MEDIA, setVideoOpacity(0.5)).videoOverlay, null);
+});
+
+test('clearVideoCuts: drops the markers and keeps the video', () => {
+    const withMarkers = mediaReducer(withVideo(), setVideoCuts([1, 2, 3], 0, 0));
+    const s = mediaReducer(withMarkers, clearVideoCuts());
+    assert.deepEqual(s.videoOverlay.cuts, []);
+    assert.equal(s.videoOverlay.name, 'clip.mp4', 'this clears markers, not the video');
+});
+
+test('clearVideoCuts: harmless with no video', () => {
+    assert.equal(mediaReducer(EMPTY_MEDIA, clearVideoCuts()).videoOverlay, null);
 });

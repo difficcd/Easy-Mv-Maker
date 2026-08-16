@@ -89,10 +89,12 @@ export function mediaReducer(state, action) {
 
         case 'setVideoOpacity': {
             if (!s.videoOverlay) return s;
-            const o = Number(action.opacity);
             // Clamped here rather than trusted from the caller: this ends up as globalAlpha, and
-            // a value outside 0..1 makes the whole frame silently vanish.
-            const opacity = Number.isFinite(o) ? Math.max(0, Math.min(1, o)) : 1;
+            // a value outside 0..1 makes the whole frame silently vanish. The typeof check is not
+            // redundant with isFinite - Number(null) and Number('') are both 0, so coercing first
+            // would turn a missing value into an invisible video.
+            const o = action.opacity;
+            const opacity = (typeof o === 'number' && Number.isFinite(o)) ? Math.max(0, Math.min(1, o)) : 1;
             return { ...s, videoOverlay: { ...s.videoOverlay, opacity } };
         }
         case 'clearVideoCuts':
