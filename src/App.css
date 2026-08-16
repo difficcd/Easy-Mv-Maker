@@ -1770,3 +1770,15 @@ html {
     font: inherit;
     cursor: pointer;
 }
+
+/* A media row folded away. The label stays so it can be brought back; only the strip of timeline
+   goes, which is the part taking height from the cut tracks. */
+.tl-track-collapsed {
+    height: 18px;
+    overflow: hidden;
+    opacity: 0.75;
+}
+
+.tl-track-collapsed .cut-block {
+    display: none;
+}

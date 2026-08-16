@@ -61,7 +61,7 @@ export function SettingsModal({
     themeColor, setThemeColor, themeRecent, defaultTheme,
     uiSat, setUiSat,
     keymap, setKeymap, defaultKeys, keyLabels, conflicts, rebinding, setRebinding,
-    lang, changeLang,
+    lang, changeLang, videoOpacity, setVideoOpacity,
 }) {
     const saveKeymap = (next) => { setKeymap(next); try { localStorage.setItem('mv_keymap', JSON.stringify(next)); } catch { } };
     return (
@@ -113,6 +113,24 @@ export function SettingsModal({
                                 <span style={{ fontSize: 11, color: '#888' }}>%</span>
                             </div>
                             <div style={{ fontSize: 10, color: '#777', marginTop: 4 }}>{tr('0%로 두면 완전한 무채색 회색 UI가 됩니다.')}</div>
+                        </div>
+                        {/* Also on the video track itself; here as well because settings are
+                            where someone looks, and the track row can be folded away. */}
+                        <div>
+                            <div className="color-section-label" style={{ marginBottom: 6 }}>{tr('영상 농도')}</div>
+                            {videoOpacity == null
+                                ? <div style={{ fontSize: 11, color: '#777' }}>{tr('영상이 없습니다')}</div>
+                                : (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        <input type="range" min="0" max="100" step="1" style={{ flex: 1 }}
+                                            value={Math.round(videoOpacity * 100)}
+                                            onChange={e => setVideoOpacity(+e.target.value / 100)} />
+                                        <input type="number" className="time-input" style={{ width: 60 }} min="0" max="100"
+                                            value={Math.round(videoOpacity * 100)}
+                                            onChange={e => setVideoOpacity(Math.max(0, Math.min(100, +e.target.value || 0)) / 100)} />
+                                        <span style={{ fontSize: 11, color: '#888' }}>%</span>
+                                    </div>
+                                )}
                         </div>
                     </div>
                 ) : (

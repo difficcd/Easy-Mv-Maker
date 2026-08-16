@@ -230,6 +230,14 @@ export default function App() {
     // cuts) - for drawing over a video. Like audio, but painted onto the canvas each frame.
     const { videoOverlay } = media; // { name, startTime, endTime, offset, duration, w, h, cuts? }
     const [sceneDetect, setSceneDetect] = useState(null);   // { done, total } while auto-detecting scene cuts
+    // Which media rows are folded away in the timeline. Purely a view setting - the audio still
+    // plays and the video still draws; this is only about giving the cut tracks the height back.
+    const [hiddenTracks, setHiddenTracks] = useState(() => {
+        try { return { audio: false, video: false, ...JSON.parse(localStorage.getItem('mv_hidden_tracks') || '{}') }; }
+        catch { return { audio: false, video: false }; }
+    });
+    const toggleTrackHidden = (which) => setHiddenTracks(h => ({ ...h, [which]: !h[which] }));
+    useEffect(() => { try { localStorage.setItem('mv_hidden_tracks', JSON.stringify(hiddenTracks)); } catch { } }, [hiddenTracks]);
     const [sceneCfg, setSceneCfg] = useState(null);         // scene-detect settings modal { threshold, rangeOn, startText, endText }
     const [autoSceneDetect, setAutoSceneDetect] = useState(() => {
         try { return localStorage.getItem('mv_auto_scene') !== 'off'; } catch { return true; }
@@ -3836,6 +3844,7 @@ export default function App() {
                     themeColor={themeColor} setThemeColor={setThemeColor} themeRecent={themeRecent} defaultTheme={DEFAULT_THEME}
                     uiSat={uiSat} setUiSat={setUiSat}
                     keymap={keymap} setKeymap={setKeymap} defaultKeys={DEFAULT_KEYS} keyLabels={KEY_LABELS} conflicts={findConflicts(keymap)}
+                    videoOpacity={videoOverlay ? (videoOverlay.opacity ?? 1) : null} setVideoOpacity={v => dispatchMedia(setVideoOpacity(v))}
                     lang={lang} changeLang={changeLang}
                     rebinding={rebinding} setRebinding={setRebinding} />
             )}
@@ -4169,6 +4178,7 @@ export default function App() {
                 playbackRate={playbackRate} playheadRef={playheadRef} pps={pps}
                 removeVideoOverlay={removeVideoOverlay} renamePart={renamePart} sceneDetect={sceneDetect}
                 setVideoOpacity={v => dispatchMedia(setVideoOpacity(v))}
+                hiddenTracks={hiddenTracks} toggleTrackHidden={toggleTrackHidden}
                 seekToTime={seekToTime} selectPart={selectPart} selectedCutIds={selectedCutIds}
                 setCurrentCutId={setCurrentCutId} setCurrentTime={setCurrentTime} addCuts={cs => dispatchCuts(addCuts(cs))}
                 setDraggingCutData={setDraggingCutData} setLoopPlay={setLoopPlay} setPlaybackRate={setPlaybackRate}
