@@ -307,7 +307,6 @@ const EN = {
     '(배율 {0}%로 추가 절감)': '({0}% scale saves more still)',
 
     // -- Scene detection -----------------------------------
-    '🎯 장면(컷) 감지': '🎯 Detect scenes (cuts)',
     '장면(컷) 감지 설정': 'Scene detection settings',
     '감지': 'Detect',
     '감지 중…': 'Detecting…',
@@ -327,7 +326,7 @@ const EN = {
     '직접 입력…': 'Custom…',
     '예: 1920x1080': 'e.g. 1920x1080',
     '캔버스 확대/축소 ({0} / {1})': 'Zoom the canvas ({0} / {1})',
-    '캔버스 축소/확대 (상단 ⚙에서 변경)': 'zoom out / in (rebind under ⚙ at the top)',
+    '캔버스 축소/확대 (설정에서 변경)': 'zoom out / in (rebind in settings)',
     '단축키 · 도움말': 'Shortcuts and help',
     '단축키 직접 설정': 'Customise the shortcuts',
     '확대': 'Zoom in',
@@ -513,6 +512,7 @@ const EN = {
     '필압': 'Pressure',
     '농도': 'Opacity',
     '영상 설정': 'Video settings',
+    '감지 취소': 'Cancel',
     '영상 설정 (농도, 장면 감지)': 'Video settings (opacity, scene detection)',
     '접힌 트랙 — 눌러서 펼치기': 'Folded track — click to bring it back',
     '트랙 접기 — 재생바로 보냅니다. 소리는 계속 재생됩니다.': 'Fold the row away to the transport bar. The audio still plays.',

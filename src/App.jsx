@@ -238,6 +238,7 @@ export default function App() {
     });
     const toggleTrackHidden = (which) => setHiddenTracks(h => ({ ...h, [which]: !h[which] }));
     useEffect(() => { try { localStorage.setItem('mv_hidden_tracks', JSON.stringify(hiddenTracks)); } catch { } }, [hiddenTracks]);
+    const sceneStopRef = useRef(false);   // set to ask a running scene detection to stop
     const [sceneCfg, setSceneCfg] = useState(null);         // scene-detect settings modal { threshold, rangeOn, startText, endText }
     const [autoSceneDetect, setAutoSceneDetect] = useState(() => {
         try { return localStorage.getItem('mv_auto_scene') !== 'off'; } catch { return true; }
@@ -3432,11 +3433,20 @@ export default function App() {
         const rStart = rangeOn ? parseClock(startText) : 0;
         const rEndRaw = rangeOn ? parseClock(endText) : 0;
         const rEnd = rangeOn && rEndRaw > rStart ? rEndRaw : null;
+        // detectSceneCuts polls shouldStop between frames, so cancelling takes effect within one
+        // seek rather than running the scan to the end and throwing the answer away.
+        sceneStopRef.current = false;
         setSceneDetect({ done: 0, total: 0 });
-        detectSceneCuts(blob, { start: rStart, end: rEnd, threshold, onProgress: (d, t) => setSceneDetect({ done: d, total: t }) })
-            .then(cuts => dispatchMedia(setVideoCuts(cuts, cs, co)))
+        detectSceneCuts(blob, {
+            start: rStart, end: rEnd, threshold,
+            onProgress: (d, t) => setSceneDetect({ done: d, total: t }),
+            shouldStop: () => sceneStopRef.current,
+        })
+            // A cancelled scan returns what it found so far; keeping a partial set of markers
+            // would look like a finished detection that missed most of the cuts.
+            .then(cuts => { if (!sceneStopRef.current) dispatchMedia(setVideoCuts(cuts, cs, co)); })
             .catch(() => { })
-            .finally(() => setSceneDetect(null));
+            .finally(() => { setSceneDetect(null); sceneStopRef.current = false; });
     };
     const removeVideoOverlay = () => {
         dispatchMedia(clearVideo()); videoBlobRef.current = null; setSceneCfg(null);
@@ -3923,6 +3933,7 @@ export default function App() {
                     sceneDetect={sceneDetect} runSceneDetect={runSceneDetect}
                     autoSceneDetect={autoSceneDetect} setAutoSceneDetect={setAutoSceneDetect}
                     videoOpacity={videoOverlay.opacity ?? 1} setVideoOpacity={v => dispatchMedia(setVideoOpacity(v))}
+                    cancelSceneDetect={() => { sceneStopRef.current = true; }}
                     hasCuts={!!videoOverlay.cuts?.length} clearVideoCuts={() => dispatchMedia(clearVideoCuts())} />
             )}
             {showHelp && <HelpModal keymap={keymap} onClose={() => setShowHelp(false)} />}

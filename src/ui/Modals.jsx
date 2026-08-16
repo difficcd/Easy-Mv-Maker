@@ -179,7 +179,7 @@ export function HelpModal({ keymap, onClose }) {
                 <div>{tr('Ctrl+Z 실행취소 · Ctrl+Shift+Z / Ctrl+Y 다시실행')}</div>
                 <div>{tr('Ctrl+C 컷 복사 · Ctrl+V 붙여넣기 · Ctrl+D 다음 프레임 복제')}</div>
                 <div>{tr('Ctrl+S 저장 · Esc 선택 취소 · Enter 선택 적용')}</div>
-                <div><b>{keymap.undo}</b> {tr('실행취소 ·')} <b>{keymap.redo}</b> {tr('다시실행 ·')} <b>{keymap.brushDown}</b>/<b>{keymap.brushUp}</b> {tr('브러시 크기 ·')} <b>{keymap.zoomOut}</b>/<b>{keymap.zoomIn}</b> {tr('캔버스 축소/확대 (상단 ⚙에서 변경)')}</div>
+                <div><b>{keymap.undo}</b> {tr('실행취소 ·')} <b>{keymap.redo}</b> {tr('다시실행 ·')} <b>{keymap.brushDown}</b>/<b>{keymap.brushUp}</b> {tr('브러시 크기 ·')} <b>{keymap.zoomOut}</b>/<b>{keymap.zoomIn}</b> {tr('캔버스 축소/확대 (설정에서 변경)')}</div>
                 <div>{tr('move 도구: 빈 곳을 끌면')} <b>{tr('그림 전체가 이동')}</b>{tr('합니다(선택 범위 불필요).')} <b>{tr('Alt+드래그')}</b> {tr('= 활성 레이어만')}</div>
                 <div style={{ marginTop: 8 }}><b style={{ color: '#9aa' }}>{tr('펜 / 손가락')}</b></div>
                 <div>{tr('펜(S펜)·마우스 = 그리기 / 손가락은 그려지지 않음(팜 리젝션)')}</div>
@@ -343,7 +343,7 @@ export function VideoImportModal({
 }
 
 // Scene-change detection settings. Only opens when there is a video overlay.
-export function SceneDetectModal({ sceneCfg, setSceneCfg, sceneDetect, runSceneDetect, videoOpacity, setVideoOpacity, autoSceneDetect, setAutoSceneDetect, clearVideoCuts, hasCuts }) {
+export function SceneDetectModal({ sceneCfg, setSceneCfg, sceneDetect, runSceneDetect, videoOpacity, setVideoOpacity, cancelSceneDetect, autoSceneDetect, setAutoSceneDetect, clearVideoCuts, hasCuts }) {
     return (
         <div onClick={() => setSceneCfg(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div onClick={e => e.stopPropagation()} style={{ width: 360, background: 'hsl(var(--ui-h) var(--ui-s) 15%)', border: '1px solid #333', borderRadius: 8, padding: 18, color: '#ccc', fontSize: 12.5 }}>
@@ -389,7 +389,9 @@ export function SceneDetectModal({ sceneCfg, setSceneCfg, sceneDetect, runSceneD
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
                     {hasCuts && <button className="button" onClick={clearVideoCuts}>{tr('컷 표시 지우기')}</button>}
                     <button className="button" onClick={() => setSceneCfg(null)}>{tr('닫기')}</button>
-                    <button className="button button-primary" disabled={!!sceneDetect} onClick={() => runSceneDetect(sceneCfg)}>{sceneDetect ? tr('감지 중…') : tr('감지')}</button>
+                    {sceneDetect
+                        ? <button className="button" onClick={cancelSceneDetect}>{tr('감지 취소')}</button>
+                        : <button className="button button-primary" onClick={() => runSceneDetect(sceneCfg)}>{tr('감지')}</button>}
                 </div>
             </div>
         </div>

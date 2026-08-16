@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronDown, Download, Upload, Film, Settings, AlertTriangle } from 'lucide-react';
+import { ChevronDown, Download, Upload, Film, Settings, AlertTriangle, DatabaseBackup } from 'lucide-react';
 import { tr } from '../i18n';
 
 // Top menu bar: the File and Media menus, resolution, canvas zoom, save state, Export.
@@ -119,7 +119,7 @@ export function TopBar({
                     onClick={() => setToast(tr('서버가 없어 서버 저장·백업은 쓸 수 없습니다. 작업은 이 브라우저에 자동저장되고, 파일로 저장하면 안전하게 보관됩니다.'))}>
                     <AlertTriangle size={11} /> {tr('로컬 전용')}
                 </button>
-                : backupAt && <span style={{ fontSize: 11, color: 'var(--accent-pale)' }} title={tr('서버에 백업된 시각 (파일 > 백업에서 되돌리기)')}>⛁ {tr('백업')} {new Date(backupAt).toLocaleTimeString()}</span>}
+                : backupAt && <span style={{ fontSize: 11, color: 'var(--accent-pale)' }} title={tr('서버에 백업된 시각 (파일 > 백업에서 되돌리기)')}><DatabaseBackup size={11} /> {tr('백업')} {new Date(backupAt).toLocaleTimeString()}</span>}
             {storageInfo && storageInfo.pct > 0.8 && (
                 <span style={{ fontSize: 11, color: storageInfo.pct > 0.92 ? '#f66' : '#e0a84e' }}
                     title={tr('브라우저 저장공간 {0}GB / {1}GB 사용 중. 가득 차면 자동저장이 실패할 수 있으니 서버 저장 또는 파일로 내보내기를 권장합니다.', (storageInfo.usage / 1073741824).toFixed(2), (storageInfo.quota / 1073741824).toFixed(2))}>
