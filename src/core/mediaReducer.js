@@ -35,6 +35,10 @@ export const loadVideo = (overlay) => ({ type: 'loadVideo', overlay });
 export const clearVideo = () => ({ type: 'clearVideo' });
 /** Scene-cut markers found by the detector, in video time. */
 export const setVideoCuts = (cuts, cutStart, cutOffset) => ({ type: 'setVideoCuts', cuts, cutStart, cutOffset });
+/** How strongly the overlay shows through, 0..1. A reference layer is usually wanted faint. */
+export const setVideoOpacity = (opacity) => ({ type: 'setVideoOpacity', opacity });
+/** Throw away the detected scene markers without touching the video itself. */
+export const clearVideoCuts = () => ({ type: 'clearVideoCuts' });
 
 /** Drag a track along the timeline, keeping its length. */
 export const moveTrack = (which, startTime) => ({ type: 'moveTrack', which, startTime });
@@ -81,6 +85,21 @@ export function mediaReducer(state, action) {
             // and can land after the video was removed.
             return s.videoOverlay
                 ? { ...s, videoOverlay: { ...s.videoOverlay, cuts: action.cuts, cutStart: action.cutStart, cutOffset: action.cutOffset } }
+                : s;
+
+        case 'setVideoOpacity': {
+            if (!s.videoOverlay) return s;
+            // Clamped here rather than trusted from the caller: this ends up as globalAlpha, and
+            // a value outside 0..1 makes the whole frame silently vanish. The typeof check is not
+            // redundant with isFinite - Number(null) and Number('') are both 0, so coercing first
+            // would turn a missing value into an invisible video.
+            const o = action.opacity;
+            const opacity = (typeof o === 'number' && Number.isFinite(o)) ? Math.max(0, Math.min(1, o)) : 1;
+            return { ...s, videoOverlay: { ...s.videoOverlay, opacity } };
+        }
+        case 'clearVideoCuts':
+            return s.videoOverlay
+                ? { ...s, videoOverlay: { ...s.videoOverlay, cuts: [] } }
                 : s;
 
         case 'moveTrack':
