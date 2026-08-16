@@ -20,7 +20,7 @@ import { pushSnapshot, step } from './core/historyOps.js';
 import { nextProbeDelay } from './core/probeBackoff.js';
 import {
     mediaReducer, EMPTY_MEDIA, loadAudio, setAudioDuration, setAudioClip, clearAudio,
-    loadVideo, clearVideo, setVideoCuts, moveTrack, resizeAudio,
+    loadVideo, clearVideo, setVideoCuts, setVideoOpacity, clearVideoCuts, moveTrack, resizeAudio,
 } from './core/mediaReducer.js';
 import { cloneCutContents as cloneCutContentsPure } from './core/cutClone.js';
 import { DEFAULT_KEYS, KEY_LABELS, keyOf, matchShortcut, loadKeymap, toolFromAction, findConflicts } from './core/shortcuts.js';
@@ -231,6 +231,10 @@ export default function App() {
     const { videoOverlay } = media; // { name, startTime, endTime, offset, duration, w, h, cuts? }
     const [sceneDetect, setSceneDetect] = useState(null);   // { done, total } while auto-detecting scene cuts
     const [sceneCfg, setSceneCfg] = useState(null);         // scene-detect settings modal { threshold, rangeOn, startText, endText }
+    const [autoSceneDetect, setAutoSceneDetect] = useState(() => {
+        try { return localStorage.getItem('mv_auto_scene') !== 'off'; } catch { return true; }
+    });
+    useEffect(() => { try { localStorage.setItem('mv_auto_scene', autoSceneDetect ? 'on' : 'off'); } catch { } }, [autoSceneDetect]);
     const videoElRef = useRef(null);      // hidden <video> element that decodes/plays the overlay
     const videoBlobRef = useRef(null);    // the video Blob, for saving
     const videoSeekTokRef = useRef(0);    // paused-seek token so a stale 'seeked' doesn't repaint
@@ -1149,7 +1153,7 @@ export default function App() {
         // Video overlay track (like audio): externalize the video blob for server saves; store the
         // Blob directly for IndexedDB; embed as dataURL only for a self-contained .emv file.
         if (videoOverlay && videoBlobRef.current) {
-            const meta = { name: videoOverlay.name, startTime: videoOverlay.startTime, endTime: videoOverlay.endTime, offset: videoOverlay.offset, duration: videoOverlay.duration, w: videoOverlay.w, h: videoOverlay.h, cuts: videoOverlay.cuts, cutStart: videoOverlay.cutStart, cutOffset: videoOverlay.cutOffset };
+            const meta = { name: videoOverlay.name, startTime: videoOverlay.startTime, endTime: videoOverlay.endTime, offset: videoOverlay.offset, duration: videoOverlay.duration, w: videoOverlay.w, h: videoOverlay.h, opacity: videoOverlay.opacity ?? 1, cuts: videoOverlay.cuts, cutStart: videoOverlay.cutStart, cutOffset: videoOverlay.cutOffset };
             const ext = (videoBlobRef.current.type.match(/video\/([\w.-]+)/)?.[1] || 'mp4').replace('x-matroska', 'mkv').replace('quicktime', 'mov');
             if (assetSink) { assetSink.push({ id: '__video__', blob: videoBlobRef.current, ext }); out.video = { ...meta, asset: true, ext }; }
             else if (blobsOk) { out.video = { ...meta, blob: videoBlobRef.current }; }
@@ -3073,7 +3077,12 @@ export default function App() {
             const v = videoElRef.current;
             if (v && v.readyState >= 2) {
                 const r = fitRect(videoOverlay.w || v.videoWidth || CANVAS_W, videoOverlay.h || v.videoHeight || CANVAS_H, CANVAS_W, CANVAS_H);
+                // Restored rather than left set: everything drawn after this - the artwork, the
+                // text - would otherwise inherit the reference layer's fade.
+                const prevAlpha = ctx.globalAlpha;
+                ctx.globalAlpha = videoOverlay.opacity ?? 1;
                 try { ctx.drawImage(v, r.x, r.y, r.w, r.h); } catch { }
+                ctx.globalAlpha = prevAlpha;
             }
         }
 
@@ -3401,7 +3410,10 @@ export default function App() {
         };
         v.onseeked = () => { setFrameDecodeTick(t => t + 1); }; // repaint the (paused) overlay frame
         // Auto-detect scene cuts in the background so the timeline can mark where the video changes.
-        runSceneDetect({ cutStart: startAt, cutOffset: offset });
+        // Detection is a scan of the whole video; it is useful for a cut-heavy clip and pure cost
+        // for a single continuous take, so it is a preference rather than something that always
+        // happens. It can still be run by hand from the track's settings.
+        if (autoSceneDetect) runSceneDetect({ cutStart: startAt, cutOffset: offset });
     };
     // Detect scene cuts (precise, with optional range + sensitivity) and store the markers. Runs on
     // the stored video blob so it can be re-run with different settings without re-importing.
@@ -3899,7 +3911,9 @@ export default function App() {
             )}
             {sceneCfg && videoOverlay && (
                 <SceneDetectModal sceneCfg={sceneCfg} setSceneCfg={setSceneCfg}
-                    sceneDetect={sceneDetect} runSceneDetect={runSceneDetect} />
+                    sceneDetect={sceneDetect} runSceneDetect={runSceneDetect}
+                    autoSceneDetect={autoSceneDetect} setAutoSceneDetect={setAutoSceneDetect}
+                    hasCuts={!!videoOverlay.cuts?.length} clearVideoCuts={() => dispatchMedia(clearVideoCuts())} />
             )}
             {showHelp && <HelpModal keymap={keymap} onClose={() => setShowHelp(false)} />}
             <TopBar
@@ -4154,6 +4168,7 @@ export default function App() {
                 onTimelinePointerMove={onTimelinePointerMove} onTimelinePointerUp={onTimelinePointerUp} parts={parts}
                 playbackRate={playbackRate} playheadRef={playheadRef} pps={pps}
                 removeVideoOverlay={removeVideoOverlay} renamePart={renamePart} sceneDetect={sceneDetect}
+                setVideoOpacity={v => dispatchMedia(setVideoOpacity(v))}
                 seekToTime={seekToTime} selectPart={selectPart} selectedCutIds={selectedCutIds}
                 setCurrentCutId={setCurrentCutId} setCurrentTime={setCurrentTime} addCuts={cs => dispatchCuts(addCuts(cs))}
                 setDraggingCutData={setDraggingCutData} setLoopPlay={setLoopPlay} setPlaybackRate={setPlaybackRate}

@@ -325,7 +325,7 @@ export function VideoImportModal({
 }
 
 // Scene-change detection settings. Only opens when there is a video overlay.
-export function SceneDetectModal({ sceneCfg, setSceneCfg, sceneDetect, runSceneDetect }) {
+export function SceneDetectModal({ sceneCfg, setSceneCfg, sceneDetect, runSceneDetect, autoSceneDetect, setAutoSceneDetect, clearVideoCuts, hasCuts }) {
     return (
         <div onClick={() => setSceneCfg(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div onClick={e => e.stopPropagation()} style={{ width: 360, background: 'hsl(var(--ui-h) var(--ui-s) 15%)', border: '1px solid #333', borderRadius: 8, padding: 18, color: '#ccc', fontSize: 12.5 }}>
@@ -352,7 +352,16 @@ export function SceneDetectModal({ sceneCfg, setSceneCfg, sceneDetect, runSceneD
                     {tr('장면이 바뀌는 지점을 정밀하게 찾아')} <b style={{ color: '#fde047' }}>{tr('노란 표시')}</b>{tr('로 타임라인에 찍습니다. 민감도를 올리면 미세한 전환도 잡습니다.')}
                     {sceneDetect && <><br /><b style={{ color: 'var(--accent-soft)' }}>{tr('감지 중…')} {sceneDetect.total ? Math.round(sceneDetect.done / sceneDetect.total * 100) : 0}%</b></>}
                 </div>
+                {/* Detection is a scan of the whole video: worth it for a cut-heavy clip, pure
+                    cost for a single continuous take. Hence a choice rather than something that
+                    always happens on load. */}
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}
+                    title={tr('영상을 불러올 때 장면 전환을 자동으로 찾습니다. 긴 영상에서는 시간이 걸립니다.')}>
+                    <input type="checkbox" checked={!!autoSceneDetect} onChange={e => setAutoSceneDetect(e.target.checked)} />
+                    {tr('자동 컷 감지')}
+                </label>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+                    {hasCuts && <button className="button" onClick={clearVideoCuts}>{tr('컷 표시 지우기')}</button>}
                     <button className="button" onClick={() => setSceneCfg(null)}>{tr('닫기')}</button>
                     <button className="button button-primary" disabled={!!sceneDetect} onClick={() => runSceneDetect(sceneCfg)}>{sceneDetect ? tr('감지 중…') : tr('감지')}</button>
                 </div>
