@@ -43,17 +43,24 @@ export function Timeline({
                     <span style={{ fontSize: 11, color: '#888', minWidth: 30, textAlign: 'center' }}>{Math.round(pps)}</span>
                     <button className="icon-btn" onClick={() => { const el = timelineRef.current; const r = el?.getBoundingClientRect(); zoomTimelineAt(r ? r.left + el.clientWidth / 2 : 0, 1.25); }}>＋</button>
                 </div>
-                {/* Folded tracks live here rather than as a stub in the stack: the point was to
-                    give the cut tracks the height back, and a stub still takes some. */}
+                <span style={{ fontSize: 11, color: '#666', marginLeft: 12 }}>Max: {fmt(maxTime)}</span>
+                {/* Everything below is pinned to the right-hand end. Video settings sits at the
+                    very edge so it is always in the same place - the gear on the track row goes
+                    with the row when it is folded away, which is exactly when it is wanted. */}
+                <div style={{ flex: '1 1 auto', minWidth: 8 }} />
                 {audioFile && audioData && hiddenTracks.audio && (
-                    <button className="button" style={{ marginLeft: 8 }} onClick={() => toggleTrackHidden('audio')}
+                    <button className="button" onClick={() => toggleTrackHidden('audio')}
                         title={tr('접힌 트랙 — 눌러서 펼치기')}><Eye size={12} /> Audio</button>
                 )}
                 {videoOverlay && hiddenTracks.video && (
-                    <button className="button" style={{ marginLeft: 4 }} onClick={() => toggleTrackHidden('video')}
+                    <button className="button" onClick={() => toggleTrackHidden('video')}
                         title={tr('접힌 트랙 — 눌러서 펼치기')}><Eye size={12} /> {videoOverlay.name || tr('영상')}</button>
                 )}
-                <span style={{ fontSize: 11, color: '#666', marginLeft: 12 }}>Max: {fmt(maxTime)}</span>
+                {videoOverlay && (
+                    <button className="button" onClick={openVideoSettings} title={tr('영상 설정 (농도, 장면 감지)')}>
+                        <Settings size={12} /> {tr('영상 설정')}
+                    </button>
+                )}
             </>}
         </div>
         {showBottom && (parts.length > 0 || selectedCutIds.size > 0) && (
