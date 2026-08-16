@@ -19,7 +19,7 @@ export function Timeline({
     addCuts, setDraggingCutData, setLoopPlay, setPlaybackRate, setResizingData,
     setSceneCfg, setSelectedCutIds, setShowBottom, showBottom, snapLinePos,
     startTimelinePan, timelineH, timelineRef, tlWin, ungroupPart,
-    videoOverlay, setVideoOpacity, hiddenTracks, toggleTrackHidden, zoomTimelineAt,
+    videoOverlay, hiddenTracks, toggleTrackHidden, openVideoSettings, zoomTimelineAt,
 }) {
     return (
     <div className="timeline" style={{ height: showBottom ? timelineH : 44, flexShrink: 0 }}>
@@ -43,6 +43,16 @@ export function Timeline({
                     <span style={{ fontSize: 11, color: '#888', minWidth: 30, textAlign: 'center' }}>{Math.round(pps)}</span>
                     <button className="icon-btn" onClick={() => { const el = timelineRef.current; const r = el?.getBoundingClientRect(); zoomTimelineAt(r ? r.left + el.clientWidth / 2 : 0, 1.25); }}>＋</button>
                 </div>
+                {/* Folded tracks live here rather than as a stub in the stack: the point was to
+                    give the cut tracks the height back, and a stub still takes some. */}
+                {audioFile && audioData && hiddenTracks.audio && (
+                    <button className="button" style={{ marginLeft: 8 }} onClick={() => toggleTrackHidden('audio')}
+                        title={tr('접힌 트랙 — 눌러서 펼치기')}><Eye size={12} /> Audio</button>
+                )}
+                {videoOverlay && hiddenTracks.video && (
+                    <button className="button" style={{ marginLeft: 4 }} onClick={() => toggleTrackHidden('video')}
+                        title={tr('접힌 트랙 — 눌러서 펼치기')}><Eye size={12} /> {videoOverlay.name || tr('영상')}</button>
+                )}
                 <span style={{ fontSize: 11, color: '#666', marginLeft: 12 }}>Max: {fmt(maxTime)}</span>
             </>}
         </div>
@@ -137,12 +147,12 @@ export function Timeline({
                             </div>
                         ))}
                     </div>
-                    {audioFile && audioData && (
-                        <div className={`tl-track${hiddenTracks.audio ? ' tl-track-collapsed' : ''}`} style={{ background: 'hsl(var(--ui-h) var(--ui-s) 12%)' }}>
+                    {audioFile && audioData && !hiddenTracks.audio && (
+                        <div className="tl-track" style={{ background: 'hsl(var(--ui-h) var(--ui-s) 12%)' }}>
                             <div className="tl-track-label" style={{ background: 'hsl(var(--ui-h) var(--ui-s) 12%)' }}>
                                 <button className="icon-btn" onClick={e => { e.stopPropagation(); toggleTrackHidden('audio'); }}
-                                    title={tr('트랙 접기 — 컷 트랙에 자리를 내줍니다. 소리는 계속 재생됩니다.')}>
-                                    {hiddenTracks.audio ? <EyeOff size={10} /> : <Eye size={10} />}
+                                    title={tr('트랙 접기 — 재생바로 보냅니다. 소리는 계속 재생됩니다.')}>
+                                    <EyeOff size={10} />
                                 </button>
                                 <span>Audio</span><button className="icon-btn del-btn" onClick={e => { e.stopPropagation(); handleDeleteAudio(); }} title={tr('오디오 삭제')}><Trash2 size={9} /></button></div>
                             <div className="cut-block" style={{ left: `${audioData.startTime * pps + 60}px`, width: `${(audioData.endTime - audioData.startTime) * pps}px`, background: '#374151', borderColor: '#4b5563', cursor: draggingCutData?.cutId === 'audio' ? 'grabbing' : 'grab', touchAction: 'none' }}
@@ -153,27 +163,18 @@ export function Timeline({
                             </div>
                         </div>
                     )}
-                    {videoOverlay && (
-                        <div className={`tl-track${hiddenTracks.video ? ' tl-track-collapsed' : ''}`} style={{ background: '#0f1e2a' }}>
+                    {videoOverlay && !hiddenTracks.video && (
+                        <div className="tl-track" style={{ background: '#0f1e2a' }}>
                             <div className="tl-track-label" style={{ background: '#0f1e2a' }}>
                                 <button className="icon-btn" onClick={e => { e.stopPropagation(); toggleTrackHidden('video'); }}
-                                    title={tr('트랙 접기 — 컷 트랙에 자리를 내줍니다. 영상은 계속 보입니다 (농도로 조절).')}>
-                                    {hiddenTracks.video ? <EyeOff size={10} /> : <Eye size={10} />}
+                                    title={tr('트랙 접기 — 재생바로 보냅니다. 영상은 계속 보입니다 (농도로 조절).')}>
+                                    <EyeOff size={10} />
                                 </button>
-                                <span>{tr('영상')}</span>
+                                <button className="tl-track-name" onClick={e => { e.stopPropagation(); openVideoSettings(); }}
+                                    title={tr('영상 설정 (농도, 장면 감지)')}>{videoOverlay.name || tr('영상')}</button>
                                 {sceneDetect ? <span style={{ fontSize: 9, color: '#7aa' }}>{tr('컷 감지')} {sceneDetect.total ? Math.round(sceneDetect.done / sceneDetect.total * 100) : 0}%</span>
                                     : videoOverlay.cuts?.length ? <span style={{ fontSize: 9, color: '#7aa' }}>{tr('{0}컷', videoOverlay.cuts.length)}</span> : null}
                                 <button className="icon-btn" title={tr('장면(컷) 감지 설정')} style={{ fontSize: 11 }} onClick={e => { e.stopPropagation(); setSceneCfg({ threshold: 14, rangeOn: false, startText: '0:00', endText: '' }); }}>🎯</button>
-                                {/* A reference layer is usually wanted faint: full strength competes with
-                                    whatever is drawn on top of it. */}
-                                <label style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 9, color: '#7aa' }}
-                                    title={tr('영상 투명도 — 위에 그린 그림이 잘 보이도록 흐리게 할 수 있습니다.')}
-                                    onPointerDown={e => e.stopPropagation()}>
-                                    {tr('농도')}
-                                    <input type="range" min="0" max="100" style={{ width: 56 }}
-                                        value={Math.round((videoOverlay.opacity ?? 1) * 100)}
-                                        onChange={e => setVideoOpacity(+e.target.value / 100)} />
-                                </label>
                                 <button className="icon-btn del-btn" onClick={e => { e.stopPropagation(); removeVideoOverlay(); }} title={tr('영상 트랙 삭제')}><Trash2 size={9} /></button></div>
                             <div className="cut-block" style={{ left: `${videoOverlay.startTime * pps + 60}px`, width: `${(videoOverlay.endTime - videoOverlay.startTime) * pps}px`, background: '#155e75', borderColor: '#22d3ee55', cursor: draggingCutData?.cutId === 'video' ? 'grabbing' : 'grab', touchAction: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                                 onPointerDown={e => { e.stopPropagation(); cutDragMovedRef.current = false; clearTimeout(cutDragTimerRef.current); cutDragArmedRef.current = e.pointerType !== 'touch'; if (e.pointerType === 'touch') cutDragTimerRef.current = setTimeout(() => { cutDragArmedRef.current = true; }, 350); try { e.currentTarget.setPointerCapture(e.pointerId); } catch { } setDraggingCutData({ cutId: 'video', startX: e.clientX, startY: e.clientY, initialStart: videoOverlay.startTime, initialTrack: 0 }); }}>

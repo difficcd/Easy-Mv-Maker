@@ -1,5 +1,5 @@
 import React from 'react';
-import { Trash2 } from 'lucide-react';
+import { Trash2, AlertTriangle } from 'lucide-react';
 import { tr } from '../i18n';
 import { targetCanvasFor } from '../canvas/canvasUtils';
 
@@ -140,7 +140,7 @@ export function SettingsModal({
                         </div>
                         {Object.entries(conflicts || {}).map(([key, actions]) => (
                             <div key={key} style={{ fontSize: 11, color: '#e0a84e', padding: '4px 0' }}>
-                                {tr('⚠ {0} 키가 겹칩니다: {1} — 하나만 동작합니다.', key, actions.map(a => tr(keyLabels[a] || a)).join(', '))}
+                                <AlertTriangle size={11} style={{ verticalAlign: '-1px' }} /> {tr('{0} 키가 겹칩니다: {1} — 하나만 동작합니다.', key, actions.map(a => tr(keyLabels[a] || a)).join(', '))}
                             </div>
                         ))}
                         {Object.keys(defaultKeys).map(id => (
@@ -343,14 +343,22 @@ export function VideoImportModal({
 }
 
 // Scene-change detection settings. Only opens when there is a video overlay.
-export function SceneDetectModal({ sceneCfg, setSceneCfg, sceneDetect, runSceneDetect, autoSceneDetect, setAutoSceneDetect, clearVideoCuts, hasCuts }) {
+export function SceneDetectModal({ sceneCfg, setSceneCfg, sceneDetect, runSceneDetect, videoOpacity, setVideoOpacity, autoSceneDetect, setAutoSceneDetect, clearVideoCuts, hasCuts }) {
     return (
         <div onClick={() => setSceneCfg(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div onClick={e => e.stopPropagation()} style={{ width: 360, background: 'hsl(var(--ui-h) var(--ui-s) 15%)', border: '1px solid #333', borderRadius: 8, padding: 18, color: '#ccc', fontSize: 12.5 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                    <span className="panel-title">{tr('🎯 장면(컷) 감지')}</span>
+                    <span className="panel-title">{tr('영상 설정')}</span>
                     <button className="icon-btn" onClick={() => setSceneCfg(null)}>✕</button>
                 </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                    <span style={{ width: 56 }}>{tr('농도')}</span>
+                    <input type="range" min={0} max={100} step={1} style={{ flex: 1 }}
+                        value={Math.round((videoOpacity ?? 1) * 100)}
+                        onChange={e => setVideoOpacity(+e.target.value / 100)} />
+                    <span style={{ width: 40, color: '#888', textAlign: 'right' }}>{Math.round((videoOpacity ?? 1) * 100)}%</span>
+                </div>
+                <div style={{ color: '#888', marginBottom: 12 }}>{tr('영상 투명도 — 위에 그린 그림이 잘 보이도록 흐리게 할 수 있습니다.')}</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                     <span style={{ width: 56 }}>{tr('민감도')}</span>
                     <input type="range" min={6} max={30} step={1} value={30 - sceneCfg.threshold + 6} onChange={e => setSceneCfg(v => ({ ...v, threshold: 30 - (+e.target.value) + 6 }))} style={{ flex: 1 }} />

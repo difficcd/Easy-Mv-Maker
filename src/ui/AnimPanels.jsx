@@ -1,3 +1,4 @@
+import { Circle } from 'lucide-react';
 import React from 'react';
 import { ANIM_DEFAULT, LAYER_ANIM_DEFAULT } from '../canvas/canvasUtils';
 import { NumField } from './NumField';
@@ -166,7 +167,7 @@ export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCaptur
                     <button className="small-btn" onClick={addKeyHere}>+ {tr('키 추가')} ({Math.round(Math.max(0, Math.min(1, cutProgress)) * 100)}%)</button>
                     {keys.length > 0 && <button className="small-btn" onClick={() => setKeys([])}>{tr('전체 삭제')}</button>}
                     {keys.length === 1 && <span style={{ color: '#e0a84e' }}>{tr('2개 이상부터 적용')}</span>}
-                    {keys.length >= 2 && <span style={{ color: '#5a8' }}>● {tr('{0}개', keys.length)}</span>}
+                    {keys.length >= 2 && <span className="anim-field" style={{ color: '#5a8' }}><Circle size={7} fill="currentColor" /> {tr('{0}개', keys.length)}</span>}
                 </div>
                 {keys.map((k, i) => (
                     <div key={k.id ?? 'i' + i} className="kf-card">
@@ -234,7 +235,7 @@ export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCaptur
                     {pathCapture && pathCapture.mode === 'sway' && pathCapture.layerId === layer.id ? tr('그리는 중…') : (a.swayCurve ? tr('곡선 다시 그리기') : tr('흔들림 곡선 그리기'))}
                 </button>
                 {a.swayCurve && <button className="small-btn" onClick={() => updLayerAnim(cut.id, layer.id, { swayCurve: null })}>{tr('기본 파형')}</button>}
-                {a.swayCurve && <span style={{ color: '#5a8' }}>{tr('● 곡선')}</span>}
+                {a.swayCurve && <span className="anim-field" style={{ color: '#5a8' }}><Circle size={7} fill="currentColor" /> {tr('곡선')}</span>}
             </div>
             {/* Per-point bending: how much each point along the axis sways, from -100 to 100%.
                 Zero holds that point still; a negative value bends it the other way. */}
@@ -288,7 +289,7 @@ export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCaptur
                     {pathCapture && pathCapture.layerId === layer.id ? tr('그리는 중…') : (a.path ? tr('경로 다시 그리기') : tr('경로 그리기'))}
                 </button>
                 {a.path && <button className="small-btn" onClick={() => updLayerAnim(cut.id, layer.id, { path: null })}>{tr('지우기')}</button>}
-                {a.path && <span style={{ color: '#5a8' }}>● {tr('{0}점', a.path.length)}</span>}
+                {a.path && <span className="anim-field" style={{ color: '#5a8' }}><Circle size={7} fill="currentColor" /> {tr('{0}점', a.path.length)}</span>}
             </div>
         </div>
     );
