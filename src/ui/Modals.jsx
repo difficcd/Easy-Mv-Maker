@@ -60,7 +60,7 @@ export function SettingsModal({
     tab, setTab, onClose,
     themeColor, setThemeColor, themeRecent, defaultTheme,
     uiSat, setUiSat,
-    keymap, setKeymap, defaultKeys, keyLabels, rebinding, setRebinding,
+    keymap, setKeymap, defaultKeys, keyLabels, conflicts, rebinding, setRebinding,
     lang, changeLang,
 }) {
     const saveKeymap = (next) => { setKeymap(next); try { localStorage.setItem('mv_keymap', JSON.stringify(next)); } catch { } };
@@ -120,6 +120,11 @@ export function SettingsModal({
                         <div style={{ fontSize: 11, color: '#888', marginBottom: 10 }}>
                             {rebinding ? tr('원하는 키를 누르세요 (Esc = 취소)') : tr('바꿀 항목을 누른 뒤 새 키를 누르세요.')}
                         </div>
+                        {Object.entries(conflicts || {}).map(([key, actions]) => (
+                            <div key={key} style={{ fontSize: 11, color: '#e0a84e', padding: '4px 0' }}>
+                                {tr('⚠ {0} 키가 겹칩니다: {1} — 하나만 동작합니다.', key, actions.map(a => tr(keyLabels[a] || a)).join(', '))}
+                            </div>
+                        ))}
                         {Object.keys(defaultKeys).map(id => (
                             <div key={id} className="key-row" style={{ display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid hsl(var(--ui-h) var(--ui-s) 20%)' }}>
                                 <span style={{ flex: 1, color: '#ddd' }}>{tr(keyLabels[id])}</span>
