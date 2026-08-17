@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
-import { Plus, Trash2, PenLine, Pen, Feather, Eraser, Undo, Redo, Layers, Trash, ChevronRight, ChevronDown, Folder, FolderOpen, Eye, EyeOff, ClipboardPaste, GitBranch, Move, Type, Cloud, Film, Repeat, Minus, Waves, Grid3x3, Palette, Menu, PaintBucket, Pipette } from 'lucide-react';
+import { Plus, Trash2, PenLine, Pen, Feather, Eraser, Undo, Redo, Layers, Trash, ChevronRight, ChevronDown, Folder, FolderOpen, Eye, EyeOff, ClipboardPaste, GitBranch, Move, Type, Cloud, Film, Repeat, Minus, Waves, Grid3x3, Palette, Menu, PaintBucket, Pipette, RotateCcw } from 'lucide-react';
 import './App.css';
 import { saveAutosave, loadAutosave, saveProject, loadProject, listProjects, deleteProject, autosaveKey } from './db';
 import { CutAnimPanel, LayerAnimPanel, JitterPanel } from './ui/AnimPanels';
@@ -9,7 +9,7 @@ import { TopBar } from './ui/TopBar';
 import { CutLayerPanel } from './ui/CutLayerPanel';
 import { ToolsPanel } from './ui/ToolsPanel';
 import { Timeline } from './ui/Timeline';
-import { ProjectPicker, ProgressOverlay, SettingsModal, HelpModal, VideoImportModal, SceneDetectModal, LinkPromptModal } from './ui/Modals';
+import { ProjectPicker, ProgressOverlay, SettingsModal, HelpModal, VideoImportModal, SceneDetectModal, LinkPromptModal, ToolKeysModal } from './ui/Modals';
 import { tr, loadLang, saveLang, setLangValue } from './i18n';
 import { moveLayer } from './core/layerOps.js';
 import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill } from './core/layerOps.js';
@@ -230,6 +230,16 @@ export default function App() {
     // cuts) - for drawing over a video. Like audio, but painted onto the canvas each frame.
     const { videoOverlay } = media; // { name, startTime, endTime, offset, duration, w, h, cuts? }
     const [sceneDetect, setSceneDetect] = useState(null);   // { done, total } while auto-detecting scene cuts
+    // Which media rows are folded away in the timeline. Purely a view setting - the audio still
+    // plays and the video still draws; this is only about giving the cut tracks the height back.
+    const [hiddenTracks, setHiddenTracks] = useState(() => {
+        try { return { audio: false, video: false, ...JSON.parse(localStorage.getItem('mv_hidden_tracks') || '{}') }; }
+        catch { return { audio: false, video: false }; }
+    });
+    const toggleTrackHidden = (which) => setHiddenTracks(h => ({ ...h, [which]: !h[which] }));
+    useEffect(() => { try { localStorage.setItem('mv_hidden_tracks', JSON.stringify(hiddenTracks)); } catch { } }, [hiddenTracks]);
+    const [showToolKeys, setShowToolKeys] = useState(false);
+    const sceneStopRef = useRef(false);   // set to ask a running scene detection to stop
     const [sceneCfg, setSceneCfg] = useState(null);         // scene-detect settings modal { threshold, rangeOn, startText, endText }
     const [autoSceneDetect, setAutoSceneDetect] = useState(() => {
         try { return localStorage.getItem('mv_auto_scene') !== 'off'; } catch { return true; }
@@ -811,7 +821,16 @@ export default function App() {
 
     useEffect(() => {
         isPlayingRef.current = isPlaying;
-        if (!isPlaying) { if (audioRef.current) audioRef.current.pause(); cancelAnimationFrame(reqRef.current); return; }
+        if (!isPlaying) {
+            if (audioRef.current) audioRef.current.pause();
+            // The video has to be stopped here too. Only `finish` paused it, which is the path
+            // for reaching the end - stopping any other way left the element rolling. Nothing
+            // showed it, because a paused canvas is not being repainted; the moment drawing began
+            // the repaints resumed and the overlay was discovered to have been playing all along.
+            if (videoElRef.current) videoElRef.current.pause();
+            cancelAnimationFrame(reqRef.current);
+            return;
+        }
         // Export must record at real time; preview honors the chosen playback speed.
         const rate = isExporting.current ? 1 : playbackRate;
         const audio = audioRef.current;
@@ -3424,11 +3443,20 @@ export default function App() {
         const rStart = rangeOn ? parseClock(startText) : 0;
         const rEndRaw = rangeOn ? parseClock(endText) : 0;
         const rEnd = rangeOn && rEndRaw > rStart ? rEndRaw : null;
+        // detectSceneCuts polls shouldStop between frames, so cancelling takes effect within one
+        // seek rather than running the scan to the end and throwing the answer away.
+        sceneStopRef.current = false;
         setSceneDetect({ done: 0, total: 0 });
-        detectSceneCuts(blob, { start: rStart, end: rEnd, threshold, onProgress: (d, t) => setSceneDetect({ done: d, total: t }) })
-            .then(cuts => dispatchMedia(setVideoCuts(cuts, cs, co)))
+        detectSceneCuts(blob, {
+            start: rStart, end: rEnd, threshold,
+            onProgress: (d, t) => setSceneDetect({ done: d, total: t }),
+            shouldStop: () => sceneStopRef.current,
+        })
+            // A cancelled scan returns what it found so far; keeping a partial set of markers
+            // would look like a finished detection that missed most of the cuts.
+            .then(cuts => { if (!sceneStopRef.current) dispatchMedia(setVideoCuts(cuts, cs, co)); })
             .catch(() => { })
-            .finally(() => setSceneDetect(null));
+            .finally(() => { setSceneDetect(null); sceneStopRef.current = false; });
     };
     const removeVideoOverlay = () => {
         dispatchMedia(clearVideo()); videoBlobRef.current = null; setSceneCfg(null);
@@ -3836,6 +3864,8 @@ export default function App() {
                     themeColor={themeColor} setThemeColor={setThemeColor} themeRecent={themeRecent} defaultTheme={DEFAULT_THEME}
                     uiSat={uiSat} setUiSat={setUiSat}
                     keymap={keymap} setKeymap={setKeymap} defaultKeys={DEFAULT_KEYS} keyLabels={KEY_LABELS} conflicts={findConflicts(keymap)}
+                    videoOpacity={videoOverlay ? (videoOverlay.opacity ?? 1) : null} setVideoOpacity={v => dispatchMedia(setVideoOpacity(v))}
+                    setShowToolKeys={setShowToolKeys}
                     lang={lang} changeLang={changeLang}
                     rebinding={rebinding} setRebinding={setRebinding} />
             )}
@@ -3913,7 +3943,14 @@ export default function App() {
                 <SceneDetectModal sceneCfg={sceneCfg} setSceneCfg={setSceneCfg}
                     sceneDetect={sceneDetect} runSceneDetect={runSceneDetect}
                     autoSceneDetect={autoSceneDetect} setAutoSceneDetect={setAutoSceneDetect}
+                    videoOpacity={videoOverlay.opacity ?? 1} setVideoOpacity={v => dispatchMedia(setVideoOpacity(v))}
+                    cancelSceneDetect={() => { sceneStopRef.current = true; }}
                     hasCuts={!!videoOverlay.cuts?.length} clearVideoCuts={() => dispatchMedia(clearVideoCuts())} />
+            )}
+            {showToolKeys && (
+                <ToolKeysModal keymap={keymap} setKeymap={setKeymap} defaultKeys={DEFAULT_KEYS} keyLabels={KEY_LABELS}
+                    conflicts={findConflicts(keymap)} rebinding={rebinding} setRebinding={setRebinding}
+                    onClose={() => { setShowToolKeys(false); setRebinding(null); }} />
             )}
             {showHelp && <HelpModal keymap={keymap} onClose={() => setShowHelp(false)} />}
             <TopBar
@@ -3976,7 +4013,7 @@ export default function App() {
                     {(view.zoom !== 1 || view.x !== 0 || view.y !== 0) && (
                         <button className="button" onClick={resetView} title={tr('줌 초기화')}
                             style={{ position: 'absolute', top: 8, right: 8, zIndex: 30, height: 28, padding: '0 10px' }}>
-                            {Math.round(view.zoom * 100)}% ⟲
+                            {Math.round(view.zoom * 100)}% <RotateCcw size={11} />
                         </button>
                     )}
                     <div className="canvas-stage" style={{ position: 'relative', transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})`, aspectRatio: `${CANVAS_W} / ${CANVAS_H}`, maxWidth: '100%', maxHeight: '100%' }}>
@@ -4175,7 +4212,8 @@ export default function App() {
                 onTimelinePointerMove={onTimelinePointerMove} onTimelinePointerUp={onTimelinePointerUp} parts={parts}
                 playbackRate={playbackRate} playheadRef={playheadRef} pps={pps}
                 removeVideoOverlay={removeVideoOverlay} renamePart={renamePart} sceneDetect={sceneDetect}
-                setVideoOpacity={v => dispatchMedia(setVideoOpacity(v))}
+                hiddenTracks={hiddenTracks} toggleTrackHidden={toggleTrackHidden}
+                openVideoSettings={() => setSceneCfg(c => c || { threshold: 14, rangeOn: false, startText: '0:00', endText: '' })}
                 seekToTime={seekToTime} selectPart={selectPart} selectedCutIds={selectedCutIds}
                 setCurrentCutId={setCurrentCutId} setCurrentTime={setCurrentTime} addCuts={cs => dispatchCuts(addCuts(cs))}
                 setDraggingCutData={setDraggingCutData} setLoopPlay={setLoopPlay} setPlaybackRate={setPlaybackRate}

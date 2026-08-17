@@ -1,6 +1,7 @@
 import React from 'react';
-import { Trash2 } from 'lucide-react';
+import { Trash2, AlertTriangle, X } from 'lucide-react';
 import { tr } from '../i18n';
+import { TOOL_PREFIX } from '../core/shortcuts.js';
 import { targetCanvasFor } from '../canvas/canvasUtils';
 
 // Overlays and dialogs split out of App.jsx. All state arrives as props; these only display.
@@ -61,7 +62,7 @@ export function SettingsModal({
     themeColor, setThemeColor, themeRecent, defaultTheme,
     uiSat, setUiSat,
     keymap, setKeymap, defaultKeys, keyLabels, conflicts, rebinding, setRebinding,
-    lang, changeLang,
+    lang, changeLang, videoOpacity, setVideoOpacity, setShowToolKeys,
 }) {
     const saveKeymap = (next) => { setKeymap(next); try { localStorage.setItem('mv_keymap', JSON.stringify(next)); } catch { } };
     return (
@@ -114,6 +115,24 @@ export function SettingsModal({
                             </div>
                             <div style={{ fontSize: 10, color: '#777', marginTop: 4 }}>{tr('0%로 두면 완전한 무채색 회색 UI가 됩니다.')}</div>
                         </div>
+                        {/* Also on the video track itself; here as well because settings are
+                            where someone looks, and the track row can be folded away. */}
+                        <div>
+                            <div className="color-section-label" style={{ marginBottom: 6 }}>{tr('영상 농도')}</div>
+                            {videoOpacity == null
+                                ? <div style={{ fontSize: 11, color: '#777' }}>{tr('영상이 없습니다')}</div>
+                                : (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        <input type="range" min="0" max="100" step="1" style={{ flex: 1 }}
+                                            value={Math.round(videoOpacity * 100)}
+                                            onChange={e => setVideoOpacity(+e.target.value / 100)} />
+                                        <input type="number" className="time-input" style={{ width: 60 }} min="0" max="100"
+                                            value={Math.round(videoOpacity * 100)}
+                                            onChange={e => setVideoOpacity(Math.max(0, Math.min(100, +e.target.value || 0)) / 100)} />
+                                        <span style={{ fontSize: 11, color: '#888' }}>%</span>
+                                    </div>
+                                )}
+                        </div>
                     </div>
                 ) : (
                     <>
@@ -122,10 +141,10 @@ export function SettingsModal({
                         </div>
                         {Object.entries(conflicts || {}).map(([key, actions]) => (
                             <div key={key} style={{ fontSize: 11, color: '#e0a84e', padding: '4px 0' }}>
-                                {tr('⚠ {0} 키가 겹칩니다: {1} — 하나만 동작합니다.', key, actions.map(a => tr(keyLabels[a] || a)).join(', '))}
+                                <AlertTriangle size={11} style={{ verticalAlign: '-1px' }} /> {tr('{0} 키가 겹칩니다: {1} — 하나만 동작합니다.', key, actions.map(a => tr(keyLabels[a] || a)).join(', '))}
                             </div>
                         ))}
-                        {Object.keys(defaultKeys).map(id => (
+                        {Object.keys(defaultKeys).filter(id => !id.startsWith(TOOL_PREFIX)).map(id => (
                             <div key={id} className="key-row" style={{ display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid hsl(var(--ui-h) var(--ui-s) 20%)' }}>
                                 <span style={{ flex: 1, color: '#ddd' }}>{tr(keyLabels[id])}</span>
                                 <button className="button" style={{ height: 30, minWidth: 110, justifyContent: 'center', background: rebinding === id ? 'var(--accent)' : undefined }}
@@ -139,6 +158,7 @@ export function SettingsModal({
                         ))}
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
                             <span style={{ fontSize: 10, color: '#777' }}>{tr('Ctrl+S 저장 · Ctrl+Z/Y 등 기본 조합은 항상 동작합니다')}</span>
+                            <button className="button" onClick={() => setShowToolKeys(true)}>{tr('도구 단축키…')}</button>
                             <button className="button" onClick={() => saveKeymap({ ...defaultKeys })}>{tr('전체 기본값')}</button>
                         </div>
                     </>
@@ -161,7 +181,7 @@ export function HelpModal({ keymap, onClose }) {
                 <div>{tr('Ctrl+Z 실행취소 · Ctrl+Shift+Z / Ctrl+Y 다시실행')}</div>
                 <div>{tr('Ctrl+C 컷 복사 · Ctrl+V 붙여넣기 · Ctrl+D 다음 프레임 복제')}</div>
                 <div>{tr('Ctrl+S 저장 · Esc 선택 취소 · Enter 선택 적용')}</div>
-                <div><b>{keymap.undo}</b> {tr('실행취소 ·')} <b>{keymap.redo}</b> {tr('다시실행 ·')} <b>{keymap.brushDown}</b>/<b>{keymap.brushUp}</b> {tr('브러시 크기 ·')} <b>{keymap.zoomOut}</b>/<b>{keymap.zoomIn}</b> {tr('캔버스 축소/확대 (상단 ⚙에서 변경)')}</div>
+                <div><b>{keymap.undo}</b> {tr('실행취소 ·')} <b>{keymap.redo}</b> {tr('다시실행 ·')} <b>{keymap.brushDown}</b>/<b>{keymap.brushUp}</b> {tr('브러시 크기 ·')} <b>{keymap.zoomOut}</b>/<b>{keymap.zoomIn}</b> {tr('캔버스 축소/확대 (설정에서 변경)')}</div>
                 <div>{tr('move 도구: 빈 곳을 끌면')} <b>{tr('그림 전체가 이동')}</b>{tr('합니다(선택 범위 불필요).')} <b>{tr('Alt+드래그')}</b> {tr('= 활성 레이어만')}</div>
                 <div style={{ marginTop: 8 }}><b style={{ color: '#9aa' }}>{tr('펜 / 손가락')}</b></div>
                 <div>{tr('펜(S펜)·마우스 = 그리기 / 손가락은 그려지지 않음(팜 리젝션)')}</div>
@@ -325,14 +345,22 @@ export function VideoImportModal({
 }
 
 // Scene-change detection settings. Only opens when there is a video overlay.
-export function SceneDetectModal({ sceneCfg, setSceneCfg, sceneDetect, runSceneDetect, autoSceneDetect, setAutoSceneDetect, clearVideoCuts, hasCuts }) {
+export function SceneDetectModal({ sceneCfg, setSceneCfg, sceneDetect, runSceneDetect, videoOpacity, setVideoOpacity, cancelSceneDetect, autoSceneDetect, setAutoSceneDetect, clearVideoCuts, hasCuts }) {
     return (
         <div onClick={() => setSceneCfg(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div onClick={e => e.stopPropagation()} style={{ width: 360, background: 'hsl(var(--ui-h) var(--ui-s) 15%)', border: '1px solid #333', borderRadius: 8, padding: 18, color: '#ccc', fontSize: 12.5 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                    <span className="panel-title">{tr('🎯 장면(컷) 감지')}</span>
+                    <span className="panel-title">{tr('영상 설정')}</span>
                     <button className="icon-btn" onClick={() => setSceneCfg(null)}>✕</button>
                 </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                    <span style={{ width: 56 }}>{tr('농도')}</span>
+                    <input type="range" min={0} max={100} step={1} style={{ flex: 1 }}
+                        value={Math.round((videoOpacity ?? 1) * 100)}
+                        onChange={e => setVideoOpacity(+e.target.value / 100)} />
+                    <span style={{ width: 40, color: '#888', textAlign: 'right' }}>{Math.round((videoOpacity ?? 1) * 100)}%</span>
+                </div>
+                <div style={{ color: '#888', marginBottom: 12 }}>{tr('영상 투명도 — 위에 그린 그림이 잘 보이도록 흐리게 할 수 있습니다.')}</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                     <span style={{ width: 56 }}>{tr('민감도')}</span>
                     <input type="range" min={6} max={30} step={1} value={30 - sceneCfg.threshold + 6} onChange={e => setSceneCfg(v => ({ ...v, threshold: 30 - (+e.target.value) + 6 }))} style={{ flex: 1 }} />
@@ -363,7 +391,9 @@ export function SceneDetectModal({ sceneCfg, setSceneCfg, sceneDetect, runSceneD
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
                     {hasCuts && <button className="button" onClick={clearVideoCuts}>{tr('컷 표시 지우기')}</button>}
                     <button className="button" onClick={() => setSceneCfg(null)}>{tr('닫기')}</button>
-                    <button className="button button-primary" disabled={!!sceneDetect} onClick={() => runSceneDetect(sceneCfg)}>{sceneDetect ? tr('감지 중…') : tr('감지')}</button>
+                    {sceneDetect
+                        ? <button className="button" onClick={cancelSceneDetect}>{tr('감지 취소')}</button>
+                        : <button className="button button-primary" onClick={() => runSceneDetect(sceneCfg)}>{tr('감지')}</button>}
                 </div>
             </div>
         </div>
@@ -394,6 +424,56 @@ export function LinkPromptModal({ title, placeholder, onSubmit, onClose }) {
                     <button className="button" onClick={onClose}>{tr('취소')}</button>
                     <button className="button button-primary" style={{ background: 'var(--accent)', borderColor: 'var(--accent-hi)', color: '#fff' }}
                         disabled={!url.trim()} onClick={submit}>{tr('가져오기')}</button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+
+/**
+ * The tool bindings, on their own.
+ *
+ * Twelve of them next to the seven general ones made the shortcuts list long enough that neither
+ * group could be scanned, and they are looked for at different times: the general ones once, the
+ * tool ones while deciding how to work.
+ */
+export function ToolKeysModal({ keymap, setKeymap, defaultKeys, keyLabels, conflicts, rebinding, setRebinding, onClose }) {
+    const saveKeymap = (next) => {
+        setKeymap(next);
+        try { localStorage.setItem('mv_keymap', JSON.stringify(next)); } catch { }
+    };
+    const ids = Object.keys(defaultKeys).filter(id => id.startsWith(TOOL_PREFIX));
+    return (
+        <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1001, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div onClick={e => e.stopPropagation()} style={{ width: 400, maxHeight: '80vh', overflow: 'auto', background: 'hsl(var(--ui-h) var(--ui-s) 15%)', border: '1px solid #333', borderRadius: 8, padding: 18, color: '#ccc', fontSize: 12.5 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <span className="panel-title">{tr('도구 단축키')}</span>
+                    <button className="icon-btn" onClick={onClose}><X size={14} /></button>
+                </div>
+                <div style={{ fontSize: 11, color: '#888', marginBottom: 10 }}>
+                    {rebinding ? tr('원하는 키를 누르세요 (Esc = 취소)') : tr('바꿀 항목을 누르세요')}
+                </div>
+                {Object.entries(conflicts || {}).map(([key, actions]) => (
+                    <div key={key} style={{ fontSize: 11, color: '#e0a84e', padding: '4px 0' }}>
+                        <AlertTriangle size={11} style={{ verticalAlign: '-1px' }} /> {tr('{0} 키가 겹칩니다: {1} — 하나만 동작합니다.', key, actions.map(a => tr(keyLabels[a] || a)).join(', '))}
+                    </div>
+                ))}
+                {ids.map(id => (
+                    <div key={id} className="key-row" style={{ display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid hsl(var(--ui-h) var(--ui-s) 20%)', padding: '6px 0' }}>
+                        <span style={{ flex: 1, color: '#ddd' }}>{tr(keyLabels[id])}</span>
+                        <button className="button" style={{ height: 30, minWidth: 110, justifyContent: 'center', fontFamily: 'monospace' }}
+                            onClick={() => setRebinding(rebinding === id ? null : id)}>
+                            {rebinding === id ? tr('키 입력 대기…') : (keymap[id] || tr('(없음)'))}
+                        </button>
+                        {keymap[id] !== defaultKeys[id] && (
+                            <button className="small-btn" title={tr('기본값으로')} onClick={() => saveKeymap({ ...keymap, [id]: defaultKeys[id] })}>{tr('되돌리기')}</button>
+                        )}
+                    </div>
+                ))}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 12 }}>
+                    <button className="button" onClick={() => saveKeymap({ ...keymap, ...Object.fromEntries(ids.map(id => [id, defaultKeys[id]])) })}>{tr('도구 기본값')}</button>
+                    <button className="button button-primary" onClick={onClose}>{tr('닫기')}</button>
                 </div>
             </div>
         </div>
