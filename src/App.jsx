@@ -357,6 +357,9 @@ export default function App() {
     const fileMenuRef = useRef(null);
     const mediaMenuRef = useRef(null);
     const timelineRef = useRef(null);
+    // Where the timeline was scrolled to before it was folded away, so unfolding returns to the
+    // same place rather than to the start of the project.
+    const timelineScrollRef = useRef(/** @type {{left: number, top: number} | null} */(null));
     const [pps, setPps] = useState(50);
     // Visible px window of the horizontally-scrolled timeline, so only on-screen cut blocks and
     // ruler ticks are rendered (thousands of DOM nodes otherwise stall the whole app).
@@ -459,7 +462,18 @@ export default function App() {
         if (prev) {
             panelsBeforeHideRef.current = null;
             setShowLeft(prev.left); setLeftDock(prev.dock); setShowRight(prev.right); setShowBottom(prev.bottom);
+            // After the layout has been laid out again - the container does not exist until then.
+            const want = timelineScrollRef.current;
+            if (want) requestAnimationFrame(() => requestAnimationFrame(() => {
+                const el = timelineRef.current;
+                if (el) { el.scrollLeft = want.left; el.scrollTop = want.top; }
+            }));
         } else {
+            // The timeline's scroll container is unmounted while the panels are folded, so it
+            // comes back a fresh element scrolled to zero - the view jumps to the start of the
+            // project rather than staying where the work was. Remember where it was looking.
+            const tl = timelineRef.current;
+            timelineScrollRef.current = tl ? { left: tl.scrollLeft, top: tl.scrollTop } : null;
             panelsBeforeHideRef.current = { left: showLeft, dock: leftDock, right: showRight, bottom: showBottom };
             setShowLeft(false); setLeftDock(null); setShowRight(false); setShowBottom(false);
         }
@@ -761,6 +775,10 @@ export default function App() {
             if (e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
                 e.preventDefault();
                 toggleAllPanelsRef.current?.();
+                // Folding unmounts whatever held focus, and focus then falls back to <body> -
+                // which is why the next Tab started from the top of the page. Put it on the
+                // canvas instead, where the shortcuts are aimed.
+                requestAnimationFrame(() => canvasRef.current?.focus({ preventScroll: true }));
                 return;
             }
             // User-defined shortcuts first; the conventional Ctrl+Z / Ctrl+Y combinations are
@@ -2311,6 +2329,10 @@ export default function App() {
     // optional chaining does not help, that guards a missing method, not a throw - and an
     // uncaught throw out of a pointerdown handler takes the whole app down. That happened.
     const beginGesture = (e) => {
+        // Drawing means the canvas is what is being worked on. Leaving focus in the size box - a
+        // very ordinary place for it to be - sent the next keystroke there instead of to the
+        // shortcut it was meant for.
+        canvasRef.current?.focus({ preventScroll: true });
         activePointerIdRef.current = e.pointerId;
         try { canvasRef.current?.setPointerCapture(e.pointerId); } catch { }
         isDrawing.current = true;
@@ -4028,7 +4050,10 @@ export default function App() {
                         </button>
                     )}
                     <div className="canvas-stage" style={{ position: 'relative', transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})`, aspectRatio: `${CANVAS_W} / ${CANVAS_H}`, maxWidth: '100%', maxHeight: '100%' }}>
-                        <canvas ref={canvasRef} width={CANVAS_W} height={CANVAS_H}
+                        {/* tabIndex -1: focusable from code, never a stop in the tab order. The
+                            canvas is where the keys are meant to land, but nobody tabs to a
+                            drawing surface. */}
+                        <canvas ref={canvasRef} width={CANVAS_W} height={CANVAS_H} tabIndex={-1}
                             onPointerDown={startDraw} onPointerMove={onDraw} onPointerUp={stopDraw} onPointerCancel={stopDraw} onPointerLeave={onPointerLeaveCanvas}
                             style={{ cursor: spaceDown ? 'grab' : selection ? 'move' : tool === 'fill' ? 'cell' : tool === 'lasso' ? 'crosshair' : 'crosshair', touchAction: 'none' }} />
                         {/* The live overlay must be transparent. Inheriting the global
