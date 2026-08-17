@@ -18,6 +18,7 @@ import { useTimelineGestures } from './hooks/useTimelineGestures.js';
 import { fmt, parseClock } from './core/timeCode.js';
 import { pushSnapshot, step } from './core/historyOps.js';
 import { nextProbeDelay } from './core/probeBackoff.js';
+import { playbackStartFrom } from './core/playbackStart.js';
 import {
     mediaReducer, EMPTY_MEDIA, loadAudio, setAudioDuration, setAudioClip, clearAudio,
     loadVideo, clearVideo, setVideoCuts, setVideoOpacity, clearVideoCuts, moveTrack, resizeAudio,
@@ -748,6 +749,12 @@ export default function App() {
 
     useEffect(() => {
         const handleKeyDown = (e) => {
+            // Save is claimed before the input guard below. A text field has no "save" of its
+            // own, so Ctrl+S typed while editing text used to fall through to the browser and
+            // offer to save the page as HTML - which is the reflex moment for pressing it.
+            // Undo and redo are deliberately *not* hoisted: inside a field those belong to the
+            // field.
+            if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) { e.preventDefault(); doSave(false); return; }
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
             // Tab hides every panel so the canvas is alone on screen, and restores exactly what was
             // open before. Plain Tab only: Ctrl/Alt/Shift+Tab stay with the browser.
@@ -775,7 +782,6 @@ export default function App() {
                 else if (hit === 'brushDown') { const s = tool === 'eraser' ? eraserSize : brushSize; const n = Math.max(1, Math.round(s / 1.25)); tool === 'eraser' ? setEraserSize(n) : setBrushSize(n); }
                 return;
             }
-            if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) { e.preventDefault(); doSave(false); }
             if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); globalUndo(); }
             if ((e.ctrlKey || e.metaKey) && (e.key === 'Z' || (e.key === 'z' && e.shiftKey) || e.key === 'y')) { e.preventDefault(); globalRedo(); }
             if ((e.ctrlKey || e.metaKey) && e.key === 'c') { if (currentCutId) { e.preventDefault(); handleCopyCut(currentCutId); } }
@@ -961,6 +967,9 @@ export default function App() {
             pendingTlScrollRef.current = null;
         }
     }, [pps]);
+    // Ctrl/Cmd + wheel is left to the browser. The timeline and the canvas both zoom on a plain
+    // wheel, so the app never needs the modifier - and taking it away everywhere would remove
+    // page zoom from the whole application to protect against pressing it by accident.
     useEffect(() => {
         const t = timelineRef.current; if (!t) return;
         // Plain wheel over the timeline zooms about the cursor (Shift+wheel = horizontal scroll).
@@ -1663,11 +1672,13 @@ export default function App() {
             const cc = cuts.find(c => c.id === currentCutId);
             let anchor = cc ? cc.startTime : playStart;
             if (anchor < playStart - 0.001 || anchor >= playEnd) anchor = playStart; // keep the anchor inside the active part
-            const finished = currentTime >= playEnd - 0.001 || (cc && currentTime >= cc.endTime - 0.001);
-            if (finished || currentTime < anchor - 0.001 || currentTime > playEnd + 0.001) {
-                setCurrentTime(anchor);
-                currentTimeRef.current = anchor;
-                if (audioRef.current) audioRef.current.currentTime = audioData ? Math.max(0, (anchor - audioData.startTime) + audioData.offset) : anchor;
+            // Where to start is worked out in playbackStart, which is where the reasoning about
+            // "finished" versus "put there on purpose" lives.
+            const from = playbackStartFrom(currentTime, playStart, playEnd, anchor);
+            if (Math.abs(from - currentTime) > 0.001) {
+                setCurrentTime(from);
+                currentTimeRef.current = from;
+                if (audioRef.current) audioRef.current.currentTime = audioData ? Math.max(0, (from - audioData.startTime) + audioData.offset) : from;
             }
         } else {
             // Pausing: stop audio immediately (don't wait for the effect).
