@@ -167,3 +167,48 @@ export function offsetLayers(cut, layerIds, dx, dy, withTexts) {
         texts: withTexts ? texts.map(t => ({ ...t, x: (t.x || 0) + dx, y: (t.y || 0) + dy })) : texts,
     };
 }
+
+/**
+ * Flatten a layer into the one below it.
+ *
+ * "Below" means the next drawable layer in UI order — folders are containers, not surfaces, so
+ * they are skipped as a target and refused as a source. The upper layer's strokes go after the
+ * lower one's, which is what keeps it looking the same: later strokes draw on top.
+ *
+ * Stroke bitmap ids are carried across unchanged rather than copied. The pixels have one owner
+ * either way, because the layer they came from is being removed in the same move — duplicating
+ * them here would leave the originals unreferenced and the collector would free them.
+ *
+ * @param {Array} layers the cut's layers, in UI order
+ * @param {any} layerId the layer to merge downwards
+ * @param {(layers: Array) => Array} flattenVisibleLeaves ordering helper (flattenLayersInUiOrder)
+ * @returns {{layers: Array, activeLayerId: any} | null} null when there is nothing to merge into
+ */
+export function mergeDown(layers, layerId, flattenVisibleLeaves) {
+    const list = Array.isArray(layers) ? layers : [];
+    const src = list.find(l => l.id === layerId);
+    if (!src || src.type === 'folder') return null;
+
+    // The order the user sees, which is what "the one below" means - not the array order, since
+    // nesting makes those differ.
+    const order = flattenVisibleLeaves(list).filter(l => l.type === 'layer');
+    const at = order.findIndex(l => l.id === layerId);
+    if (at < 0 || at + 1 >= order.length) return null;   // nothing underneath
+    const target = order[at + 1];
+
+    return {
+        layers: list
+            .filter(l => l.id !== layerId)
+            .map(l => l.id !== target.id ? l : ({
+                ...l,
+                // Visible, because merging into a hidden layer would make the work vanish.
+                visible: true,
+                rev: (l.rev || 0) + 1,
+                strokes: [...(l.strokes || []), ...(src.strokes || [])],
+                // Redo belongs to the layers as they were; those steps cannot be replayed onto
+                // the merged result.
+                redoStrokes: [],
+            })),
+        activeLayerId: target.id,
+    };
+}

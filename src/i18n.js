@@ -512,6 +512,7 @@ const EN = {
     '필압': 'Pressure',
     '농도': 'Opacity',
     '영상 설정': 'Video settings',
+    '아래 레이어와 병합': 'Merge into the layer below',
     '도구 단축키': 'Tool shortcuts',
     '도구 단축키…': 'Tool shortcuts…',
     '도구 기본값': 'Reset tool keys',

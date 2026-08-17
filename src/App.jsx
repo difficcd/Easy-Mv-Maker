@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
-import { Plus, Trash2, PenLine, Pen, Feather, Eraser, Undo, Redo, Layers, Trash, ChevronRight, ChevronDown, Folder, FolderOpen, Eye, EyeOff, ClipboardPaste, GitBranch, Move, Type, Cloud, Film, Repeat, Minus, Waves, Grid3x3, Palette, Menu, PaintBucket, Pipette, RotateCcw } from 'lucide-react';
+import { Plus, Trash2, PenLine, Pen, Feather, Eraser, Undo, Redo, Layers, Trash, ChevronRight, ChevronDown, Folder, FolderOpen, Eye, EyeOff, ClipboardPaste, GitBranch, Move, Type, Cloud, Film, Repeat, Minus, Waves, Grid3x3, Palette, Menu, PaintBucket, Pipette, RotateCcw, ArrowDownToLine } from 'lucide-react';
 import './App.css';
 import { saveAutosave, loadAutosave, saveProject, loadProject, listProjects, deleteProject, autosaveKey } from './db';
 import { CutAnimPanel, LayerAnimPanel, JitterPanel } from './ui/AnimPanels';
@@ -30,7 +30,7 @@ import {
     cutsReducer, replaceCuts, addCuts, updateCut, setCutAnim, clearCut,
     updateLayer, setLayerAnim, moveLayers, upsertText, moveText, deleteText, toggleTextVisible as toggleTextVisibleAction,
     assignPartTo, renamePart as renamePartAction, ungroupPart as ungroupPartAction, removeBatch,
-    insertCutsShifting, deleteTrack, moveCutGroup, replaceBatchCuts, patchCut, patchCuts,
+    insertCutsShifting, deleteTrack, moveCutGroup, replaceBatchCuts, mergeLayerDown, patchCut, patchCuts,
 } from './core/cutsReducer.js';
 import { measureTextBox as measureTextBoxPure, textNeedsBox, drawTextObject } from './canvas/textRender.js';
 import { migrateCuts, projectSettings, makeLoadProgress } from './core/projectFormat.js';
@@ -3720,6 +3720,12 @@ export default function App() {
                                 title={layer.roughen ? tr('자글자글 모션 (강도 {0}) — 클릭: 설정 열기', layer.roughen) : tr('자글자글 모션 설정 (이미 그린 선이 제자리에서 부글거림)')}
                                 onClick={e => toggleJitterPanel(e, cut.id, layer.id)}>
                                 <Waves size={11} />
+                            </button>
+                        )}
+                        {!isFolder && (
+                            <button className="icon-btn" title={tr('아래 레이어와 병합')}
+                                onClick={e => { e.stopPropagation(); dispatchCuts(mergeLayerDown(cut.id, layer.id, flattenLayersInUiOrder)); }}>
+                                <ArrowDownToLine size={11} />
                             </button>
                         )}
                         {!isFolder && (
