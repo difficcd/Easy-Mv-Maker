@@ -967,20 +967,9 @@ export default function App() {
             pendingTlScrollRef.current = null;
         }
     }, [pps]);
-    // Ctrl/Cmd + wheel is the browser's page zoom, and the timeline and canvas already zoom on a
-    // plain wheel - so the modifier only ever arrives here by accident. Letting it through
-    // rescales the whole interface, and because the canvas is sized in CSS pixels that changes
-    // the working scale and has to be undone by hand. The per-element handlers below cannot cover
-    // it: a wheel over a panel, the top bar or the gap between them reaches neither, which is why
-    // the symptom looked intermittent. One document-level listener closes all of that.
-    //
-    // Keyboard zoom (Ctrl +/-) is left alone; this is only about the wheel.
-    useEffect(() => {
-        const block = (e) => { if (e.ctrlKey || e.metaKey) e.preventDefault(); };
-        document.addEventListener('wheel', block, { passive: false });
-        return () => document.removeEventListener('wheel', block);
-    }, []);
-
+    // Ctrl/Cmd + wheel is left to the browser. The timeline and the canvas both zoom on a plain
+    // wheel, so the app never needs the modifier - and taking it away everywhere would remove
+    // page zoom from the whole application to protect against pressing it by accident.
     useEffect(() => {
         const t = timelineRef.current; if (!t) return;
         // Plain wheel over the timeline zooms about the cursor (Shift+wheel = horizontal scroll).
