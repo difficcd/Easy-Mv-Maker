@@ -357,6 +357,9 @@ export default function App() {
     const fileMenuRef = useRef(null);
     const mediaMenuRef = useRef(null);
     const timelineRef = useRef(null);
+    // Where the timeline was scrolled to before it was folded away, so unfolding returns to the
+    // same place rather than to the start of the project.
+    const timelineScrollRef = useRef(/** @type {{left: number, top: number} | null} */(null));
     const [pps, setPps] = useState(50);
     // Visible px window of the horizontally-scrolled timeline, so only on-screen cut blocks and
     // ruler ticks are rendered (thousands of DOM nodes otherwise stall the whole app).
@@ -459,7 +462,18 @@ export default function App() {
         if (prev) {
             panelsBeforeHideRef.current = null;
             setShowLeft(prev.left); setLeftDock(prev.dock); setShowRight(prev.right); setShowBottom(prev.bottom);
+            // After the layout has been laid out again - the container does not exist until then.
+            const want = timelineScrollRef.current;
+            if (want) requestAnimationFrame(() => requestAnimationFrame(() => {
+                const el = timelineRef.current;
+                if (el) { el.scrollLeft = want.left; el.scrollTop = want.top; }
+            }));
         } else {
+            // The timeline's scroll container is unmounted while the panels are folded, so it
+            // comes back a fresh element scrolled to zero - the view jumps to the start of the
+            // project rather than staying where the work was. Remember where it was looking.
+            const tl = timelineRef.current;
+            timelineScrollRef.current = tl ? { left: tl.scrollLeft, top: tl.scrollTop } : null;
             panelsBeforeHideRef.current = { left: showLeft, dock: leftDock, right: showRight, bottom: showBottom };
             setShowLeft(false); setLeftDock(null); setShowRight(false); setShowBottom(false);
         }
