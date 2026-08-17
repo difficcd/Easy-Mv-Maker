@@ -761,6 +761,10 @@ export default function App() {
             if (e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
                 e.preventDefault();
                 toggleAllPanelsRef.current?.();
+                // Folding unmounts whatever held focus, and focus then falls back to <body> -
+                // which is why the next Tab started from the top of the page. Put it on the
+                // canvas instead, where the shortcuts are aimed.
+                requestAnimationFrame(() => canvasRef.current?.focus({ preventScroll: true }));
                 return;
             }
             // User-defined shortcuts first; the conventional Ctrl+Z / Ctrl+Y combinations are
@@ -2311,6 +2315,10 @@ export default function App() {
     // optional chaining does not help, that guards a missing method, not a throw - and an
     // uncaught throw out of a pointerdown handler takes the whole app down. That happened.
     const beginGesture = (e) => {
+        // Drawing means the canvas is what is being worked on. Leaving focus in the size box - a
+        // very ordinary place for it to be - sent the next keystroke there instead of to the
+        // shortcut it was meant for.
+        canvasRef.current?.focus({ preventScroll: true });
         activePointerIdRef.current = e.pointerId;
         try { canvasRef.current?.setPointerCapture(e.pointerId); } catch { }
         isDrawing.current = true;
@@ -4028,7 +4036,10 @@ export default function App() {
                         </button>
                     )}
                     <div className="canvas-stage" style={{ position: 'relative', transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})`, aspectRatio: `${CANVAS_W} / ${CANVAS_H}`, maxWidth: '100%', maxHeight: '100%' }}>
-                        <canvas ref={canvasRef} width={CANVAS_W} height={CANVAS_H}
+                        {/* tabIndex -1: focusable from code, never a stop in the tab order. The
+                            canvas is where the keys are meant to land, but nobody tabs to a
+                            drawing surface. */}
+                        <canvas ref={canvasRef} width={CANVAS_W} height={CANVAS_H} tabIndex={-1}
                             onPointerDown={startDraw} onPointerMove={onDraw} onPointerUp={stopDraw} onPointerCancel={stopDraw} onPointerLeave={onPointerLeaveCanvas}
                             style={{ cursor: spaceDown ? 'grab' : selection ? 'move' : tool === 'fill' ? 'cell' : tool === 'lasso' ? 'crosshair' : 'crosshair', touchAction: 'none' }} />
                         {/* The live overlay must be transparent. Inheriting the global
