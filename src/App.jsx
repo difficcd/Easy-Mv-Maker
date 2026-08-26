@@ -34,6 +34,7 @@ import {
 } from './core/cutsReducer.js';
 import { measureTextBox as measureTextBoxPure, textNeedsBox, drawTextObject } from './canvas/textRender.js';
 import { migrateCuts, projectSettings, makeLoadProgress } from './core/projectFormat.js';
+import { frameStorage, frameLoad, imageExt, imageExtFromType, audioExt, videoExt } from './core/projectAssets.js';
 import { unusedBitmapIds } from './core/bitmapRefs.js';
 import { dragCut, resizeCut } from './core/cutOps.js';
 import {
@@ -1164,9 +1165,10 @@ export default function App() {
             if (!entry) continue;
             // Video frames are held as a Blob (preferred) or legacy dataURL.
             if (entry.blob || entry.url) {
-                const ext = entry.ext || (entry.url?.match(/^data:image\/(\w+)/)?.[1]) || 'webp';
-                if (assetSink) { assets.push({ id, ext, w: entry.w || 0, h: entry.h || 0 }); assetSink.push({ id, blob: entry.blob, url: entry.url, ext }); }
-                else if (blobsOk && entry.blob) { bitmaps[id] = entry.blob; compressed.push(id); }
+                const ext = imageExt(entry);
+                const where = frameStorage(entry, { assetSink, blobsOk });
+                if (where === 'asset') { assets.push({ id, ext, w: entry.w || 0, h: entry.h || 0 }); assetSink.push({ id, blob: entry.blob, url: entry.url, ext }); }
+                else if (where === 'blob') { bitmaps[id] = entry.blob; compressed.push(id); }
                 else { bitmaps[id] = entry.blob ? await blobToDataURL(entry.blob) : entry.url; compressed.push(id); }
                 continue;
             }
@@ -1189,7 +1191,7 @@ export default function App() {
         if (includeAudio && audioB64Ref.current && audioData) {
             const meta = { name: audioFile?.name || tr('오디오'), startTime: audioData.startTime, endTime: audioData.endTime, offset: audioData.offset, duration: audioDuration };
             if (assetSink) {
-                const ext = (audioB64Ref.current.match(/^data:audio\/([\w.-]+)/)?.[1] || 'mp3').replace('mpeg', 'mp3').replace('x-m4a', 'm4a');
+                const ext = audioExt(audioB64Ref.current);
                 assetSink.push({ id: '__audio__', url: audioB64Ref.current, ext });
                 out.audio = { ...meta, asset: true, ext };
             } else {
@@ -1200,7 +1202,7 @@ export default function App() {
         // Blob directly for IndexedDB; embed as dataURL only for a self-contained .emv file.
         if (videoOverlay && videoBlobRef.current) {
             const meta = { name: videoOverlay.name, startTime: videoOverlay.startTime, endTime: videoOverlay.endTime, offset: videoOverlay.offset, duration: videoOverlay.duration, w: videoOverlay.w, h: videoOverlay.h, opacity: videoOverlay.opacity ?? 1, cuts: videoOverlay.cuts, cutStart: videoOverlay.cutStart, cutOffset: videoOverlay.cutOffset };
-            const ext = (videoBlobRef.current.type.match(/video\/([\w.-]+)/)?.[1] || 'mp4').replace('x-matroska', 'mkv').replace('quicktime', 'mov');
+            const ext = videoExt(videoBlobRef.current.type);
             if (assetSink) { assetSink.push({ id: '__video__', blob: videoBlobRef.current, ext }); out.video = { ...meta, asset: true, ext }; }
             else if (blobsOk) { out.video = { ...meta, blob: videoBlobRef.current }; }
             else { out.video = { ...meta, dataUrl: await blobToDataURL(videoBlobRef.current) }; }
@@ -1239,12 +1241,13 @@ export default function App() {
                     // Frames may arrive as a Blob (IndexedDB autosave) or a dataURL (embedded .emv).
                     // Keep them as a Blob (off-heap) and decode lazily. Drawing layers (small PNG
                     // dataURLs, not flagged compressed) become editable ImageData up front.
-                    if (val instanceof Blob) {
-                        return [id, { imageData: null, imageBitmap: null, blob: val, ext: (val.type.match(/image\/(\w+)/)?.[1]) || 'webp' }];
+                    const how = frameLoad(val, compressedSet, id);
+                    if (how === 'blob') {
+                        return [id, { imageData: null, imageBitmap: null, blob: val, ext: imageExtFromType(val.type) }];
                     }
-                    if (compressedSet.has(id) || /^data:image\/(webp|jpeg)/.test(val)) {
+                    if (how === 'compressed') {
                         const blob = await (await fetch(val)).blob();
-                        return [id, { imageData: null, imageBitmap: null, blob, ext: (blob.type.match(/image\/(\w+)/)?.[1]) || 'webp' }];
+                        return [id, { imageData: null, imageBitmap: null, blob, ext: imageExtFromType(blob.type) }];
                     }
                     const imageData = await dataURLToImageData(val);
                     let imageBitmap = null;
