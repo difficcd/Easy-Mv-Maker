@@ -4,7 +4,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { moveLayer, isDescendantOf, resolveDrawLayer, commitStroke, insertFill, offsetLayers } from '../src/core/layerOps.js';
+import { moveLayer, isDescendantOf, resolveDrawLayer, commitStroke, insertFill, offsetLayers, mergeDown } from '../src/core/layerOps.js';
 import { flattenLayersInUiOrder } from '../src/canvas/canvasUtils.js';
 
 // f1 > a, b   then c at the root
@@ -286,4 +286,85 @@ test('offsetLayers: does not mutate the cut it was given', () => {
 test('offsetLayers: a cut with nothing in it is not a special case for the caller', () => {
     assert.deepEqual(offsetLayers({}, ['a'], 1, 1, true), { layers: [], texts: [] });
     assert.deepEqual(offsetLayers(undefined, undefined, 1, 1, false), { layers: [], texts: [] });
+});
+
+// ── merging a layer down ───────────────────────────────────────────────────
+const stack = () => ([
+    { id: 'top', type: 'layer', parentId: null, visible: true, strokes: [{ id: 't1' }] },
+    { id: 'mid', type: 'layer', parentId: null, visible: true, strokes: [{ id: 'm1' }] },
+    { id: 'bot', type: 'layer', parentId: null, visible: true, strokes: [{ id: 'b1' }] },
+]);
+
+test('mergeDown: the upper layer goes away and its strokes land on top of the lower one', () => {
+    // Order matters: later strokes draw over earlier ones, so appending is what keeps the
+    // merged layer looking like the two did.
+    const out = mergeDown(stack(), 'top', flat);
+    assert.deepEqual(out.layers.map(l => l.id), ['mid', 'bot']);
+    assert.deepEqual(out.layers[0].strokes.map(s => s.id), ['m1', 't1']);
+    assert.equal(out.activeLayerId, 'mid', 'the surviving layer becomes the active one');
+});
+
+test('mergeDown: "below" follows what the user sees, not the array', () => {
+    const out = mergeDown(stack(), 'mid', flat);
+    assert.deepEqual(out.layers.map(l => l.id), ['top', 'bot']);
+    assert.deepEqual(out.layers[1].strokes.map(s => s.id), ['b1', 'm1']);
+});
+
+test('mergeDown: the bottom layer has nothing to merge into', () => {
+    // Returning null rather than deleting it: losing a layer to a misplaced click is expensive.
+    assert.equal(mergeDown(stack(), 'bot', flat), null);
+});
+
+test('mergeDown: a folder is neither a source nor a target', () => {
+    const withFolder = [
+        { id: 'f', type: 'folder', parentId: null, visible: true },
+        { id: 'a', type: 'layer', parentId: 'f', visible: true, strokes: [{ id: 'a1' }] },
+        { id: 'b', type: 'layer', parentId: null, visible: true, strokes: [{ id: 'b1' }] },
+    ];
+    assert.equal(mergeDown(withFolder, 'f', flat), null, 'a folder is a container, not a surface');
+    const out = mergeDown(withFolder, 'a', flat);
+    assert.deepEqual(out.layers.find(l => l.id === 'b').strokes.map(s => s.id), ['b1', 'a1'],
+        'the folder is skipped as a target');
+});
+
+test('mergeDown: merging into a hidden layer reveals it', () => {
+    // Otherwise the work disappears at the moment of merging, which reads as data loss.
+    const s = [
+        { id: 'top', type: 'layer', parentId: null, visible: true, strokes: [{ id: 't' }] },
+        { id: 'bot', type: 'layer', parentId: null, visible: false, strokes: [] },
+    ];
+    assert.equal(mergeDown(s, 'top', flat).layers[0].visible, true);
+});
+
+test('mergeDown: bumps rev and drops redo on the surviving layer', () => {
+    const s = [
+        { id: 'top', type: 'layer', parentId: null, visible: true, strokes: [{ id: 't' }] },
+        { id: 'bot', type: 'layer', parentId: null, visible: true, rev: 3, strokes: [], redoStrokes: [{ id: 'r' }] },
+    ];
+    const merged = mergeDown(s, 'top', flat).layers[0];
+    assert.equal(merged.rev, 4);
+    assert.deepEqual(merged.redoStrokes, [], 'those steps cannot be replayed onto the merged result');
+});
+
+test('mergeDown: bitmap ids are carried across, not copied', () => {
+    // The pixels keep one owner because the source layer is removed in the same move; copying
+    // would leave the originals unreferenced for the collector to free.
+    const s = [
+        { id: 'top', type: 'layer', parentId: null, visible: true, strokes: [{ id: 't', bitmapId: 'bmp' }] },
+        { id: 'bot', type: 'layer', parentId: null, visible: true, strokes: [] },
+    ];
+    assert.equal(mergeDown(s, 'top', flat).layers[0].strokes[0].bitmapId, 'bmp');
+});
+
+test('mergeDown: an unknown layer, or none at all, changes nothing', () => {
+    assert.equal(mergeDown(stack(), 'nope', flat), null);
+    assert.equal(mergeDown([], 'a', flat), null);
+    assert.equal(mergeDown(null, 'a', flat), null);
+});
+
+test('mergeDown: does not mutate the layers it was given', () => {
+    const before = stack();
+    const snapshot = JSON.stringify(before);
+    mergeDown(before, 'top', flat);
+    assert.equal(JSON.stringify(before), snapshot);
 });
