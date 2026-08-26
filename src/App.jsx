@@ -35,6 +35,7 @@ import {
 import { measureTextBox as measureTextBoxPure, textNeedsBox, drawTextObject } from './canvas/textRender.js';
 import { migrateCuts, projectSettings, makeLoadProgress } from './core/projectFormat.js';
 import { frameStorage, frameLoad, imageExt, imageExtFromType, audioExt, videoExt } from './core/projectAssets.js';
+import { xAtTime, timeAtX, zoomAnchored, pinchZoom } from './core/timelineZoom.js';
 import { unusedBitmapIds } from './core/bitmapRefs.js';
 import { dragCut, resizeCut } from './core/cutOps.js';
 import {
@@ -892,7 +893,7 @@ export default function App() {
                 syncVideo(t, true);
                 currentTimeRef.current = t;
                 paintFrameRef.current?.(t, true);
-                if (playheadRef.current) playheadRef.current.style.left = `${t * pps + 60}px`;
+                if (playheadRef.current) playheadRef.current.style.left = `${xAtTime(t, pps)}px`;
                 reqRef.current = requestAnimationFrame(step);
                 return;
             }
@@ -919,7 +920,7 @@ export default function App() {
             }
             currentTimeRef.current = t;
             paintFrameRef.current?.(t, true);                                   // 60fps imperative canvas
-            if (playheadRef.current) playheadRef.current.style.left = `${t * pps + 60}px`; // 60fps imperative playhead
+            if (playheadRef.current) playheadRef.current.style.left = `${xAtTime(t, pps)}px`; // 60fps imperative playhead
             if (now - lastPrefetch > 120) { lastPrefetch = now; prefetchRef.current?.(t, true); } // decode ahead of the REAL playhead
             if (now - lastUiSync > 200) { lastUiSync = now; setCurrentTime(t); } // ~5Hz React sync — keep re-renders off the rAF thread so prefetch keeps up
             reqRef.current = requestAnimationFrame(step);
@@ -973,16 +974,15 @@ export default function App() {
         const el = timelineRef.current; if (!el) return;
         const localX = clientX - el.getBoundingClientRect().left;
         setPps(prev => {
-            const next = Math.max(10, Math.min(300, prev * factor));
-            if (next === prev) return prev;
-            const time = (el.scrollLeft + localX - 60) / prev;
-            pendingTlScrollRef.current = time * next + 60 - localX;
-            return next;
+            const r = zoomAnchored(prev, factor, el.scrollLeft, localX);
+            if (!r) return prev; // already at the limit - leave the scroll where it is
+            pendingTlScrollRef.current = r.scrollLeft;
+            return r.pps;
         });
     };
     useLayoutEffect(() => {
         if (pendingTlScrollRef.current != null && timelineRef.current) {
-            timelineRef.current.scrollLeft = Math.max(0, pendingTlScrollRef.current);
+            timelineRef.current.scrollLeft = pendingTlScrollRef.current;
             pendingTlScrollRef.current = null;
         }
     }, [pps]);
@@ -1014,8 +1014,8 @@ export default function App() {
             if (pts.size === 2) {
                 const [a, b] = [...pts.values()];
                 const rect = el.getBoundingClientRect();
-                const contentX = (a.x + b.x) / 2 - rect.left + el.scrollLeft - 60;
-                pinch = { startDist: Math.hypot(a.x - b.x, a.y - b.y) || 1, startPps: ppsRef.current, anchorTime: Math.max(0, contentX / ppsRef.current) };
+                const midX = (a.x + b.x) / 2 - rect.left;
+                pinch = { startDist: Math.hypot(a.x - b.x, a.y - b.y) || 1, startPps: ppsRef.current, anchorTime: Math.max(0, timeAtX(el.scrollLeft, midX, ppsRef.current)) };
                 e.preventDefault(); e.stopPropagation();
             }
         };
@@ -1024,10 +1024,10 @@ export default function App() {
             pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
             if (pts.size >= 2 && pinch) {
                 const [a, b] = [...pts.values()];
-                const np = Math.max(10, Math.min(300, pinch.startPps * (Math.hypot(a.x - b.x, a.y - b.y) / pinch.startDist)));
-                setPps(np);
                 const rect = el.getBoundingClientRect();
-                el.scrollLeft = Math.max(0, pinch.anchorTime * np + 60 - ((a.x + b.x) / 2 - rect.left));
+                const r = pinchZoom(pinch, Math.hypot(a.x - b.x, a.y - b.y), (a.x + b.x) / 2 - rect.left);
+                setPps(r.pps);
+                el.scrollLeft = r.scrollLeft;
                 e.preventDefault(); e.stopPropagation();
             }
         };
@@ -1072,7 +1072,7 @@ export default function App() {
                 // works from the edges the drag started at plus the delta, so reading the
                 // document from liveRef gives the same answer as the updater's argument would.
                 const r = resizeCut(liveRef.current.cuts, { cutId: resizingData.cutId, edge: resizingData.edge, initialStart: i0, initialEnd: i1 }, dt, pps);
-                setSnapLinePos(r.snapAt == null ? null : r.snapAt * pps + 60);
+                setSnapLinePos(r.snapAt == null ? null : xAtTime(r.snapAt, pps));
                 dispatchCuts(replaceCuts(r.cuts));
             } else if (draggingCutData) {
                 // A cut only moves once the press is "armed" (long-press on touch, immediate
@@ -1104,7 +1104,7 @@ export default function App() {
                 // stays pure. dragCut places the cut at initialStart + dt, reading the others
                 // only to snap against them, and they do not move during the drag.
                 const r = dragCut(liveRef.current.cuts, draggingCutData, dt, trackOff, numTracks, pps);
-                setSnapLinePos(r.snapAt == null ? null : r.snapAt * pps + 60);
+                setSnapLinePos(r.snapAt == null ? null : xAtTime(r.snapAt, pps));
                 dispatchCuts(replaceCuts(r.cuts));
             }
         };

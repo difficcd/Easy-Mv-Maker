@@ -888,6 +888,8 @@ canvas {
     align-items: center;
 }
 
+/* The width here is also TRACK_GUTTER in core/timelineZoom.js, which every conversion between a
+   screen x and a time subtracts. Change one and the playhead stops landing where it should. */
 .tl-track-label {
     position: sticky;
     left: 0;
