@@ -13,9 +13,23 @@ on:
   push:
     tags: ['v*']
 
+# The release step needs to write. Without this the whole build succeeds, uploads the APK as a
+# run artifact, and then fails at the last step trying to create the Release - the account-wide
+# default for workflow tokens here is read-only. Nobody had pushed a v* tag yet, so that was
+# waiting to be discovered at the worst moment.
+permissions:
+  contents: write
+
+concurrency:
+  group: apk-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   apk:
     runs-on: ubuntu-latest
+    # A cold Gradle build with no cache runs about ten minutes; thirty leaves room without
+    # letting a hang sit there for six hours.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 

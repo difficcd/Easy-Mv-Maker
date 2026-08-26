@@ -1,0 +1,39 @@
+name: CodeQL
+
+# Static security analysis. Free for public repositories, and worth having here specifically
+# because this app handles files and URLs the user supplies - project files, imported video,
+# YouTube links that are passed to a server process. Findings appear under Security → Code
+# scanning rather than as a failing check, so this does not gate merges.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly, so an advisory published after a quiet period still gets found.
+    - cron: '17 4 * * 1'
+
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          # Includes the security rules that are off by default, which is the reason to run this
+          # at all rather than rely on the linter.
+          queries: security-extended
+
+      - uses: github/codeql-action/analyze@v3

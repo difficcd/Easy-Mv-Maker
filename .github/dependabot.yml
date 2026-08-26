@@ -1,0 +1,34 @@
+# Dependency updates, weekly.
+#
+# The point is not to be on the newest of everything - it is that a security advisory against
+# something in the tree should arrive as a pull request that CI has already run, rather than
+# being noticed months later. Grouped so a quiet week is one PR to look at instead of six.
+
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      # Patch and minor bumps are read together; a major goes on its own, because that is the
+      # one that needs the release notes read.
+      routine:
+        update-types: [minor, patch]
+    commit-message:
+      prefix: 'chore(deps)'
+
+  # Actions pinned to a major tag still move underneath you; this is how a deprecated runner
+  # version or a compromised action gets noticed.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      actions:
+        patterns: ['*']
+    commit-message:
+      prefix: 'chore(ci)'
