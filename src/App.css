@@ -1813,3 +1813,9 @@ html {
     align-items: center;
     gap: 3px;
 }
+
+/* The canvas takes focus so keystrokes reach the shortcuts, but a focus ring around the drawing
+   surface would be noise - it is not something anyone tabs to. */
+.canvas-stage canvas:focus {
+    outline: none;
+}
