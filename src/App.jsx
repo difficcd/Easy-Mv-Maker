@@ -408,6 +408,14 @@ export default function App() {
     const [localProjects, setLocalProjects] = useState(null); // IndexedDB project picker
     const localIdRef = useRef(null);
     const localNameRef = useRef('');
+    // Which document is loaded, as a number that changes whenever the whole thing is replaced.
+    //
+    // Long jobs - extracting frames from a video, detecting scenes - can be sent to the
+    // background and finish minutes later, by which time another project may be open. They
+    // captured no notion of *which* project they were started for, so the result landed in
+    // whatever was on screen: frames from project 1 appearing in project 2. Each job takes a copy
+    // of this when it starts and drops its result if it no longer matches.
+    const docEpochRef = useRef(0);
     const serverIdRef = useRef(null);
     const serverNameRef = useRef('');
     const cutDragMovedRef = useRef(false); // distinguishes a click (select) from a real drag (move)
@@ -1238,6 +1246,7 @@ export default function App() {
         }
         // Older files are brought up to the current shape in projectFormat, where the renames and
         // added fields are written down and tested.
+        docEpochRef.current++;   // opening a project: anything still running belongs to the old one
         dispatchCuts(replaceCuts(migrateCuts(data.cuts)));
         setActivePartId(null);
         const s = projectSettings(data);
@@ -1327,6 +1336,7 @@ export default function App() {
     const resetToEmpty = () => {
         fileHandleRef.current = null;
         bitmapStoreRef.current.clear();
+        docEpochRef.current++;   // starting over
         dispatchCuts(replaceCuts([{ id: 1, name: 'Cut 1', startTime: 0, endTime: 1, track: 0, layers: [mkLayer(1)], activeLayerId: 1, texts: [] }]));
         setNumTracks(2); setCurrentCutId(1); setCurrentTime(0); setExpandedCuts(new Set());
         setCopiedCut(null); setSelectedCutIds(new Set()); setActivePartId(null);
@@ -3457,6 +3467,7 @@ export default function App() {
         // detectSceneCuts polls shouldStop between frames, so cancelling takes effect within one
         // seek rather than running the scan to the end and throwing the answer away.
         sceneStopRef.current = false;
+        const startedFor = docEpochRef.current;
         setSceneDetect({ done: 0, total: 0 });
         detectSceneCuts(blob, {
             start: rStart, end: rEnd, threshold,
@@ -3465,7 +3476,9 @@ export default function App() {
         })
             // A cancelled scan returns what it found so far; keeping a partial set of markers
             // would look like a finished detection that missed most of the cuts.
-            .then(cuts => { if (!sceneStopRef.current) dispatchMedia(setVideoCuts(cuts, cs, co)); })
+            // Same reasoning as the frame import: a scan of a long video outlives a project
+            // switch, and its markers describe a video that is no longer loaded.
+            .then(cuts => { if (!sceneStopRef.current && docEpochRef.current === startedFor) dispatchMedia(setVideoCuts(cuts, cs, co)); })
             .catch(() => { })
             .finally(() => { setSceneDetect(null); sceneStopRef.current = false; });
     };
@@ -3574,6 +3587,7 @@ export default function App() {
     const runVideoImport = async () => {
         const cfg = videoImport;
         if (!cfg?.file) return;
+        const startedFor = docEpochRef.current;
         setVideoBusy({ done: 0, total: 0 });
         try {
             const rStart = cfg.rangeOn ? parseClock(cfg.startText) : 0;
@@ -3596,6 +3610,14 @@ export default function App() {
                 shouldStop: () => videoStopRef.current,
             });
             if (!frames.length) { alert(tr('추출된 프레임이 없습니다.')); return; }
+            // Extraction can take minutes and can be left running in the background, so the
+            // project may have been swapped underneath it. Dropping the frames is the only safe
+            // answer: putting them in the project that happens to be open now would be writing
+            // into a document the user never asked to change.
+            if (docEpochRef.current !== startedFor) {
+                setAppError(tr('다른 프로젝트를 여는 동안 영상 프레임 추출이 끝나 결과를 버렸습니다. 프로젝트를 연 뒤 다시 가져오세요.'));
+                return;
+            }
             // Re-importing the same source replaces its old frames instead of piling up duplicates.
             const srcKey = cfg.srcKey;
             const kept = cuts.filter(c => c.videoSrc !== srcKey);
