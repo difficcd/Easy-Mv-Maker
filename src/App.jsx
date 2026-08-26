@@ -34,6 +34,8 @@ import {
 } from './core/cutsReducer.js';
 import { measureTextBox as measureTextBoxPure, textNeedsBox, drawTextObject } from './canvas/textRender.js';
 import { migrateCuts, projectSettings, makeLoadProgress } from './core/projectFormat.js';
+import { frameStorage, frameLoad, imageExt, imageExtFromType, audioExt, videoExt } from './core/projectAssets.js';
+import { xAtTime, timeAtX, zoomAnchored, pinchZoom } from './core/timelineZoom.js';
 import { unusedBitmapIds } from './core/bitmapRefs.js';
 import { dragCut, resizeCut } from './core/cutOps.js';
 import {
@@ -891,7 +893,7 @@ export default function App() {
                 syncVideo(t, true);
                 currentTimeRef.current = t;
                 paintFrameRef.current?.(t, true);
-                if (playheadRef.current) playheadRef.current.style.left = `${t * pps + 60}px`;
+                if (playheadRef.current) playheadRef.current.style.left = `${xAtTime(t, pps)}px`;
                 reqRef.current = requestAnimationFrame(step);
                 return;
             }
@@ -918,7 +920,7 @@ export default function App() {
             }
             currentTimeRef.current = t;
             paintFrameRef.current?.(t, true);                                   // 60fps imperative canvas
-            if (playheadRef.current) playheadRef.current.style.left = `${t * pps + 60}px`; // 60fps imperative playhead
+            if (playheadRef.current) playheadRef.current.style.left = `${xAtTime(t, pps)}px`; // 60fps imperative playhead
             if (now - lastPrefetch > 120) { lastPrefetch = now; prefetchRef.current?.(t, true); } // decode ahead of the REAL playhead
             if (now - lastUiSync > 200) { lastUiSync = now; setCurrentTime(t); } // ~5Hz React sync — keep re-renders off the rAF thread so prefetch keeps up
             reqRef.current = requestAnimationFrame(step);
@@ -972,16 +974,15 @@ export default function App() {
         const el = timelineRef.current; if (!el) return;
         const localX = clientX - el.getBoundingClientRect().left;
         setPps(prev => {
-            const next = Math.max(10, Math.min(300, prev * factor));
-            if (next === prev) return prev;
-            const time = (el.scrollLeft + localX - 60) / prev;
-            pendingTlScrollRef.current = time * next + 60 - localX;
-            return next;
+            const r = zoomAnchored(prev, factor, el.scrollLeft, localX);
+            if (!r) return prev; // already at the limit - leave the scroll where it is
+            pendingTlScrollRef.current = r.scrollLeft;
+            return r.pps;
         });
     };
     useLayoutEffect(() => {
         if (pendingTlScrollRef.current != null && timelineRef.current) {
-            timelineRef.current.scrollLeft = Math.max(0, pendingTlScrollRef.current);
+            timelineRef.current.scrollLeft = pendingTlScrollRef.current;
             pendingTlScrollRef.current = null;
         }
     }, [pps]);
@@ -998,7 +999,10 @@ export default function App() {
         };
         t.addEventListener('wheel', h, { passive: false });
         return () => t.removeEventListener('wheel', h);
-    }, []);
+        // Re-attach when the timeline is shown again. It is inside `showBottom &&`, so hiding it
+        // unmounts the element and showing it mounts a new one - an empty dependency list would
+        // leave these listeners on the detached node and wheel zoom silently dead after a Tab.
+    }, [showBottom]);
 
     // Two-finger pinch-zoom on the timeline, intercepted in the CAPTURE phase so it works
     // even over cut blocks (which stop propagation / capture the pointer for dragging).
@@ -1013,8 +1017,8 @@ export default function App() {
             if (pts.size === 2) {
                 const [a, b] = [...pts.values()];
                 const rect = el.getBoundingClientRect();
-                const contentX = (a.x + b.x) / 2 - rect.left + el.scrollLeft - 60;
-                pinch = { startDist: Math.hypot(a.x - b.x, a.y - b.y) || 1, startPps: ppsRef.current, anchorTime: Math.max(0, contentX / ppsRef.current) };
+                const midX = (a.x + b.x) / 2 - rect.left;
+                pinch = { startDist: Math.hypot(a.x - b.x, a.y - b.y) || 1, startPps: ppsRef.current, anchorTime: Math.max(0, timeAtX(el.scrollLeft, midX, ppsRef.current)) };
                 e.preventDefault(); e.stopPropagation();
             }
         };
@@ -1023,10 +1027,10 @@ export default function App() {
             pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
             if (pts.size >= 2 && pinch) {
                 const [a, b] = [...pts.values()];
-                const np = Math.max(10, Math.min(300, pinch.startPps * (Math.hypot(a.x - b.x, a.y - b.y) / pinch.startDist)));
-                setPps(np);
                 const rect = el.getBoundingClientRect();
-                el.scrollLeft = Math.max(0, pinch.anchorTime * np + 60 - ((a.x + b.x) / 2 - rect.left));
+                const r = pinchZoom(pinch, Math.hypot(a.x - b.x, a.y - b.y), (a.x + b.x) / 2 - rect.left);
+                setPps(r.pps);
+                el.scrollLeft = r.scrollLeft;
                 e.preventDefault(); e.stopPropagation();
             }
         };
@@ -1042,7 +1046,8 @@ export default function App() {
             el.removeEventListener('pointerup', up, opt);
             el.removeEventListener('pointercancel', up, opt);
         };
-    }, []);
+        // As above: the element is replaced whenever the timeline is hidden and shown.
+    }, [showBottom]);
 
     useEffect(() => {
         if (!resizingData && !draggingCutData) return;
@@ -1071,7 +1076,7 @@ export default function App() {
                 // works from the edges the drag started at plus the delta, so reading the
                 // document from liveRef gives the same answer as the updater's argument would.
                 const r = resizeCut(liveRef.current.cuts, { cutId: resizingData.cutId, edge: resizingData.edge, initialStart: i0, initialEnd: i1 }, dt, pps);
-                setSnapLinePos(r.snapAt == null ? null : r.snapAt * pps + 60);
+                setSnapLinePos(r.snapAt == null ? null : xAtTime(r.snapAt, pps));
                 dispatchCuts(replaceCuts(r.cuts));
             } else if (draggingCutData) {
                 // A cut only moves once the press is "armed" (long-press on touch, immediate
@@ -1103,7 +1108,7 @@ export default function App() {
                 // stays pure. dragCut places the cut at initialStart + dt, reading the others
                 // only to snap against them, and they do not move during the drag.
                 const r = dragCut(liveRef.current.cuts, draggingCutData, dt, trackOff, numTracks, pps);
-                setSnapLinePos(r.snapAt == null ? null : r.snapAt * pps + 60);
+                setSnapLinePos(r.snapAt == null ? null : xAtTime(r.snapAt, pps));
                 dispatchCuts(replaceCuts(r.cuts));
             }
         };
@@ -1164,9 +1169,10 @@ export default function App() {
             if (!entry) continue;
             // Video frames are held as a Blob (preferred) or legacy dataURL.
             if (entry.blob || entry.url) {
-                const ext = entry.ext || (entry.url?.match(/^data:image\/(\w+)/)?.[1]) || 'webp';
-                if (assetSink) { assets.push({ id, ext, w: entry.w || 0, h: entry.h || 0 }); assetSink.push({ id, blob: entry.blob, url: entry.url, ext }); }
-                else if (blobsOk && entry.blob) { bitmaps[id] = entry.blob; compressed.push(id); }
+                const ext = imageExt(entry);
+                const where = frameStorage(entry, { assetSink, blobsOk });
+                if (where === 'asset') { assets.push({ id, ext, w: entry.w || 0, h: entry.h || 0 }); assetSink.push({ id, blob: entry.blob, url: entry.url, ext }); }
+                else if (where === 'blob') { bitmaps[id] = entry.blob; compressed.push(id); }
                 else { bitmaps[id] = entry.blob ? await blobToDataURL(entry.blob) : entry.url; compressed.push(id); }
                 continue;
             }
@@ -1189,7 +1195,7 @@ export default function App() {
         if (includeAudio && audioB64Ref.current && audioData) {
             const meta = { name: audioFile?.name || tr('오디오'), startTime: audioData.startTime, endTime: audioData.endTime, offset: audioData.offset, duration: audioDuration };
             if (assetSink) {
-                const ext = (audioB64Ref.current.match(/^data:audio\/([\w.-]+)/)?.[1] || 'mp3').replace('mpeg', 'mp3').replace('x-m4a', 'm4a');
+                const ext = audioExt(audioB64Ref.current);
                 assetSink.push({ id: '__audio__', url: audioB64Ref.current, ext });
                 out.audio = { ...meta, asset: true, ext };
             } else {
@@ -1200,7 +1206,7 @@ export default function App() {
         // Blob directly for IndexedDB; embed as dataURL only for a self-contained .emv file.
         if (videoOverlay && videoBlobRef.current) {
             const meta = { name: videoOverlay.name, startTime: videoOverlay.startTime, endTime: videoOverlay.endTime, offset: videoOverlay.offset, duration: videoOverlay.duration, w: videoOverlay.w, h: videoOverlay.h, opacity: videoOverlay.opacity ?? 1, cuts: videoOverlay.cuts, cutStart: videoOverlay.cutStart, cutOffset: videoOverlay.cutOffset };
-            const ext = (videoBlobRef.current.type.match(/video\/([\w.-]+)/)?.[1] || 'mp4').replace('x-matroska', 'mkv').replace('quicktime', 'mov');
+            const ext = videoExt(videoBlobRef.current.type);
             if (assetSink) { assetSink.push({ id: '__video__', blob: videoBlobRef.current, ext }); out.video = { ...meta, asset: true, ext }; }
             else if (blobsOk) { out.video = { ...meta, blob: videoBlobRef.current }; }
             else { out.video = { ...meta, dataUrl: await blobToDataURL(videoBlobRef.current) }; }
@@ -1239,12 +1245,13 @@ export default function App() {
                     // Frames may arrive as a Blob (IndexedDB autosave) or a dataURL (embedded .emv).
                     // Keep them as a Blob (off-heap) and decode lazily. Drawing layers (small PNG
                     // dataURLs, not flagged compressed) become editable ImageData up front.
-                    if (val instanceof Blob) {
-                        return [id, { imageData: null, imageBitmap: null, blob: val, ext: (val.type.match(/image\/(\w+)/)?.[1]) || 'webp' }];
+                    const how = frameLoad(val, compressedSet, id);
+                    if (how === 'blob') {
+                        return [id, { imageData: null, imageBitmap: null, blob: val, ext: imageExtFromType(val.type) }];
                     }
-                    if (compressedSet.has(id) || /^data:image\/(webp|jpeg)/.test(val)) {
+                    if (how === 'compressed') {
                         const blob = await (await fetch(val)).blob();
-                        return [id, { imageData: null, imageBitmap: null, blob, ext: (blob.type.match(/image\/(\w+)/)?.[1]) || 'webp' }];
+                        return [id, { imageData: null, imageBitmap: null, blob, ext: imageExtFromType(blob.type) }];
                     }
                     const imageData = await dataURLToImageData(val);
                     let imageBitmap = null;

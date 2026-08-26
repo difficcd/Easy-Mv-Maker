@@ -15,10 +15,10 @@
 // The drags listen on the window rather than the element, so a gesture that leaves the timeline
 // keeps working and still ends when the button comes up somewhere else.
 
+import { timeAtX, pinchZoom } from '../core/timelineZoom.js';
+
 const DRAG_SLOP = 5;   // mouse travel before a click becomes a marquee drag
 const TAP_SLOP = 4;    // finger travel before a tap becomes a pan
-const RULER_OFFSET = 60; // the track labels occupy the left edge; time starts after them
-const MIN_PPS = 10, MAX_PPS = 300;
 
 export function useTimelineGestures({
     timelineRef, tlTouchRef, tlPinchRef,
@@ -50,7 +50,7 @@ export function useTimelineGestures({
         const el = timelineRef.current;
         if (!el) return null;
         const rect = el.getBoundingClientRect();
-        return (clientX - rect.left + el.scrollLeft - RULER_OFFSET) / pps;
+        return timeAtX(el.scrollLeft, clientX - rect.left, pps);
     };
     const seekToClientX = (clientX) => {
         const t = timeAtClientX(clientX);
@@ -169,14 +169,13 @@ export function useTimelineGestures({
         tlTouchRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
         if (tlTouchRef.current.size === 2) {
             const [a, b] = [...tlTouchRef.current.values()];
-            const midX = (a.x + b.x) / 2;
-            const contentX = midX - el.getBoundingClientRect().left + el.scrollLeft - RULER_OFFSET;
+            const midX = (a.x + b.x) / 2 - el.getBoundingClientRect().left;
             // The time under the midpoint is remembered so the zoom can hold it in place.
             tlPinchRef.current = {
                 mode: 'pinch',
                 startDist: Math.hypot(a.x - b.x, a.y - b.y) || 1,
                 startPps: pps,
-                anchorTime: Math.max(0, contentX / pps),
+                anchorTime: Math.max(0, timeAtX(el.scrollLeft, midX, pps)),
             };
         } else if (tlTouchRef.current.size === 1) {
             tlPinchRef.current = { mode: 'pan', startClientX: e.clientX, startClientY: e.clientY, startScroll: el ? el.scrollLeft : 0, moved: false };
@@ -192,12 +191,12 @@ export function useTimelineGestures({
         if (tlTouchRef.current.size >= 2 && p?.mode === 'pinch') {
             const [a, b] = [...tlTouchRef.current.values()];
             const dist = Math.hypot(a.x - b.x, a.y - b.y);
-            const np = Math.max(MIN_PPS, Math.min(MAX_PPS, p.startPps * (dist / p.startDist)));
-            setPps(np);
             // Scroll so the anchor time stays under the midpoint; without this the timeline slides
             // away from the fingers as it zooms.
-            const midX = (a.x + b.x) / 2;
-            el.scrollLeft = Math.max(0, p.anchorTime * np + RULER_OFFSET - (midX - el.getBoundingClientRect().left));
+            const midX = (a.x + b.x) / 2 - el.getBoundingClientRect().left;
+            const r = pinchZoom(p, dist, midX);
+            setPps(r.pps);
+            el.scrollLeft = r.scrollLeft;
             e.preventDefault();
         } else if (tlTouchRef.current.size === 1 && p?.mode === 'pan') {
             const dx = e.clientX - p.startClientX;
