@@ -999,7 +999,10 @@ export default function App() {
         };
         t.addEventListener('wheel', h, { passive: false });
         return () => t.removeEventListener('wheel', h);
-    }, []);
+        // Re-attach when the timeline is shown again. It is inside `showBottom &&`, so hiding it
+        // unmounts the element and showing it mounts a new one - an empty dependency list would
+        // leave these listeners on the detached node and wheel zoom silently dead after a Tab.
+    }, [showBottom]);
 
     // Two-finger pinch-zoom on the timeline, intercepted in the CAPTURE phase so it works
     // even over cut blocks (which stop propagation / capture the pointer for dragging).
@@ -1043,7 +1046,8 @@ export default function App() {
             el.removeEventListener('pointerup', up, opt);
             el.removeEventListener('pointercancel', up, opt);
         };
-    }, []);
+        // As above: the element is replaced whenever the timeline is hidden and shown.
+    }, [showBottom]);
 
     useEffect(() => {
         if (!resizingData && !draggingCutData) return;
