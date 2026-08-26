@@ -3579,7 +3579,7 @@ export default function App() {
             openVideoImport(file, 'YT ' + (url.match(/(?:v=|youtu\.be\/|shorts\/)([\w-]{6,})/)?.[1] || tr('영상')), { url, key: 'yt:' + url });
         } catch (e) {
             console.error('[import]', e);
-            setAppError(tr('영상 가져오기 실패: ') + e.message + '\n' + tr('(서버에 yt-dlp 설치 필요)'));
+            setAppError(tr('영상 가져오기 실패: ') + e.message);
         } finally { setVideoBusy(null); }
     };
 
@@ -3682,7 +3682,7 @@ export default function App() {
             if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || ('HTTP ' + res.status)); }
             const blob = await res.blob();
             loadAudioUrl(URL.createObjectURL(blob), tr('유튜브 음원'));
-        } catch (e) { alert(tr('음원 추출 실패: ') + e.message + '\n' + tr('(서버에 yt-dlp + ffmpeg 설치 필요)')); }
+        } catch (e) { alert(tr('음원 추출 실패: ') + e.message); }
     };
     const handleExport = () => {
         const canvas = canvasRef.current;

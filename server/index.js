@@ -256,6 +256,14 @@ const friendlyYtError = (err) => {
     if (e.includes('geo') || e.includes('country')) return '지역 제한 영상입니다.';
     if (e.includes('live')) return '라이브 스트림은 지원하지 않습니다.';
     if (e.includes('requested format') || e.includes('no video formats')) return '받을 수 있는 단일 파일 포맷이 없습니다 (ffmpeg 없이 병합 불가).';
+    // YouTube signs its media URLs with a challenge that yt-dlp solves in JavaScript. When the
+    // installed yt-dlp is too old to solve the current one it fetches an unsigned URL and the
+    // download comes back 403 - extraction having succeeded moments earlier, which is what makes
+    // this look like a network fault. It is not: it is a version problem, and saying "network
+    // error" sends people to check their connection instead of running one command.
+    if (e.includes('403') || e.includes('signature solving failed') || e.includes('n challenge')) {
+        return 'yt-dlp가 최신이 아니라 유튜브가 다운로드를 거부했습니다 (403). 서버에서 yt-dlp를 업데이트하세요: python -m pip install -U yt-dlp';
+    }
     if (e.includes('unable to download') || e.includes('network') || e.includes('timed out')) return '네트워크 오류로 받지 못했습니다.';
     return '영상 받기 실패: ' + err.slice(-300);
 };
