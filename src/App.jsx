@@ -36,6 +36,7 @@ import { measureTextBox as measureTextBoxPure, textNeedsBox, drawTextObject } fr
 import { migrateCuts, projectSettings, makeLoadProgress } from './core/projectFormat.js';
 import { frameStorage, frameLoad, imageExt, imageExtFromType, audioExt, videoExt } from './core/projectAssets.js';
 import { xAtTime, timeAtX, zoomAnchored, pinchZoom } from './core/timelineZoom.js';
+import { preparePath } from './core/pathMotion.js';
 import { unusedBitmapIds } from './core/bitmapRefs.js';
 import { dragCut, resizeCut } from './core/cutOps.js';
 import {
@@ -2727,7 +2728,11 @@ export default function App() {
                     if (w) updLayerAnim(pathCapture.cutId, pathCapture.layerId, { swayCurve: w.wave, swayAmount: Math.max(1, Math.round(w.amp / 4)) });
                     else alert(tr('거의 직선이라 흔들림을 만들 수 없습니다. 물결치듯 그려보세요.'));
                 } else {
-                    updLayerAnim(pathCapture.cutId, pathCapture.layerId, { path: pts.map(p => ({ x: Math.round(p.x), y: Math.round(p.y) })) });
+                    // Evened out before it is stored, not while it is played. The renderer walks
+                    // the path by index, so equal spacing is what makes the motion a constant
+                    // speed instead of a replay of how fast the pen was moving at each point.
+                    const path = preparePath(pts);
+                    if (path.length > 1) updLayerAnim(pathCapture.cutId, pathCapture.layerId, { path });
                 }
             }
             setPathCapture(null);
