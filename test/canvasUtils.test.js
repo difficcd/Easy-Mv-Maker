@@ -14,6 +14,7 @@ import {
     pointInPolygon, dist, safeArray, hexToRgb, fitRect, layerKey, strokeSig,
     applyEase, triwave, swayWeightAt, sampleWave, sampleKeys, targetCanvasFor,
     computeCutAnim, flattenLayersInUiOrder, sizeCanvas, dilateMask, FONT_PRESETS, fontGroups,
+cutDuration, cutProgress,
 } from '../src/canvas/canvasUtils.js';
 
 const near = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) < eps, `${a} ≈ ${b}`);
@@ -262,4 +263,35 @@ test('the shipped presets have unique values and cover Japanese', () => {
     assert.equal(new Set(values).size, values.length, 'duplicate font values');
     assert.ok(FONT_PRESETS.some(f => f.group === '日本語'), 'no Japanese group');
     assert.ok(FONT_PRESETS.every(f => f.value && f.label), 'every preset needs a value and a label');
+});
+
+test('cutDuration: a cut dragged to zero length still has a length to divide by', () => {
+    // The whole reason the floor exists. Six places divided by this before it was a function.
+    assert.equal(cutDuration({ startTime: 2, endTime: 5 }), 3);
+    assert.ok(cutDuration({ startTime: 4, endTime: 4 }) > 0);
+    assert.ok(Number.isFinite(1 / cutDuration({ startTime: 4, endTime: 4 })));
+    // A cut whose end is before its start is nonsense, not a negative duration.
+    assert.ok(cutDuration({ startTime: 9, endTime: 1 }) > 0);
+});
+
+test('cutProgress: 0 at the start, 1 at the end, halfway in the middle', () => {
+    const ac = { startTime: 10, endTime: 14 };
+    assert.equal(cutProgress(ac, 10), 0);
+    assert.equal(cutProgress(ac, 12), 0.5);
+    assert.equal(cutProgress(ac, 14), 1);
+});
+
+test('cutProgress clamps rather than extrapolating', () => {
+    // Animations are evaluated for cuts merely near the playhead, so times outside the cut are
+    // routine. Extrapolating would send a move past where it was meant to stop.
+    const ac = { startTime: 10, endTime: 14 };
+    assert.equal(cutProgress(ac, 0), 0);
+    assert.equal(cutProgress(ac, 99), 1);
+    assert.equal(cutProgress(ac, -5), 0);
+});
+
+test('cutProgress on a zero-length cut is a number, not NaN', () => {
+    const p = cutProgress({ startTime: 3, endTime: 3 }, 3);
+    assert.ok(Number.isFinite(p), `got ${p}`);
+    assert.ok(p >= 0 && p <= 1);
 });
