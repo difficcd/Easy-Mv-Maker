@@ -17,6 +17,15 @@ updates:
       # one that needs the release notes read.
       routine:
         update-types: [minor, patch]
+      # Packages that peer-depend on each other have to move together or not at all. Bumping one
+      # half produces a pull request that cannot install - which is what happened on the first
+      # run: react-dom 19 against react 18, and @capacitor/android 8 against @capacitor/core 7.
+      # Both were correctly rejected by CI, but they were never mergeable, and reviewing a broken
+      # pull request costs the same as reviewing a real one.
+      react:
+        patterns: ['react', 'react-dom', '@types/react*']
+      capacitor:
+        patterns: ['@capacitor/*']
     commit-message:
       prefix: 'chore(deps)'
 

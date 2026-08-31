@@ -8,10 +8,19 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { isYouTubeUrl } from './youtubeUrl.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(__dirname, 'data');
 const PORT = process.env.MV_API_PORT ? Number(process.env.MV_API_PORT) : 8787;
+// Loopback unless somebody asks otherwise. Passing no host to app.listen binds every interface,
+// which is what this did - so on a laptop joined to any network, all fourteen endpoints were
+// reachable by anyone on it, with no authentication in front of them.
+//
+// Nothing needs the wider binding. A tablet reaches the app through the Vite dev server's /api
+// proxy, and that proxy runs on this machine and connects to localhost - so the tablet workflow
+// keeps working with the API bound to loopback. Set MV_API_HOST=0.0.0.0 to open it deliberately.
+const HOST = process.env.MV_API_HOST || '127.0.0.1';
 
 const app = express();
 app.use(express.json({ limit: '256mb' })); // projects embed base64 bitmaps, so allow large bodies
@@ -220,9 +229,10 @@ app.delete('/api/projects/:id', async (req, res) => {
 // Local-only: extract audio from a URL (YouTube etc) via yt-dlp + ffmpeg. Not for the
 // deployed build. For personal/authorized use; respect source ToS and copyright.
 const audioType = (ext) => ({ '.webm': 'audio/webm', '.m4a': 'audio/mp4', '.mp4': 'audio/mp4', '.mp3': 'audio/mpeg', '.opus': 'audio/ogg', '.ogg': 'audio/ogg' }[ext] || 'application/octet-stream');
+
 app.get('/api/youtube-audio', async (req, res) => {
     const url = String(req.query.url || '');
-    if (!/^https?:\/\//.test(url)) { res.status(400).json({ error: 'invalid url' }); return; }
+    if (!isYouTubeUrl(url)) { res.status(400).json({ error: 'not a YouTube address' }); return; }
     const dir = path.join(os.tmpdir(), `yt_${Date.now()}_${Math.random().toString(36).slice(2)}`);
     await fs.mkdir(dir, { recursive: true });
     // bestaudio in its native container — no ffmpeg needed; browser plays m4a/webm.
@@ -307,7 +317,7 @@ console.log('[mv-api] ffmpeg:', FFMPEG_DIR ? path.join(FFMPEG_DIR, 'ffmpeg.exe')
 
 app.get('/api/youtube-video', async (req, res) => {
     const url = String(req.query.url || '');
-    if (!/^https?:\/\//.test(url)) { res.status(400).json({ error: 'invalid url' }); return; }
+    if (!isYouTubeUrl(url)) { res.status(400).json({ error: 'not a YouTube address' }); return; }
     const maxH = Math.max(144, Math.min(2160, Number(req.query.maxHeight) || 1080));
     const dir = path.join(os.tmpdir(), `ytv_${Date.now()}_${Math.random().toString(36).slice(2)}`);
     await fs.mkdir(dir, { recursive: true });
@@ -348,4 +358,12 @@ app.get('/api/youtube-video', async (req, res) => {
     }
 });
 
-app.listen(PORT, () => console.log(`[mv-api] project storage listening on http://localhost:${PORT}`));
+app.listen(PORT, HOST, () => {
+    // Printing the host it actually bound, not the one it probably meant. The old line said
+    // "localhost" while binding everything, which is the kind of message that stops anybody from
+    // looking further.
+    console.log(`[mv-api] project storage listening on http://${HOST}:${PORT}`);
+    if (HOST !== '127.0.0.1' && HOST !== 'localhost') {
+        console.log('[mv-api] WARNING: reachable from the network, and there is no authentication.');
+    }
+});
