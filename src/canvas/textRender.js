@@ -1,3 +1,59 @@
+/**
+ * A text object as the document stores it.
+ *
+ * Written out because every function here took it as `{object}`, which the type checker reads as
+ * "anything" - so a misspelt field was a silent no-effect rather than an error, and the only way
+ * to learn what a text actually holds was to read all of paintFrame. These are the fields the
+ * renderer reads; all of them are optional, because a text created before a feature existed
+ * simply does not have that key and every read below already has a default.
+ *
+ * @typedef {object} TextObject
+ * @property {string} [text] the content, newline-separated for multiple lines
+ * @property {number} [x] anchor, not the left edge - see measureTextBox
+ * @property {number} [y] top of the first line
+ * @property {'left'|'center'|'right'} [align] which edge x anchors
+ * @property {number} [fontSize] clamped to 6..400 on read
+ * @property {string} [fontFamily]
+ * @property {boolean} [bold]
+ * @property {boolean} [italic]
+ * @property {number} [lineHeight] multiple of the font size
+ * @property {number} [letterSpacing] px; skipped on engines without the property
+ * @property {string} [color] the fill, and the top stop when gradient is on
+ * @property {boolean} [gradient] fill vertically from color to color2 instead of flat
+ * @property {string} [color2] the bottom stop; only read when gradient is on
+ * @property {string} [bgColor] rounded highlight painted behind the text
+ * @property {number} [outline] stroke width in px
+ * @property {string} [outlineColor]
+ * @property {boolean} [shadow]
+ * @property {string} [shadowColor]
+ * @property {number} [shadowBlur]
+ * @property {number} [shadowDX]
+ * @property {number} [shadowDY]
+ * @property {number} [rotation] degrees, about the centre of the box
+ * @property {number} [opacity] 0..1, multiplied with any animation alpha
+ */
+
+/**
+ * The rectangle a text occupies, in canvas coordinates.
+ * @typedef {object} TextBox
+ * @property {number} x left edge
+ * @property {number} y top edge
+ * @property {number} w
+ * @property {number} h
+ */
+
+/**
+ * What computeTextAnim returns for one instant, or null when nothing is animating.
+ * @typedef {object} TextAnim
+ * @property {number} alpha
+ * @property {number} dx
+ * @property {number} dy
+ * @property {number} scale
+ * @property {number} blur px
+ * @property {number} rot degrees
+ * @property {number} chars how much of the string is revealed, for the typing effect
+ */
+
 // Measuring and drawing text objects.
 //
 // This was ~70 lines in the middle of paintFrame, which is the render hot path and the last
@@ -6,17 +62,29 @@
 // and the fiddly parts (what order the effects go in, how typing slices a multi-line string)
 // become checkable with a recording context.
 
-/** Font size, clamped to what the editor allows. Three call sites relied on the same clamp. */
+/**
+ * Font size, clamped to what the editor allows. Three call sites relied on the same clamp.
+ * @param {TextObject | null | undefined} t
+ * @returns {number}
+ */
 export function clampFontSize(t) {
     return Math.max(6, Math.min(400, t?.fontSize ?? 32));
 }
 
-/** The CSS font string, in the order the canvas shorthand requires: style, weight, size, family. */
+/**
+ * The CSS font string, in the order the canvas shorthand requires: style, weight, size, family.
+ * @param {TextObject | null | undefined} t
+ * @returns {string}
+ */
 export function textFontOf(t) {
     return `${t?.italic ? 'italic ' : ''}${t?.bold ? 'bold ' : ''}${clampFontSize(t)}px ${t?.fontFamily ?? 'sans-serif'}`;
 }
 
-/** Baseline-to-baseline distance for stacked lines. */
+/**
+ * Baseline-to-baseline distance for stacked lines.
+ * @param {TextObject | null | undefined} t
+ * @returns {number}
+ */
 export function textLineHeight(t) {
     return Math.round(clampFontSize(t) * (t?.lineHeight ?? 1.25));
 }
@@ -28,8 +96,9 @@ export function textLineHeight(t) {
  * right-aligned text hangs off its anchor, and everything that boxes the text - the background
  * highlight, rotation, the editor's dashed outline - needs the real left edge, not the anchor.
  *
- * @param {object} t the text object
+ * @param {TextObject | null | undefined} t
  * @param {CanvasRenderingContext2D} measureCtx any context; only its font and measureText are used
+ * @returns {TextBox}
  */
 export function measureTextBox(t, measureCtx) {
     const fontSize = clampFontSize(t);
@@ -51,6 +120,10 @@ export function measureTextBox(t, measureCtx) {
  * Measuring costs a measureText per line, so it is skipped for plain text. Anything that needs
  * to know where the text actually sits - a pivot to rotate or scale about, a box to paint behind
  * it, a gradient to span it - does need it.
+ *
+ * @param {TextObject | null | undefined} t
+ * @param {TextAnim | null} [anim]
+ * @returns {boolean}
  */
 export function textNeedsBox(t, anim) {
     return !!(t?.gradient || t?.bgColor || t?.rotation || anim);
@@ -86,10 +159,10 @@ export function revealLines(text, chars) {
  * outline.
  *
  * @param {CanvasRenderingContext2D} ctx
- * @param {object} t the text object
+ * @param {TextObject} t
  * @param {object} [opts]
- * @param {object|null} [opts.anim] computeTextAnim output for this instant, or null when paused
- * @param {object|null} [opts.box] the measured box; required whenever textNeedsBox says so
+ * @param {TextAnim|null} [opts.anim] computeTextAnim output for this instant, or null when paused
+ * @param {TextBox|null} [opts.box] the measured box; required whenever textNeedsBox says so
  * @param {number} [opts.alpha] extra opacity from the cut or layer animation
  */
 export function drawTextObject(ctx, t, { anim = null, box = null, alpha = 1 } = {}) {
@@ -133,7 +206,8 @@ export function drawTextObject(ctx, t, { anim = null, box = null, alpha = 1 } = 
 
     const lines = revealLines(t.text, anim ? anim.chars : null);
 
-    // Either a vertical two-colour gradient across the box, or a flat fill.
+    // Either a vertical two-colour gradient down the box, or a flat fill.
+    /** @type {string | CanvasGradient} */
     let fillStyle = t.color ?? '#000';
     if (t.gradient && box) {
         const g = ctx.createLinearGradient(0, box.y, 0, box.y + box.h);

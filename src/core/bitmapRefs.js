@@ -24,11 +24,11 @@ function scanCuts(cuts, into) {
 
 /**
  * @param {object} [sources]
- * @param {Array}  [sources.cuts]       the cuts on screen now
- * @param {Array}  [sources.history]    undo snapshots, each { cuts }
- * @param {object|Array} [sources.copiedCut] clipboard: one cut or several
- * @param {object} [sources.lassoClip]  copied lasso selection
- * @param {object} [sources.selection]  the live selection, which has a mask as well
+ * @param {Cut[]} [sources.cuts]       the cuts on screen now
+ * @param {{cuts?: Cut[]}[]} [sources.history] undo snapshots
+ * @param {Cut|Cut[]|null} [sources.copiedCut] clipboard: one cut or several
+ * @param {{bitmapId?: string|null}|null} [sources.lassoClip] copied lasso selection
+ * @param {{bitmapId?: string|null, maskBitmapId?: string|null}|null} [sources.selection] the live selection, which has a mask as well
  * @returns {Set<string>} every id that must be kept
  */
 export function collectUsedBitmapIds({ cuts, history, copiedCut, lassoClip, selection } = {}) {

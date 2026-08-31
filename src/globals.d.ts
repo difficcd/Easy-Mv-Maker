@@ -15,3 +15,11 @@ interface Window {
 interface ImportMeta {
     env: Record<string, any>;
 }
+
+// A bare `import './App.css'` is a Vite side-effect import: the bundler turns it into a stylesheet
+// link and there is no module to type. TypeScript 5 let it pass; 7 asks for a declaration (TS2882),
+// and this is it. Same for the asset types Vite can import.
+declare module '*.css';
+declare module '*.svg';
+declare module '*.png';
+declare module '*.webp';

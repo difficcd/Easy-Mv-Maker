@@ -145,8 +145,8 @@ export function insertFill(strokes, fill, overPaint) {
  *    last stroke's identity - does not notice, and the layer would keep drawing at its old
  *    position. Bumping rev is what invalidates it.
  *
- * @param {object} cut the cut being edited
- * @param {Array} layerIds ids of the layers to move
+ * @param {Cut} cut the cut being edited
+ * @param {any[]} layerIds ids of the layers to move
  * @param {number} dx
  * @param {number} dy
  * @param {boolean} [withTexts] move the cut's text objects too
