@@ -2,6 +2,7 @@ import React from 'react';
 import { ChevronDown, ChevronUp, Pause, Play, Plus, Repeat, Square, Trash2, Eye, EyeOff, Settings } from 'lucide-react';
 import { safeArray, accentSoft } from '../canvas/canvasUtils';
 import { tr } from '../i18n';
+import { TRACK_GUTTER } from '../core/timelineZoom.js';
 
 // Bottom timeline: playback controls, the parts bar, the ruler, track and cut blocks,
 // and the audio and video tracks.
@@ -88,7 +89,7 @@ export function Timeline({
                 onPointerDown={onTimelinePointerDown} onPointerMove={onTimelinePointerMove} onPointerUp={onTimelinePointerUp} onPointerCancel={onTimelinePointerUp} style={{ position: 'relative', touchAction: 'none' }}>
                 <div style={{ minWidth: '100%', width: `${Math.max(100, maxTime * pps + 150)}px`, position: 'relative' }}>
                     <div className="ruler" style={{ position: 'sticky', top: 0, left: 0, right: 0, height: 20, background: 'hsl(var(--ui-h) var(--ui-s) 14%)', borderBottom: '1px solid hsl(var(--ui-h) var(--ui-s) 24%)', zIndex: 20 }}>
-                        <div style={{ position: 'sticky', left: 0, width: 60, height: '100%', background: 'hsl(var(--ui-h) var(--ui-s) 14%)', zIndex: 21, float: 'left' }} />
+                        <div style={{ position: 'sticky', left: 0, width: TRACK_GUTTER, height: '100%', background: 'hsl(var(--ui-h) var(--ui-s) 14%)', zIndex: 21, float: 'left' }} />
                         {(() => {
                             const iMin = Math.max(0, Math.floor((tlWin.left - 60) / pps));
                             const iMax = Math.min(Math.ceil(maxTime), Math.ceil((tlWin.right - 60) / pps));
@@ -198,7 +199,13 @@ export function Timeline({
                             </div>
                         </div>
                     )}
-                    <div style={{ marginTop: 8, paddingLeft: 60 }}>
+                    {/* Sticky, and sized to its contents rather than the full track width. As a
+                        full-width row it scrolled away with everything else: at 50px a second a
+                        one-minute project is three thousand pixels wide, so scrolling to look at
+                        a later cut took the button off the left of the screen and it read as
+                        missing. The width matters as much as the sticky - a block as wide as the
+                        content has nothing to pin. */}
+                    <div style={{ marginTop: 8, position: 'sticky', left: 0, width: 'fit-content', paddingLeft: TRACK_GUTTER, zIndex: 15 }}>
                         <button className="small-btn" onClick={handleAddTrack}><Plus size={11} /> Add Track</button>
                     </div>
                     {marquee && (
