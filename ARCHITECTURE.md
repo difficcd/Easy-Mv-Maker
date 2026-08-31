@@ -1,5 +1,10 @@
 # Architecture map (read this before editing — saves grep/read passes)
 
+> **Looking for a helper? [HELPERS.md](HELPERS.md) lists all of them.** Check there before
+> writing one — `clearLiveOverlay` was reimplemented four times while the real one sat two
+> hundred lines away, and the timeline gutter width had seven copies. `npm run check` fails when
+> a shared export is missing from that index, so it cannot quietly go out of date.
+
 Frame-by-frame MV/animation app. Vite + React 18, single big component. Capacitor wraps it for Android.
 
 ## Files

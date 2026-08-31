@@ -5,6 +5,10 @@ reasons: every PR gets a Vercel preview, so it can be tried as a real deployment
 lands; CI is a gate, so broken code cannot reach `main`; and why something was done stays with
 the code.
 
+**Before writing a helper, look in [HELPERS.md](HELPERS.md).** It indexes every shared export,
+and `npm run check` fails when one is missing from it. The reason it exists is that the same
+helpers kept being written twice.
+
 **Write issues, pull requests, commit messages and code comments in English.** It is the
 convention for a public repository and keeps everything in one language.
 
