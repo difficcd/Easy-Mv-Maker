@@ -26,6 +26,10 @@ export default defineConfig({
   // static server, and shows itself as offline. That is also what the boot smoke test saw.
   preview: {
     port: 4173,
+    // Enforced, not preferred. The smoke test drives http://localhost:4173 by name; if the port
+    // were taken and vite quietly moved to 4174, the test would pass or fail against whatever
+    // else was listening there.
+    strictPort: true,
     proxy: API_PROXY,
   },
 })

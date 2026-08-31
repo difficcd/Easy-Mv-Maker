@@ -35,12 +35,13 @@ if (!browser) {
     process.exit(1);
 }
 
-const page = await browser.newPage();
-page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
-page.on('pageerror', e => errors.push(`uncaught: ${e.message}`));
-
 let failure = null;
+let page = null;
 try {
+    page = await browser.newPage();
+    page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
+    page.on('pageerror', e => errors.push(`uncaught: ${e.message}`));
+
     const res = await page.goto(url, { waitUntil: 'load', timeout: 30_000 });
     if (!res || !res.ok()) throw new Error(`the page did not load: ${res && res.status()}`);
 
@@ -67,16 +68,29 @@ try {
         panels: document.querySelectorAll('.panel-title, .tl-tracks, .toolbar').length,
     }));
     if (counts.buttons < 5) throw new Error(`only ${counts.buttons} buttons rendered - the UI did not come up`);
+    // Counted separately on purpose: the panels and the timeline are different subtrees from the
+    // toolbar, and one of them throwing while the others survive is exactly the failure a button
+    // count on its own sails straight past.
+    if (counts.panels < 2) throw new Error(`only ${counts.panels} panels rendered - part of the UI is missing`);
+
+    // The regression this test was written after was the built app having no backend: the API
+    // proxy is configured for the dev server, and `vite preview` does not inherit it. The console
+    // says nothing about that - the app catches the failed probe and quietly calls itself offline
+    // - so the check has to be made from the page, against the origin the page actually uses.
+    const api = await page.evaluate(async () => {
+        try { return (await fetch('/api/projects')).status; } catch (e) { return String(e); }
+    });
+    if (api !== 200) throw new Error(`the API is not reachable from the page: /api/projects gave ${api}`);
 
     // A failed asset or a caught-but-real exception shows up here and nowhere else.
     if (errors.length) throw new Error('console errors:' + errors.map(e => '\n  ' + e).join(''));
 
-    console.log(`smoke passed - canvas ${size.w}x${size.h}, ${counts.buttons} buttons, no console errors`);
+    console.log(`smoke passed - canvas ${size.w}x${size.h}, ${counts.buttons} buttons, API reachable, no console errors`);
 } catch (e) {
     failure = e;
     // A screenshot is the only way to tell "white screen" from "loaded but missing an element"
     // when this fails on a machine nobody is sitting at.
-    try { await page.screenshot({ path: 'smoke-failure.png', fullPage: true }); } catch { }
+    try { if (page) await page.screenshot({ path: 'smoke-failure.png', fullPage: true }); } catch { }
 } finally {
     await browser.close();
 }
