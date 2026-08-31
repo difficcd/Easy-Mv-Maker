@@ -12,7 +12,7 @@ import {
     upsertText, moveText, deleteText, toggleTextVisible,
     assignPartTo, renamePart, ungroupPart, removeBatch,
     insertCutsShifting, deleteTrack, moveCutGroup, replaceBatchCuts,
-    patchCut, patchCuts,
+    patchCut, patchCuts, setCutCamera,
 } from '../src/core/cutsReducer.js';
 
 const layer = (id, extra = {}) => ({ id, type: 'layer', parentId: null, visible: true, strokes: [], ...extra });
@@ -253,4 +253,33 @@ test('replaceBatchCuts: swaps one import, leaving other imports and hand-drawn c
     ];
     const out = cutsReducer(d, replaceBatchCuts('a', [{ id: 9, videoSrc: 'a', startTime: 0, endTime: 1 }]));
     assert.deepEqual(out.map(c => c.id), [2, 3, 9]);
+});
+
+test('setCutCamera: merges over the defaults, like cut animation does', () => {
+    const s = cutsReducer([cut(1)], setCutCamera(1, { preset: 'zoomIn' }));
+    assert.equal(s[0].camera.preset, 'zoomIn');
+    assert.equal(s[0].camera.ease, 'inout');
+    // null, not 1 - a numeric default here would override the preset's own zoom.
+    assert.equal(s[0].camera.zoomFrom, null);
+});
+
+test('setCutCamera: a second call keeps what the first set', () => {
+    let s = cutsReducer([cut(1)], setCutCamera(1, { preset: 'kenBurns' }));
+    s = cutsReducer(s, setCutCamera(1, { rotTo: 4 }));
+    assert.equal(s[0].camera.preset, 'kenBurns');
+    assert.equal(s[0].camera.rotTo, 4);
+});
+
+test('setCutCamera: null removes the camera rather than resetting its fields', () => {
+    // Not the same thing: the renderer skips the transform entirely when there is no camera
+    // object, which is the state every project that has never used one is in.
+    let s = cutsReducer([cut(1)], setCutCamera(1, { preset: 'zoomIn' }));
+    s = cutsReducer(s, setCutCamera(1, null));
+    assert.equal(s[0].camera, null);
+});
+
+test('setCutCamera: leaves other cuts alone', () => {
+    const s = cutsReducer([cut(1), cut(2)], setCutCamera(2, { preset: 'panLeft' }));
+    assert.equal(s[0].camera, undefined);
+    assert.equal(s[1].camera.preset, 'panLeft');
 });

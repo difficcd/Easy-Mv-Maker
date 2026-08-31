@@ -27,7 +27,7 @@ import { cloneCutContents as cloneCutContentsPure } from './core/cutClone.js';
 import { DEFAULT_KEYS, KEY_LABELS, keyOf, matchShortcut, loadKeymap, toolFromAction, findConflicts } from './core/shortcuts.js';
 import { derivePartsFrom, deriveVideoBatches } from './core/partOps.js';
 import {
-    cutsReducer, replaceCuts, addCuts, updateCut, setCutAnim, clearCut,
+    cutsReducer, replaceCuts, addCuts, updateCut, setCutAnim, setCutCamera, clearCut,
     updateLayer, setLayerAnim, moveLayers, upsertText, moveText, deleteText, toggleTextVisible as toggleTextVisibleAction,
     assignPartTo, renamePart as renamePartAction, ungroupPart as ungroupPartAction, removeBatch,
     insertCutsShifting, deleteTrack, moveCutGroup, replaceBatchCuts, mergeLayerDown, patchCut, patchCuts,
@@ -36,6 +36,12 @@ import { measureTextBox as measureTextBoxPure, textNeedsBox, drawTextObject } fr
 import { migrateCuts, projectSettings, makeLoadProgress } from './core/projectFormat.js';
 import { frameStorage, frameLoad, imageExt, imageExtFromType, audioExt, videoExt } from './core/projectAssets.js';
 import { xAtTime, timeAtX, zoomAnchored, pinchZoom } from './core/timelineZoom.js';
+import { preparePath } from './core/pathMotion.js';
+// Recording a camera path reuses the pen the way a part's motion path does; the two cannot be
+// active at once, and startDraw checks this one first because a camera is a property of the cut
+// rather than of whichever layer happens to be selected.
+
+import { computeCamera, applyCamera } from './core/camera.js';
 import { unusedBitmapIds } from './core/bitmapRefs.js';
 import { dragCut, resizeCut } from './core/cutOps.js';
 import {
@@ -503,6 +509,7 @@ export default function App() {
     const lastInteractRef = useRef(0); // time of the last zoom or pan, used to briefly yield the boiling preview
     const [pathCapture, setPathCapture] = useState(null); // {cutId, layerId} while recording a motion path
     const pathPtsRef = useRef(null);
+    const [cameraCapture, setCameraCapture] = useState(null); // {cutId} while drawing a camera path
 
     const storeBitmap = (imageData) => {
         const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
@@ -1761,6 +1768,7 @@ export default function App() {
     const toggleCutCollapse = (id) => setCollapsedCutIds(p => { const s = new Set(p); s.has(id) ? s.delete(id) : s.add(id); return s; });
     const renameCut = (id, name) => dispatchCuts(updateCut(id, { name }));
     const updCutAnim = (id, patch) => dispatchCuts(setCutAnim(id, patch));
+    const updCutCamera = (id, patch) => dispatchCuts(setCutCamera(id, patch));
     const updLayerAnim = (cutId, layerId, patch) => dispatchCuts(setLayerAnim(cutId, layerId, patch));
     const handleAddTrack = () => setNumTracks(p => p + 1);
     const handleDeleteTrack = (i) => { if (numTracks <= 1) return; if (!window.confirm(tr('Track {0} 삭제?', i))) return; dispatchCuts(deleteTrack(i)); setNumTracks(p => p - 1); };
@@ -2463,6 +2471,15 @@ export default function App() {
             try { const d = canvasRef.current.getContext('2d').getImageData(Math.round(pos.x), Math.round(pos.y), 1, 1).data; if (d[3] > 0) applyColor('#' + [d[0], d[1], d[2]].map(v => v.toString(16).padStart(2, '0')).join('')); } catch { }
             setPickingColor(false); return;
         }
+        // Recording a camera path. Checked before the part path because a camera belongs to the
+        // cut, not to whichever layer is selected - and before the layer is resolved at all, so
+        // it works on a cut whose active layer is a folder or hidden.
+        if (cameraCapture) {
+            beginGesture(e);
+            pathPtsRef.current = [pos];
+            e.preventDefault();
+            return;
+        }
         // Recording a motion path for a part animation: capture the stroke as a path.
         if (pathCapture) {
             beginGesture(e);
@@ -2719,6 +2736,16 @@ export default function App() {
             const pts = pathPtsRef.current;
             pathPtsRef.current = null;
             endGesture();
+            if (cameraCapture) {
+                // Evened out the same way a part path is, and for the same reason: the camera
+                // walks it by index, so uneven points would replay the drawing speed. A camera
+                // doing that is far more obvious than a part doing it, because the whole frame
+                // lurches rather than one drawing.
+                const path = preparePath(pts);
+                if (path.length > 1) dispatchCuts(setCutCamera(cameraCapture.cutId, { path }));
+                setCameraCapture(null);
+                return;
+            }
             if (pathCapture && pts.length > 1) {
                 if (pathCapture.mode === 'sway') {
                     // Sway from a drawn curve: the curve is stored as a waveform, and how far it
@@ -2727,7 +2754,11 @@ export default function App() {
                     if (w) updLayerAnim(pathCapture.cutId, pathCapture.layerId, { swayCurve: w.wave, swayAmount: Math.max(1, Math.round(w.amp / 4)) });
                     else alert(tr('거의 직선이라 흔들림을 만들 수 없습니다. 물결치듯 그려보세요.'));
                 } else {
-                    updLayerAnim(pathCapture.cutId, pathCapture.layerId, { path: pts.map(p => ({ x: Math.round(p.x), y: Math.round(p.y) })) });
+                    // Evened out before it is stored, not while it is played. The renderer walks
+                    // the path by index, so equal spacing is what makes the motion a constant
+                    // speed instead of a replay of how fast the pen was moving at each point.
+                    const path = preparePath(pts);
+                    if (path.length > 1) updLayerAnim(pathCapture.cutId, pathCapture.layerId, { path });
                 }
             }
             setPathCapture(null);
@@ -3140,6 +3171,22 @@ export default function App() {
         }
         ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
         paintedOnceRef.current = true;
+        // The camera is a window onto the frame, so it wraps everything drawn into it - the video
+        // reference, the artwork and the text move together, which is the whole point of it being
+        // a camera rather than another per-layer transform. The white fill above stays outside:
+        // that is the viewport itself, and zooming it would leave the edges unpainted.
+        //
+        // Playback only, like cut and part animation. While editing, a moved canvas would put the
+        // pen somewhere other than where the drawing appears, which is not a trade worth making
+        // for a preview.
+        //
+        // A shot belongs to the cut on the lowest active track: that is the base scene, and the
+        // tracks above it are parts of the same shot rather than shots of their own.
+        const camCut = playing ? activeCuts.find(c => c.camera) : null;
+        const camAt = camCut
+            ? computeCamera(camCut.camera, (t - camCut.startTime) / Math.max(0.0001, camCut.endTime - camCut.startTime), CANVAS_W, CANVAS_H)
+            : null;
+        if (camAt) { ctx.save(); applyCamera(ctx, camAt, CANVAS_W, CANVAS_H); }
         // Video overlay track: drawn underneath everything. The <video> element is kept at time t by
         // the playback loop (playing) or a paused-seek effect.
         if (videoOverlay && t >= videoOverlay.startTime && t < videoOverlay.endTime) {
@@ -3296,6 +3343,7 @@ export default function App() {
             }
             ctx.restore();
         });
+        if (camAt) ctx.restore();
     }, [cuts, currentCutId, onionPrev, onionNext, selection, layerCanvasCache, frameDecodeTick, videoOverlay, boilTick, dragTick]);
 
     const paintFrameRef = useRef(null);
@@ -3892,6 +3940,8 @@ export default function App() {
                     setShowRight={setShowRight} showRight={showRight} toggleCutCollapse={toggleCutCollapse}
                     toggleCutSettings={toggleCutSettings} toggleTextVisible={toggleTextVisible}
                     updCutAnim={updCutAnim} updCutTime={updCutTime} updLayers={updLayers}
+                    updCutCamera={updCutCamera} cameraCapture={cameraCapture} setCameraCapture={setCameraCapture}
+                    canvasW={CANVAS_W} canvasH={CANVAS_H}
                     videoBatches={videoBatches} />
     );
     const panelEls = { color: colorPanelEl, tools: toolsPanelEl, cut: cutPanelEl };
@@ -4065,6 +4115,12 @@ export default function App() {
                     onMouseDown={e => { if (e.button === 1) e.preventDefault(); }} /* suppress middle-click auto-scroll */
                     onAuxClick={e => { if (e.button === 1) e.preventDefault(); }}
                     onPointerDown={onAreaPointerDown} onPointerMove={onAreaPointerMove} onPointerUp={onAreaPointerUp} onPointerCancel={onAreaPointerUp}>
+                    {cameraCapture && (
+                        <div style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', zIndex: 31, background: 'var(--accent-soft)', color: '#fff', fontSize: 12, padding: '6px 12px', borderRadius: 6, display: 'flex', gap: 8, alignItems: 'center' }}>
+                            {tr('카메라가 지나갈 길을 그리세요 — 재생하면 그 길을 따라갑니다')}
+                            <button className="button" style={{ height: 24, padding: '0 8px' }} onClick={() => setCameraCapture(null)}>{tr('취소')}</button>
+                        </div>
+                    )}
                     {pathCapture && (
                         <div style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', zIndex: 31, background: 'var(--accent-soft)', color: '#fff', fontSize: 12, padding: '6px 12px', borderRadius: 6, display: 'flex', gap: 8, alignItems: 'center' }}>
                             {pathCapture.mode === 'sway' ? tr('물결치듯 곡선을 그리세요 — 그 모양·크기대로 흔들립니다') : tr('펜으로 이동 경로를 그리세요')}
