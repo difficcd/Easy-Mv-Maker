@@ -10,9 +10,25 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Nothing here writes to the repository, so nothing here gets a token that could. The default is
+# already read-only, but that is an account-wide setting somebody can change; saying it in the
+# workflow means this job keeps its own answer.
+permissions:
+  contents: read
+
+# Pushing twice to a branch used to run both to completion, and the older run could report after
+# the newer one - a green tick describing code that had already been replaced. The newest push
+# wins; main is exempt because each of its commits is a distinct thing to have checked.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   check:
     runs-on: ubuntu-latest
+    # The job takes about half a minute. Ten is generous and still stops a hang from running to
+    # the six-hour default.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -38,3 +54,46 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  # Separate from `check` on purpose: that job is the required gate and it finishes in half a
+  # minute, so it must not wait behind a browser. This one is allowed to be the slow one.
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run build
+
+      # The app probes /api on load to decide whether server save is available, so the API has
+      # to be up or the page comes up reporting itself offline - which is what the first run of
+      # this job caught.
+      - name: Start the API server
+        run: npm run server &
+
+      # vite preview serves dist/ the way a static host would, so this exercises the built
+      # bundle rather than the dev server's module graph.
+      - name: Serve the build
+        run: npx vite preview --port 4173 &
+
+      - name: Wait for both servers
+        run: npx wait-on http://localhost:8787/api/projects http://localhost:4173 --timeout 60000
+
+      # The runner image ships Google Chrome, which is what the test drives - no browser
+      # download, no playwright install step.
+      - name: Boot smoke test
+        run: npm run smoke
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: smoke-failure
+          path: smoke-failure.png
+          if-no-files-found: ignore
