@@ -22,10 +22,17 @@ updates:
       # run: react-dom 19 against react 18, and @capacitor/android 8 against @capacitor/core 7.
       # Both were correctly rejected by CI, but they were never mergeable, and reviewing a broken
       # pull request costs the same as reviewing a real one.
+      # The react group has to include what peers on react, not just react itself. Grouping
+      # react + react-dom was not enough: bumping them to 19 produced a pull request that could
+      # not install, because lucide-react 0.x peers at react <=18. Anything that declares a react
+      # peer belongs here.
       react:
-        patterns: ['react', 'react-dom', '@types/react*']
+        patterns: ['react', 'react-dom', '@types/react*', 'lucide-react']
       capacitor:
         patterns: ['@capacitor/*']
+      # Same shape again: @vitejs/plugin-react 6 requires vite 7, so on its own it is unmergeable.
+      vite:
+        patterns: ['vite', '@vitejs/*', 'vite-plugin-*']
     commit-message:
       prefix: 'chore(deps)'
 
