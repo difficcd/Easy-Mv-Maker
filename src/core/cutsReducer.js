@@ -21,6 +21,7 @@
 
 import { offsetLayers, mergeDown } from './layerOps.js';
 import { assignPart, renamePartIn, ungroupPartIn, removeVideoBatch } from './partOps.js';
+import { CAMERA_DEFAULT } from './camera.js';
 import { ANIM_DEFAULT, LAYER_ANIM_DEFAULT, safeArray } from '../canvas/canvasUtils.js';
 
 // ── action creators ────────────────────────────────────────────────────────
@@ -33,6 +34,12 @@ export const addCuts = (cuts) => ({ type: 'addCuts', cuts });
 export const updateCut = (cutId, patch) => ({ type: 'updateCut', cutId, patch });
 /** Merge into a cut's animation, over the defaults. */
 export const setCutAnim = (cutId, patch) => ({ type: 'setCutAnim', cutId, patch });
+/**
+ * Merge into a cut's camera move. Passing null clears it, which is not the same as setting every
+ * field back to its default: the renderer skips the transform entirely when there is no camera
+ * object at all, and that is the state every existing project is in.
+ */
+export const setCutCamera = (cutId, patch) => ({ type: 'setCutCamera', cutId, patch });
 /** Empty a cut's drawing and text, keeping its layers. */
 export const clearCut = (cutId) => ({ type: 'clearCut', cutId });
 
@@ -95,6 +102,12 @@ export function cutsReducer(cuts, action) {
             return mapCut(list, action.cutId, c => ({ ...c, ...action.patch }));
         case 'setCutAnim':
             return mapCut(list, action.cutId, c => ({ ...c, anim: { ...ANIM_DEFAULT, ...c.anim, ...action.patch } }));
+        case 'setCutCamera':
+            return mapCut(list, action.cutId, c => (
+                action.patch === null
+                    ? { ...c, camera: null }
+                    : { ...c, camera: { ...CAMERA_DEFAULT, ...c.camera, ...action.patch } }
+            ));
         case 'clearCut':
             // The layers stay - emptying a cut is not deleting its structure - but everything
             // drawn on them goes, redo included, since those strokes can no longer be restored

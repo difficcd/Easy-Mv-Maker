@@ -1,6 +1,7 @@
 import { Circle } from 'lucide-react';
 import React from 'react';
 import { ANIM_DEFAULT, LAYER_ANIM_DEFAULT } from '../canvas/canvasUtils';
+import { CAMERA_DEFAULT, CAMERA_PRESETS, resolveCamera } from '../core/camera.js';
 import { NumField } from './NumField';
 import { tr } from '../i18n';
 
@@ -90,6 +91,66 @@ export function CutAnimPanel({ cut, updCutAnim }) {
         </div>
     );
 }
+
+/**
+ * The camera move for one cut.
+ *
+ * Separate from the cut animation panel above even though both hang off the cut, because they are
+ * different things: that one moves the drawing inside the frame, this one moves the frame. Putting
+ * them in one list made it impossible to tell at a glance which was which.
+ */
+export function CameraPanel({ cut, updCutCamera, cameraCapture, setCameraCapture, canvasW, canvasH }) {
+    const c = { ...CAMERA_DEFAULT, ...cut.camera };
+    const set = (o) => updCutCamera(cut.id, o);
+    // What the camera actually resolves to, preset included. Reading the raw fields would show
+    // zoom 1 while the picture visibly zooms, because a preset's zoom lives on the preset.
+    const eff = resolveCamera(cut.camera, canvasW, canvasH);
+    const capturing = !!cameraCapture && cameraCapture.cutId === cut.id;
+
+    return (
+        <div style={{ marginTop: 8, borderTop: '1px solid hsl(var(--ui-h) var(--ui-s) 20%)', paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ fontSize: 10, color: '#888' }}>{tr('카메라 (재생 시 적용)')}</div>
+            <div style={R()}>
+                <span style={{ width: 34, color: '#aaa', flexShrink: 0 }}>{tr('동작')}</span>
+                <select value={c.preset || 'none'} onChange={e => set({ preset: e.target.value })} className="time-input" style={{ flex: 1, minWidth: 76 }}>
+                    {Object.entries(CAMERA_PRESETS).map(([id, p]) => <option key={id} value={id}>{tr(p.label)}</option>)}
+                </select>
+            </div>
+            <div style={R()}>
+                <span style={{ width: 34, color: '#aaa', flexShrink: 0 }}>{tr('줌')}</span>
+                <NumIn value={round2(eff ? eff.zoomFrom : 1)} onChange={v => set({ zoomFrom: clampZoom(v) })} step={0.05} min={0.2} w={54} label={tr('시작')} title={tr('시작 배율')} />
+                <NumIn value={round2(eff ? eff.zoomTo : 1)} onChange={v => set({ zoomTo: clampZoom(v) })} step={0.05} min={0.2} w={54} label={tr('끝')} title={tr('끝 배율')} />
+            </div>
+            <div style={R()}>
+                <span style={{ width: 34, color: '#aaa', flexShrink: 0 }}>{tr('기울기')}</span>
+                <NumIn value={c.rotFrom || 0} onChange={v => set({ rotFrom: v })} step={1} w={54} label={tr('시작')} suffix="°" title={tr('시작 각도')} />
+                <NumIn value={c.rotTo || 0} onChange={v => set({ rotTo: v })} step={1} w={54} label={tr('끝')} suffix="°" title={tr('끝 각도')} />
+            </div>
+            <div style={R()}>
+                <span style={{ width: 34, color: '#aaa', flexShrink: 0 }}>{tr('속도감')}</span>
+                <select value={c.ease} onChange={e => set({ ease: e.target.value })} className="time-input" style={{ flex: 1, minWidth: 60 }} title={tr('가속/감속 곡선')}>
+                    {EASE_OPTS.map(([v, l]) => <option key={v} value={v}>{tr(l)}</option>)}
+                </select>
+                <NumIn value={c.easePower} onChange={v => set({ easePower: Math.max(0.1, v) })} step={0.5} min={0.1} w={48} title={tr('가감속 세기')}
+                    label={<span style={{ color: c.ease === 'linear' ? '#555' : '#aaa' }}>{tr('가중치')}</span>} />
+            </div>
+            <div style={R()}>
+                <button className="button" style={{ flex: 1, height: 26, background: capturing ? 'var(--accent)' : undefined }}
+                    onClick={() => setCameraCapture(capturing ? null : { cutId: cut.id })}
+                    title={tr('캔버스에 카메라가 지나갈 길을 그립니다')}>
+                    {capturing ? tr('그리는 중… (다시 눌러 취소)') : (c.path ? tr('경로 다시 그리기') : tr('경로 그리기'))}
+                </button>
+                {c.path && <button className="button" style={{ height: 26 }} onClick={() => set({ path: null })} title={tr('그린 경로를 지우고 프리셋 동작으로 되돌립니다')}>{tr('경로 지움')}</button>}
+            </div>
+            {eff && <button className="button" style={{ height: 24, fontSize: 10 }} onClick={() => updCutCamera(cut.id, null)}>{tr('카메라 끄기')}</button>}
+        </div>
+    );
+}
+
+const round2 = (v) => Math.round(v * 100) / 100;
+// Zooming out past 1 shows blank paper around the artwork. That is a legitimate thing to want -
+// a pull-back reveal - but not by accident, so the floor sits well below 1 rather than at it.
+const clampZoom = (v) => Math.max(0.2, Math.min(8, v));
 
 // Motion presets: rather than dialling in each value, drop in a common soft movement at once.
 // Each preset fills move, rotate and scale together with the ping-pong flag and the easing.
