@@ -1941,17 +1941,34 @@ export default function App() {
     // quadratically, so drawing fast fell behind the input and the curve came out kinked.
     // Now it (1) draws at most once per frame via rAF and (2) leaves what is already drawn
     // alone, appending only the new tail - which makes the cost per movement independent of
+    // The live overlay: a transparent canvas above the main one, holding the stroke being drawn
+    // before it is committed to a layer. Everything that touches it goes through these two, so
+    // there is one answer to "is it there yet" and one to "how do I wipe it".
+    //
+    // Both matter more than they look. Four places wrote the clear out by hand, and forgetting it
+    // is not a crash - the stroke is simply drawn twice, once live and once committed, which
+    // reads as a doubled or smeared line and looks like a rendering bug rather than a missing
+    // call.
+
+    /** The overlay's 2D context, or null before the canvas has mounted. */
+    const liveCtx = () => liveCanvasRef.current?.getContext('2d') ?? null;
+
+    /** Wipe it. Safe to call when there is no overlay yet. */
+    const clearLiveOverlay = () => {
+        const lc = liveCanvasRef.current;
+        if (lc) lc.getContext('2d').clearRect(0, 0, lc.width, lc.height);
+    };
+
     // how long the stroke is.
     const renderLiveStroke = (full = false) => {
-        const lc = liveCanvasRef.current; if (!lc) return;
-        const ctx = lc.getContext('2d');
+        const ctx = liveCtx(); if (!ctx) return;
         const st = liveStrokeRef.current;
-        if (!st) { ctx.clearRect(0, 0, lc.width, lc.height); liveDrawnRef.current = 0; return; }
+        if (!st) { clearLiveOverlay(); liveDrawnRef.current = 0; return; }
         const n = st.points.length;
         // Cases needing a full redraw, such as the line and curve tools where the earlier part
         // of the stroke changes.
         if (full || liveDrawnRef.current === 0 || n < liveDrawnRef.current) {
-            ctx.clearRect(0, 0, lc.width, lc.height);
+            clearLiveOverlay();
             drawStrokesOnCtx(ctx, [st], false, bitmapStoreRef.current);
             liveDrawnRef.current = n;
             return;
@@ -1966,10 +1983,9 @@ export default function App() {
     // original. It has to draw once on press too, or the screen flashes empty for a moment.
     const renderLayerDragPreview = () => {
         const d = layerDragRef.current; if (!d) return;
-        const lc = liveCanvasRef.current; if (!lc) return;
+        const c2 = liveCtx(); if (!c2) return;
         const cut = cuts.find(c => c.id === d.cutId); if (!cut) return;
-        const c2 = lc.getContext('2d');
-        c2.clearRect(0, 0, lc.width, lc.height);
+        clearLiveOverlay();
         const ox = Math.round(d.dx), oy = Math.round(d.dy);
         const order = flattenLayersInUiOrder(cut.layers || []).filter(l => l.type === 'layer' && d.layerIds.includes(l.id));
         for (let i = order.length - 1; i >= 0; i--) {
@@ -2019,9 +2035,8 @@ export default function App() {
     };
     const curveStrokeFromAnchors = (pts) => ({ id: Date.now(), tool: 'brush', color, opacity, size: brushSize, points: catmullThrough(pts) });
     const renderCurvePreview = () => {
-        const lc = liveCanvasRef.current; if (!lc) return;
-        const ctx = lc.getContext('2d');
-        ctx.clearRect(0, 0, lc.width, lc.height);
+        const ctx = liveCtx(); if (!ctx) return;
+        clearLiveOverlay();
         const pts = curveAnchorsRef.current || [];
         if (pts.length >= 2) drawStrokesOnCtx(ctx, [curveStrokeFromAnchors(pts)], false, bitmapStoreRef.current);
         ctx.save();
@@ -2040,16 +2055,16 @@ export default function App() {
         if (pts && pts.length >= 2) {
             const st = curveStrokeFromAnchors(pts);
             const mc = canvasRef.current; if (mc) drawStrokesOnCtx(mc.getContext('2d'), [st], false, bitmapStoreRef.current);
-            const lc = liveCanvasRef.current; if (lc) lc.getContext('2d').clearRect(0, 0, lc.width, lc.height);
+            clearLiveOverlay();
             commitStrokeToLayer(currentCutId, drawTargetLayerRef.current || (cuts.find(c => c.id === currentCutId)?.activeLayerId), st);
             noteColorUsed(st.color);
         } else {
-            const lc = liveCanvasRef.current; if (lc) lc.getContext('2d').clearRect(0, 0, lc.width, lc.height);
+            clearLiveOverlay();
         }
     };
     const cancelCurve = () => {
         curveAnchorsRef.current = null; curveDraggingRef.current = false; setCurvePts(0);
-        const lc = liveCanvasRef.current; if (lc) lc.getContext('2d').clearRect(0, 0, lc.width, lc.height);
+        clearLiveOverlay();
     };
     // Blur brush: uses the path it travels as a mask and blurs the layer pixels beneath it.
     // This spreads what is already drawn rather than adding a vector stroke, so it works on
@@ -2100,9 +2115,8 @@ export default function App() {
 
     // Mosaic: previews the drag rectangle as a dashed outline.
     const renderMosaicMarquee = () => {
-        const lc = liveCanvasRef.current; if (!lc) return;
-        const ctx = lc.getContext('2d');
-        ctx.clearRect(0, 0, lc.width, lc.height);
+        const ctx = liveCtx(); if (!ctx) return;
+        clearLiveOverlay();
         const r = mosaicRectRef.current; if (!r) return;
         const x = Math.min(r.x0, r.x1), y = Math.min(r.y0, r.y1), w = Math.abs(r.x1 - r.x0), h = Math.abs(r.y1 - r.y0);
         ctx.save();
@@ -2370,13 +2384,6 @@ export default function App() {
         isDrawing.current = false;
         try { if (activePointerIdRef.current !== null) canvasRef.current?.releasePointerCapture(activePointerIdRef.current); } catch { }
         activePointerIdRef.current = null;
-    };
-
-    // Wipe the in-progress-stroke overlay. It sits above the main canvas, so anything left on it
-    // is drawn twice - once live, once committed - which reads as a doubled or smeared line.
-    const clearLiveOverlay = () => {
-        const lc = liveCanvasRef.current;
-        if (lc) lc.getContext('2d').clearRect(0, 0, lc.width, lc.height);
     };
 
     // Grab a text object to drag. The text tool and the move tool both do this and differ in one
@@ -3472,7 +3479,7 @@ export default function App() {
     useEffect(() => {
         if (liveClearPendingRef.current && !isDrawing.current && !liveStrokeRef.current) {
             liveClearPendingRef.current = false;
-            const lc = liveCanvasRef.current; if (lc) lc.getContext('2d').clearRect(0, 0, lc.width, lc.height);
+            clearLiveOverlay();
         }
     }, [layerCanvasCache]);
 
