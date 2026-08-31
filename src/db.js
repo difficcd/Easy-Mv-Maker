@@ -33,11 +33,11 @@ function tx(db, mode) {
 
 export async function saveProject(id, data, name) {
     const db = await openDB();
-    return new Promise((resolve, reject) => {
+    return /** @type {Promise<void>} */ (new Promise((resolve, reject) => {
         const req = tx(db, 'readwrite').put({ id, name: name ?? data?.name ?? id, savedAt: data?.savedAt ?? new Date().toISOString(), data });
         req.onsuccess = () => resolve();
         req.onerror = () => reject(req.error);
-    });
+    }));
 }
 
 export async function loadProject(id) {
@@ -60,11 +60,11 @@ export async function listProjects() {
 
 export async function deleteProject(id) {
     const db = await openDB();
-    return new Promise((resolve, reject) => {
+    return /** @type {Promise<void>} */ (new Promise((resolve, reject) => {
         const req = tx(db, 'readwrite').delete(id);
         req.onsuccess = () => resolve();
         req.onerror = () => reject(req.error);
-    });
+    }));
 }
 
 export const autosaveKey = AUTOSAVE_ID;

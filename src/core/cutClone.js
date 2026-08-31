@@ -13,10 +13,10 @@
 //    bitmap rather than becoming several.
 
 /**
- * @param {object} srcCut the cut to copy from
+ * @param {Cut} srcCut the cut to copy from
  * @param {(oldId: any, cache: Map) => any} cloneBitmapId copies stored pixels, returning the new
  *   id; given the shared cache so it can return the same new id for a repeated old one
- * @returns {{layers: Array, activeLayerId: any, texts: Array}} the contents, ready for a new cut
+ * @returns {{layers: Layer[], activeLayerId: any, texts: CutText[]}} the contents, ready for a new cut
  */
 export function cloneCutContents(srcCut, cloneBitmapId) {
     const srcLayers = Array.isArray(srcCut?.layers) ? srcCut.layers : [];
