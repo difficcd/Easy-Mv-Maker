@@ -173,6 +173,15 @@ export default function App() {
     const [resizingData, setResizingData] = useState(null);
     const [draggingCutData, setDraggingCutData] = useState(null);
     const [currentCutId, setCurrentCutId] = useState(1);
+    /**
+     * The cut being edited. Derived rather than stored, so it cannot drift from currentCutId.
+     *
+     * This lookup was written out thirteen times under five different names - cut, cc, src, A,
+     * primary - which is thirteen chances to search the wrong list and five names for one thing
+     * when reading. Undefined when the id names a cut that is gone, which every reader already
+     * handles.
+     */
+    const currentCut = cuts.find(c => c.id === currentCutId);
     const [isPlaying, setIsPlaying] = useState(false);
     const [loopPlay, setLoopPlay] = useState(false);
     const [playbackRate, setPlaybackRate] = useState(1);
@@ -699,7 +708,7 @@ export default function App() {
     };
     const pasteLassoSelection = () => {
         const clip = lassoClipRef.current;
-        const cut = cuts.find(c => c.id === currentCutId);
+        const cut = currentCut;
         if (!clip || !cut) return;
         const layerId = cut.activeLayerId;
         const bmpCache = new Map();
@@ -1711,7 +1720,7 @@ export default function App() {
         if (!isPlaying) {
             // Playback is cut-based: pressing play after the current cut (or all content) has
             // finished rewinds to the CURRENT cut's start — even with music (audio re-seeks to match).
-            const cc = cuts.find(c => c.id === currentCutId);
+            const cc = currentCut;
             let anchor = cc ? cc.startTime : playStart;
             if (anchor < playStart - 0.001 || anchor >= playEnd) anchor = playStart; // keep the anchor inside the active part
             // Where to start is worked out in playbackStart, which is where the reasoning about
@@ -1803,7 +1812,7 @@ export default function App() {
         if (!copiedCut) return;
         const arr = Array.isArray(copiedCut) ? copiedCut : [copiedCut];
         if (!arr.length) return;
-        const src = cuts.find(c => c.id === currentCutId);
+        const src = currentCut;
         let cursor = src ? src.endTime : (cuts.length ? Math.max(...cuts.map(c => c.endTime)) : 0);
         const trk = src ? src.track : (arr[0]?.track ?? 0);
         const baseId = Date.now();
@@ -1831,7 +1840,7 @@ export default function App() {
         return c2.getImageData(0, 0, CANVAS_W, CANVAS_H);
     };
     const doTween = async () => {
-        const A = cuts.find(c => c.id === currentCutId);
+        const A = currentCut;
         if (!A) return;
         const B = cuts.filter(c => c.track === A.track && c.startTime > A.startTime).sort((a, b) => a.startTime - b.startTime)[0];
         if (!B) { alert(tr('다음 컷이 없습니다. 트위닝은 현재 컷과 다음 컷 사이를 채웁니다.')); return; }
@@ -2056,7 +2065,7 @@ export default function App() {
             const st = curveStrokeFromAnchors(pts);
             const mc = canvasRef.current; if (mc) drawStrokesOnCtx(mc.getContext('2d'), [st], false, bitmapStoreRef.current);
             clearLiveOverlay();
-            commitStrokeToLayer(currentCutId, drawTargetLayerRef.current || (cuts.find(c => c.id === currentCutId)?.activeLayerId), st);
+            commitStrokeToLayer(currentCutId, drawTargetLayerRef.current || (currentCut?.activeLayerId), st);
             noteColorUsed(st.color);
         } else {
             clearLiveOverlay();
@@ -2070,7 +2079,7 @@ export default function App() {
     // This spreads what is already drawn rather than adding a vector stroke, so it works on
     // raster data.
     const applyBlurStroke = (st) => {
-        const cut = cuts.find(c => c.id === currentCutId);
+        const cut = currentCut;
         const layer = cut?.layers.find(l => l.id === drawTargetLayerRef.current);
         if (!cut || !layer) return;
         const src = ensureLayerCanvas(cut.id, layer); if (!src) return;
@@ -2494,7 +2503,6 @@ export default function App() {
             e.preventDefault();
             return;
         }
-        const currentCut = cuts.find(c => c.id === currentCutId);
         // Even if the active layer is a folder, hidden or invalid, this substitutes a real
         // drawable layer, so the stroke always survives and stays visible.
         const activeLayer = resolveDrawLayer(currentCut);
@@ -2818,7 +2826,7 @@ export default function App() {
     // Lift what the lasso encloses into a floating selection: the enclosed pixels, plus a mask
     // of exactly which ones, so committing the move knows what to erase from the source layer.
     const liftLassoSelection = (points) => {
-        const currentCut = cuts.find(c => c.id === currentCutId);
+
         const activeLayer = currentCut?.layers.find(l => l.id === currentCut.activeLayerId);
         if (!activeLayer) return;
 
@@ -2968,7 +2976,7 @@ export default function App() {
         // Caching every cut made hundreds of frames rebuild on each edit and stalled the app.
         const visible = new Set();
         cuts.forEach(c => { if (currentTime >= c.startTime && currentTime < c.endTime) visible.add(c.id); });
-        const primary = cuts.find(c => c.id === currentCutId);
+        const primary = currentCut;
         if (primary) {
             visible.add(primary.id);
             if (onionPrev) {
@@ -3019,7 +3027,7 @@ export default function App() {
         if (changed) {
             setLayerCanvasCache(newCache);
         }
-    }, [cuts, currentCutId, currentTime, onionPrev, onionNext]);
+    }, [cuts, currentCutId, currentCut, currentTime, onionPrev, onionNext]);
 
     // Re-create released frame bitmaps (from their Blob) on demand, then repaint. Used both by the
     // render path (a released frame scrolled into view) and the part-scoped release below.
@@ -3162,7 +3170,7 @@ export default function App() {
         // Changing it every frame just reads as noise; this rate is what makes the drawing feel
         // alive.
         boilPhaseRef.current = t * BOIL_FPS + boilTick;
-        const primary = cuts.find(c => c.id === currentCutId);
+        const primary = currentCut;
         let activeCuts = cuts.filter(c => t >= c.startTime && t < c.endTime);
         if (!activeCuts.find(c => c.id === currentCutId) && primary && !playing) activeCuts.push(primary);
         activeCuts.sort((a, b) => a.track - b.track);
@@ -3351,7 +3359,7 @@ export default function App() {
             ctx.restore();
         });
         if (camAt) ctx.restore();
-    }, [cuts, currentCutId, onionPrev, onionNext, selection, layerCanvasCache, frameDecodeTick, videoOverlay, boilTick, dragTick]);
+    }, [cuts, currentCutId, currentCut, onionPrev, onionNext, selection, layerCanvasCache, frameDecodeTick, videoOverlay, boilTick, dragTick]);
 
     const paintFrameRef = useRef(null);
     paintFrameRef.current = paintFrame;
@@ -3426,7 +3434,7 @@ export default function App() {
 
         // Recorded motion paths (per layer) shown while editing so they're visible/redrawable.
         if (!isPlaying) {
-            const cc = cuts.find(c => c.id === currentCutId);
+            const cc = currentCut;
             for (const l of (cc?.layers || [])) {
                 const path = l.anim?.path;
                 if (!path || path.length < 2) continue;
@@ -3454,7 +3462,7 @@ export default function App() {
             ctx.stroke();
             ctx.setLineDash([]);
         }
-    }, [paintFrame, cuts, currentCutId, isPlaying, scrubbing, currentTime, lassoPoints, selection, selectedText, animLayer]);
+    }, [paintFrame, cuts, currentCutId, currentCut, isPlaying, scrubbing, currentTime, lassoPoints, selection, selectedText, animLayer]);
 
     // Boiling is motion, so it is invisible on a still frame; the phase is advanced slowly
     // while editing to preview it. That preview redraws the whole layer, though, so it stops
@@ -3462,7 +3470,7 @@ export default function App() {
     // after a pan or zoom makes the interaction stutter badly.
     useEffect(() => {
         if (isPlaying) return;
-        const cut = cuts.find(c => c.id === currentCutId);
+        const cut = currentCut;
         if (!cut || !safeArray(cut.layers).some(l => l.roughen && l.visible !== false)) return;
         const id = setInterval(() => {
             if (document.hidden) return;                      // pointless while the tab is hidden
@@ -3471,7 +3479,7 @@ export default function App() {
             setBoilTick(v => (v + 1) % 100000);
         }, Math.round(1000 / BOIL_FPS));
         return () => clearInterval(id);
-    }, [isPlaying, cuts, currentCutId]);
+    }, [isPlaying, cuts, currentCutId, currentCut]);
 
     // The live overlay is cleared once the layer cache has updated, not on a timer, so the
     // committed stroke is already on the main canvas before the overlay goes. That makes it
@@ -3858,7 +3866,6 @@ export default function App() {
 
     // Tool panel: the buttons keep a comfortable size and the column count follows the width.
     const toolW = Math.max(56, leftW || 96);
-    const currentCut = cuts.find(c => c.id === currentCutId);
     const isSelectionTool = tool === 'lasso' || !!selection;
     liveRef.current = { cuts, copiedCut, selection, audioData, numTracks }; // current GC + history sources
 
