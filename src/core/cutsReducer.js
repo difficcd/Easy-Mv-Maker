@@ -45,6 +45,14 @@ export const clearCut = (cutId) => ({ type: 'clearCut', cutId });
 
 /** Change fields on one layer. */
 export const updateLayer = (cutId, layerId, patch) => ({ type: 'updateLayer', cutId, layerId, patch });
+/**
+ * Clip a layer to the one below it, or stop clipping.
+ *
+ * No rev bump: clipping changes how the layer is composited, not what is drawn on it, so its own
+ * cached canvas is still correct. What has to be invalidated is the frame, and paintFrame already
+ * re-runs when cuts change.
+ */
+export const setLayerClipped = (cutId, layerId, clipped) => ({ type: 'setLayerClipped', cutId, layerId, clipped });
 /** Merge into a layer's animation, over the defaults. */
 export const setLayerAnim = (cutId, layerId, patch) => ({ type: 'setLayerAnim', cutId, layerId, patch });
 /** Flatten a layer into the one below it. */
@@ -120,6 +128,11 @@ export function cutsReducer(cuts, action) {
 
         case 'updateLayer':
             return mapCut(list, action.cutId, c => mapLayer(c, action.layerId, l => ({ ...l, ...action.patch })));
+        case 'setLayerClipped':
+            return mapCut(list, action.cutId, c => ({
+                ...c,
+                layers: c.layers.map(l => (l.id === action.layerId ? { ...l, clipped: !!action.clipped } : l)),
+            }));
         case 'setLayerAnim':
             return mapCut(list, action.cutId, c => mapLayer(c, action.layerId,
                 l => ({ ...l, anim: { ...LAYER_ANIM_DEFAULT, ...l.anim, ...action.patch } })));
