@@ -72,13 +72,19 @@ jobs:
 
       - run: npm run build
 
+      # The app probes /api on load to decide whether server save is available, so the API has
+      # to be up or the page comes up reporting itself offline - which is what the first run of
+      # this job caught.
+      - name: Start the API server
+        run: npm run server &
+
       # vite preview serves dist/ the way a static host would, so this exercises the built
       # bundle rather than the dev server's module graph.
       - name: Serve the build
         run: npx vite preview --port 4173 &
 
-      - name: Wait for the server
-        run: npx wait-on http://localhost:4173 --timeout 60000
+      - name: Wait for both servers
+        run: npx wait-on http://localhost:8787/api/projects http://localhost:4173 --timeout 60000
 
       # The runner image ships Google Chrome, which is what the test drives - no browser
       # download, no playwright install step.
