@@ -35,3 +35,6 @@ server/data/
 
 # Dev-server output, written when the server is started with its log redirected.
 *.log
+
+# Screenshot written by the boot smoke test when it fails; CI keeps it as an artifact.
+smoke-failure.png
