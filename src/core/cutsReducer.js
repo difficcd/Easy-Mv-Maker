@@ -19,7 +19,7 @@
 // `patchCut` remains for the handful of operations that are genuinely one-off. Reach for a named
 // action first; a lambda here is a note that something has not been given a name yet.
 
-import { offsetLayers } from './layerOps.js';
+import { offsetLayers, mergeDown } from './layerOps.js';
 import { assignPart, renamePartIn, ungroupPartIn, removeVideoBatch } from './partOps.js';
 import { ANIM_DEFAULT, LAYER_ANIM_DEFAULT, safeArray } from '../canvas/canvasUtils.js';
 
@@ -40,6 +40,8 @@ export const clearCut = (cutId) => ({ type: 'clearCut', cutId });
 export const updateLayer = (cutId, layerId, patch) => ({ type: 'updateLayer', cutId, layerId, patch });
 /** Merge into a layer's animation, over the defaults. */
 export const setLayerAnim = (cutId, layerId, patch) => ({ type: 'setLayerAnim', cutId, layerId, patch });
+/** Flatten a layer into the one below it. */
+export const mergeLayerDown = (cutId, layerId, flattenVisibleLeaves) => ({ type: 'mergeLayerDown', cutId, layerId, flattenVisibleLeaves });
 /** Shift whole layers (and optionally the cut's texts) by a pixel offset. Bumps rev. */
 export const moveLayers = (cutId, layerIds, dx, dy, withTexts) => ({ type: 'moveLayers', cutId, layerIds, dx, dy, withTexts });
 
@@ -112,6 +114,14 @@ export function cutsReducer(cuts, action) {
             // offsetLayers bumps rev, which is what stops the cached canvas drawing the layer at
             // its old position: only coordinates changed, and the cache signature cannot see that.
             return mapCut(list, action.cutId, c => ({ ...c, ...offsetLayers(c, action.layerIds, action.dx, action.dy, action.withTexts) }));
+
+        case 'mergeLayerDown':
+            return mapCut(list, action.cutId, c => {
+                const merged = mergeDown(c.layers, action.layerId, action.flattenVisibleLeaves);
+                // null means there was nothing underneath to merge into; leaving the cut alone is
+                // better than silently deleting the layer.
+                return merged ? { ...c, ...merged } : c;
+            });
 
         case 'upsertText':
             return mapCut(list, action.cutId, c => mapTexts(c, texts =>

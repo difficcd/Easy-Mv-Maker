@@ -512,6 +512,8 @@ const EN = {
     '필압': 'Pressure',
     '농도': 'Opacity',
     '영상 설정': 'Video settings',
+    '다른 프로젝트를 여는 동안 영상 프레임 추출이 끝나 결과를 버렸습니다. 프로젝트를 연 뒤 다시 가져오세요.': 'The frame extraction finished after a different project was opened, so its frames were discarded rather than added to the wrong project. Import again with the project you want open.',
+    '아래 레이어와 병합': 'Merge into the layer below',
     '도구 단축키': 'Tool shortcuts',
     '도구 단축키…': 'Tool shortcuts…',
     '도구 기본값': 'Reset tool keys',
