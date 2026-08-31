@@ -844,10 +844,10 @@ export async function extractVideoFrames(file, { fps = 6, maxFrames = 0, start =
     const video = document.createElement('video');
     video.muted = true; video.playsInline = true; video.preload = 'auto'; video.src = url;
     try {
-        await new Promise((res, rej) => {
+        await /** @type {Promise<void>} */ (new Promise((res, rej) => {
             video.onloadedmetadata = () => res();
             video.onerror = () => rej(new Error(tr('영상을 읽을 수 없습니다 (형식 미지원)')));
-        });
+        }));
         const duration = video.duration;
         if (!isFinite(duration) || duration <= 0) throw new Error(tr('영상 길이를 알 수 없습니다'));
         const to = Math.min(end ?? duration, duration);
@@ -871,11 +871,11 @@ export async function extractVideoFrames(file, { fps = 6, maxFrames = 0, start =
         const ctx = cnv.getContext('2d');
         ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high'; // crisp resampling when scaling
         const r = useNative ? { x: 0, y: 0, w: fw, h: fh } : fitRect(vW, vH, fw, fh);
-        const seek = (t) => new Promise((res) => {
+        const seek = (t) => /** @type {Promise<void>} */ (new Promise((res) => {
             const on = () => { video.removeEventListener('seeked', on); res(); };
             video.addEventListener('seeked', on);
             video.currentTime = t;
-        });
+        }));
         const toBlob = format === 'png'
             ? () => new Promise((res) => cnv.toBlob(res, 'image/png'))                    // lossless
             : () => new Promise((res) => cnv.toBlob(b => b ? res(b) : cnv.toBlob(res, 'image/jpeg', quality), 'image/webp', quality));
@@ -971,14 +971,14 @@ export async function detectSceneCuts(file, { start = 0, end = null, step = 0.2,
     const video = document.createElement('video');
     video.muted = true; video.playsInline = true; video.preload = 'auto'; video.src = url;
     try {
-        await new Promise((res, rej) => { video.onloadedmetadata = () => res(); video.onerror = () => rej(new Error('scene-detect: cannot read video')); });
+        await /** @type {Promise<void>} */ (new Promise((res, rej) => { video.onloadedmetadata = () => res(); video.onerror = () => rej(new Error('scene-detect: cannot read video')); }));
         const dur = video.duration; if (!isFinite(dur) || dur <= 0) return [];
         const to = Math.min(end ?? dur, dur), from = Math.max(0, Math.min(start, to - 0.05));
         const sw = 48, sh = 48, c = document.createElement('canvas'); c.width = sw; c.height = sh; // finer signature = more accurate
         const cx = c.getContext('2d', { willReadFrequently: true });
         const sig = () => { cx.drawImage(video, 0, 0, sw, sh); const d = cx.getImageData(0, 0, sw, sh).data, o = new Uint8Array(sw * sh); for (let i = 0, j = 0; j < o.length; i += 4, j++) o[j] = (d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114) | 0; return o; };
         const diff = (a, b) => { let s = 0; for (let i = 0; i < a.length; i++) s += Math.abs(a[i] - b[i]); return s / a.length; };
-        const seek = (t) => new Promise((res) => { const on = () => { video.removeEventListener('seeked', on); res(); }; video.addEventListener('seeked', on); video.currentTime = Math.max(0, Math.min(t, dur - 0.02)); });
+        const seek = (t) => /** @type {Promise<void>} */ (new Promise((res) => { const on = () => { video.removeEventListener('seeked', on); res(); }; video.addEventListener('seeked', on); video.currentTime = Math.max(0, Math.min(t, dur - 0.02)); }));
         // Binary-search the exact moment the picture stops matching the pre-cut frame → precise boundary.
         const refineCut = async (refSig, a, b) => {
             for (let k = 0; k < 6; k++) { const mid = (a + b) / 2; await seek(mid); if (diff(refSig, sig()) > threshold) b = mid; else a = mid; }
