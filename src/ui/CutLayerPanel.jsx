@@ -1,7 +1,7 @@
 import React from 'react';
 import { Plus, FolderPlus, Trash2, Copy, CopyPlus, ClipboardPaste, Eye, EyeOff, Settings, ChevronDown, ChevronRight } from 'lucide-react';
 import { safeArray } from '../canvas/canvasUtils';
-import { CutAnimPanel } from './AnimPanels';
+import { CutAnimPanel, CameraPanel } from './AnimPanels';
 import { tr } from '../i18n';
 
 // CUT / LAYER panel: the cut list, each cut's layer tree, cut animation and text list.
@@ -12,6 +12,7 @@ export function CutLayerPanel({
     deleteVideoBatch, dragLayerInfo, expandedCuts, handleAddCut, handleAddFolder,
     handleAddLayer, handleCopyCut, handleCutClick, handleDeleteCut, handleDuplicateCut,
     handlePasteCut, handleSetTool, openEditText, renameCut, renamingCutId,
+    updCutCamera, cameraCapture, setCameraCapture, canvasW, canvasH,
     renderLayers, rightW, selectedCutIds, selectedText, setDragLayerInfo,
     setDropInfo, setRenamingCutId, setSelectedText, setShowRight, showRight,
     toggleCutCollapse, toggleCutSettings, toggleTextVisible, updCutAnim, updCutTime,
@@ -55,6 +56,8 @@ export function CutLayerPanel({
                                         <label>End<input type="number" step="0.5" min="0" className="time-input" value={cut.endTime} onChange={e => updCutTime(cut.id, 'endTime', e.target.value)} /></label>
                                     </div>
                                     <CutAnimPanel cut={cut} updCutAnim={updCutAnim} />
+                                    <CameraPanel cut={cut} updCutCamera={updCutCamera} cameraCapture={cameraCapture}
+                                        setCameraCapture={setCameraCapture} canvasW={canvasW} canvasH={canvasH} />
                                 </div>
                             )}
                             <div className="layer-list" onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); if (dragLayerInfo && dragLayerInfo.cutId === cut.id) { updLayers(cut.id, c => { const layers = [...c.layers], di = layers.findIndex(l => l.id === dragLayerInfo.layerId), dragged = { ...layers[di], parentId: null }; layers.splice(di, 1); layers.push(dragged); return { layers }; }); setDragLayerInfo(null); setDropInfo(null); } }}>
