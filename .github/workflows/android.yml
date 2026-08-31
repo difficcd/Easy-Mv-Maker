@@ -33,20 +33,20 @@ jobs:
     # letting a hang sit there for six hours.
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
           cache: npm
 
       # Capacitor 7 with AGP 8.7 needs JDK 21; 17 fails at the Gradle configuration stage.
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '21'
 
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v4
 
       - run: npm ci
 
@@ -67,7 +67,7 @@ jobs:
         id: name
         run: echo "tag=${GITHUB_REF_NAME//\//-}-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: easy-mv-maker-${{ steps.name.outputs.tag }}
           path: android/app/build/outputs/apk/debug/app-debug.apk
