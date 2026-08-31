@@ -18,9 +18,12 @@ permissions:
   contents: read
   security-events: write
 
+# main is exempt for the same reason it is in ci.yml, and one more: the analysis of main is the
+# baseline that pull-request alerts are compared against, so cancelling it leaves the comparison
+# pointing at an older commit.
 concurrency:
   group: codeql-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   analyze:
