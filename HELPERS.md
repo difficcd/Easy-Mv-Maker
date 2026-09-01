@@ -334,6 +334,14 @@ Undo and redo: the wiring around `historyOps`, kept out of App.
 |---|---|
 | `useHistory` | Records the document when it changes, unless `shouldSkip()` says a gesture is in progress. Returns `undo`, `redo`, a stable `record` for callers that choose their own moment, and `entries()` for the bitmap GC - a snapshot keeps pixels reachable, and freeing those is an undo that comes back blank. |
 
+## `src/hooks/usePlayback.js`
+
+The playback clock: one rAF loop driving canvas, playhead, audio, video and the prefetcher.
+
+| | |
+|---|---|
+| `usePlayback` | Owns `isPlaying`, `currentTime` and the four refs the loop reads instead of state. Returns those plus `playPause` and `stop`. Export runs through the same loop, at real time whatever speed is selected. |
+
 ## `src/hooks/useTimelineGestures.js`
 
 Every way the timeline can be pointed at, in one place.
