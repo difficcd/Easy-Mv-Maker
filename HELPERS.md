@@ -279,6 +279,8 @@ The drawing engine: strokes, canvases, animation, video frames. The big one.
 | `computeCutAnim` | at rest (no transform), so callers can skip the save/transform fast-path. |
 | `computeLayerAnim` | — |
 | `computeTextAnim` | — |
+| `cutDuration` | A cut's length in seconds, never zero - a cut can be dragged to zero length and everything that animates divides by it. |
+| `cutProgress` | How far through a cut a moment is, 0 to 1, clamped. Animations are evaluated for cuts merely near the playhead, so times outside the cut are routine and extrapolating would overshoot. |
 | `curveToWave` | The returned amp (px) is how far that curve actually swung, and is used as the default strength. |
 | `dataURLToImageData` | — |
 | `DEFAULT_CUT_DURATION` | — |
