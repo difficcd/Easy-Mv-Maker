@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo } from 'react';
 import { Plus, Trash2, PenLine, Pen, Feather, Eraser, Undo, Redo, Layers, Trash, ChevronRight, ChevronDown, Folder, FolderOpen, Eye, EyeOff, ClipboardPaste, GitBranch, Move, Type, Cloud, Film, Repeat, Minus, Waves, Grid3x3, Palette, Menu, PaintBucket, Pipette, RotateCcw, ArrowDownToLine } from 'lucide-react';
 import './App.css';
 import { saveAutosave, loadAutosave, saveProject, loadProject, listProjects, deleteProject, autosaveKey } from './db';
@@ -16,7 +16,7 @@ import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill } fr
 import { closeLassoPath, lassoBounds, applyResize } from './core/lassoOps.js';
 import { useTimelineGestures } from './hooks/useTimelineGestures.js';
 import { fmt, parseClock } from './core/timeCode.js';
-import { pushSnapshot, step } from './core/historyOps.js';
+import { useHistory } from './hooks/useHistory.js';
 import { nextProbeDelay } from './core/probeBackoff.js';
 import { playbackStartFrom } from './core/playbackStart.js';
 import {
@@ -637,10 +637,6 @@ export default function App() {
         return newId;
     };
 
-    const historyRef = useRef([]);
-    const recordHistoryRef = useRef(/** @type {(s: any) => void} */(() => { }));
-    const historyIndexRef = useRef(-1);
-    const isUndoRedoRef = useRef(false);
     const isDraggingOrResizingRef = useRef(false);
 
     const updLayers = (cutId, fn) => dispatchCuts(patchCut(cutId, fn));
@@ -754,40 +750,20 @@ export default function App() {
         setTool(newTool);
     };
 
-    useEffect(() => {
-        if (isDrawing.current || isDraggingOrResizingRef.current || selectionDragRef.current) return;
-        if (isUndoRedoRef.current) { isUndoRedoRef.current = false; return; }
-        recordHistoryRef.current({ cuts, audioData, numTracks });
-    }, [cuts, audioData, numTracks]);
-
-    // The one place history is written. It was two copies of the same arithmetic, one of which
-    // had the limit inlined as a bare 80 - the kind of pair where only one gets fixed.
-    const recordHistory = (snapshot) => {
-        const r = pushSnapshot(historyRef.current, historyIndexRef.current, snapshot);
-        if (!r.changed) return;
-        historyRef.current = r.history;
-        historyIndexRef.current = r.index;
-    };
-    // The recording effect reaches it through a ref, the way paintFrame and the prefetch already
-    // do: naming the function in the dependency list would re-run the effect on every render,
-    // since it is rebuilt each time.
-    recordHistoryRef.current = recordHistory;
-
-    const applyHistory = (snap) => {
-        const s = JSON.parse(JSON.stringify(snap));
-        isUndoRedoRef.current = true;
-        dispatchCuts(replaceCuts(s.cuts));
-        dispatchMedia(setAudioClip(s.audioData ?? null));
-        setNumTracks(s.numTracks ?? 2);
-    };
-    const stepHistory = (dir) => {
-        const r = step(historyRef.current, historyIndexRef.current, dir);
-        if (!r) return;                       // already at that end
-        historyIndexRef.current = r.index;
-        applyHistory(r.snapshot);
-    };
-    const globalUndo = () => stepHistory(-1);
-    const globalRedo = () => stepHistory(1);
+    // Undo/redo lives in useHistory. What stays here is the two things only this component can
+    // answer: what the document currently is, and whether a gesture is in progress - drawing,
+    // dragging a cut, moving a selection - during which a snapshot would capture a half-finished
+    // state.
+    const historySnapshot = useMemo(() => ({ cuts, audioData, numTracks }), [cuts, audioData, numTracks]);
+    const { undo: globalUndo, redo: globalRedo, record: recordHistory, entries: historyEntries } = useHistory({
+        snapshot: historySnapshot,
+        shouldSkip: () => isDrawing.current || isDraggingOrResizingRef.current || !!selectionDragRef.current,
+        apply: (snap) => {
+            dispatchCuts(replaceCuts(snap.cuts));
+            dispatchMedia(setAudioClip(snap.audioData ?? null));
+            setNumTracks(snap.numTracks ?? 2);
+        },
+    });
 
     // The ruler runs to the content plus a tail of empty room to drag into, and never less than
     // TIMELINE_MIN_SPAN - a music video is three to five minutes, so a timeline that stops at two
@@ -1171,11 +1147,11 @@ export default function App() {
             // liveRef holds the current document precisely so this does not have to reach for
             // a state setter to read it, and the ref keeps the effect's dependency list honest.
             const lv = liveRef.current;
-            recordHistoryRef.current({ cuts: lv.cuts, audioData: lv.audioData, numTracks: lv.numTracks });
+            recordHistory({ cuts: lv.cuts, audioData: lv.audioData, numTracks: lv.numTracks });
         };
         window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
         return () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); };
-    }, [resizingData, draggingCutData, pps, numTracks]);
+    }, [recordHistory, resizingData, draggingCutData, pps, numTracks]);
 
     // Record an undo point for whatever is on screen now.
     //
@@ -1193,7 +1169,7 @@ export default function App() {
         // here would free pixels that undo, paste or the current selection still need.
         const dead = unusedBitmapIds(bitmapStoreRef.current.keys(), {
             cuts: live.cuts,
-            history: historyRef.current,
+            history: historyEntries(),
             copiedCut: live.copiedCut,
             lassoClip: lassoClipRef.current,
             selection: live.selection,

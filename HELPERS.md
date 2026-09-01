@@ -326,6 +326,14 @@ Measuring and drawing text objects.
 | `textLineHeight` | A text object as the document stores it. |
 | `textNeedsBox` | A text object as the document stores it. |
 
+## `src/hooks/useHistory.js`
+
+Undo and redo: the wiring around `historyOps`, kept out of App.
+
+| | |
+|---|---|
+| `useHistory` | Records the document when it changes, unless `shouldSkip()` says a gesture is in progress. Returns `undo`, `redo`, a stable `record` for callers that choose their own moment, and `entries()` for the bitmap GC - a snapshot keeps pixels reachable, and freeing those is an undo that comes back blank. |
+
 ## `src/hooks/useTimelineGestures.js`
 
 Every way the timeline can be pointed at, in one place.
