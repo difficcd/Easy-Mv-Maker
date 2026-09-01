@@ -2,8 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { clipGroups, canClip } from '../src/core/clipping.js';
 
-/** Layers in UI order, topmost first. A trailing `*` marks one as clipped. */
-const layers = (...spec) => spec.map(s => ({ id: s.replace('*', ''), clipped: s.endsWith('*') }));
+/**
+ * Layers in UI order, topmost first. A trailing `*` marks one as clipped.
+ *
+ * Anchored to the end rather than a bare replace, which removes the first `*` wherever it sits
+ * and would quietly mangle an id that contained one. CodeQL flags the bare form as incomplete
+ * sanitization, and it is right that the anchored version is what was meant.
+ */
+const layers = (...spec) => spec.map(s => ({ id: s.replace(/\*$/, ''), clipped: s.endsWith('*') }));
 const shape = (groups) => groups.map(g => `${g.base.id}<${g.clipped.map(c => c.id).join(',')}`);
 
 test('nothing clipped means one group per layer, in the same order', () => {
