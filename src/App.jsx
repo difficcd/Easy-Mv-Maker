@@ -50,7 +50,7 @@ import {
     layerKey, imageDataToDataURL, dataURLToImageData, drawStrokesOnCtx, sizeCanvas,
     flattenForCanvas, flattenLayersInUiOrder, strokeSig, extractVideoFrames, fitRect, detectSceneCuts, curveToWave, swayWeightAt, morphPrepare,
     accentSoft, computeCutAnim, computeLayerAnim, TEXT_ANIM_DEFAULT, computeTextAnim,
-    targetCanvasFor,
+    targetCanvasFor, imageDataCanvas,
 } from './canvas/canvasUtils';
 
 /**
@@ -432,6 +432,8 @@ export default function App() {
     const currentTimeRef = useRef(0);       // playback clock read by the rAF loop (avoids stale closure)
     const playheadRef = useRef(null);        // moved imperatively during playback
     const seekRef = useRef(null);            // pending seek the playback loop applies (scrub while playing)
+    // Reused inside the composite loop; see the mask path in paintFrame.
+    const maskScratchRef = useRef(null);
     const dataUrlCacheRef = useRef(new Map()); // id -> {imageData, url}; avoids re-encoding bitmaps each autosave
     const liveRef = useRef({}); // latest {cuts, copiedCut, selection} for safe bitmap GC from effects
     const selectionDragRef = useRef(null);
@@ -3334,25 +3336,21 @@ export default function App() {
                 } else {
                     const mx = Math.round(selection.x);
                     const my = Math.round(selection.y);
-                    const tmp = document.createElement('canvas');
-                    tmp.width = CANVAS_W;
-                    tmp.height = CANVAS_H;
+                    // Reused rather than allocated. This runs inside the composite loop, so a
+                    // fresh canvas here is 8MB per masked layer per frame - sixty times a second
+                    // while playing, which is the shape of allocation that took a tab out once.
+                    const tmp = maskScratchRef.current || (maskScratchRef.current = document.createElement('canvas'));
                     const tctx = tmp.getContext('2d');
+                    if (!sizeCanvas(tmp, CANVAS_W, CANVAS_H)) tctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+                    tctx.setTransform(1, 0, 0, 1, 0, 0);
+                    tctx.globalAlpha = 1.0;
+                    tctx.globalCompositeOperation = 'source-over';
                     tctx.drawImage(layerCanvas, 0, 0);
                     tctx.globalCompositeOperation = 'destination-out';
-                    tctx.globalAlpha = 1.0;
-                    if (mb) {
-                        tctx.drawImage(mb, mx, my);
-                    } else {
-                        const mtmp = document.createElement('canvas');
-                        mtmp.width = mi.width;
-                        mtmp.height = mi.height;
-                        const mctx = mtmp.getContext('2d');
-                        mctx.putImageData(mi, 0, 0);
-                        tctx.drawImage(mtmp, mx, my);
-                    }
+                    // imageDataCanvas is a different shared canvas from this one, so nesting them
+                    // is safe - which is why they are separate helpers rather than slots of one.
+                    tctx.drawImage(mb || imageDataCanvas(mi), mx, my);
                     tctx.globalCompositeOperation = 'source-over';
-                    tctx.globalAlpha = 1.0;
                     ctx.drawImage(tmp, 0, 0);
                 }
                 ctx.restore();
@@ -3421,16 +3419,8 @@ export default function App() {
             const tw = Math.max(1, Math.round(selection.tw));
             const th = Math.max(1, Math.round(selection.th));
 
-            if (bmp) {
-                ctx.drawImage(bmp, tx, ty, tw, th);
-            } else if (img) {
-                const tmp = document.createElement('canvas');
-                tmp.width = img.width;
-                tmp.height = img.height;
-                const tctx = tmp.getContext('2d');
-                tctx.putImageData(img, 0, 0);
-                ctx.drawImage(tmp, tx, ty, tw, th);
-            }
+            if (bmp) ctx.drawImage(bmp, tx, ty, tw, th);
+            else if (img) ctx.drawImage(imageDataCanvas(img), tx, ty, tw, th);
 
             ctx.save();
             ctx.strokeStyle = accentSoft();
