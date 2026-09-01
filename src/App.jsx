@@ -53,6 +53,31 @@ import {
     targetCanvasFor,
 } from './canvas/canvasUtils';
 
+/**
+ * Let go of a media element's source.
+ *
+ * Three steps, and the order is the point: pause first or the browser keeps decoding a source
+ * that is being taken away; remove the attribute rather than setting src to '' or the element
+ * reloads the page URL as media and logs a failure; then load(), which is what actually drops
+ * the buffered data - without it the bytes stay held and a project with a big import never
+ * gives them back.
+ *
+ * Written out six times, three for audio and three for video, and they had drifted: the audio
+ * copies left pause() outside the try, so a detached element would throw where the video
+ * copies would not.
+ *
+ * @param {HTMLMediaElement | null | undefined} el
+ */
+const detachMedia = (el) => {
+    if (!el) return;
+    try {
+        el.pause();
+        el.removeAttribute('src');
+        el.load();
+    } catch { }
+};
+
+
 const PEN_TYPES = [
     { id: 'pen', label: 'Dot', Icon: PenLine },
     { id: 'brush', label: '펜', Icon: Feather },
@@ -1313,7 +1338,7 @@ export default function App() {
             if (audioRef.current) audioRef.current.src = audioDataUrl;
         } else {
             audioB64Ref.current = null;
-            if (audioRef.current) { audioRef.current.pause(); try { audioRef.current.removeAttribute('src'); audioRef.current.load(); } catch { } }
+            detachMedia(audioRef.current);
             dispatchMedia(clearAudio());
         }
         // Restore the video overlay track (Blob from IDB / server asset / embedded dataURL).
@@ -1329,7 +1354,7 @@ export default function App() {
             dispatchMedia(loadVideo({ name: data.video.name || tr('영상'), startTime: data.video.startTime ?? 0, endTime: data.video.endTime ?? (data.video.duration || 0), offset: data.video.offset ?? 0, duration: data.video.duration || 0, w: data.video.w || 0, h: data.video.h || 0, cuts: data.video.cuts, cutStart: data.video.cutStart, cutOffset: data.video.cutOffset }));
         } else {
             videoBlobRef.current = null; dispatchMedia(clearVideo());
-            if (videoElRef.current) { try { videoElRef.current.pause(); videoElRef.current.removeAttribute('src'); videoElRef.current.load(); } catch { } }
+            detachMedia(videoElRef.current);
         }
         } finally { setLoadProgress(null); }
     };
@@ -1383,10 +1408,10 @@ export default function App() {
         setCopiedCut(null); setSelectedCutIds(new Set()); setActivePartId(null);
         setLayerCanvasCache({});
         serverIdRef.current = null; serverNameRef.current = '';
-        if (audioRef.current) { audioRef.current.pause(); try { audioRef.current.removeAttribute('src'); audioRef.current.load(); } catch { } }
+        detachMedia(audioRef.current);
         audioB64Ref.current = null; dispatchMedia(clearAudio());
         videoBlobRef.current = null; dispatchMedia(clearVideo()); setSceneCfg(null);
-        if (videoElRef.current) { try { videoElRef.current.pause(); videoElRef.current.removeAttribute('src'); videoElRef.current.load(); } catch { } }
+        detachMedia(videoElRef.current);
     };
     const doNew = () => {
         if (!window.confirm(tr('새 프로젝트? 저장되지 않은 내용은 사라집니다.'))) return;
@@ -3576,7 +3601,7 @@ export default function App() {
     };
     const removeVideoOverlay = () => {
         dispatchMedia(clearVideo()); videoBlobRef.current = null; setSceneCfg(null);
-        const v = videoElRef.current; if (v) { try { v.pause(); v.removeAttribute('src'); v.load(); } catch { } }
+        detachMedia(videoElRef.current);
     };
     // Remember fetched/opened videos so they can be re-imported with different settings
     // without downloading again (session only — keeps at most 3 to bound memory).
@@ -3761,7 +3786,7 @@ export default function App() {
         }
     };
     const handleDeleteAudio = () => {
-        if (audioRef.current) { audioRef.current.pause(); try { audioRef.current.removeAttribute('src'); audioRef.current.load(); } catch { } }
+        detachMedia(audioRef.current);
         if (audioUrl && audioUrl.startsWith('blob:')) { try { URL.revokeObjectURL(audioUrl); } catch { } }
         audioB64Ref.current = null;
         dispatchMedia(clearAudio());
