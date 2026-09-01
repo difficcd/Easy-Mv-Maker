@@ -586,6 +586,37 @@ export function sizeCanvas(cnv, w, h) {
     return true;
 }
 
+// Drawing an ImageData somewhere other than where it starts.
+//
+// putImageData ignores the transform, the composite mode and the alpha - it writes pixels at
+// literal coordinates - so anything that needs to scale, blend or place ImageData has to go
+// through a canvas first. That is four lines, and it appeared four times.
+//
+// The canvas is reused. Each of those sites ran per stroke or per frame, and one of them is a
+// full video frame: allocating a canvas per call is the same trap sizeCanvas exists for.
+//
+// The contract is that the result is used immediately. It is valid until the next call, which is
+// enough for "put it in a canvas, draw it, done" and is what all four sites do. Holding one
+// across another call would hand you somebody else's pixels.
+let _imgCanvas = null;
+
+/**
+ * A canvas holding this ImageData, ready to be drawn.
+ *
+ * @param {ImageData} img
+ * @returns {HTMLCanvasElement} valid until the next call
+ */
+export function imageDataCanvas(img) {
+    if (!_imgCanvas) _imgCanvas = document.createElement('canvas');
+    sizeCanvas(_imgCanvas, img.width, img.height);
+    const cx = _imgCanvas.getContext('2d');
+    cx.setTransform(1, 0, 0, 1, 0, 0);
+    cx.globalAlpha = 1;
+    cx.globalCompositeOperation = 'source-over';
+    cx.putImageData(img, 0, 0);
+    return _imgCanvas;
+}
+
 // One scratch canvas, reused. Marker and pencil each need a full-size temporary layer to
 // composite through, and creating one per stroke meant a fresh 8MB allocation per stroke on every
 // repaint - with boiling redrawing ten times a second, that is gigabytes a second for a layer
@@ -648,13 +679,7 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null,
             if (bmp) {
                 ctx.drawImage(bmp, s.x, s.y);
             } else if (img || legacyImg) {
-                const src = img || legacyImg;
-                const tmp = document.createElement('canvas');
-                tmp.width = src.width;
-                tmp.height = src.height;
-                const tctx = tmp.getContext('2d');
-                tctx.putImageData(src, 0, 0);
-                ctx.drawImage(tmp, s.x, s.y);
+                ctx.drawImage(imageDataCanvas(img || legacyImg), s.x, s.y);
             }
             ctx.globalCompositeOperation = 'source-over';
             ctx.globalAlpha = 1.0;
@@ -670,12 +695,7 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null,
                 else ctx.drawImage(bmp, s.x, s.y);
             } else if (img) {
                 if (typeof s.w === 'number' && typeof s.h === 'number' && (s.w !== img.width || s.h !== img.height)) {
-                    const tmp = document.createElement('canvas');
-                    tmp.width = img.width;
-                    tmp.height = img.height;
-                    const tctx = tmp.getContext('2d');
-                    tctx.putImageData(img, 0, 0);
-                    ctx.drawImage(tmp, s.x, s.y, s.w, s.h);
+                    ctx.drawImage(imageDataCanvas(img), s.x, s.y, s.w, s.h);
                 } else {
                     ctx.putImageData(img, s.x, s.y);
                 }
