@@ -14,7 +14,7 @@ import {
     pointInPolygon, dist, safeArray, hexToRgb, fitRect, layerKey, strokeSig,
     applyEase, triwave, swayWeightAt, sampleWave, sampleKeys, targetCanvasFor,
     computeCutAnim, flattenLayersInUiOrder, sizeCanvas, dilateMask, FONT_PRESETS, fontGroups,
-cutDuration, cutProgress, scratchCanvas } from '../src/canvas/canvasUtils.js';
+cutDuration, cutProgress, scratchCanvas , layerSig} from '../src/canvas/canvasUtils.js';
 
 const near = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) < eps, `${a} ≈ ${b}`);
 
@@ -345,4 +345,89 @@ test('the second call at the same size clears, the first does not', () => {
     assert.equal(ctx.cleared.length, 0, 'first call resized');
     scratchCanvas(ref, 320, 180);
     assert.equal(ctx.cleared.length, 1, 'second call had nothing to resize');
+});
+
+// --- layerSig ----------------------------------------------------------------------------------
+
+const stroked = (over = {}) => ({ strokes: [{ id: 7, tool: 'pen', points: [1, 2, 3] }], ...over });
+
+test('a layer that is not boiling gets the same key with or without boiling options', () => {
+    // The two caches compare their keys against each other. If these ever differ, every
+    // non-boiling layer misses the cache and is redrawn every frame - fast to write, invisible
+    // to notice.
+    const layer = stroked();
+    const rough = { roughPhase: 3, roughWave: 2, roughMinSize: 1 };
+    assert.equal(layerSig(layer), layerSig(layer, rough));
+});
+
+test('a boiling layer gets a different key per phase', () => {
+    const layer = stroked({ roughen: 4 });
+    const at = (phase) => layerSig(layer, { roughPhase: phase, roughWave: 1, roughMinSize: 0 });
+    assert.notEqual(at(0), at(1));
+    assert.equal(at(2), at(2));
+});
+
+test('the still-frame key of a boiling layer is the phase key without the phase', () => {
+    const layer = stroked({ roughen: 4 });
+    const withPhase = layerSig(layer, { roughPhase: 0, roughWave: 1, roughMinSize: 0 });
+    assert.ok(withPhase.startsWith(layerSig(layer)));
+    assert.notEqual(withPhase, layerSig(layer), 'so a boiling layer never hits the still-frame cache');
+});
+
+test('the boiling settings are part of the key, not just the phase', () => {
+    const layer = stroked({ roughen: 4 });
+    const at = (wave, minSize) => layerSig(layer, { roughPhase: 0, roughWave: wave, roughMinSize: minSize });
+    assert.notEqual(at(1, 0), at(2, 0), 'a different wavelength is a different picture');
+    assert.notEqual(at(1, 0), at(1, 3), 'so is a different minimum width');
+});
+
+test('roughen and rev change the key', () => {
+    assert.notEqual(layerSig(stroked()), layerSig(stroked({ roughen: 2 })));
+    assert.notEqual(layerSig(stroked()), layerSig(stroked({ rev: 1 })),
+        'rev is what catches an edit that moves coordinates without changing the stroke list');
+});
+
+test('adding a stroke changes the key', () => {
+    const one = { strokes: [{ id: 1, tool: 'pen', points: [] }] };
+    const two = { strokes: [...one.strokes, { id: 2, tool: 'pen', points: [] }] };
+    assert.notEqual(layerSig(one), layerSig(two));
+});
+
+test('layerSig survives a layer with nothing in it', () => {
+    assert.equal(typeof layerSig({}), 'string');
+    assert.equal(typeof layerSig(null), 'string');
+});
+
+test('layerSig reproduces both expressions it replaced, byte for byte', () => {
+    // The two call sites each built this string by hand. An extraction is only safe if the new
+    // one is identical for every shape, so both old expressions are kept here and compared.
+    const oldStillFrame = (layer) =>
+        strokeSig(layer.strokes) + '|r' + (layer.roughen || 0) + '|v' + (layer.rev || 0);
+    const oldBoiling = (layer, boil, rOpts) =>
+        strokeSig(layer.strokes) + '|r' + (layer.roughen || 0) + '|v' + (layer.rev || 0)
+        + (layer.roughen ? `|b${boil}|w${rOpts.roughWave}|m${rOpts.roughMinSize}` : '');
+
+    const strokeSets = [
+        [],
+        [{ id: 1, tool: 'pen', points: [1, 2] }],
+        [{ id: 1, tool: 'pen', points: [] }, { id: 2, tool: 'paste', bitmapId: 'b7' }],
+    ];
+    for (const strokes of strokeSets) {
+        for (const roughen of [0, 1, 6]) {
+            for (const rev of [0, 3]) {
+                for (const boil of [0, 2]) {
+                    for (const roughWave of [1, 2.5]) {
+                        for (const roughMinSize of [0, 4]) {
+                            const layer = { strokes, roughen, rev };
+                            const rOpts = { roughen, roughPhase: boil, roughWave, roughMinSize };
+                            assert.equal(layerSig(layer), oldStillFrame(layer),
+                                `still frame differs for ${JSON.stringify(layer)}`);
+                            assert.equal(layerSig(layer, rOpts), oldBoiling(layer, boil, rOpts),
+                                `boiling differs for ${JSON.stringify({ layer, rOpts })}`);
+                        }
+                    }
+                }
+            }
+        }
+    }
 });

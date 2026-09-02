@@ -61,7 +61,7 @@ import {
     DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT, FONT_PRESETS, fontGroups,
     pointInPolygon, dist, safeArray, hexToRgb, bucketFillTransparentRegion,
     layerKey, imageDataToDataURL, dataURLToImageData, drawStrokesOnCtx, sizeCanvas, scratchCanvas,
-    flattenForCanvas, flattenLayersInUiOrder, strokeSig, extractVideoFrames, fitRect, detectSceneCuts, curveToWave, swayWeightAt, morphPrepare,
+    flattenForCanvas, flattenLayersInUiOrder, layerSig, extractVideoFrames, fitRect, detectSceneCuts, curveToWave, swayWeightAt, morphPrepare,
     accentSoft, computeCutAnim, computeLayerAnim, TEXT_ANIM_DEFAULT, computeTextAnim,
     targetCanvasFor, imageDataCanvas, cutProgress,
 } from './canvas/canvasUtils';
@@ -2821,10 +2821,7 @@ export default function App() {
                 // A boiling layer changes phase constantly, so nothing is baked here;
                 // ensureLayerCanvas redraws it per phase. Only a single still frame (phase 0) is
                 // kept, for the thumbnail.
-                // rev exists because edits that move coordinates without changing the stroke count
-                // or the last stroke - a whole-layer move, say - are invisible to strokeSig.
-                // Bumping rev invalidates the cache for those.
-                const layerStrokes = strokeSig(layer.strokes) + '|r' + (layer.roughen || 0) + '|v' + (layer.rev || 0);
+                const layerStrokes = layerSig(layer);
                 if (!canvas || canvas.dataset.strokes !== layerStrokes) {
                     // Skip (don't cache a blank) if a frame isn't decoded yet — the prefetch effect
                     // decodes it and repaints. Do NOT request a decode here (would loop with tick).
@@ -2935,7 +2932,7 @@ export default function App() {
         const phase = Math.floor(boilPhaseRef.current * (layer.roughSpeed ?? 1));
         const boil = layer.roughen ? ((phase % BOIL_PHASES) + BOIL_PHASES) % BOIL_PHASES : 0;
         const rOpts = { roughen: layer.roughen || 0, roughPhase: boil, roughWave: layer.roughWave ?? 1, roughMinSize: layer.roughMinSize ?? 0 };
-        const sig = strokeSig(layer.strokes) + '|r' + (layer.roughen || 0) + '|v' + (layer.rev || 0) + (layer.roughen ? `|b${boil}|w${rOpts.roughWave}|m${rOpts.roughMinSize}` : '');
+        const sig = layerSig(layer, rOpts);
         // Each phase needs its own canvas, or they would evict one another every tick and the
         // cycling would buy nothing.
         const slotKey = layer.roughen ? `${key}#${boil}` : key;

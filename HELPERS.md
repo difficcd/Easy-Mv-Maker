@@ -354,6 +354,7 @@ The drawing engine: strokes, canvases, animation, video frames. The big one.
 | `sizeCanvas` | Resizes only when the size differs. Assigning `canvas.width` reallocates the backing store even when the value is unchanged - 8MB at 1920x1080, and the measured 79MB/s that ran the tab out of memory. |
 | `scratchCanvas` | A full-size scratch canvas kept in a ref: allocated once, then sized and cleared for reuse. Three places in the composite path did this by hand and disagreed about the clear - two cleared after a resize, which the resize had already done. Reuse is not a micro-optimisation here: a fresh canvas is 8MB per masked layer per frame. |
 | `strokeSig` | used to invalidate the layer canvas cache without stringifying the whole array. |
+| `layerSig` | The cache key for one baked layer canvas. Two caches use it and compare their keys against each other, so for a layer that is not boiling both forms must come out byte-identical - otherwise every such layer misses the cache and is redrawn every frame, with no visible symptom. |
 | `swayWeightAt` | bend one direction while the next bends back. |
 | `targetCanvasFor` | two shapes people actually publish. |
 | `TEXT_ANIM_DEFAULT` | - emphasis: a looping accent (pulse/shake/wave) |
