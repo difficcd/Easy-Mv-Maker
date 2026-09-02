@@ -7,6 +7,8 @@ import { NumField, clampNum } from './ui/NumField';
 import ColorPanel, { RECENT_SLOTS } from './ui/ColorPanel';
 import { TopBar } from './ui/TopBar';
 import { CutLayerPanel } from './ui/CutLayerPanel';
+import { useStored } from './hooks/useStored.js';
+import { arrayCodec, onOffCodec, oneZeroCodec, numberCodec } from './core/persist.js';
 import { TextEditor } from './ui/TextEditor';
 import { ToolsPanel } from './ui/ToolsPanel';
 import { Timeline } from './ui/Timeline';
@@ -238,22 +240,17 @@ export default function App() {
 
     // Where each panel lives: 'left', 'right' or 'float'. Panels are drawn from these rather than
     // from fixed positions in the layout, so dragging one only has to change this value.
-    const [docks, setDocks] = useState(() => {
-        try {
-            const v = JSON.parse(localStorage.getItem('mv_docks'));
-            if (v && ['left', 'right', 'float'].includes(v.tools)) return v;
-        } catch { }
-        return { tools: 'left', color: 'left', cut: 'right' };
+    const [docks, setDocks] = useStored('mv_docks', { tools: 'left', color: 'left', cut: 'right' }, {
+        // A layout stored by a version that docked differently is treated as absent rather than
+        // restored into a shape this one cannot lay out.
+        decode: (raw) => { const v = JSON.parse(raw); return v && ['left', 'right', 'float'].includes(v.tools) ? v : undefined; },
+        encode: JSON.stringify,
     });
-    const [floatPos, setFloatPos] = useState(() => {
-        try {
-            const v = JSON.parse(localStorage.getItem('mv_floats'));
-            if (v && typeof v === 'object') return v;
-        } catch { }
-        return { tools: { x: 120, y: 120 }, color: { x: 160, y: 160 }, cut: { x: 200, y: 200 } };
+    const [floatPos, setFloatPos] = useStored('mv_floats',
+        { tools: { x: 120, y: 120 }, color: { x: 160, y: 160 }, cut: { x: 200, y: 200 } }, {
+        decode: (raw) => { const v = JSON.parse(raw); return v && typeof v === 'object' ? v : undefined; },
+        encode: JSON.stringify,
     });
-    useEffect(() => { try { localStorage.setItem('mv_docks', JSON.stringify(docks)); } catch { } }, [docks]);
-    useEffect(() => { try { localStorage.setItem('mv_floats', JSON.stringify(floatPos)); } catch { } }, [floatPos]);
     // The panel being dragged by its header, plus where it would land if dropped now.
     const [panelDrag, setPanelDrag] = useState(null);
 
@@ -271,19 +268,16 @@ export default function App() {
     const [sceneDetect, setSceneDetect] = useState(null);   // { done, total } while auto-detecting scene cuts
     // Which media rows are folded away in the timeline. Purely a view setting - the audio still
     // plays and the video still draws; this is only about giving the cut tracks the height back.
-    const [hiddenTracks, setHiddenTracks] = useState(() => {
-        try { return { audio: false, video: false, ...JSON.parse(localStorage.getItem('mv_hidden_tracks') || '{}') }; }
-        catch { return { audio: false, video: false }; }
+    const [hiddenTracks, setHiddenTracks] = useStored('mv_hidden_tracks', { audio: false, video: false }, {
+        // Spread over the defaults, so a stored value from before a track existed still names it.
+        decode: (raw) => ({ audio: false, video: false, ...JSON.parse(raw) }),
+        encode: JSON.stringify,
     });
     const toggleTrackHidden = (which) => setHiddenTracks(h => ({ ...h, [which]: !h[which] }));
-    useEffect(() => { try { localStorage.setItem('mv_hidden_tracks', JSON.stringify(hiddenTracks)); } catch { } }, [hiddenTracks]);
     const [showToolKeys, setShowToolKeys] = useState(false);
     const sceneStopRef = useRef(false);   // set to ask a running scene detection to stop
     const [sceneCfg, setSceneCfg] = useState(null);         // scene-detect settings modal { threshold, rangeOn, startText, endText }
-    const [autoSceneDetect, setAutoSceneDetect] = useState(() => {
-        try { return localStorage.getItem('mv_auto_scene') !== 'off'; } catch { return true; }
-    });
-    useEffect(() => { try { localStorage.setItem('mv_auto_scene', autoSceneDetect ? 'on' : 'off'); } catch { } }, [autoSceneDetect]);
+    const [autoSceneDetect, setAutoSceneDetect] = useStored('mv_auto_scene', true, onOffCodec);
     const videoElRef = useRef(null);      // hidden <video> element that decodes/plays the overlay
     const videoBlobRef = useRef(null);    // the video Blob, for saving
     const videoSeekTokRef = useRef(0);    // paused-seek token so a stale 'seeked' doesn't repaint
@@ -315,20 +309,16 @@ export default function App() {
     const [color, setColor] = useState('#000000');
     // Recent colours only collect colours actually used, not ones merely selected.
     // See noteColorUsed below.
-    const [recentColors, setRecentColors] = useState(() => {
-        try { const v = JSON.parse(localStorage.getItem('mv_recent_colors')); if (Array.isArray(v)) return v; } catch { }
-        return [];
-    });
-    useEffect(() => { try { localStorage.setItem('mv_recent_colors', JSON.stringify(recentColors)); } catch { } }, [recentColors]);
+    const [recentColors, setRecentColors] = useStored('mv_recent_colors', [], arrayCodec);
     const [pickingColor, setPickingColor] = useState(false); // eyedropper: next canvas click samples a pixel
     // Palettes start empty - no built-in presets. The user fills them.
-    const [palettes, setPalettes] = useState(() => {
-        try { const s = JSON.parse(localStorage.getItem('mv_palettes')); if (Array.isArray(s) && s.length) return s; } catch { }
-        return [{ name: tr('내 팔레트'), colors: [] }];
+    const [palettes, setPalettes] = useStored('mv_palettes', [{ name: tr('내 팔레트'), colors: [] }], {
+        // An empty stored list means the starting palette, not no palettes at all.
+        decode: (raw) => { const v = JSON.parse(raw); return Array.isArray(v) && v.length ? v : undefined; },
+        encode: JSON.stringify,
     });
     const [activePalette, setActivePalette] = useState(0);
     const [paletteEdit, setPaletteEdit] = useState(false); // when on, tapping a swatch deletes it (for tablets)
-    useEffect(() => { try { localStorage.setItem('mv_palettes', JSON.stringify(palettes)); } catch { } }, [palettes]);
     const addToPalette = (c) => setPalettes(ps => ps.map((p, i) => i === activePalette && !p.colors.some(x => x.toLowerCase() === c.toLowerCase()) ? { ...p, colors: [...p.colors, c] } : p));
     const removeFromPalette = (ci) => setPalettes(ps => ps.map((p, i) => i === activePalette ? { ...p, colors: p.colors.filter((_, j) => j !== ci) } : p));
     const addPalette = () => { setPalettes(ps => [...ps, { name: tr('팔레트 {0}', ps.length + 1), colors: [] }]); setActivePalette(palettes.length); };
@@ -350,10 +340,7 @@ export default function App() {
     const [brushSize, setBrushSize] = useState(5);
     // Pen pressure. Off means an even line however hard the pen is pressed - wanted for lineart,
     // and for pens that report pressure unevenly.
-    const [pressureOn, setPressureOn] = useState(() => {
-        try { return localStorage.getItem('mv_pressure') !== 'off'; } catch { return true; }
-    });
-    useEffect(() => { try { localStorage.setItem('mv_pressure', pressureOn ? 'on' : 'off'); } catch { } }, [pressureOn]);
+    const [pressureOn, setPressureOn] = useStored('mv_pressure', true, onOffCodec);
     const [eraserSize, setEraserSize] = useState(20);
     const [opacity, setOpacity] = useState(1.0);
     const [expandedCuts, setExpandedCuts] = useState(new Set());
@@ -466,10 +453,7 @@ export default function App() {
     // A transparent canvas is a different document, not a different view: the frame really has
     // no background, and the checkerboard behind it is CSS on the element rather than pixels.
     // Painting the checkerboard in would put it in every export.
-    const [transparentBg, setTransparentBg] = useState(() => {
-        try { return localStorage.getItem('mv_transparent_bg') === '1'; } catch { return false; }
-    });
-    useEffect(() => { try { localStorage.setItem('mv_transparent_bg', transparentBg ? '1' : '0'); } catch { } }, [transparentBg]);
+    const [transparentBg, setTransparentBg] = useStored('mv_transparent_bg', false, oneZeroCodec);
     // Whether the project API is reachable. Re-checked with a backoff rather than once, because
     // an app that decided at load time is an app that never notices the server starting.
     const serverAvailable = useServerProbe();
@@ -483,24 +467,20 @@ export default function App() {
     // Nothing here is memoised, so changing it re-renders the whole tree in the new language.
     const [lang, setLang] = useState(loadLang);
     const changeLang = (l) => { setLangValue(l); saveLang(l); setLang(l); };
-    const [themeColor, setThemeColor] = useState(() => { try { return localStorage.getItem('mv_theme') || DEFAULT_THEME; } catch { return DEFAULT_THEME; } });
-    const [themeRecent, setThemeRecent] = useState(() => {
-        try { const v = JSON.parse(localStorage.getItem('mv_theme_recent')); return Array.isArray(v) ? v : []; } catch { return []; }
-    });
-    const [uiSat, setUiSat] = useState(() => { const v = parseFloat(localStorage.getItem('mv_ui_sat')); return isNaN(v) ? 3 : v; });
-    useEffect(() => {
-        applyTheme(themeColor, uiSat);
-        try { localStorage.setItem('mv_theme', themeColor); localStorage.setItem('mv_ui_sat', String(uiSat)); } catch { }
-    }, [themeColor, uiSat]);
+    const [themeColor, setThemeColor] = useStored('mv_theme', DEFAULT_THEME);
+    const [themeRecent, setThemeRecent] = useStored('mv_theme_recent', [], arrayCodec);
+    // This one had no try/catch at all, so a browser that refuses localStorage took the app
+    // down on first render instead of falling back to 3.
+    const [uiSat, setUiSat] = useStored('mv_ui_sat', 3, numberCodec);
+    // Only the applying is left here; useStored does the remembering.
+    useEffect(() => { applyTheme(themeColor, uiSat); }, [themeColor, uiSat]);
     // The value changes continuously while picking, so it is only recorded once picking stops.
     useEffect(() => {
         if (!/^#[0-9a-fA-F]{6}$/.test(themeColor)) return;
         const t = setTimeout(() => {
-            setThemeRecent(p => {
-                const next = [themeColor, ...p.filter(x => x.toLowerCase() !== themeColor.toLowerCase())].slice(0, 10);
-                try { localStorage.setItem('mv_theme_recent', JSON.stringify(next)); } catch { }
-                return next;
-            });
+            // No write here: the list only changes after the debounce, and useStored records
+            // it when it does.
+            setThemeRecent(p => [themeColor, ...p.filter(x => x.toLowerCase() !== themeColor.toLowerCase())].slice(0, 10));
         }, 800);
         return () => clearTimeout(t);
     }, [themeColor]);

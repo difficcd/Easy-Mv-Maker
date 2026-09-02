@@ -187,6 +187,26 @@ Parts: groups of cuts made from an import or a selection.
 | `renamePartIn` | Rename a part, which means renaming it on every cut that belongs to it. |
 | `ungroupPartIn` | Ungroup a part. The cuts stay exactly where they are and only lose their membership - this is not a delete, and confusing the two would be expensive. |
 
+## `src/core/persist.js`
+
+The small preferences that live in localStorage: which panels are open, the theme, recent colours.
+
+| | |
+|---|---|
+| `readStored` | A stored preference, or the fallback. Returns the fallback for a key never written, for one that will not parse, and for a decoder that rejects what it found - so bad stored data cannot take the app down. |
+| `writeStored` | Write a preference, or quietly do nothing. Failing to save which panel was open is not worth interrupting anybody over, and localStorage throws for reasons the user chose. |
+| `jsonCodec` | JSON, for preferences that are objects or arrays. |
+| `arrayCodec` | JSON that must decode to an array. A stored value of the wrong shape is treated as absent rather than handed to code that will index into it. |
+| `onOffCodec` | A flag that defaults to on: only the literal `off` turns it off. |
+| `oneZeroCodec` | A flag that defaults to off: only the literal `1` turns it on. Kept separate from onOffCodec because migrating either spelling would silently reset the preference for everyone who had set it. |
+| `numberCodec` | A number, treating anything unparseable as absent. |
+
+## `src/hooks/useStored.js`
+
+| | |
+|---|---|
+| `useStored` | State that remembers itself in localStorage: reads once on first render, writes when it changes. Replaces nine hand-written read/write pairs, one of which had no try/catch at all. |
+
 ## `src/core/pathMotion.js`
 
 Turning a drawn line into something that can be moved along smoothly.
