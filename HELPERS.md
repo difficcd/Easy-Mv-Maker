@@ -226,6 +226,7 @@ How each piece of a project is stored, and how it comes back.
 | `audioExt` | A frame or media item goes out as a separate binary asset alongside a small JSON. */ |
 | `frameLoad` | A frame or media item goes out as a separate binary asset alongside a small JSON. */ |
 | `frameStorage` | Which of the three ways a frame is saved. A legacy entry with no Blob still embeds rather than being dropped. |
+| `collectBitmaps` | Every bitmap the cuts reference, packed the way this kind of save wants them. The loop around frameStorage, which used to live in App.jsx where it could be read but never run. Encoders are injected because one needs FileReader and the other a canvas. |
 | `imageExt` | A frame or media item goes out as a separate binary asset alongside a small JSON. */ |
 | `imageExtFromType` | A frame or media item goes out as a separate binary asset alongside a small JSON. */ |
 | `STORE_ASSET` | A frame or media item goes out as a separate binary asset alongside a small JSON. |

@@ -102,3 +102,80 @@ export function videoExt(mime) {
     const raw = (typeof mime === 'string' && mime.match(/^video\/([\w.-]+)/)?.[1]) || 'mp4';
     return VIDEO_EXT[raw] || raw;
 }
+
+
+/**
+ * Every bitmap the cuts reference, packed the way this kind of save wants them.
+ *
+ * The decisions here were already this module's - frameStorage says where each frame goes - but
+ * the loop around them lived in App.jsx, where it could only be read, never run. It is the part
+ * with the states: a frame can be a Blob, a legacy dataURL, or raw ImageData, and only the last
+ * of those can be cached, because the first two are already encoded.
+ *
+ * The two encoders are injected rather than imported: one needs FileReader and the other a
+ * canvas, and neither exists in a test runner. Everything else here is arithmetic over the
+ * document.
+ *
+ * @param {any[]} cuts
+ * @param {object} io
+ * @param {{ get(id: string): any }} io.store the bitmap store
+ * @param {Map<string, {imageData: unknown, url: string}>} io.cache dataURLs already encoded
+ * @param {any[] | null} [io.assetSink] collects items to upload separately, when there is one
+ * @param {boolean} [io.blobsOk] whether the destination can hold a Blob (IndexedDB can)
+ * @param {(blob: Blob) => Promise<string>} io.blobToDataURL
+ * @param {(imageData: unknown) => string} io.imageDataToDataURL
+ * @returns {Promise<{ bitmaps: Record<string, any>, compressed: string[], assets: any[] }>}
+ */
+export async function collectBitmaps(cuts, {
+    store, cache, assetSink = null, blobsOk = false, blobToDataURL, imageDataToDataURL,
+}) {
+    const usedIds = new Set();
+    for (const cut of (cuts || [])) {
+        for (const layer of (cut?.layers || [])) {
+            for (const stroke of (Array.isArray(layer?.strokes) ? layer.strokes : [])) {
+                if (stroke.bitmapId) usedIds.add(stroke.bitmapId);
+            }
+        }
+    }
+
+    const bitmaps = {};
+    /** Ids stored as a whole encoded image (video frames): they stay compressed on restore. */
+    const compressed = [];
+    /** The manifest an asset save writes, naming what was uploaded beside the JSON. */
+    const assets = [];
+
+    for (const id of usedIds) {
+        const entry = store.get(id);
+        if (!entry) continue;
+
+        // A whole encoded image - a video frame - held as a Blob, or as a dataURL by an older
+        // version that had no Blob to hold.
+        if (entry.blob || entry.url) {
+            const ext = imageExt(entry);
+            const where = frameStorage(entry, { assetSink, blobsOk });
+            if (where === STORE_ASSET) {
+                assets.push({ id, ext, w: entry.w || 0, h: entry.h || 0 });
+                assetSink.push({ id, blob: entry.blob, url: entry.url, ext });
+            } else if (where === STORE_BLOB) {
+                bitmaps[id] = entry.blob;
+                compressed.push(id);
+            } else {
+                bitmaps[id] = entry.blob ? await blobToDataURL(entry.blob) : entry.url;
+                compressed.push(id);
+            }
+            continue;
+        }
+
+        if (!entry.imageData) continue;
+        // Raw pixels, which have to be encoded. The cache is keyed on the ImageData itself rather
+        // than the id: a lasso edit replaces the pixels under the same id, and a stale dataURL
+        // would save the drawing as it was before the edit.
+        const hit = cache.get(id);
+        if (hit && hit.imageData === entry.imageData) { bitmaps[id] = hit.url; continue; }
+        const url = imageDataToDataURL(entry.imageData);
+        cache.set(id, { imageData: entry.imageData, url });
+        bitmaps[id] = url;
+    }
+
+    return { bitmaps, compressed, assets };
+}

@@ -697,4 +697,5 @@ const EN = {
     '컷 추가': 'Add Cut',
     '붙여넣기': 'Paste',
     '내보내기': 'Export',
+    '트랙 추가': 'Add Track',
 };
