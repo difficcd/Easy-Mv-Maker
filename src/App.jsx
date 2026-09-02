@@ -51,7 +51,7 @@ import { clipGroups, canClip } from './core/clipping.js';
 import { setLayerClipped } from './core/cutsReducer.js';
 import { onionNeighbours, topCutAt } from './engine/selectCuts.js';
 import { evaluateFrame } from './engine/evaluateFrame.js';
-import { pendingBitmapIds } from './engine/pendingBitmaps.js';
+import { pendingBitmapIds, scanLayerBitmaps } from './engine/pendingBitmaps.js';
 import { makeZip, frameName } from './export/zip.js';
 import { unusedBitmapIds } from './core/bitmapRefs.js';
 import { dragCut, resizeCut } from './core/cutOps.js';
@@ -2849,9 +2849,7 @@ export default function App() {
                 if (!canvas || canvas.dataset.strokes !== layerStrokes) {
                     // Skip (don't cache a blank) if a frame isn't decoded yet — the prefetch effect
                     // decodes it and repaints. Do NOT request a decode here (would loop with tick).
-                    let notReady = false;
-                    for (const st of safeArray(layer.strokes)) { if (st.tool === 'paste' && st.bitmapId) { const e = bitmapStoreRef.current.get(st.bitmapId); if (e && e.blob && !e.imageBitmap && !e.imageData) { notReady = true; break; } } }
-                    if (notReady) continue;
+                    if (scanLayerBitmaps(layer, bitmapStoreRef.current).pending.length) continue;
                     const newCanvas = canvas || document.createElement('canvas');
                     sizeCanvas(newCanvas, CANVAS_W, CANVAS_H);
                     drawStrokesOnCtx(newCanvas.getContext('2d'), layer.strokes, true, bitmapStoreRef.current, { roughen: layer.roughen || 0 });
@@ -2992,8 +2990,10 @@ export default function App() {
             while (map.size > LAYER_CANVAS_LRU) map.delete(map.keys().next().value);
             return cnv;
         };
-        const missing = [];
-        for (const st of safeArray(layer.strokes)) { if (st.tool === 'paste' && st.bitmapId) { const e = store.get(st.bitmapId); if (e && e.blob) { if (!e.imageBitmap && !e.imageData) missing.push(st.bitmapId); else if (e.imageBitmap) touchDecoded(st.bitmapId); } } }
+        const scan = scanLayerBitmaps(layer, store);
+        const missing = scan.pending;
+        // Anything this layer did draw from is now the most recently used, so the LRU keeps it.
+        for (const id of scan.decoded) touchDecoded(id);
         if (missing.length) {
             if (isPlayingRef.current) requestFrameDecode(missing);
             if (cached || hit) return cached || hit;
