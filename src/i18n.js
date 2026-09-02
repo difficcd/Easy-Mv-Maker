@@ -13,35 +13,53 @@
 // .map(t => ... t('표시') ...) would let the local shadow the function and throw at runtime;
 // that exact shape came up during the conversion.
 
+import { JA } from './i18n.ja.js';
+
+/** The languages with a dictionary. Korean needs none: it is the key. */
+export const LANGS = ['en', 'ko', 'ja'];
+
 let lang = 'en';
 
 export const getLang = () => lang;
-export const setLangValue = (l) => { lang = l === 'en' ? 'en' : 'ko'; };
+export const setLangValue = (l) => { lang = LANGS.includes(l) ? l : 'en'; };
 // English is the default: the repository, the README and the screenshots are English, so a
-// first-time visitor should land in English. Korean is one click away and is remembered.
+// first-time visitor should land in English. The others are one click away and are remembered.
 export const loadLang = () => {
-    try { return localStorage.getItem('mv_lang') === 'ko' ? 'ko' : 'en'; } catch { return 'en'; }
+    try {
+        const saved = localStorage.getItem('mv_lang');
+        return LANGS.includes(saved) ? saved : 'en';
+    } catch { return 'en'; }
 };
 export const saveLang = (l) => {
     try { localStorage.setItem('mv_lang', l); } catch { }
 };
 
+/**
+ * Look one string up in one dictionary, allowing for the padding some call sites add.
+ *
+ * Some call sites append a trailing space, as in tr('파일 오류: ') + e.message. The dictionary
+ * keeps one key without the padding, and any surrounding whitespace from the original is
+ * preserved around the translation.
+ */
+const lookup = (dict, s) => {
+    if (dict[s] != null) return dict[s];
+    const core = s.trim();
+    const hit = core && dict[core];
+    if (hit == null) return null;
+    const lead = s.slice(0, s.length - s.trimStart().length);
+    const tail = s.slice(s.trimEnd().length);
+    return lead + hit + tail;
+};
+
 export const tr = (s, ...args) => {
     let out = s;
     if (lang === 'en') {
-        if (EN[s] != null) out = EN[s];
-        else {
-            // Some call sites append a trailing space, as in tr('파일 오류: ') + e.message.
-            // The dictionary keeps one key without the padding, and any surrounding whitespace
-            // from the original is preserved around the translation.
-            const core = s.trim();
-            const hit = core && EN[core];
-            if (hit != null && hit !== undefined) {
-                const lead = s.slice(0, s.length - s.trimStart().length);
-                const tail = s.slice(s.trimEnd().length);
-                out = lead + hit + tail;
-            }
-        }
+        out = lookup(EN, s) ?? s;
+    } else if (lang === 'ja') {
+        // A missing Japanese entry falls back to English, not to the Korean key. Korean is the
+        // worse of the two to show a Japanese reader, and the fallback is what makes partial
+        // coverage shippable rather than all-or-nothing.
+        out = lookup(JA, s) ?? lookup(EN, s) ?? s;
     }
     return args.length ? out.replace(/\{(\d+)\}/g, (m, i) => (args[i] ?? m)) : out;
 };
@@ -674,4 +692,9 @@ const EN = {
     '글자별 약하게': 'Per char, slight',
     '글자별': 'Per char',
     '글자별 크게': 'Per char, wide',
+    // Three buttons that had been left as English literals, so they stayed English in
+    // Korean too. The i18n check only looks inside tr(), which is why they went unnoticed.
+    '컷 추가': 'Add Cut',
+    '붙여넣기': 'Paste',
+    '내보내기': 'Export',
 };

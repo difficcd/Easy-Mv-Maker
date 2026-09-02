@@ -75,6 +75,7 @@ export function SettingsModal({
                         <div className="pal-tabs">
                             <button className={`pal-tab${lang === 'en' ? ' active' : ''}`} onClick={() => changeLang('en')}>English</button>
                             <button className={`pal-tab${lang === 'ko' ? ' active' : ''}`} onClick={() => changeLang('ko')}>한국어</button>
+                            <button className={`pal-tab${lang === 'ja' ? ' active' : ''}`} onClick={() => changeLang('ja')}>日本語</button>
                         </div>
                     </div>
                     <div>
