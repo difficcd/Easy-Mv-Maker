@@ -37,10 +37,13 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
-      # Capacitor 7 with AGP 8.7 needs JDK 21; 17 fails at the Gradle configuration stage.
+      # Capacitor 8's CLI refuses to run below Node 22 - the first attempt at this upgrade
+      # compiled everything and then died in `cap sync`, which is a long way to find out.
+      #
+      # Capacitor with AGP 8.13 needs JDK 21; 17 fails at the Gradle configuration stage.
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
