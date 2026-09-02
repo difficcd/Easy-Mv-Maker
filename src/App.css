@@ -433,6 +433,25 @@ body {
     max-height: 100%;
 }
 
+/* The transparent-background checkerboard. It is CSS behind the canvas, never pixels in it:
+   painting it onto the canvas would put the squares into every exported frame. */
+.canvas-stage.checkered {
+    background-color: #fff;
+    background-image:
+        linear-gradient(45deg, #ccc 25%, transparent 25%),
+        linear-gradient(-45deg, #ccc 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #ccc 75%),
+        linear-gradient(-45deg, transparent 75%, #ccc 75%);
+    background-size: 16px 16px;
+    background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+}
+
+/* The global `canvas { background: #fff }` below would paint over the checkerboard, so the
+   drawing canvas gives up its own background when the stage is showing one. */
+.canvas-stage.checkered>canvas {
+    background: transparent;
+}
+
 /* The stage keeps the canvas aspect ratio (set inline from the project resolution) and is
    capped to the area, so the canvas always fits. Drawing coords use getBoundingClientRect,
    so CSS scaling is handled correctly. */

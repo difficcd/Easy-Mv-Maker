@@ -610,4 +610,15 @@ const EN = {
     '키 추가': 'Add key',
     '{0}개': '{0}',
     '{0}점': '{0} pts',
+    '캔버스 배경': 'Canvas',
+    '배경 투명 — 내보내면 배경 없이 나옵니다. 눌러서 흰 배경으로':
+        'Transparent — exports keep the background empty. Click for a white background',
+    '배경 흰색 — 눌러서 투명하게 (체커보드로 표시됩니다)':
+        'White — click to make it transparent (shown as a checkerboard)',
+    '프레임 내보내는 중': 'Exporting frames',
+    '내보내기 실패: ': 'Export failed: ',
+    '{0}프레임을 PNG로 내보냅니다. 메모리를 많이 쓰고 오래 걸립니다. 계속할까요?':
+        'This will export {0} frames as PNGs. It uses a lot of memory and takes a while. Continue?',
+    '배경이 투명하므로 PNG 시퀀스(ZIP)로 내보냅니다. 알파 채널이 있는 동영상은 브라우저가 만들 수 없습니다.':
+        'The background is transparent, so this exports a PNG sequence (ZIP). Browsers cannot make video with an alpha channel.',
 };

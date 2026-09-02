@@ -48,6 +48,8 @@ import { clipGroups, canClip } from './core/clipping.js';
 import { setLayerClipped } from './core/cutsReducer.js';
 import { onionNeighbours, topCutAt } from './engine/selectCuts.js';
 import { evaluateFrame } from './engine/evaluateFrame.js';
+import { pendingBitmapIds } from './engine/pendingBitmaps.js';
+import { makeZip, frameName } from './export/zip.js';
 import { unusedBitmapIds } from './core/bitmapRefs.js';
 import { dragCut, resizeCut } from './core/cutOps.js';
 import {
@@ -474,6 +476,13 @@ export default function App() {
     const [backupAt, setBackupAt] = useState(null);      // time of the last server backup
     const [backupBusy, setBackupBusy] = useState(false);
     const [backupList, setBackupList] = useState(null);  // null = the list is closed
+    // A transparent canvas is a different document, not a different view: the frame really has
+    // no background, and the checkerboard behind it is CSS on the element rather than pixels.
+    // Painting the checkerboard in would put it in every export.
+    const [transparentBg, setTransparentBg] = useState(() => {
+        try { return localStorage.getItem('mv_transparent_bg') === '1'; } catch { return false; }
+    });
+    useEffect(() => { try { localStorage.setItem('mv_transparent_bg', transparentBg ? '1' : '0'); } catch { } }, [transparentBg]);
     const [storageInfo, setStorageInfo] = useState(null); // local storage usage
     const [autosaveErr, setAutosaveErr] = useState(null); // why autosave failed - never swallowed silently
     const [loadProgress, setLoadProgress] = useState(null); // {label, done, total}; total 0 means the length is unknown
@@ -3136,12 +3145,13 @@ export default function App() {
         // so it reads as a brief hold instead of a white flash. Paused/editing always paints normally
         // (the prefetch effect repaints once the frame is ready), so a still frame is never stuck.
         if (playing && paintedOnceRef.current) {
-            const store = bitmapStoreRef.current;
-            const missing = [];
-            for (const ac of activeCuts) for (const l of safeArray(ac.layers)) { if (l.type !== 'layer' || l.visible === false) continue; for (const s of safeArray(l.strokes)) { if (s.tool === 'paste' && s.bitmapId) { const e = store.get(s.bitmapId); if (e && e.blob && !e.imageBitmap && !e.imageData) missing.push(s.bitmapId); } } }
+            const missing = pendingBitmapIds(activeCuts, bitmapStoreRef.current);
             if (missing.length) { requestFrameDecode(missing); return; }
         }
-        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+        // Clear either way - the canvas holds the previous frame otherwise. The difference is
+        // whether white is then painted over it, which is what makes an export opaque.
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        if (!transparentBg) { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height); }
         paintedOnceRef.current = true;
         // The camera is a window onto the frame, so it wraps everything drawn into it - the video
         // reference, the artwork and the text move together, which is the whole point of it being
@@ -3300,7 +3310,7 @@ export default function App() {
             ctx.restore();
         });
         if (camAt) ctx.restore();
-    }, [cuts, currentCutId, currentCut, onionPrev, onionNext, selection, layerCanvasCache, frameDecodeTick, videoOverlay, boilTick, dragTick]);
+    }, [cuts, currentCutId, currentCut, onionPrev, onionNext, selection, layerCanvasCache, frameDecodeTick, videoOverlay, boilTick, dragTick, transparentBg]);
 
     paintFrameRef.current = paintFrame;
 
@@ -3708,7 +3718,71 @@ export default function App() {
             loadAudioUrl(URL.createObjectURL(blob), tr('유튜브 음원'));
         } catch (e) { alert(tr('음원 추출 실패: ') + e.message); }
     };
+    // Transparency cannot survive the recorder. Chrome hands VP9 to the hardware encoder above
+    // roughly 480p, and that encoder has no alpha channel - measured here, the background came back
+    // solid black at 1920x1080 while the same code kept it transparent at 640x360. WebCodecs is no
+    // way out either: VideoEncoder reports alpha 'keep' unsupported for vp8 and vp9 alike.
+    //
+    // So a transparent project exports as a PNG sequence, which is what an editor wants for an
+    // overlay anyway. Drawing each frame deliberately rather than recording one in real time also
+    // means no dropped or duplicated frames, and it waits for pasted bitmaps to decode instead of
+    // holding the previous frame the way playback does.
+    const handleExportFrames = async () => {
+        const canvas = canvasRef.current; if (!canvas) return;
+        const ctMax = Math.max(...cuts.map(c => c.endTime), 0);
+        if (ctMax <= 0) { alert(tr('내보낼 콘텐츠가 없습니다.')); return; }
+        const fps = 30;
+        const total = Math.max(1, Math.round(ctMax * fps));
+        if (!confirm(tr('배경이 투명하므로 PNG 시퀀스(ZIP)로 내보냅니다. 알파 채널이 있는 동영상은 브라우저가 만들 수 없습니다.'))) return;
+        // Every frame is held in memory until the archive is built, so the cap is about RAM, not
+        // patience: a thousand 1080p PNGs is already a few hundred megabytes.
+        if (total > 1000 && !confirm(tr('{0}프레임을 PNG로 내보냅니다. 메모리를 많이 쓰고 오래 걸립니다. 계속할까요?').replace('{0}', String(total)))) return;
+
+        const label = tr('프레임 내보내는 중');
+        setLoadProgress({ label, done: 0, total });
+        isExporting.current = true;
+        const entries = [];
+        try {
+            for (let i = 0; i < total; i++) {
+                const t = i / fps;
+                // Wait for what this frame needs rather than painting without it.
+                const scene = evaluateFrame(cuts, t, { playing: true, currentCutId, cw: CANVAS_W, ch: CANVAS_H });
+                const missing = pendingBitmapIds(scene.cuts.map(e => e.cut), bitmapStoreRef.current);
+                if (missing.length) {
+                    const store = bitmapStoreRef.current;
+                    for (const id of missing) {
+                        const e = store.get(id); if (!e || !e.blob) continue;
+                        try { e.imageBitmap = await decodeFrameBitmap(e); } catch { }
+                    }
+                    invalidateCutsUsing(missing);
+                }
+                paintFrame(t, true);
+                const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
+                if (!blob) throw new Error('toBlob returned nothing');
+                entries.push({ name: frameName(i, total), data: new Uint8Array(await blob.arrayBuffer()) });
+                // Yield often enough that the progress bar moves and the tab stays answerable.
+                if (i % 5 === 0 || i === total - 1) {
+                    setLoadProgress({ label, done: i + 1, total });
+                    await new Promise(res => setTimeout(res, 0));
+                }
+            }
+            const zip = makeZip(entries);
+            const url = URL.createObjectURL(new Blob([zip], { type: 'application/zip' }));
+            const a = Object.assign(document.createElement('a'), { href: url, download: 'mv_frames.zip', style: 'display:none' });
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 10000);
+            alert(tr('완료!'));
+        } catch (e) {
+            alert(tr('내보내기 실패: ') + (e && e.message ? e.message : String(e)));
+        } finally {
+            isExporting.current = false;
+            setLoadProgress(null);
+            paintFrame(currentTimeRef.current, false);
+        }
+    };
+
     const handleExport = () => {
+        if (transparentBg) { handleExportFrames(); return; }
         const canvas = canvasRef.current;
         if (!canvas) return;
         if (typeof canvas.captureStream !== 'function' || typeof window.MediaRecorder === 'undefined') {
@@ -4101,7 +4175,7 @@ export default function App() {
                             {Math.round(view.zoom * 100)}% <RotateCcw size={11} />
                         </button>
                     )}
-                    <div className="canvas-stage" style={{ position: 'relative', transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})`, aspectRatio: `${CANVAS_W} / ${CANVAS_H}`, maxWidth: '100%', maxHeight: '100%' }}>
+                    <div className={`canvas-stage${transparentBg ? ' checkered' : ''}`} style={{ position: 'relative', transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})`, aspectRatio: `${CANVAS_W} / ${CANVAS_H}`, maxWidth: '100%', maxHeight: '100%' }}>
                         {/* tabIndex -1: focusable from code, never a stop in the tab order. The
                             canvas is where the keys are meant to land, but nobody tabs to a
                             drawing surface. */}
@@ -4296,6 +4370,7 @@ export default function App() {
                 handleDeleteAudio={handleDeleteAudio} handleDeleteTrack={handleDeleteTrack}
                 handlePlayPause={handlePlayPause} handleStop={handleStop} isPlaying={isPlaying} loopPlay={loopPlay}
                 makePartFromSelection={makePartFromSelection} marquee={marquee} maxTime={maxTime} mkLayer={mkLayer}
+                transparentBg={transparentBg} setTransparentBg={setTransparentBg}
                 numTracks={numTracks} onTimelinePointerDown={onTimelinePointerDown}
                 onTimelinePointerMove={onTimelinePointerMove} onTimelinePointerUp={onTimelinePointerUp} parts={parts}
                 playbackRate={playbackRate} playheadRef={playheadRef} pps={pps}

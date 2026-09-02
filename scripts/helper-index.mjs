@@ -17,12 +17,18 @@ import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 const INDEX = 'HELPERS.md';
-// Directories whose exports are shared vocabulary. App.jsx and the ui/ components are excluded:
-// those export React components, which are found by reading the screen rather than an index.
-//
-// src/engine was missing when it was created, so its first four exports went unindexed and the
-// guard passed anyway - a guard with a hole in it is worse than none, because it is trusted.
-const DIRS = ['src/core', 'src/canvas', 'src/hooks', 'src/engine', 'server'];
+// Directories whose exports are shared vocabulary. Found on disk rather than listed, because a
+// hand-kept list is a guard with a hole in it: src/engine went unindexed when it was created,
+// and src/export did the same the next time - each time the check passed while missing things.
+// Only ui/ is excluded, since those export React components, which are found by reading the
+// screen rather than an index. App.jsx is a file, not a directory, so it never enters.
+const EXCLUDE = new Set(['ui']);
+const DIRS = [
+    ...readdirSync('src', { withFileTypes: true })
+        .filter(d => d.isDirectory() && !EXCLUDE.has(d.name))
+        .map(d => `src/${d.name}`),
+    'server',
+];
 
 /** Exported function and const names in one module. */
 function exportsOf(source) {
