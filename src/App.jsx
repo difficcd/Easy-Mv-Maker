@@ -31,7 +31,7 @@ import {
     loadVideo, clearVideo, setVideoCuts, setVideoOpacity, clearVideoCuts, moveTrack, resizeAudio,
 } from './core/mediaReducer.js';
 import { cloneCutContents as cloneCutContentsPure } from './core/cutClone.js';
-import { DEFAULT_KEYS, KEY_LABELS, keyOf, matchShortcut, loadKeymap, toolFromAction, findConflicts } from './core/shortcuts.js';
+import { DEFAULT_KEYS, KEY_LABELS, keyOf, matchShortcut, keymapFrom, toolFromAction, findConflicts } from './core/shortcuts.js';
 import { derivePartsFrom, deriveVideoBatches } from './core/partOps.js';
 import {
     cutsReducer, replaceCuts, addCuts, updateCut, setCutAnim, setCutCamera, clearCut,
@@ -491,7 +491,10 @@ export default function App() {
             setThemeRecent(p => [themeColor, ...p.filter(x => x.toLowerCase() !== themeColor.toLowerCase())].slice(0, 10));
         }, 800);
         return () => clearTimeout(t);
-    }, [themeColor]);
+        // The setter is listed because it comes from a custom hook: the linter knows a useState
+        // setter is stable and cannot know that about one handed back from useStored. It is
+        // stable, so saying so costs nothing and keeps the warning count honest.
+    }, [themeColor, setThemeRecent]);
     const [leftDock, setLeftDock] = useState('color'); // which panel is open in the left dock (null = closed); switched from the icon rail
 
     // Tab collapses every panel to leave just the canvas, and remembers what was open so the
@@ -523,7 +526,12 @@ export default function App() {
     // paintFrame already uses.
     const toggleAllPanelsRef = useRef(null);
     toggleAllPanelsRef.current = toggleAllPanels;
-    const [keymap, setKeymap] = useState(loadKeymap);
+    // One place writes the keymap. It used to be written in three: here, and again inside each
+    // of the two modals that edit it.
+    const [keymap, setKeymap] = useStored('mv_keymap', { ...DEFAULT_KEYS }, {
+        decode: (raw) => keymapFrom(JSON.parse(raw)),
+        encode: JSON.stringify,
+    });
     const [showSettings, setShowSettings] = useState(false); // settings dialog (shortcuts and theme)
     const [settingsTab, setSettingsTab] = useState('theme'); // open on the theme tab
     const [rebinding, setRebinding] = useState(null);  // id of the action waiting to be rebound
@@ -2055,14 +2063,13 @@ export default function App() {
                 const next = { ...prev };
                 for (const k of Object.keys(next)) if (next[k] === combo) next[k] = '';
                 next[rebinding] = combo;
-                try { localStorage.setItem('mv_keymap', JSON.stringify(next)); } catch { }
                 return next;
             });
             setRebinding(null);
         };
         window.addEventListener('keydown', h, true);
         return () => window.removeEventListener('keydown', h, true);
-    }, [rebinding]);
+    }, [rebinding, setKeymap]);
 
     // Zoom about the centre of the view, for the buttons and shortcuts.
     const zoomCanvas = (factor) => {

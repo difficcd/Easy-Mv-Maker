@@ -285,7 +285,7 @@ Key bindings, and what a key event means.
 | `findConflicts` | Actions sharing a key, as { key: [action, ...] } — only the keys with more than one. With a binding per tool this stopped being hypothetical. |
 | `KEY_LABELS` | What each binding is called in the settings panel. |
 | `keyOf` | Render a key event as a string such as "ctrl+shift+k". |
-| `loadKeymap` | The saved bindings, with anything missing filled in from the defaults. |
+| `keymapFrom` | A stored keymap with anything missing filled in from the defaults: a binding the user removed stays removed, one that never existed comes from the defaults or it would be unreachable. It no longer reads storage itself - that is readStored's job, and a second reader meant a second try/catch to keep in step. |
 | `matchShortcut` | Which binding, if any, a combo triggers. Compared case-insensitively so a binding stored as "Ctrl+[" still matches; they are written lowercase now, but a shortcut saved by an older version is not going to be rewritten. |
 | `TOOL_PREFIX` | Selecting a tool is a binding like any other, distinguished by this prefix so the handler can route it without a list of tool ids to keep in step with the toolbar. |
 | `toolFromAction` | The tool a binding selects, or null if it is not a tool binding. |
