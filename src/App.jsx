@@ -13,7 +13,7 @@ import { Timeline } from './ui/Timeline';
 import { ProjectPicker, ProgressOverlay, SettingsModal, HelpModal, VideoImportModal, SceneDetectModal, LinkPromptModal, ToolKeysModal } from './ui/Modals';
 import { tr, loadLang, saveLang, setLangValue } from './i18n';
 import { moveLayer } from './core/layerOps.js';
-import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill } from './core/layerOps.js';
+import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, patchLayer } from './core/layerOps.js';
 import { closeLassoPath, lassoBounds, applyResize } from './core/lassoOps.js';
 import { useTimelineGestures } from './hooks/useTimelineGestures.js';
 import { fmt, parseClock } from './core/timeCode.js';
@@ -708,9 +708,8 @@ export default function App() {
         const cut = cuts.find(c => c.id === sel.cutId);
         const newId = cut ? Math.max(...cut.layers.map(l => l.id), 0) + 1 : 1;
         updLayers(sel.cutId, c => {
-            const layers = c.layers.map(l => l.id === sel.sourceLayerId
-                ? { ...l, strokes: [...l.strokes, { id: Date.now(), tool: 'eraseBitmap', bitmapId: sel.maskBitmapId, x: px, y: py }] }
-                : l);
+            const layers = patchLayer(c.layers, sel.sourceLayerId,
+                l => ({ strokes: [...l.strokes, { id: Date.now(), tool: 'eraseBitmap', bitmapId: sel.maskBitmapId, x: px, y: py }] }));
             const partLayer = { id: newId, name: tr('파츠 {0}', newId), type: 'layer', parentId: null, visible: true, redoStrokes: [], strokes: [{ id: Date.now() + 1, tool: 'paste', bitmapId: sel.bitmapId, x: tx, y: ty, w: tw, h: th }] };
             return { layers: [...layers, partLayer], activeLayerId: newId };
         });
@@ -738,7 +737,8 @@ export default function App() {
         const bitmapId = cloneBitmapId(clip.bitmapId, bmpCache); // independent copy per paste
         const x = Math.round(CANVAS_W / 2 - clip.w / 2), y = Math.round(CANVAS_H / 2 - clip.h / 2);
         updLayers(currentCutId, c => ({
-            layers: c.layers.map(l => l.id === layerId ? { ...l, strokes: [...l.strokes, { id: Date.now(), tool: 'paste', bitmapId, x, y, w: clip.w, h: clip.h }] } : l)
+            layers: patchLayer(c.layers, layerId,
+                l => ({ strokes: [...l.strokes, { id: Date.now(), tool: 'paste', bitmapId, x, y, w: clip.w, h: clip.h }] }))
         }));
     };
 
@@ -1736,14 +1736,14 @@ export default function App() {
             return { layers: nl, activeLayerId: na };
         });
     };
-    const handleToggleVisible = (e, cutId, layerId) => { e.stopPropagation(); updLayers(cutId, c => ({ layers: c.layers.map(l => l.id === layerId ? { ...l, visible: !l.visible } : l) })); };
+    const handleToggleVisible = (e, cutId, layerId) => { e.stopPropagation(); updLayers(cutId, c => ({ layers: patchLayer(c.layers, layerId, l => ({ visible: !l.visible })) })); };
     const handleSetActive = (e, cutId, layerId) => {
         e.stopPropagation();
         const cut = cuts.find(c => c.id === cutId); if (!cut) return;
         const layer = cut.layers.find(l => l.id === layerId); if (!layer || layer.type === 'folder') return;
         dispatchCuts(updateCut(cutId, { activeLayerId: layerId }));
     };
-    const handleToggleFolder = (e, cutId, fid) => { e.stopPropagation(); updLayers(cutId, c => ({ layers: c.layers.map(l => l.id === fid ? { ...l, collapsed: !l.collapsed } : l) })); };
+    const handleToggleFolder = (e, cutId, fid) => { e.stopPropagation(); updLayers(cutId, c => ({ layers: patchLayer(c.layers, fid, l => ({ collapsed: !l.collapsed })) })); };
     // Boiling: wobbles the strokes already on the layer. Each click cycles off, light, strong,
     // and it never alters the stored strokes.
     // Opens and closes the boiling settings, where strength, wavelength, speed and the minimum
@@ -1993,7 +1993,7 @@ export default function App() {
         }
         const bitmapId = storeBitmap(src);
         const stroke = { id: Date.now(), tool: 'paste', bitmapId, x: bx, y: by, w: bw, h: bh };
-        updLayers(currentCutId, c => ({ layers: c.layers.map(l => l.id === c.activeLayerId ? { ...l, strokes: [...l.strokes, stroke] } : l) }));
+        updLayers(currentCutId, c => ({ layers: patchLayer(c.layers, c.activeLayerId, l => ({ strokes: [...l.strokes, stroke] })) }));
     };
 
     // Touch navigation on the canvas (fingers never draw — palm rejection):
@@ -2307,7 +2307,7 @@ export default function App() {
         const stroke = { id: Date.now(), tool: 'paste', bitmapId, x: region.x, y: region.y };
         noteColorUsed(color);
         updLayers(currentCutId, c => ({
-            layers: c.layers.map(l => l.id === activeLayer.id ? { ...l, strokes: insertFill(l.strokes, stroke, region.overPaint) } : l)
+            layers: patchLayer(c.layers, activeLayer.id, l => ({ strokes: insertFill(l.strokes, stroke, region.overPaint) }))
         }));
     };
 
@@ -2437,7 +2437,7 @@ export default function App() {
                 // Eraser must composite against the layer, so it stays on the layer-write path.
                 const newStroke = { id: Date.now(), tool, color, opacity, size: eraserSize, points: [pos] };
                 updLayers(currentCutId, c => ({
-                    layers: c.layers.map(l => l.id === drawTargetLayerRef.current ? { ...l, strokes: [...l.strokes, newStroke] } : l)
+                    layers: patchLayer(c.layers, drawTargetLayerRef.current, l => ({ strokes: [...l.strokes, newStroke] }))
                 }));
                 break;
             }
@@ -2540,14 +2540,13 @@ export default function App() {
                 }
                 // Eraser: layer-write path (needs to composite against the layer).
                 updLayers(currentCutId, c => ({
-                    layers: c.layers.map(l => {
-                        if (l.id !== drawTargetLayerRef.current) return l;
+                    layers: patchLayer(c.layers, drawTargetLayerRef.current, l => {
                         const newStrokes = [...l.strokes];
                         const currentStroke = newStrokes[newStrokes.length - 1];
                         if (currentStroke && currentStroke.tool !== 'paste' && currentStroke.tool !== 'fill') {
                             for (const p of positions) currentStroke.points.push(p);
                         }
-                        return { ...l, strokes: newStrokes };
+                        return { strokes: newStrokes };
                     })
                 }));
                 break;

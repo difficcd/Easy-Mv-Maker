@@ -76,6 +76,27 @@ export function resolveDrawLayer(cut, flattenVisibleLeaves) {
 }
 
 /**
+ * Replace one layer with a patched copy, leaving the rest of the list alone.
+ *
+ * Eight call sites wrote this map out by hand. On its own that is only noise, but the guard
+ * inside it is not noise: layer ids are unique within a cut and *not* across cuts, so this must
+ * only ever be handed one cut's layers. Written out eight times, that is eight places to hand it
+ * the wrong list.
+ *
+ * The patch is a function of the layer because most callers need what was there - appending to
+ * `strokes`, flipping `visible`. It returns the fields to change, not the whole layer.
+ *
+ * @param {any[]} layers one cut's layers
+ * @param {any} layerId
+ * @param {(layer: any) => object} patch fields to merge into the matching layer
+ * @returns {any[]} a new list; the same one back if nothing matched
+ */
+export function patchLayer(layers, layerId, patch) {
+    if (!Array.isArray(layers)) return [];
+    return layers.map(l => (l.id === layerId ? { ...l, ...patch(l) } : l));
+}
+
+/**
  * Add a stroke to a layer and make sure it will be seen: the layer itself and every folder above
  * it are forced visible. Returns { activeLayerId, layers }, or null if the layer is gone.
  *

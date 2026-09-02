@@ -137,6 +137,7 @@ Layers: moving, merging, resolving which one a stroke lands on.
 | `insertFill` | Where a bucket fill belongs in a layer's stroke list. Paint goes *under* the ink. |
 | `isDescendantOf` | True when `folderId` is `maybeChildId` itself or an ancestor of it. |
 | `mergeDown` | Flatten a layer into the one below it. "Below" means the next drawable layer in UI order — folders are containers, not surfaces, so they are skipped as a target and refused as a source. |
+| `patchLayer` | Replace one layer with a patched copy, leaving the rest alone. Eight call sites wrote the map out by hand; the guard inside it is not noise, because layer ids are unique within a cut and not across cuts, so it must only ever be handed one cut layer list. |
 | `moveLayer` | Move `layerId` relative to `targetId`. `position` is 'before', 'after', or 'inside' (only meaningful when the target is a folder). Returns a new array, or null when the move is refused and the caller should change nothing. |
 | `offsetLayers` | Shift whole layers, and optionally the cut's texts, by a pixel offset. This is what a move-everything drag commits. |
 | `resolveDrawLayer` | Which layer a stroke should actually go into. The active layer is not always usable: it can be a folder, or point at something that no longer exists. |
