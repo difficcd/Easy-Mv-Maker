@@ -65,7 +65,20 @@ const missing = found.filter(({ name }) => !index.includes(`\`${name}\``));
 const names = new Set(found.map(f => f.name));
 const stale = [...index.matchAll(/^\| `(\w+)`/gm)].map(m => m[1]).filter(n => !names.has(n));
 
-if (missing.length || stale.length) {
+// What a row actually says. Checking only that the name appears left this index 70% wrong
+// without a word of complaint: 32 rows had no description at all, 62 ended mid-comment in `*/`,
+// and 17 groups of rows shared one description - every export of layerOps.js claimed to be
+// isDescendantOf, because the rows had been filled from the first comment in each file rather
+// than from each export's own. An index that answers "does this already exist" wrongly is worse
+// than no index, because it is trusted.
+const described = [...index.matchAll(/^\| `(\w+)` \| (.*?) \|$/gm)].map(m => ({ name: m[1], text: m[2].trim() }));
+const blank = described.filter(r => !r.text);
+const fragment = described.filter(r => r.text.endsWith('*/'));
+const byText = new Map();
+for (const r of described) byText.set(r.text, [...(byText.get(r.text) || []), r.name]);
+const shared = [...byText.entries()].filter(([, names]) => names.length > 1);
+
+if (missing.length || stale.length || blank.length || fragment.length || shared.length) {
     if (missing.length) {
         console.error(`${missing.length} shared export(s) not in ${INDEX}:`);
         for (const { name, path } of missing) console.error(`  ${name}  (${path})`);
@@ -74,7 +87,19 @@ if (missing.length || stale.length) {
         console.error(`${stale.length} entr(y/ies) in ${INDEX} name something that no longer exists:`);
         for (const n of stale) console.error(`  ${n}`);
     }
-    console.error(`\n${INDEX} is what stops the next person reimplementing one of these. Add the row.`);
+    if (blank.length) {
+        console.error(`${blank.length} row(s) with no description:`);
+        for (const r of blank) console.error(`  ${r.name}`);
+    }
+    if (fragment.length) {
+        console.error(`${fragment.length} row(s) ending in \`*/\`, so a comment was copied in by mistake:`);
+        for (const r of fragment) console.error(`  ${r.name}`);
+    }
+    if (shared.length) {
+        console.error(`${shared.length} description(s) used by more than one row - at most one of them is true:`);
+        for (const [text, names] of shared) console.error(`  ${names.join(', ')}\n    ${text.slice(0, 90)}`);
+    }
+    console.error(`\n${INDEX} is what stops the next person reimplementing one of these. It only works if the rows are true.`);
     process.exit(1);
 }
 
