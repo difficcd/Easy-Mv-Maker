@@ -48,7 +48,8 @@ import { dragOnWindow } from './core/windowDrag.js';
 import { computeCamera, applyCamera } from './core/camera.js';
 import { clipGroups, canClip } from './core/clipping.js';
 import { setLayerClipped } from './core/cutsReducer.js';
-import { visibleCutsAt, onionNeighbours, topCutAt } from './engine/selectCuts.js';
+import { onionNeighbours, topCutAt } from './engine/selectCuts.js';
+import { evaluateFrame } from './engine/evaluateFrame.js';
 import { unusedBitmapIds } from './core/bitmapRefs.js';
 import { dragCut, resizeCut } from './core/cutOps.js';
 import {
@@ -2770,6 +2771,9 @@ export default function App() {
             color2: textEdit.color2 || '#ffffff',
             bgColor: textEdit.bgColor || '',
             rotation: textEdit.rotation ?? 0,
+            curve: textEdit.curve ?? 0,
+            flipX: !!textEdit.flipX,
+            flipY: !!textEdit.flipY,
             anim: textEdit.anim || null,
         };
         dispatchCuts(upsertText(textEdit.cutId, obj));
@@ -2813,6 +2817,9 @@ export default function App() {
             color2: t.color2 || '#ffffff',
             bgColor: t.bgColor || '',
             rotation: t.rotation ?? 0,
+            curve: t.curve ?? 0,
+            flipX: !!t.flipX,
+            flipY: !!t.flipY,
             anim: t.anim || null,
         });
     };
@@ -3087,7 +3094,11 @@ export default function App() {
         // alive.
         boilPhaseRef.current = t * BOIL_FPS + boilTick;
         const primary = currentCut;
-        const activeCuts = visibleCutsAt(cuts, t, currentCutId, playing);
+        // Everything about *what* this frame is - which cuts, their animation, their layer
+        // groups, their texts, the camera - is worked out once, before anything is drawn.
+        // The two passes below then read the same answer instead of each recomputing it.
+        const scene = evaluateFrame(cuts, t, { playing, currentCutId, cw: CANVAS_W, ch: CANVAS_H });
+        const activeCuts = scene.cuts.map(e => e.cut);
         // Never flash white DURING PLAYBACK: if the frame we're about to show isn't decoded yet,
         // HOLD the last painted frame (skip this repaint) and kick a decode. The loop keeps advancing,
         // so it reads as a brief hold instead of a white flash. Paused/editing always paints normally
@@ -3111,10 +3122,7 @@ export default function App() {
         //
         // A shot belongs to the cut on the lowest active track: that is the base scene, and the
         // tracks above it are parts of the same shot rather than shots of their own.
-        const camCut = playing ? activeCuts.find(c => c.camera) : null;
-        const camAt = camCut
-            ? computeCamera(camCut.camera, cutProgress(camCut, t), CANVAS_W, CANVAS_H)
-            : null;
+        const camAt = scene.camera;
         if (camAt) { ctx.save(); applyCamera(ctx, camAt, CANVAS_W, CANVAS_H); }
         // Video overlay track: drawn underneath everything. The <video> element is kept at time t by
         // the playback loop (playing) or a paused-seek effect.
@@ -3154,15 +3162,7 @@ export default function App() {
             }
         }
 
-        activeCuts.forEach(ac => {
-            const visible = flattenLayersInUiOrder(ac.layers || []).filter(l => l.type === 'layer' && l.visible !== false);
-            // A clipped layer draws as part of the group below it rather than on its own, so the
-            // loop walks groups. With nothing clipped this is one group per layer and the code
-            // below behaves exactly as it did.
-            const order = clipGroups(visible).map(g => ({ ...g.base, __clip: g }));
-            // Cut-level animation (enter/exit/deform) applies only during playback/export,
-            // so editing stays at rest. Transform about the canvas centre.
-            const anim = playing ? computeCutAnim(ac, t, CANVAS_W, CANVAS_H) : null;
+        scene.cuts.forEach(({ cut: ac, anim, groups }) => {
             ctx.save();
             if (anim) {
                 ctx.globalAlpha = anim.alpha;
@@ -3171,13 +3171,14 @@ export default function App() {
                 ctx.translate(-CANVAS_W / 2, -CANVAS_H / 2);
             }
             // Draw bottom -> top so the topmost layer (UI top) is visually on top.
-            for (let i = order.length - 1; i >= 0; i--) {
-                const l = order[i];
-                const layerCanvas = flattenClipGroup(ac.id, l.__clip);
+            for (let i = groups.length - 1; i >= 0; i--) {
+                const group = groups[i];
+                const l = group.base;
+                const layerCanvas = flattenClipGroup(ac.id, group);
                 if (!layerCanvas) continue; // frame still decoding (part-scoped memory); will repaint when ready
 
                 // Per-layer ("part") transform nests inside the cut transform.
-                const la = playing ? computeLayerAnim(l, ac, t, CANVAS_W, CANVAS_H) : null;
+                const la = group.anim;
                 ctx.save();
                 if (la) {
                     if (la.alpha != null && la.alpha < 1) ctx.globalAlpha *= la.alpha; // keyframe opacity
@@ -3250,23 +3251,17 @@ export default function App() {
         });
 
         // Text objects live outside paint layers ("text layer").
-        activeCuts.forEach(ac => {
-            const anim = playing ? computeCutAnim(ac, t, CANVAS_W, CANVAS_H) : null;
+        scene.cuts.forEach(({ anim, texts }) => {
             ctx.save();
             if (anim) {
                 ctx.translate(CANVAS_W / 2 + anim.tx, CANVAS_H / 2 + anim.ty);
                 ctx.scale(anim.sx, anim.sy);
                 ctx.translate(-CANVAS_W / 2, -CANVAS_H / 2);
             }
-            const t2 = t; // the loop below names its text object t, shadowing the time t
-            for (const t of safeArray(ac.texts)) {
-                if (!t || t.visible === false) continue;
-                // Text animation only applies during playback, like cut animation.
-                const ta = playing ? computeTextAnim(t, ac, t2) : null;
-                if (ta && ta.alpha <= 0.001) continue;
-                drawTextObject(ctx, t, {
+            for (const { text, anim: ta } of texts) {
+                drawTextObject(ctx, text, {
                     anim: ta,
-                    box: textNeedsBox(t, ta) ? measureTextBox(t) : null,
+                    box: textNeedsBox(text, ta) ? measureTextBox(text) : null,
                     alpha: anim ? anim.alpha : 1,
                 });
             }
@@ -4200,6 +4195,14 @@ export default function App() {
                                     {textEdit.bgColor && <input type="color" value={textEdit.bgColor.startsWith('#') ? textEdit.bgColor : '#ffffff'} onChange={e => setTextEdit(te => te ? ({ ...te, bgColor: e.target.value }) : te)} className="text-editor-color" title={tr('배경 색')} />}
                                     <NumField className="time-input" width={54} title={tr('회전(도)')} value={textEdit.rotation ?? 0} step={5}
                                         onChange={v => setTextEdit(te => te ? ({ ...te, rotation: v }) : te)} />
+                                    <NumField className="time-input" width={54} title={tr('곡률(도) — 양수는 위로 휩니다')} value={textEdit.curve ?? 0} step={10}
+                                        onChange={v => setTextEdit(te => te ? ({ ...te, curve: Math.max(-180, Math.min(180, v)) }) : te)} />
+                                    <label className="te-check" title={tr('좌우 반전')}>
+                                        <input type="checkbox" checked={!!textEdit.flipX} onChange={e => setTextEdit(te => te ? ({ ...te, flipX: e.target.checked }) : te)} />{tr('좌우뒤집기')}
+                                    </label>
+                                    <label className="te-check" title={tr('상하 반전')}>
+                                        <input type="checkbox" checked={!!textEdit.flipY} onChange={e => setTextEdit(te => te ? ({ ...te, flipY: e.target.checked }) : te)} />{tr('상하뒤집기')}
+                                    </label>
                                     {/* Text animation, visible only during playback. */}
                                     {(() => {
                                         const an = { ...TEXT_ANIM_DEFAULT, ...(textEdit.anim || {}) };

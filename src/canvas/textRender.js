@@ -8,6 +8,9 @@
  * simply does not have that key and every read below already has a default.
  *
  * @typedef {object} TextObject
+ * @property {any} [id] the document's identity for it; the renderer never reads this, but the
+ *   type has to admit it or a text taken straight from a cut is not assignable to it
+ * @property {boolean} [visible] likewise - hiding happens before anything gets here
  * @property {string} [text] the content, newline-separated for multiple lines
  * @property {number} [x] anchor, not the left edge - see measureTextBox
  * @property {number} [y] top of the first line
@@ -29,6 +32,9 @@
  * @property {number} [shadowBlur]
  * @property {number} [shadowDX]
  * @property {number} [shadowDY]
+ * @property {number} [curve] degrees of arc the line bends through; 0 is straight
+ * @property {boolean} [flipX] mirror left to right, about the centre of the box
+ * @property {boolean} [flipY] mirror top to bottom
  * @property {number} [rotation] degrees, about the centre of the box
  * @property {number} [opacity] 0..1, multiplied with any animation alpha
  */
@@ -53,6 +59,8 @@
  * @property {number} rot degrees
  * @property {number} chars how much of the string is revealed, for the typing effect
  */
+
+import { layoutLine } from './textLayout.js';
 
 // Measuring and drawing text objects.
 //
@@ -126,7 +134,9 @@ export function measureTextBox(t, measureCtx) {
  * @returns {boolean}
  */
 export function textNeedsBox(t, anim) {
-    return !!(t?.gradient || t?.bgColor || t?.rotation || anim);
+    // Flipping needs it for the same reason rotation does: both pivot on the centre of the box,
+    // and without one the text would mirror about the canvas origin and leave the frame.
+    return !!(t?.gradient || t?.bgColor || t?.rotation || t?.flipX || t?.flipY || anim);
 }
 
 /**
@@ -187,6 +197,14 @@ export function drawTextObject(ctx, t, { anim = null, box = null, alpha = 1 } = 
         const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
         ctx.translate(cx, cy); ctx.rotate((t.rotation * Math.PI) / 180); ctx.translate(-cx, -cy);
     }
+    // Mirroring, about the centre of the box for the same reason rotation is: scaling about the
+    // origin would fling the text across the canvas instead of flipping it where it sits.
+    if ((t.flipX || t.flipY) && box) {
+        const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
+        ctx.translate(cx, cy);
+        ctx.scale(t.flipX ? -1 : 1, t.flipY ? -1 : 1);
+        ctx.translate(-cx, -cy);
+    }
     // Background box (the highlight).
     if (t.bgColor && box) {
         const pad = Math.round(fontSize * 0.22);
@@ -223,6 +241,14 @@ export function drawTextObject(ctx, t, { anim = null, box = null, alpha = 1 } = 
         ctx.shadowOffsetY = t.shadowDY ?? 2;
     }
     const x = t.x ?? 0, y = t.y ?? 0;
+
+    if (t.curve) {
+        drawCurved(ctx, t, lines, { x, y, lineHeight, fontSize, fillStyle });
+        try { ctx.letterSpacing = '0px'; } catch { }
+        ctx.restore();
+        return;
+    }
+
     if (t.outline) {
         ctx.lineJoin = 'round';
         ctx.lineWidth = Math.max(2, fontSize / 6);
@@ -243,4 +269,61 @@ export function drawTextObject(ctx, t, { anim = null, box = null, alpha = 1 } = 
     }
     try { ctx.letterSpacing = '0px'; } catch { }
     ctx.restore();
+}
+
+
+/**
+ * Draw the lines along an arc, one character at a time.
+ *
+ * Only reached when a curve is set. Placing characters individually gives up the font's kerning
+ * and shaping, which is a real loss on Latin text - so it is the cost of curving, not something
+ * every text pays.
+ *
+ * letterSpacing is applied by the layout rather than the context here: ctx.letterSpacing affects
+ * a whole fillText call, and each call is now one character with nothing to space it against.
+ */
+function drawCurved(ctx, t, lines, { x, y, lineHeight, fontSize, fillStyle }) {
+    const spacing = t.letterSpacing || 0;
+    try { ctx.letterSpacing = '0px'; } catch { }
+    // Each character is drawn centred on its own point, so the arc reads as one turning line
+    // rather than a row of glyphs whose left edges happen to follow a curve.
+    const align = ctx.textAlign;
+    ctx.textAlign = 'center';
+
+    for (let i = 0; i < lines.length; i++) {
+        const chars = [...lines[i]];
+        if (!chars.length) continue;
+        const widths = chars.map(c => ctx.measureText(c).width);
+        const placed = layoutLine(chars, widths, { curve: t.curve, letterSpacing: spacing });
+        const total = widths.reduce((a, b) => a + b, 0) + spacing * Math.max(0, chars.length - 1);
+        // The anchor means the same thing it does for a straight line, so switching the curve on
+        // does not also move the text.
+        const originX = align === 'center' ? x - total / 2 : align === 'right' ? x - total : x;
+        const originY = y + i * lineHeight;
+
+        for (const c of placed) {
+            ctx.save();
+            ctx.translate(originX + c.x, originY + c.y);
+            ctx.rotate(c.angle);
+            if (t.outline) {
+                ctx.lineJoin = 'round';
+                ctx.lineWidth = Math.max(2, fontSize / 6);
+                ctx.strokeStyle = t.outlineColor || '#ffffff';
+                ctx.strokeText(c.ch, 0, 0);
+            }
+            ctx.fillStyle = fillStyle;
+            ctx.fillText(c.ch, 0, 0);
+            ctx.restore();
+        }
+
+        // As on the straight path: the shadow is cast once by the block, or every character would
+        // drop one onto its neighbours.
+        if (i === 0 && t.shadow) {
+            ctx.shadowColor = 'transparent';
+            ctx.shadowBlur = 0;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
+        }
+    }
+    ctx.textAlign = align;
 }
