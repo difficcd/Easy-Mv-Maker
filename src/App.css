@@ -473,26 +473,30 @@ body {
     backdrop-filter: blur(8px);
 }
 
-.text-editor {
-    position: absolute;
-    min-width: 300px;
-    max-width: 560px;
-    /* There are enough controls to run tall, so it scrolls within the panel rather than off-screen. */
-    max-height: 80vh;
-    overflow-y: auto;
-    z-index: 40;
-    transform: translate(10px, 10px);
-    padding: 12px;
-    border-radius: 12px;
-    /* Theme-driven, like every other panel. This used to be a hardcoded navy that ignored the
-       theme colour entirely, so it looked pasted in from another application. */
-    background: hsl(var(--ui-h) var(--ui-s) 14%);
-    border: 1px solid hsl(var(--ui-h) var(--ui-s) 28%);
-    backdrop-filter: blur(10px);
-    box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
+/* The text editor is a docked panel now, not a window over the canvas: it had grown enough
+   controls to cover the drawing it was meant to be editing. It keeps the .right-panel chrome
+   and only needs its own scrolling body, so the header stays put while the controls scroll. */
+/* The CUT / LAYER tab's contents. It is a flex column so the cut list scrolls and the buttons
+   under it stay put, which is what the panel did before the tabs existed. */
+.cut-tab-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
 }
 
-.text-editor textarea {
+.cut-tab-body[hidden] {
+    display: none;
+}
+
+.text-panel-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding-right: 2px;
+}
+
+.text-panel-body textarea {
     width: 100%;
     height: 110px;
     resize: vertical;
@@ -506,11 +510,39 @@ body {
     outline: none;
 }
 
-.text-editor textarea:focus {
+.text-panel-body textarea:focus {
     border-color: var(--accent-hi);
 }
 
-.text-editor textarea::placeholder {
+.text-panel-body textarea::placeholder {
+    color: rgba(255, 255, 255, 0.55);
+}
+
+/* Pulled out of the dock, the panel is inside .float-panel, which sizes itself to its content -
+   so the height has to come from somewhere or the body would grow without limit. */
+.float-panel .text-panel {
+    max-height: 80vh;
+}
+
+.text-panel-body textarea {
+    width: 100%;
+    height: 110px;
+    resize: vertical;
+    background: hsl(var(--ui-h) var(--ui-s) 10%);
+    color: #e6e6ee;
+    caret-color: var(--accent-soft);
+    border: 1px solid hsl(var(--ui-h) var(--ui-s) 26%);
+    border-radius: 8px;
+    padding: 10px;
+    font: 14px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    outline: none;
+}
+
+.text-panel-body textarea:focus {
+    border-color: var(--accent-hi);
+}
+
+.text-panel-body textarea::placeholder {
     color: rgba(255, 255, 255, 0.55);
 }
 
@@ -1766,7 +1798,7 @@ html {
 }
 
 /* Colour swatches read as part of the control they belong to, not as gaps. */
-.text-editor .text-editor-color {
+.text-panel-body .text-editor-color {
     width: 26px;
     height: 26px;
     padding: 0;
@@ -1776,7 +1808,7 @@ html {
     cursor: pointer;
 }
 
-.text-editor .text-editor-label {
+.text-panel-body .text-editor-label {
     font-size: 11px;
     color: #9a9aa8;
 }
