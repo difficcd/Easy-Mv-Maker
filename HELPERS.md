@@ -362,6 +362,18 @@ The playback clock: one rAF loop driving canvas, playhead, audio, video and the 
 |---|---|
 | `usePlayback` | Owns `isPlaying`, `currentTime` and the four refs the loop reads instead of state. Returns those plus `playPause` and `stop`. Export runs through the same loop, at real time whatever speed is selected. |
 
+## `src/engine/selectCuts.js`
+
+Which cuts a frame is made of. The first piece of the scene engine: playback, scrubbing, export,
+thumbnails and onion skin should all describe a frame the same way.
+
+| | |
+|---|---|
+| `cutsAt` | The cuts playing at a moment, bottom track first. Half-open, so two cuts that touch never both claim the instant between them. |
+| `visibleCutsAt` | What to draw, which is not the same question: while paused it also includes the cut being edited, or clicking a cut and finding a blank canvas becomes normal. |
+| `onionNeighbours` | The cuts either side on the **same** track. `next` starts at `endTime`, because cuts abut and a strict comparison would find nothing in the common case. |
+| `topCutAt` | The cut the playhead selects: topmost of those it is over, since the upper tracks are what a click would land on. |
+
 ## `src/hooks/useTimelineGestures.js`
 
 Every way the timeline can be pointed at, in one place.
