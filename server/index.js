@@ -61,17 +61,45 @@ const ASSET_MIME = {
 // webm/mp4/ogg are ambiguous (audio vs video) — the asset id tells us which.
 const AUDIO_MIME = { webm: 'audio/webm', mp4: 'audio/mp4', ogg: 'audio/ogg', m4a: 'audio/mp4', mp3: 'audio/mpeg', opus: 'audio/ogg', wav: 'audio/wav' };
 
+/**
+ * Write a project file and answer with what was written.
+ *
+ * Creating and overwriting were the same five lines twice, differing only in where the id came
+ * from. Two copies of the stored shape are two chances for "save as new" and "overwrite" to
+ * write different files - and the difference would only show up when one of them was opened.
+ */
+async function writeProject(id, req, res) {
+    const name = req.body?.name || 'Untitled';
+    // The body is either { name, data } or the document itself, depending on which client wrote it.
+    const data = req.body?.data ?? req.body;
+    await fs.writeFile(fileFor(id), JSON.stringify({ id, name, savedAt: new Date().toISOString(), data }));
+    res.json({ id, name });
+}
+
+/**
+ * The .json files in a directory, summarised, newest first.
+ *
+ * A file that will not parse is left out rather than failing the whole listing: one corrupt save
+ * should not make the project list unopenable.
+ *
+ * @param {string} dir
+ * @param {(name: string, fullPath: string) => Promise<object|null>} summarise
+ */
+async function listJsonDir(dir, summarise) {
+    const files = (await fs.readdir(dir).catch(() => [])).filter(f => f.endsWith('.json'));
+    const items = await Promise.all(files.map(async f => {
+        try { return await summarise(f, path.join(dir, f)); } catch { return null; }
+    }));
+    return items.filter(Boolean).sort((a, b) => String(b.savedAt).localeCompare(String(a.savedAt)));
+}
+
 // List saved projects (metadata only).
 app.get('/api/projects', async (_req, res) => {
     try {
-        const files = (await fs.readdir(DATA_DIR)).filter(f => f.endsWith('.json'));
-        const items = await Promise.all(files.map(async f => {
-            try {
-                const raw = JSON.parse(await fs.readFile(path.join(DATA_DIR, f), 'utf8'));
-                return { id: f.replace(/\.json$/, ''), name: raw.name || raw.data?.appName || f, savedAt: raw.savedAt || null };
-            } catch { return null; }
+        res.json(await listJsonDir(DATA_DIR, async (f, full) => {
+            const raw = JSON.parse(await fs.readFile(full, 'utf8'));
+            return { id: f.replace(/\.json$/, ''), name: raw.name || raw.data?.appName || f, savedAt: raw.savedAt || null };
         }));
-        res.json(items.filter(Boolean).sort((a, b) => String(b.savedAt).localeCompare(String(a.savedAt))));
     } catch (e) { res.status(500).json({ error: String(e) }); }
 });
 
@@ -86,22 +114,14 @@ app.get('/api/projects/:id', async (req, res) => {
 // Create a new project (server assigns an id).
 app.post('/api/projects', async (req, res) => {
     try {
-        const id = newId();
-        const name = req.body?.name || 'Untitled';
-        const data = req.body?.data ?? req.body;
-        await fs.writeFile(fileFor(id), JSON.stringify({ id, name, savedAt: new Date().toISOString(), data }));
-        res.json({ id, name });
+        await writeProject(newId(), req, res);
     } catch (e) { res.status(500).json({ error: String(e) }); }
 });
 
 // Overwrite an existing project.
 app.put('/api/projects/:id', async (req, res) => {
     try {
-        const id = safeId(req.params.id);
-        const name = req.body?.name || 'Untitled';
-        const data = req.body?.data ?? req.body;
-        await fs.writeFile(fileFor(id), JSON.stringify({ id, name, savedAt: new Date().toISOString(), data }));
-        res.json({ id, name });
+        await writeProject(safeId(req.params.id), req, res);
     } catch (e) { res.status(500).json({ error: String(e) }); }
 });
 
@@ -211,16 +231,11 @@ app.post('/api/backups/:key', async (req, res) => {
 
 app.get('/api/backups/:key', async (_req, res) => {
     try {
-        const dir = backupDirFor(_req.params.key);
-        const files = (await fs.readdir(dir).catch(() => [])).filter(f => f.endsWith('.json'));
-        const items = await Promise.all(files.map(async f => {
-            try {
-                const st = await fs.stat(path.join(dir, f));
-                const head = JSON.parse(await fs.readFile(path.join(dir, f), 'utf8'));
-                return { stamp: f.replace(/\.json$/, ''), name: head.name || 'Untitled', savedAt: head.savedAt || st.mtime.toISOString(), size: st.size };
-            } catch { return null; }
+        res.json(await listJsonDir(backupDirFor(_req.params.key), async (f, full) => {
+            const st = await fs.stat(full);
+            const head = JSON.parse(await fs.readFile(full, 'utf8'));
+            return { stamp: f.replace(/\.json$/, ''), name: head.name || 'Untitled', savedAt: head.savedAt || st.mtime.toISOString(), size: st.size };
         }));
-        res.json(items.filter(Boolean).sort((a, b) => String(b.savedAt).localeCompare(String(a.savedAt))));
     } catch (e) { res.status(500).json({ error: String(e) }); }
 });
 
