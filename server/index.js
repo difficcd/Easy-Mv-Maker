@@ -232,9 +232,15 @@ app.post('/api/backups/:key', async (req, res) => {
 app.get('/api/backups/:key', async (_req, res) => {
     try {
         res.json(await listJsonDir(backupDirFor(_req.params.key), async (f, full) => {
-            const st = await fs.stat(full);
-            const head = JSON.parse(await fs.readFile(full, 'utf8'));
-            return { stamp: f.replace(/\.json$/, ''), name: head.name || 'Untitled', savedAt: head.savedAt || st.mtime.toISOString(), size: st.size };
+            // One handle for both the stat and the read. Statting a path and then reading it is
+            // two chances for the file to be something else in between, and this listing runs
+            // while backups are being written.
+            const fh = await fs.open(full, 'r');
+            try {
+                const st = await fh.stat();
+                const head = JSON.parse(await fh.readFile('utf8'));
+                return { stamp: f.replace(/\.json$/, ''), name: head.name || 'Untitled', savedAt: head.savedAt || st.mtime.toISOString(), size: st.size };
+            } finally { await fh.close(); }
         }));
     } catch (e) { res.status(500).json({ error: String(e) }); }
 });
