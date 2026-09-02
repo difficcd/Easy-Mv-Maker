@@ -4,7 +4,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { moveLayer, isDescendantOf, resolveDrawLayer, commitStroke, insertFill, offsetLayers, mergeDown } from '../src/core/layerOps.js';
+import { moveLayer, isDescendantOf, resolveDrawLayer, commitStroke, insertFill, offsetLayers, mergeDown , patchLayer} from '../src/core/layerOps.js';
 import { flattenLayersInUiOrder } from '../src/canvas/canvasUtils.js';
 
 // f1 > a, b   then c at the root
@@ -367,4 +367,44 @@ test('mergeDown: does not mutate the layers it was given', () => {
     const snapshot = JSON.stringify(before);
     mergeDown(before, 'top', flat);
     assert.equal(JSON.stringify(before), snapshot);
+});
+
+// --- patchLayer --------------------------------------------------------------------------------
+
+test('patchLayer changes the matching layer and leaves the others identical', () => {
+    const a = { id: 1, visible: true }, b = { id: 2, visible: true };
+    const out = patchLayer([a, b], 2, () => ({ visible: false }));
+    assert.equal(out[0], a, 'untouched layers are the same object, so React can skip them');
+    assert.deepEqual(out[1], { id: 2, visible: false });
+    assert.notEqual(out[1], b, 'the patched one is a copy');
+});
+
+test('patchLayer sees the layer, so a caller can build on what was there', () => {
+    const out = patchLayer([{ id: 1, strokes: ['a'] }], 1, l => ({ strokes: [...l.strokes, 'b'] }));
+    assert.deepEqual(out[0].strokes, ['a', 'b']);
+});
+
+test('patchLayer leaves the original list alone', () => {
+    const layers = [{ id: 1, visible: true }];
+    patchLayer(layers, 1, () => ({ visible: false }));
+    assert.equal(layers[0].visible, true);
+});
+
+test('an id that matches nothing changes nothing', () => {
+    const layers = [{ id: 1 }, { id: 2 }];
+    const out = patchLayer(layers, 99, () => ({ visible: false }));
+    assert.deepEqual(out, layers);
+});
+
+test('the patch never runs for a layer that does not match', () => {
+    // Ids are unique within a cut and not across cuts, so a patch handed the wrong cut's layers
+    // must do nothing rather than something surprising to a same-numbered layer elsewhere.
+    let calls = 0;
+    patchLayer([{ id: 1 }, { id: 2 }, { id: 3 }], 2, () => { calls++; return {}; });
+    assert.equal(calls, 1);
+});
+
+test('patchLayer survives being handed nothing', () => {
+    assert.deepEqual(patchLayer(null, 1, () => ({})), []);
+    assert.deepEqual(patchLayer(undefined, 1, () => ({})), []);
 });
