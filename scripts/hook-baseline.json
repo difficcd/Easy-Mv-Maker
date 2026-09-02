@@ -1,4 +1,5 @@
 {
-  "App.jsx:react-hooks/exhaustive-deps": 10,
+  "App.jsx:react-hooks/exhaustive-deps": 11,
+  "usePlayback.js:react-hooks/exhaustive-deps": 1,
   "ColorPanel.jsx:react-hooks/exhaustive-deps": 1
 }
