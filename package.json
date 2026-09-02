@@ -17,7 +17,7 @@
     "bench": "node scripts/bench.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
-    "check": "npm run typecheck && npm test && node scripts/hook-baseline.mjs && node scripts/helper-index.mjs && npm run build",
+    "check": "npm run typecheck && npm test && node scripts/hook-baseline.mjs && node scripts/helper-index.mjs && node scripts/i18n-check.mjs && npm run build",
     "smoke": "node test/smoke/boot.mjs"
   },
   "dependencies": {

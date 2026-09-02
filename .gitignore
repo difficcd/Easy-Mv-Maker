@@ -38,3 +38,7 @@ server/data/
 
 # Screenshot written by the boot smoke test when it fails; CI keeps it as an artifact.
 smoke-failure.png
+
+# Scratch harness for comparing two builds visually. Not part of the project: it needs two
+# builds served on two ports, and it is a technique rather than a check.
+.visualcheck/
