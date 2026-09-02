@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { textAnimStep, charAnimAt, computeTextAnim, TEXT_ANIM_DEFAULT } from '../src/canvas/canvasUtils.js';
+import { textAnimStep, charAnimAt, charFxAt, charNoise, computeTextAnim, TEXT_ANIM_DEFAULT } from '../src/canvas/canvasUtils.js';
 
 const close = (a, b, eps = 1e-9) => Math.abs(a - b) < eps;
 
@@ -203,4 +203,89 @@ test('a faster typing speed brings a given character in sooner', () => {
 test('a zero typing speed is not a division by zero', () => {
     const c = charAnimAt({ inMode: 'typing', inType: 'fade', speed: 0, dur: 0.2, local: 0.5 }, 3, 8);
     assert.ok(Number.isFinite(c.alpha));
+});
+
+// --- the per-character offset ------------------------------------------------------------------
+
+test('a settled character has no offset left, whatever the effect', () => {
+    for (const mode of ['scatter', 'drop', 'zigzag', 'spin', 'pop']) {
+        const fx = charFxAt(mode, 40, 3, 1);
+        assert.ok(fx === null || (close(fx.dx, 0) && close(fx.dy, 0) && close(fx.rot, 0) && close(fx.scale, 1)),
+            `${mode} left something behind: ${JSON.stringify(fx)}`);
+    }
+});
+
+test('no effect is null rather than a zero-valued object', () => {
+    assert.equal(charFxAt('none', 40, 0, 0.5), null);
+    assert.equal(charFxAt('', 40, 0, 0.5), null);
+    assert.equal(charFxAt('somersault', 40, 0, 0.5), null);
+});
+
+test('the noise is stable: the same character always comes from the same place', () => {
+    const a = charFxAt('scatter', 40, 7, 0.3);
+    const b = charFxAt('scatter', 40, 7, 0.3);
+    assert.deepEqual(a, b, 'a redraw would otherwise make the text boil');
+});
+
+test('scatter sends different characters different ways', () => {
+    const dirs = [0, 1, 2, 3, 4, 5].map(i => {
+        const f = charFxAt('scatter', 40, i, 0.2);
+        return Math.round(Math.atan2(f.dy, f.dx) * 180 / Math.PI);
+    });
+    assert.equal(new Set(dirs).size, dirs.length, `angles repeated: ${dirs}`);
+});
+
+test('scatter reaches further with a larger amount', () => {
+    const reach = (amt) => { const f = charFxAt('scatter', amt, 3, 0.2); return Math.hypot(f.dx, f.dy); };
+    assert.ok(reach(80) > reach(20));
+});
+
+test('zigzag alternates and drop does not', () => {
+    const zig = [0, 1, 2, 3].map(i => Math.sign(charFxAt('zigzag', 40, i, 0.2).dy));
+    assert.deepEqual(zig, [-1, 1, -1, 1]);
+    const drop = [0, 1, 2, 3].map(i => Math.sign(charFxAt('drop', 40, i, 0.2).dy));
+    assert.deepEqual(drop, [-1, -1, -1, -1], 'every character falls from above');
+});
+
+test('spin turns and shrinks, and unwinds as it settles', () => {
+    const early = charFxAt('spin', 90, 2, 0.1);
+    const late = charFxAt('spin', 90, 2, 0.9);
+    assert.ok(Math.abs(early.rot) > Math.abs(late.rot));
+    assert.ok(early.scale < late.scale && late.scale < 1);
+});
+
+test('pop overshoots its own size rather than only growing into it', () => {
+    const scales = [0.1, 0.3, 0.5, 0.7, 0.9].map(e => charFxAt('pop', 40, 0, e).scale);
+    assert.ok(Math.max(...scales) > 1, `never overshot: ${scales}`);
+});
+
+test('an effect alone is enough to animate the characters, with no entrance chosen', () => {
+    // Ticking only "typing" used to do nothing, because the per-character path waited for one of
+    // the block entrances to be picked as well.
+    const a = computeTextAnim(withAnim({ typing: true, typeSpeed: 10, inType: 'none', charFx: 'scatter' }), cut, 0.5);
+    assert.ok(a.perChar, 'the characters are animating');
+    assert.equal(a.perChar.inMode, 'typing');
+    assert.equal(a.perChar.fx, 'scatter');
+    const c = charAnimAt(a.perChar, 4, 10);
+    assert.ok(c.dx !== 0 || c.dy !== 0, 'and one of them is somewhere other than home');
+});
+
+test('an effect with no typing and no stagger still animates per character', () => {
+    const a = computeTextAnim(withAnim({ inType: 'none', charFx: 'spin', inDur: 1 }), cut, 0.3);
+    assert.ok(a.perChar);
+    assert.equal(a.perChar.inMode, 'spread');
+});
+
+test('an entrance and an effect compose rather than replace each other', () => {
+    const p = { inMode: 'typing', inType: 'up', speed: 10, dur: 0.4, local: 0.25, fx: 'scatter', fxAmount: 40 };
+    const both = charAnimAt(p, 1, 8);
+    const inOnly = charAnimAt({ ...p, fx: null }, 1, 8);
+    assert.notEqual(both.dx, inOnly.dx, 'the scatter added a sideways offset the entrance has none of');
+    assert.ok(both.alpha <= inOnly.alpha, 'and the two fades multiply rather than one winning');
+});
+
+test('the block is left alone when only an effect is set', () => {
+    const a = computeTextAnim(withAnim({ inType: 'none', charFx: 'drop', inDur: 1 }), cut, 0.3);
+    assert.equal(a.alpha, 1);
+    assert.equal(a.dy, 0);
 });

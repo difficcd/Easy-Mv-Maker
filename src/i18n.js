@@ -699,4 +699,12 @@ const EN = {
     '내보내기': 'Export',
     '트랙 추가': 'Add Track',
     '한 글자씩 나타남 — 등장 효과를 고르면 글자마다 그 효과로 들어옵니다': 'One character at a time - pick an entrance and each letter arrives with it',
+    '글자마다 따로 — 각 글자가 저마다 다른 곳에서 들어옵니다': 'Per character - each letter arrives from somewhere of its own',
+    '글자효과없음': 'No letter effect',
+    '흩어져 모임': 'Scatter in',
+    '하나씩 떨어짐': 'Drop one by one',
+    '위아래 번갈아': 'Alternate up/down',
+    '돌면서': 'Spin in',
+    '톡톡 튀어나옴': 'Pop in',
+    '글자 효과 세기 (px, 회전은 도)': 'Letter effect strength (px; degrees for the turning ones)',
 };

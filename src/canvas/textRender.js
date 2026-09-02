@@ -329,7 +329,10 @@ function drawPerChar(ctx, t, lines, { x, y, lineHeight, fontSize, fillStyle, per
                 if (ca.blur > 0.05) ctx.filter = `blur(${ca.blur.toFixed(1)}px)`;
             }
             ctx.translate(originX + c.x + (ca ? ca.dx : 0), originY + c.y + (ca ? ca.dy : 0));
+            // The curve's own angle first, then the character's: the curve decides which way the
+            // glyph faces on the line, and the animation turns it about that.
             ctx.rotate(c.angle);
+            if (ca && ca.rot) ctx.rotate((ca.rot * Math.PI) / 180);
             if (ca && ca.scale !== 1) ctx.scale(ca.scale, ca.scale);
             if (t.outline) {
                 ctx.lineJoin = 'round';

@@ -1215,8 +1215,81 @@ export function sampleWave(wave, u) {
 export const TEXT_ANIM_DEFAULT = {
     inType: 'none', inDur: 0.4, outType: 'none', outDur: 0.4,
     typing: false, typeSpeed: 18, emphasis: 'none', emAmount: 20, emSpeed: 2,
-    charStagger: 0,
+    charStagger: 0, charFx: 'none', charFxAmount: 40,
 };
+
+/**
+ * A stable pseudo-random number in 0..1 for one character.
+ *
+ * Stable is the whole point: Math.random would give a character a new direction every frame and
+ * the text would boil rather than fly together. The same index always gets the same value, so a
+ * scatter looks scattered but holds still, and it looks the same on every replay and every
+ * machine.
+ *
+ * @param {number} index
+ * @param {number} [salt] a second stream, for a second axis
+ * @returns {number} 0..1
+ */
+export function charNoise(index, salt = 0) {
+    // A small integer hash. The constants are the usual odd primes; nothing about them matters
+    // beyond mixing the low bits into the high ones.
+    let h = (index | 0) * 374761393 + (salt | 0) * 668265263;
+    h = (h ^ (h >>> 13)) * 1274126177;
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+/**
+ * Where one character is coming from, on top of whatever entrance is playing.
+ *
+ * This is the part that makes typing read as characters arriving separately rather than a line
+ * sliding in as one: each character gets its own offset, and the offset shrinks to nothing as
+ * that character settles. `e` is the eased progress of that character alone.
+ *
+ * @param {string} mode
+ * @param {number} amount px, or degrees for the modes that turn
+ * @param {number} index
+ * @param {number} e 0..1, eased; 1 means settled
+ * @returns {{ dx: number, dy: number, rot: number, scale: number, alpha: number } | null}
+ */
+export function charFxAt(mode, amount, index, e) {
+    const away = 1 - e;
+    if (!mode || mode === 'none' || away <= 0) return null;
+    const amt = Number.isFinite(amount) ? amount : 40;
+    switch (mode) {
+        case 'scatter': {
+            // A direction per character, from anywhere on the circle, so the line gathers itself
+            // out of the air rather than out of one side.
+            const angle = charNoise(index) * Math.PI * 2;
+            const reach = 0.5 + charNoise(index, 1) * 0.5;   // and not all from the same distance
+            return {
+                dx: Math.cos(angle) * amt * reach * away,
+                dy: Math.sin(angle) * amt * reach * away,
+                rot: (charNoise(index, 2) - 0.5) * 90 * away,
+                scale: 1, alpha: e,
+            };
+        }
+        case 'zigzag':
+            // Alternating, which reads as deliberate where scatter reads as thrown.
+            return { dx: 0, dy: (index % 2 ? amt : -amt) * away, rot: 0, scale: 1, alpha: e };
+        case 'spin':
+            return { dx: 0, dy: 0, rot: amt * away, scale: 0.4 + 0.6 * e, alpha: e };
+        case 'drop':
+            // Straight down onto the line, each character on its own, which is the plain reading
+            // of "falling in".
+            return { dx: 0, dy: -amt * away, rot: 0, scale: 1, alpha: e };
+        case 'pop': {
+            // Back-out easing: past its size and then back to it. A character that only grows
+            // towards 1 looks inflated rather than popped, and multiplying a bump by e does not
+            // help - e wins and the curve never crosses 1.
+            const c1 = 1.70158, c3 = c1 + 1, k = e - 1;
+            const scale = 1 + c3 * k * k * k + c1 * k * k;
+            return { dx: 0, dy: 0, rot: 0, scale: Math.max(0.05, scale), alpha: Math.min(1, e * 2) };
+        }
+        default:
+            return null;
+    }
+}
+
 
 /**
  * What one entrance or exit contributes at eased presence `e`: 0 is fully away, 1 is settled.
@@ -1260,6 +1333,8 @@ export function textAnimStep(type, e, dir) {
  * @property {number} [dur] how long one character takes to settle, for the typing mode
  * @property {string} [outType]
  * @property {number} [outU] 0..1 through the exit
+ * @property {string} [fx] a per-character offset played on top of the entrance
+ * @property {number} [fxAmount] how far that offset reaches, in px or degrees
  */
 
 /**
@@ -1301,21 +1376,29 @@ function charInProgress(p, index, count) {
  * @param {number} count
  */
 export function charAnimAt(perChar, index, count) {
-    let alpha = 1, dx = 0, dy = 0, scale = 1, blur = 0;
+    let alpha = 1, dx = 0, dy = 0, scale = 1, blur = 0, rot = 0;
     const take = (step) => {
         if (!step) return;
         alpha *= step.alpha; dx += step.dx; dy += step.dy; scale *= step.scale;
-        blur = Math.max(blur, step.blur);
+        blur = Math.max(blur, step.blur ?? 0);
+        rot += step.rot ?? 0;
     };
-    if (perChar.inType && perChar.inType !== 'none') {
+    const hasIn = !!perChar.inType && perChar.inType !== 'none';
+    const hasFx = !!perChar.fx && perChar.fx !== 'none';
+    if (hasIn || hasFx) {
         const u = charInProgress(perChar, index, count);
-        take(textAnimStep(perChar.inType, 1 - Math.pow(1 - u, 3), 1));   // ease-out, as the block uses
+        const e = 1 - Math.pow(1 - u, 3);                                // ease-out, as the block uses
+        if (hasIn) take(textAnimStep(perChar.inType, e, 1));
+        // The offset rides on top of the entrance rather than replacing it, so 'fade' plus
+        // 'scatter' is a character that fades in while flying home. With no entrance chosen the
+        // offset is the entrance, which is why it carries an alpha of its own.
+        if (hasFx) take(charFxAt(perChar.fx, perChar.fxAmount, index, e));
     }
     if (perChar.outType && perChar.outType !== 'none') {
         const u = charProgress(index, count, perChar.outU ?? 0, perChar.spread ?? 0);
         take(textAnimStep(perChar.outType, 1 - u * u, -1));              // ease-in, mirrored
     }
-    return { alpha, dx, dy, scale, blur };
+    return { alpha, dx, dy, scale, blur, rot };
 }
 export function computeTextAnim(t, ac, time) {
     const a = t.anim;
@@ -1331,13 +1414,17 @@ export function computeTextAnim(t, ac, time) {
     // revealed, so the typing clock is the one that decides, and the stagger has nothing left
     // to spread.
     const stagger = Math.max(0, Math.min(1, a.charStagger ?? 0));
-    const hasIn = !!a.inType && a.inType !== 'none';
-    const inMode = a.typing && hasIn ? 'typing' : (stagger ? 'spread' : null);
+    const fx = a.charFx && a.charFx !== 'none' ? a.charFx : null;
+    // A per-character offset is an entrance in its own right. Requiring one of the block
+    // entrances to be chosen as well was why ticking only 'typing' appeared to do nothing.
+    const hasIn = (!!a.inType && a.inType !== 'none') || !!fx;
+    const inMode = a.typing && hasIn ? 'typing' : ((stagger || fx) && hasIn ? 'spread' : null);
 
     const inDur = Math.max(0.0001, a.inDur ?? 0.4);
+    const enteringIn = !!a.inType && a.inType !== 'none' && local < inDur;
     const entering = hasIn && local < inDur;
     const inU = Math.max(0, Math.min(1, local / inDur));
-    if (entering && !inMode) {
+    if (enteringIn && !inMode) {
         const step = textAnimStep(a.inType, 1 - Math.pow(1 - inU, 3), 1);   // ease-out
         if (step) { alpha *= step.alpha; dx += step.dx; dy += step.dy; scale *= step.scale; blur = Math.max(blur, step.blur); }
     }
@@ -1373,6 +1460,7 @@ export function computeTextAnim(t, ac, time) {
             inMode: typingIn ? 'typing' : (spreadIn ? 'spread' : null),
             spread: stagger,
             inType: (typingIn || spreadIn) ? a.inType : 'none', inU,
+            fx: (typingIn || spreadIn) ? fx : null, fxAmount: a.charFxAmount ?? 40,
             speed, local, dur: inDur,
             outType: staggeredOut ? a.outType : 'none', outU,
         }
