@@ -653,4 +653,9 @@ const EN = {
     // and a label respectively, and the space is where the join happens.
     '프로젝트 ': 'Project ',
     ' (영상 음원)': ' (video audio)',
+    '곡률(도) — 양수는 위로 휩니다': 'Curve (degrees) - positive arcs upward',
+    '좌우 반전': 'Mirror left to right',
+    '상하 반전': 'Mirror top to bottom',
+    '좌우뒤집기': 'Flip H',
+    '상하뒤집기': 'Flip V',
 };

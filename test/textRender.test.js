@@ -214,3 +214,10 @@ test('drawTextObject: a context without letterSpacing or roundRect is still usab
     assert.equal(only(ctx, 'rect').length, 1, 'fell back to a square-cornered box');
     assert.equal(only(ctx, 'fillText').length, 1);
 });
+
+test('textNeedsBox: flipping needs the box, because it pivots on the centre', () => {
+    // Without one the text would mirror about the canvas origin and leave the frame entirely.
+    assert.equal(textNeedsBox({ text: 'x' }, null), false);
+    assert.equal(textNeedsBox({ text: 'x', flipX: true }, null), true);
+    assert.equal(textNeedsBox({ text: 'x', flipY: true }, null), true);
+});

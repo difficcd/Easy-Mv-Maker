@@ -332,6 +332,15 @@ The drawing engine: strokes, canvases, animation, video frames. The big one.
 | `TEXT_ANIM_DEFAULT` | - emphasis: a looping accent (pulse/shake/wave) |
 | `triwave` | Triangle wave 0->1->0 (period 2); used for ping-pong path following. |
 
+## `src/canvas/textLayout.js`
+
+Where each character of a line goes, for curving and for animating characters separately.
+
+| | |
+|---|---|
+| `layoutLine` | Per-character position and angle along an arc. The straight path is left alone on purpose: drawing character by character gives up the font's kerning and shaping, so this is the cost of curving rather than something every text pays. |
+| `charProgress` | One character's own 0..1 when they are staggered. `spread` is capped below 1, because spending the whole duration on starts leaves the last character no time to move. |
+
 ## `src/canvas/textRender.js`
 
 Measuring and drawing text objects.
