@@ -4290,7 +4290,7 @@ export default function App() {
                                                     <input type="number" className="time-input" style={{ width: 50 }} title={tr('강조 속도')} value={an.emSpeed} step={0.5} min={0}
                                                         onChange={e => set({ emSpeed: Math.max(0, +e.target.value || 0) })} />
                                                 </>}
-                                                <label className="te-check" title={tr('한 글자씩 나타남')}>
+                                                <label className="te-check" title={tr('한 글자씩 나타남 — 등장 효과를 고르면 글자마다 그 효과로 들어옵니다')}>
                                                     <input type="checkbox" checked={!!an.typing} onChange={e => set({ typing: e.target.checked })} />{tr('타이핑')}
                                                 </label>
                                                 {an.typing && <input type="number" className="time-input" style={{ width: 56 }} title={tr('초당 글자수')} value={an.typeSpeed} step={2} min={1}

@@ -60,17 +60,8 @@
  * @property {number} blur px
  * @property {number} rot degrees
  * @property {number} chars how much of the string is revealed, for the typing effect
- * @property {PerCharAnim | null} [perChar] set when the entrance is staggered across characters
- */
-
-/**
- * The raw entrance progress, handed to the renderer so each character can take its own slice.
- * @typedef {object} PerCharAnim
- * @property {number} spread how much of the duration separates the first character from the last
- * @property {string} [inType]
- * @property {number} [inU] 0..1 through the entrance
- * @property {string} [outType]
- * @property {number} [outU] 0..1 through the exit
+ * @property {import('./canvasUtils.js').PerCharAnim | null} [perChar] set when the
+ *   entrance belongs to the characters rather than the block
  */
 
 import { layoutLine } from './textLayout.js';
@@ -308,6 +299,13 @@ function drawPerChar(ctx, t, lines, { x, y, lineHeight, fontSize, fillStyle, per
     const align = ctx.textAlign;
     ctx.textAlign = 'center';
 
+    // Characters are numbered across the whole text rather than restarting on each line: the
+    // typing clock counts from the start of the text, and revealLines spends its budget the
+    // same way. A staggered multi-line text now runs through the block instead of every line
+    // racing the others, which is what "one character at a time" should mean.
+    const total = lines.reduce((n, ln) => n + [...ln].length, 0);
+    let seen = 0;
+
     for (let i = 0; i < lines.length; i++) {
         const chars = [...lines[i]];
         if (!chars.length) continue;
@@ -321,7 +319,7 @@ function drawPerChar(ctx, t, lines, { x, y, lineHeight, fontSize, fillStyle, per
 
         for (let k = 0; k < placed.length; k++) {
             const c = placed[k];
-            const ca = perChar ? charAnimAt(perChar, k, placed.length) : null;
+            const ca = perChar ? charAnimAt(perChar, seen + k, total) : null;
             // Nothing of this character has arrived yet: skip it rather than paint nothing, so a
             // shadow or an outline does not show where it is going to be.
             if (ca && ca.alpha <= 0.001) continue;
@@ -343,6 +341,8 @@ function drawPerChar(ctx, t, lines, { x, y, lineHeight, fontSize, fillStyle, per
             ctx.fillText(c.ch, 0, 0);
             ctx.restore();
         }
+
+        seen += chars.length;
 
         // As on the straight path: the shadow is cast once by the block, or every character would
         // drop one onto its neighbours.

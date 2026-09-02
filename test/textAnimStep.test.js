@@ -125,3 +125,82 @@ test('a stagger of zero is the same animation as before it existed', () => {
     assert.equal(before.alpha, after.alpha);
     assert.equal(before.dy, after.dy);
 });
+
+// --- typing that animates, rather than snapping a letter at a time ----------------------------
+
+test('typing with an entrance hands the entrance to the characters', () => {
+    const a = computeTextAnim(withAnim({ typing: true, typeSpeed: 10, inType: 'down', inDur: 0.3 }), cut, 0.5);
+    assert.equal(a.alpha, 1, 'the block is left at rest');
+    assert.ok(a.perChar, 'and the characters are given the clock');
+    assert.equal(a.perChar.inMode, 'typing');
+    assert.equal(a.perChar.speed, 10);
+    assert.equal(a.perChar.dur, 0.3);
+});
+
+test('typing without an entrance still just reveals, as it always did', () => {
+    const a = computeTextAnim(withAnim({ typing: true, typeSpeed: 10 }), cut, 0.5);
+    assert.equal(a.perChar, null);
+    assert.equal(a.chars, 5);
+});
+
+// The invariant that makes typing look animated rather than merely sliced: the newest visible
+// character must be at the very start of its entrance. Getting this off by one keystroke - which
+// it was - leaves every character most of the way through its entrance before it is ever drawn,
+// and on screen that is indistinguishable from plain typing.
+test('the character that has just appeared has not begun to arrive', () => {
+    const speed = 10, dur = 0.2;
+    const at = (t) => computeTextAnim(withAnim({ typing: true, typeSpeed: speed, inType: 'fade', inDur: dur }), cut, t);
+    for (const n of [1, 2, 3, 7]) {
+        const t = n / speed + 1e-4;          // a hair after the nth character is revealed
+        const a = at(t);
+        assert.equal(a.chars, n, `at ${t}s, ${n} characters are drawn`);
+        const newest = charAnimAt(a.perChar, n - 1, 12);
+        assert.ok(newest.alpha < 0.02, `newest character should be invisible, was ${newest.alpha}`);
+    }
+});
+
+test('a character is fully arrived one entrance-duration after it appeared', () => {
+    const speed = 10, dur = 0.2;
+    const p = (local) => ({ inMode: 'typing', inType: 'fade', speed, dur, local });
+    // Character 1 is the second drawn, revealed at 2/10 = 0.2s and settled by 0.4s.
+    assert.equal(charAnimAt(p(0.2), 1, 8).alpha, 0, 'not started at the moment it appears');
+    assert.ok(close(charAnimAt(p(0.4), 1, 8).alpha, 1), 'settled a duration later');
+    assert.ok(close(charAnimAt(p(0.9), 1, 8).alpha, 1), 'and stays settled');
+});
+
+test('a character not yet revealed has nothing to show', () => {
+    const p = { inMode: 'typing', inType: 'fade', speed: 10, dur: 0.2, local: 0.5 };
+    assert.equal(charAnimAt(p, 9, 12).alpha, 0, 'character 9 appears at 1.0s');
+});
+
+test('a typed entrance outlasts the entrance window', () => {
+    // The last character of a long text is revealed well after inDur, and it still has to
+    // animate in. An entrance that stopped at inDur would drop it on screen fully formed.
+    const a = computeTextAnim(withAnim({ typing: true, typeSpeed: 4, inType: 'up', inDur: 0.3 }), cut, 1.2);
+    assert.ok(a.perChar, 'still per-character well past inDur');
+    assert.equal(a.perChar.inMode, 'typing');
+});
+
+test('typing wins over a stagger: a character cannot arrive before it is revealed', () => {
+    const a = computeTextAnim(withAnim({ typing: true, typeSpeed: 10, inType: 'fade', inDur: 0.3, charStagger: 0.9 }), cut, 0.2);
+    assert.equal(a.perChar.inMode, 'typing');
+});
+
+test('a staggered exit still works while typing drives the entrance', () => {
+    const a = computeTextAnim(withAnim({
+        typing: true, typeSpeed: 10, inType: 'fade', inDur: 0.2,
+        outType: 'fade', outDur: 0.4, charStagger: 0.8,
+    }), cut, 1.8);   // inside the exit of a 2s cut
+    assert.equal(a.perChar.outType, 'fade');
+    assert.equal(a.perChar.spread, 0.8);
+});
+
+test('a faster typing speed brings a given character in sooner', () => {
+    const at = (speed) => charAnimAt({ inMode: 'typing', inType: 'fade', speed, dur: 0.2, local: 0.5 }, 6, 10).alpha;
+    assert.ok(at(20) > at(8), 'the same character is further along at 20 cps than at 8');
+});
+
+test('a zero typing speed is not a division by zero', () => {
+    const c = charAnimAt({ inMode: 'typing', inType: 'fade', speed: 0, dur: 0.2, local: 0.5 }, 3, 8);
+    assert.ok(Number.isFinite(c.alpha));
+});
