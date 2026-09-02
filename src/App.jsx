@@ -58,7 +58,7 @@ import { dragCut, resizeCut } from './core/cutOps.js';
 import {
     DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT, FONT_PRESETS, fontGroups,
     pointInPolygon, dist, safeArray, hexToRgb, bucketFillTransparentRegion,
-    layerKey, imageDataToDataURL, dataURLToImageData, drawStrokesOnCtx, sizeCanvas,
+    layerKey, imageDataToDataURL, dataURLToImageData, drawStrokesOnCtx, sizeCanvas, scratchCanvas,
     flattenForCanvas, flattenLayersInUiOrder, strokeSig, extractVideoFrames, fitRect, detectSceneCuts, curveToWave, swayWeightAt, morphPrepare,
     accentSoft, computeCutAnim, computeLayerAnim, TEXT_ANIM_DEFAULT, computeTextAnim,
     targetCanvasFor, imageDataCanvas, cutProgress,
@@ -2974,6 +2974,24 @@ export default function App() {
         // loop) — it's a safety net if the prefetch fell behind. When paused, decoding is driven only
         // by the prefetch effect (a paused decode fires setState, which would loop from here).
         const store = bitmapStoreRef.current;
+        // Draw the layer into the cache under a signature. The complete and the incomplete paths
+        // below were the same six lines twice, differing only in that signature - and two copies
+        // of a caching rule are two chances for them to drift into disagreeing about what is
+        // cached under what.
+        //
+        // Resize only when the size actually changed: this canvas is reused every boiling phase,
+        // ten times a second, and re-assigning the same width reallocated 8MB each time - the
+        // measured 79MB/s that ran the tab out of memory. drawStrokesOnCtx clears it either way,
+        // which is why this does not go through scratchCanvas.
+        const bake = (signature) => {
+            const cnv = hit || document.createElement('canvas');
+            sizeCanvas(cnv, CANVAS_W, CANVAS_H);
+            drawStrokesOnCtx(cnv.getContext('2d'), layer.strokes, true, store, rOpts);
+            cnv.dataset.strokes = signature;
+            map.delete(slotKey); map.set(slotKey, cnv);   // re-insert = most recently used
+            while (map.size > LAYER_CANVAS_LRU) map.delete(map.keys().next().value);
+            return cnv;
+        };
         const missing = [];
         for (const st of safeArray(layer.strokes)) { if (st.tool === 'paste' && st.bitmapId) { const e = store.get(st.bitmapId); if (e && e.blob) { if (!e.imageBitmap && !e.imageData) missing.push(st.bitmapId); else if (e.imageBitmap) touchDecoded(st.bitmapId); } } }
         if (missing.length) {
@@ -2984,24 +3002,9 @@ export default function App() {
             // layer with it and leave the screen blank, which is what happened when a server
             // asset was unavailable. Instead the strokes that can be drawn are drawn, and the
             // signature is marked incomplete so it redraws once the decode finishes.
-            const part = document.createElement('canvas');
-            sizeCanvas(part, CANVAS_W, CANVAS_H);
-            drawStrokesOnCtx(part.getContext('2d'), layer.strokes, true, store, rOpts);
-            part.dataset.strokes = sig + '|miss' + missing.length;
-            map.delete(slotKey); map.set(slotKey, part);
-            while (map.size > LAYER_CANVAS_LRU) map.delete(map.keys().next().value);
-            return part;
+            return bake(sig + '|miss' + missing.length);
         }
-        // Resize only when the size actually changed. This canvas is reused every boiling phase,
-        // ten times a second, and re-assigning the same width reallocated 8MB each time - the
-        // measured 79MB/s that ran the tab out of memory. drawStrokesOnCtx clears it either way.
-        const cnv = hit || document.createElement('canvas');
-        sizeCanvas(cnv, CANVAS_W, CANVAS_H);
-        drawStrokesOnCtx(cnv.getContext('2d'), layer.strokes, true, bitmapStoreRef.current, rOpts);
-        cnv.dataset.strokes = sig;
-        map.delete(slotKey); map.set(slotKey, cnv); // re-insert = most recently used
-        while (map.size > LAYER_CANVAS_LRU) map.delete(map.keys().next().value);
-        return cnv;
+        return bake(sig);
     };
 
 
@@ -3041,10 +3044,7 @@ export default function App() {
         }
         if (parts.length === 0) return baseCanvas;
 
-        const paint = clipPaintRef.current || (clipPaintRef.current = document.createElement('canvas'));
-        sizeCanvas(paint, CANVAS_W, CANVAS_H);
-        const pctx = paint.getContext('2d');
-        pctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+        const { canvas: paint, ctx: pctx } = scratchCanvas(clipPaintRef, CANVAS_W, CANVAS_H);
         pctx.globalCompositeOperation = 'source-over';
         for (const c of parts) pctx.drawImage(c, 0, 0);
 
@@ -3053,10 +3053,7 @@ export default function App() {
         pctx.drawImage(baseCanvas, 0, 0);
         pctx.globalCompositeOperation = 'source-over';
 
-        const out = clipScratchRef.current || (clipScratchRef.current = document.createElement('canvas'));
-        sizeCanvas(out, CANVAS_W, CANVAS_H);
-        const octx = out.getContext('2d');
-        octx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+        const { canvas: out, ctx: octx } = scratchCanvas(clipScratchRef, CANVAS_W, CANVAS_H);
         octx.drawImage(baseCanvas, 0, 0);
         octx.drawImage(paint, 0, 0);
         return out;
@@ -3208,9 +3205,7 @@ export default function App() {
                     // Reused rather than allocated. This runs inside the composite loop, so a
                     // fresh canvas here is 8MB per masked layer per frame - sixty times a second
                     // while playing, which is the shape of allocation that took a tab out once.
-                    const tmp = maskScratchRef.current || (maskScratchRef.current = document.createElement('canvas'));
-                    const tctx = tmp.getContext('2d');
-                    if (!sizeCanvas(tmp, CANVAS_W, CANVAS_H)) tctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+                    const { canvas: tmp, ctx: tctx } = scratchCanvas(maskScratchRef, CANVAS_W, CANVAS_H);
                     tctx.setTransform(1, 0, 0, 1, 0, 0);
                     tctx.globalAlpha = 1.0;
                     tctx.globalCompositeOperation = 'source-over';

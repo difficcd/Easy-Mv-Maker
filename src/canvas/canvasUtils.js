@@ -587,6 +587,28 @@ export function sizeCanvas(cnv, w, h) {
     cnv.height = h;
     return true;
 }
+/**
+ * A scratch canvas kept in a ref: allocated once, then sized and cleared for reuse.
+ *
+ * Three places in the composite path did this by hand, and the hand-written versions disagreed
+ * about the clear. Two called clearRect unconditionally after sizing, which is wasted work
+ * whenever the size did change - resizing a canvas clears it. Only one checked. They agree now,
+ * and the check is here rather than at three call sites.
+ *
+ * The reuse is not a micro-optimisation. These run inside the per-frame composite loop, so a
+ * fresh canvas is 8MB per masked layer per frame - the shape of allocation that took a tab out.
+ *
+ * @param {{current: HTMLCanvasElement|null}} ref
+ * @param {number} w
+ * @param {number} h
+ * @returns {{ canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D }}
+ */
+export function scratchCanvas(ref, w, h) {
+    const canvas = ref.current || (ref.current = document.createElement('canvas'));
+    const ctx = /** @type {CanvasRenderingContext2D} */ (canvas.getContext('2d'));
+    if (!sizeCanvas(canvas, w, h)) ctx.clearRect(0, 0, w, h);
+    return { canvas, ctx };
+}
 
 // Drawing an ImageData somewhere other than where it starts.
 //
