@@ -2809,6 +2809,9 @@ export default function App() {
             color2: textEdit.color2 || '#ffffff',
             bgColor: textEdit.bgColor || '',
             rotation: textEdit.rotation ?? 0,
+            curve: textEdit.curve ?? 0,
+            flipX: !!textEdit.flipX,
+            flipY: !!textEdit.flipY,
             anim: textEdit.anim || null,
         };
         dispatchCuts(upsertText(textEdit.cutId, obj));
@@ -2852,6 +2855,9 @@ export default function App() {
             color2: t.color2 || '#ffffff',
             bgColor: t.bgColor || '',
             rotation: t.rotation ?? 0,
+            curve: t.curve ?? 0,
+            flipX: !!t.flipX,
+            flipY: !!t.flipY,
             anim: t.anim || null,
         });
     };
@@ -4227,6 +4233,14 @@ export default function App() {
                                     {textEdit.bgColor && <input type="color" value={textEdit.bgColor.startsWith('#') ? textEdit.bgColor : '#ffffff'} onChange={e => setTextEdit(te => te ? ({ ...te, bgColor: e.target.value }) : te)} className="text-editor-color" title={tr('배경 색')} />}
                                     <NumField className="time-input" width={54} title={tr('회전(도)')} value={textEdit.rotation ?? 0} step={5}
                                         onChange={v => setTextEdit(te => te ? ({ ...te, rotation: v }) : te)} />
+                                    <NumField className="time-input" width={54} title={tr('곡률(도) — 양수는 위로 휩니다')} value={textEdit.curve ?? 0} step={10}
+                                        onChange={v => setTextEdit(te => te ? ({ ...te, curve: Math.max(-180, Math.min(180, v)) }) : te)} />
+                                    <label className="te-check" title={tr('좌우 반전')}>
+                                        <input type="checkbox" checked={!!textEdit.flipX} onChange={e => setTextEdit(te => te ? ({ ...te, flipX: e.target.checked }) : te)} />{tr('좌우뒤집기')}
+                                    </label>
+                                    <label className="te-check" title={tr('상하 반전')}>
+                                        <input type="checkbox" checked={!!textEdit.flipY} onChange={e => setTextEdit(te => te ? ({ ...te, flipY: e.target.checked }) : te)} />{tr('상하뒤집기')}
+                                    </label>
                                     {/* Text animation, visible only during playback. */}
                                     {(() => {
                                         const an = { ...TEXT_ANIM_DEFAULT, ...(textEdit.anim || {}) };
