@@ -4297,6 +4297,11 @@ export default function App() {
                                                     <option value="none">{tr('퇴장없음')}</option><option value="fade">{tr('페이드')}</option><option value="up">{tr('위로')}</option>
                                                     <option value="down">{tr('아래로')}</option><option value="scale">{tr('축소')}</option><option value="blur">{tr('흐림')}</option>
                                                 </select>
+                                                <select className="time-input" style={{ width: 92 }} title={tr('글자 하나씩 — 등장/퇴장이 글자마다 차례로 일어납니다')} value={an.charStagger ?? 0}
+                                                    onChange={e => set({ charStagger: +e.target.value })}>
+                                                    <option value="0">{tr('통째로')}</option><option value="0.4">{tr('글자별 약하게')}</option>
+                                                    <option value="0.7">{tr('글자별')}</option><option value="0.9">{tr('글자별 크게')}</option>
+                                                </select>
                                                 <select className="time-input" style={{ width: 74 }} title={tr('계속 반복되는 강조')} value={an.emphasis} onChange={e => set({ emphasis: e.target.value })}>
                                                     <option value="none">{tr('강조없음')}</option><option value="pulse">{tr('두근두근')}</option><option value="shake">{tr('흔들기')}</option><option value="swing">{tr('갸우뚱')}</option>
                                                 </select>
