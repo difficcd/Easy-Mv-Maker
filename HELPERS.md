@@ -36,6 +36,15 @@ Camera moves: presets, drawn paths, and the transform they resolve to.
 | `resolveCamera` | No camera at all: the default, and what every existing project has. */ |
 | `zoomForDrift` | The smallest zoom at which a camera may sit that far off centre without the frame running off the artwork. |
 
+## `src/core/clipping.js`
+
+Clipping: a layer that only shows where the layer beneath it has paint.
+
+| | |
+|---|---|
+| `canClip` | Whether the clip toggle would do anything. False only for the bottom layer, which has nothing to clip to. |
+| `clipGroups` | Which layers clip to which base. A run of clipped layers all attach to the same base, and a clipped layer with nothing below it draws normally rather than vanishing. |
+
 ## `src/core/windowDrag.js`
 
 Running a drag on window listeners, so it survives the pointer leaving the element.
@@ -87,6 +96,7 @@ Every change the document can undergo, as named actions. Build them with these c
 | `setCutAnim` | Replace the whole document: opening a file, undo/redo, starting over. */ |
 | `setCutCamera` | Replace the whole document: opening a file, undo/redo, starting over. */ |
 | `setLayerAnim` | Replace the whole document: opening a file, undo/redo, starting over. */ |
+| `setLayerClipped` | Clip a layer to the one below, or stop. No rev bump - it changes how the layer is composited, not what is drawn on it. |
 | `toggleTextVisible` | — |
 | `ungroupPart` | — |
 | `updateCut` | Replace the whole document: opening a file, undo/redo, starting over. */ |
@@ -359,6 +369,15 @@ Every way the timeline can be pointed at, in one place.
 | | |
 |---|---|
 | `useTimelineGestures` | — |
+
+## `server/rateLimit.js`
+
+A token bucket, so one caller cannot use the whole server.
+
+| | |
+|---|---|
+| `createRateLimiter` | Bucket rather than fixed window - a window lets a caller spend the whole allowance at the end of one and again at the start of the next. Evicts least-recently-seen callers, so the table is not itself a way to exhaust memory. |
+| `rateLimit` | Express middleware around a limiter. Keyed by IP, which is a brake on accidents and casual abuse, not access control. |
 
 ## `server/youtubeUrl.js`
 

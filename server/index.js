@@ -9,6 +9,7 @@ import os from 'node:os';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { isYouTubeUrl } from './youtubeUrl.js';
+import { createRateLimiter, rateLimit } from './rateLimit.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(__dirname, 'data');
@@ -24,6 +25,27 @@ const HOST = process.env.MV_API_HOST || '127.0.0.1';
 
 const app = express();
 app.use(express.json({ limit: '256mb' })); // projects embed base64 bitmaps, so allow large bodies
+
+// Rate limits, in three tiers, because the routes cost wildly different amounts.
+//
+// Generous by design. These are a brake on runaway scripts and casual abuse, not access control -
+// that is still open and still tracked on #41. A limit low enough to be a security boundary would
+// also be low enough to interrupt an ordinary autosave-heavy editing session.
+//
+// The importer gets its own, much tighter, tier: each call starts a yt-dlp process that downloads
+// from someone else's servers. Hammering that costs the host bandwidth and gets the address
+// blocked by YouTube, which breaks the feature for everybody using that machine.
+const readLimit = createRateLimiter({ capacity: 240, perSecond: 8 });    // listing and fetching
+const writeLimit = createRateLimiter({ capacity: 120, perSecond: 2 });   // saves, uploads, deletes
+const importLimit = createRateLimiter({ capacity: 4, perSecond: 0.05 }); // ~3 a minute, sustained
+
+app.get('/api/*splat', rateLimit(readLimit, 'requests'));
+app.put('/api/*splat', rateLimit(writeLimit, 'writes'));
+app.post('/api/*splat', rateLimit(writeLimit, 'writes'));
+app.delete('/api/*splat', rateLimit(writeLimit, 'writes'));
+app.get('/api/youtube-audio', rateLimit(importLimit, 'imports'));
+app.get('/api/youtube-video', rateLimit(importLimit, 'imports'));
+
 
 await fs.mkdir(DATA_DIR, { recursive: true });
 

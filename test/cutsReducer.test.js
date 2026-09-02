@@ -13,6 +13,7 @@ import {
     assignPartTo, renamePart, ungroupPart, removeBatch,
     insertCutsShifting, deleteTrack, moveCutGroup, replaceBatchCuts,
     patchCut, patchCuts, setCutCamera,
+    setLayerClipped,
 } from '../src/core/cutsReducer.js';
 
 const layer = (id, extra = {}) => ({ id, type: 'layer', parentId: null, visible: true, strokes: [], ...extra });
@@ -282,4 +283,24 @@ test('setCutCamera: leaves other cuts alone', () => {
     const s = cutsReducer([cut(1), cut(2)], setCutCamera(2, { preset: 'panLeft' }));
     assert.equal(s[0].camera, undefined);
     assert.equal(s[1].camera.preset, 'panLeft');
+});
+
+test('setLayerClipped: turns clipping on and off', () => {
+    let s = cutsReducer([cut(1)], setLayerClipped(1, 'L1', true));
+    assert.equal(s[0].layers[0].clipped, true);
+    s = cutsReducer(s, setLayerClipped(1, 'L1', false));
+    assert.equal(s[0].layers[0].clipped, false);
+});
+
+test('setLayerClipped: coerces, so a stray value cannot make clipped truthy-but-odd', () => {
+    const s = cutsReducer([cut(1)], setLayerClipped(1, 'L1', undefined));
+    assert.equal(s[0].layers[0].clipped, false);
+});
+
+test('setLayerClipped: leaves other layers and other cuts alone', () => {
+    const doc2 = [cut(1, { layers: [layer('L1'), layer('L2')] }), cut(2)];
+    const s = cutsReducer(doc2, setLayerClipped(1, 'L2', true));
+    assert.equal(s[0].layers[0].clipped, undefined);
+    assert.equal(s[0].layers[1].clipped, true);
+    assert.equal(s[1].layers[0].clipped, undefined);
 });
