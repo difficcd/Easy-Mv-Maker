@@ -55,6 +55,7 @@ import { onionNeighbours, topCutAt } from './engine/selectCuts.js';
 import { evaluateFrame } from './engine/evaluateFrame.js';
 import { pendingBitmapIds, scanLayerBitmaps } from './engine/pendingBitmaps.js';
 import { makeZip, frameName } from './export/zip.js';
+import { encodeGif } from './export/gif.js';
 import { unusedBitmapIds } from './core/bitmapRefs.js';
 import { dragCut, resizeCut } from './core/cutOps.js';
 import {
@@ -165,6 +166,9 @@ const applyTheme = (base, uiSat = 3) => {
 // in applyTheme (0.35 saturation, 0.36 lightness) mean the accent actually paints as
 // hsl(243 35% 36%).
 const DEFAULT_THEME = '#36354b';
+// The long edge a GIF is scaled to fit. Every pixel of a GIF is a palette index with no
+// inter-frame compression, so full size is tens of megabytes a second and as slow again to write.
+const GIF_MAX_EDGE = 720;
 // The language lives in a module variable rather than a hook: over forty of these strings sit
 // in alert, confirm and thrown errors, which no hook can reach. Set before the first render.
 setLangValue(loadLang());
@@ -454,6 +458,9 @@ export default function App() {
     // no background, and the checkerboard behind it is CSS on the element rather than pixels.
     // Painting the checkerboard in would put it in every export.
     const [transparentBg, setTransparentBg] = useStored('mv_transparent_bg', false, oneZeroCodec);
+    // What a transparent project exports as. GIF is one file that plays, at the price of one-bit
+    // transparency; a PNG sequence keeps the soft edges and goes into an editor.
+    const [transparentFormat, setTransparentFormat] = useStored('mv_transparent_format', 'gif');
     // Whether the project API is reachable. Re-checked with a backoff rather than once, because
     // an app that decided at load time is an app that never notices the server starting.
     const serverAvailable = useServerProbe();
@@ -3637,12 +3644,24 @@ export default function App() {
         const canvas = canvasRef.current; if (!canvas) return;
         const ctMax = Math.max(...cuts.map(c => c.endTime), 0);
         if (ctMax <= 0) { alert(tr('내보낼 콘텐츠가 없습니다.')); return; }
-        const fps = 30;
+        // A GIF at 30fps is enormous and plays no better; twelve is what hand-drawn animation
+        // usually runs at anyway. A PNG sequence is going into an editor, so it keeps the full
+        // rate.
+        const gif = transparentFormat === 'gif';
+        const fps = gif ? 12 : 30;
+        // A GIF at the project's full size is not a thing anyone wants: every pixel is a palette
+        // index and none of it is inter-frame compressed, so a second of 1920x1080 runs to tens
+        // of megabytes and takes as long again to encode. Scaled to fit 720 on the long edge it
+        // is a file that can be posted. A PNG sequence keeps the full size.
+        const gifScale = gif ? Math.min(1, GIF_MAX_EDGE / Math.max(CANVAS_W, CANVAS_H)) : 1;
+        const gw = Math.max(1, Math.round(CANVAS_W * gifScale));
+        const gh = Math.max(1, Math.round(CANVAS_H * gifScale));
+        // One scratch canvas for the whole export rather than one a frame.
+        const gifScratch = { current: null };
         const total = Math.max(1, Math.round(ctMax * fps));
-        if (!confirm(tr('배경이 투명하므로 PNG 시퀀스(ZIP)로 내보냅니다. 알파 채널이 있는 동영상은 브라우저가 만들 수 없습니다.'))) return;
-        // Every frame is held in memory until the archive is built, so the cap is about RAM, not
-        // patience: a thousand 1080p PNGs is already a few hundred megabytes.
-        if (total > 1000 && !confirm(tr('{0}프레임을 PNG로 내보냅니다. 메모리를 많이 쓰고 오래 걸립니다. 계속할까요?').replace('{0}', String(total)))) return;
+        // Every frame is held in memory until the file is built, so the cap is about RAM, not
+        // patience: a thousand 1080p frames is already a few hundred megabytes.
+        if (total > 1000 && !confirm(tr('{0}프레임을 내보냅니다. 메모리를 많이 쓰고 오래 걸립니다. 계속할까요?').replace('{0}', String(total)))) return;
 
         const label = tr('프레임 내보내는 중');
         setLoadProgress({ label, done: 0, total });
@@ -3663,18 +3682,36 @@ export default function App() {
                     invalidateCutsUsing(missing);
                 }
                 paintFrame(t, true);
-                const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
-                if (!blob) throw new Error('toBlob returned nothing');
-                entries.push({ name: frameName(i, total), data: new Uint8Array(await blob.arrayBuffer()) });
+                if (gif) {
+                    // Straight off the canvas as pixels: going through a PNG and back would cost
+                    // an encode and a decode a frame for nothing.
+                    let src = canvas;
+                    if (gifScale < 1) {
+                        const { canvas: small, ctx: sctx } = scratchCanvas(gifScratch, gw, gh);
+                        sctx.imageSmoothingQuality = 'high';
+                        sctx.drawImage(canvas, 0, 0, gw, gh);
+                        src = small;
+                    }
+                    entries.push({ rgba: src.getContext('2d').getImageData(0, 0, gw, gh).data });
+                } else {
+                    const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
+                    if (!blob) throw new Error('toBlob returned nothing');
+                    entries.push({ name: frameName(i, total), data: new Uint8Array(await blob.arrayBuffer()) });
+                }
                 // Yield often enough that the progress bar moves and the tab stays answerable.
                 if (i % 5 === 0 || i === total - 1) {
                     setLoadProgress({ label, done: i + 1, total });
                     await new Promise(res => setTimeout(res, 0));
                 }
             }
-            const zip = makeZip(entries);
-            const url = URL.createObjectURL(new Blob([zip], { type: 'application/zip' }));
-            const a = Object.assign(document.createElement('a'), { href: url, download: 'mv_frames.zip', style: 'display:none' });
+            const { bytes, type, name } = gif
+                ? {
+                    bytes: encodeGif(entries, { width: gw, height: gh, delayMs: Math.round(1000 / fps) }),
+                    type: 'image/gif', name: 'mv_export.gif',
+                }
+                : { bytes: makeZip(entries), type: 'application/zip', name: 'mv_frames.zip' };
+            const url = URL.createObjectURL(new Blob([bytes], { type }));
+            const a = Object.assign(document.createElement('a'), { href: url, download: name, style: 'display:none' });
             document.body.appendChild(a); a.click(); document.body.removeChild(a);
             setTimeout(() => URL.revokeObjectURL(url), 10000);
             alert(tr('완료!'));
@@ -4145,6 +4182,7 @@ export default function App() {
                 handlePlayPause={handlePlayPause} handleStop={handleStop} isPlaying={isPlaying} loopPlay={loopPlay}
                 makePartFromSelection={makePartFromSelection} marquee={marquee} maxTime={maxTime} mkLayer={mkLayer}
                 transparentBg={transparentBg} setTransparentBg={setTransparentBg}
+                transparentFormat={transparentFormat} setTransparentFormat={setTransparentFormat}
                 numTracks={numTracks} onTimelinePointerDown={onTimelinePointerDown}
                 onTimelinePointerMove={onTimelinePointerMove} onTimelinePointerUp={onTimelinePointerUp} parts={parts}
                 playbackRate={playbackRate} playheadRef={playheadRef} pps={pps}
