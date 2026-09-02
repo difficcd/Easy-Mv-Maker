@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronDown, ChevronUp, Pause, Play, Plus, Repeat, Square, Trash2, Eye, EyeOff, Settings } from 'lucide-react';
+import { ChevronDown, ChevronUp, Grid3x3, Pause, Play, Plus, Repeat, Square, Trash2, Eye, EyeOff, Settings } from 'lucide-react';
 import { safeArray, accentSoft } from '../canvas/canvasUtils';
 import { tr } from '../i18n';
 import { TRACK_GUTTER } from '../core/timelineZoom.js';
@@ -21,6 +21,7 @@ export function Timeline({
     setSceneCfg, setSelectedCutIds, setShowBottom, showBottom, snapLinePos,
     startTimelinePan, timelineH, timelineRef, tlWin, ungroupPart,
     videoOverlay, hiddenTracks, toggleTrackHidden, openVideoSettings, zoomTimelineAt,
+    transparentBg, setTransparentBg,
 }) {
     return (
     <div className="timeline" style={{ height: showBottom ? timelineH : 44, flexShrink: 0 }}>
@@ -57,6 +58,12 @@ export function Timeline({
                     <button className="button" onClick={() => toggleTrackHidden('video')}
                         title={tr('접힌 트랙 — 눌러서 펼치기')}><Eye size={12} /> {videoOverlay.name || tr('영상')}</button>
                 )}
+                <button className={`button${transparentBg ? ' active' : ''}`} onClick={() => setTransparentBg(!transparentBg)}
+                    title={transparentBg
+                        ? tr('배경 투명 — 내보내면 배경 없이 나옵니다. 눌러서 흰 배경으로')
+                        : tr('배경 흰색 — 눌러서 투명하게 (체커보드로 표시됩니다)')}>
+                    {transparentBg ? <Grid3x3 size={12} /> : <Square size={12} />} {tr('캔버스 배경')}
+                </button>
                 {videoOverlay && (
                     <button className="button" onClick={openVideoSettings} title={tr('영상 설정 (농도, 장면 감지)')}>
                         <Settings size={12} /> {tr('영상 설정')}

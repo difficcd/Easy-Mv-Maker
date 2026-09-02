@@ -381,6 +381,14 @@ What the frame looks like at time t, before anything is drawn.
 |---|---|
 | `evaluateFrame` | Resolves the document to a scene: which cuts, their animation, their layer groups, their texts, and the camera. Pure and canvas-free. The renderer walks the result instead of working it out mid-draw, which is what removed `computeCutAnim` being called twice per cut per frame. |
 
+## `src/engine/pendingBitmaps.js`
+
+Which pasted bitmaps a frame needs but does not have decoded yet.
+
+| | |
+|---|---|
+| `pendingBitmapIds` | Playback asks so it can hold the last frame instead of flashing a half-drawn one; the frame exporter asks so it can wait for the decode. Both used to be the same nested loop written twice. |
+
 ## `src/engine/selectCuts.js`
 
 Which cuts a frame is made of. The first piece of the scene engine: playback, scrubbing, export,
@@ -434,3 +442,14 @@ Which addresses the importer will hand to yt-dlp.
 |---|---|
 | `isYouTubeUrl` | Parses rather than pattern-matches, because both obvious string checks are wrong in opposite directions. |
 | `YOUTUBE_HOSTS` | Hosts yt-dlp is allowed to be pointed at. |
+
+## `src/export/zip.js`
+
+A store-only ZIP writer, for the PNG frame sequence a transparent project exports as.
+
+| | |
+|---|---|
+| `makeZip` | Builds the archive in memory. Store-only because PNGs are already deflated, which keeps this pure arithmetic that unit tests can check without a browser. Refuses zip64-sized input rather than writing a wrong header. |
+| `crc32` | The checksum ZIP entries carry. Table built on first use. |
+| `dosDateTime` | Packs a `Date` into the two 16-bit fields the format stores. Clamps below 1980 instead of writing a negative year. |
+| `frameName` | `frame_0007.png`, padded so alphabetical order is also frame order - which is how editors import a sequence. |
