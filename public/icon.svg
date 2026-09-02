@@ -1,14 +1,28 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
-  <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#6d28d9"/>
-      <stop offset="1" stop-color="#0ea5e9"/>
-    </linearGradient>
-  </defs>
-  <rect x="0" y="0" width="512" height="512" rx="112" fill="#161620"/>
-  <rect x="44" y="44" width="424" height="424" rx="96" fill="url(#g)" opacity="0.92"/>
-  <path d="M156 334V178h40l56 92 56-92h40v156h-38V242l-52 84h-12l-52-84v92h-38Z" fill="#0b0b12" opacity="0.92"/>
-  <path d="M156 334V178h40l56 92 56-92h40v156h-38V242l-52 84h-12l-52-84v92h-38Z" fill="#ffffff" opacity="0.92" transform="translate(0,-6)"/>
-</svg>
+<!--
+  Three frames receding, the front one carrying a play mark.
 
+  The stack is the onion skin - the thing this app is actually for - and the play mark says the
+  stack is a film rather than a pile of drawings. One colour throughout: the two ghosts are the
+  same value at lower opacity, which is what onion skin looks like on the canvas.
+
+  The front frame takes the larger share deliberately. A favicon is often drawn at 16px, where
+  three equal shapes turn into one blob; giving the front frame the weight keeps a square and a
+  play mark readable while the ghosts fade to a suggestion of depth.
+
+  The colour is the app's default accent, the one the Play and Export buttons wear.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="512" height="512" role="img" aria-label="Easy MV Maker">
+  <defs>
+    <mask id="playCut">
+      <rect x="0" y="0" width="64" height="64" fill="#000"/>
+      <rect x="4" y="22" width="40" height="40" rx="12" fill="#fff"/>
+      <path d="M18 32 L34 42 L18 52 Z" fill="#000"/>
+    </mask>
+  </defs>
+  <g fill="none" stroke="#5e5aaf" stroke-width="3.5">
+    <rect x="21" y="4" width="39" height="39" rx="12" opacity="0.3"/>
+    <rect x="13" y="13" width="39" height="39" rx="12" opacity="0.58"/>
+  </g>
+  <rect x="4" y="22" width="40" height="40" rx="12" fill="#5e5aaf" mask="url(#playCut)"/>
+</svg>

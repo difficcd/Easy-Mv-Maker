@@ -1,6 +1,7 @@
 import React from 'react';
 import { ChevronDown, Download, Upload, Film, Settings, AlertTriangle, DatabaseBackup } from 'lucide-react';
 import { tr } from '../i18n';
+import { Logo } from './Logo.jsx';
 
 // Top menu bar: the File and Media menus, resolution, canvas zoom, save state, Export.
 export function TopBar({
@@ -15,7 +16,9 @@ export function TopBar({
 }) {
     return (
         <div className="top-bar">
-            <h1 className="title">Easy MV Maker</h1>
+            {/* The mark alone. The name stays as the accessible label on the svg, so a
+                screen reader still says what this is. */}
+            <h1 className="title"><Logo size={26} /></h1>
             <div className="menu-divider" />
             {/* File menu. */}
             <div style={{ position: 'relative' }} ref={fileMenuRef}>
