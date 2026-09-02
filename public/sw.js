@@ -27,7 +27,7 @@
  * takes over on the next load without being asked.
  */
 
-const CACHE_NAME = 'mv-maker-cache-v2';
+const CACHE_NAME = 'mv-maker-cache-v3';   // v3: new app mark in the precached shell
 
 // The app shell, so a cold offline start has something to open.
 const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icon.svg'];
