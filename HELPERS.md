@@ -370,6 +370,15 @@ Every way the timeline can be pointed at, in one place.
 |---|---|
 | `useTimelineGestures` | — |
 
+## `server/rateLimit.js`
+
+A token bucket, so one caller cannot use the whole server.
+
+| | |
+|---|---|
+| `createRateLimiter` | Bucket rather than fixed window - a window lets a caller spend the whole allowance at the end of one and again at the start of the next. Evicts least-recently-seen callers, so the table is not itself a way to exhaust memory. |
+| `rateLimit` | Express middleware around a limiter. Keyed by IP, which is a brake on accidents and casual abuse, not access control. |
+
 ## `server/youtubeUrl.js`
 
 Which addresses the importer will hand to yt-dlp.
