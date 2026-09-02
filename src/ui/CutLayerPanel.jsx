@@ -16,16 +16,46 @@ export function CutLayerPanel({
     renderLayers, rightW, selectedCutIds, selectedText, setDragLayerInfo,
     setDropInfo, setRenamingCutId, setSelectedText, setShowRight, showRight,
     toggleCutCollapse, toggleCutSettings, toggleTextVisible, updCutAnim, updCutTime,
-    updLayers, videoBatches,
+    updLayers, videoBatches, rightTab, setRightTab, textEditorBody, cancelText,
 }) {
+    // The text editor arrives as a tab rather than a panel of its own. Two panels side by side
+    // in the right dock left the canvas a sliver, and a window over the canvas covered the very
+    // drawing it was editing.
+    const showingText = rightTab === 'text' && !!textEditorBody;
+    const tab = (id, label, active, onClose) => (
+        <div key={id} onClick={() => setRightTab(id)}
+            style={{
+                display: 'flex', alignItems: 'center', gap: 6, padding: '4px 9px', cursor: 'pointer',
+                borderRadius: '6px 6px 0 0', fontSize: 11, letterSpacing: '0.04em', whiteSpace: 'nowrap',
+                background: active ? 'hsl(var(--ui-h) var(--ui-s) 17%)' : 'transparent',
+                color: active ? '#fff' : '#9a9ab0',
+                borderBottom: active ? '2px solid var(--accent-soft)' : '2px solid transparent',
+            }}>
+            <span>{label}</span>
+            {onClose && <span onClick={e => { e.stopPropagation(); onClose(); }} title={tr('취소')}
+                style={{ opacity: 0.6, fontSize: 12, lineHeight: 1 }}>✕</span>}
+        </div>
+    );
     return (
             <div className="right-panel" style={{ width: rightW, flexShrink: 0 }}>
                 {/* panel-head is what the docking drag looks for, so this header has to carry the
                     class the other panels use or CUT / LAYER cannot be dragged between docks. */}
-                <div className="panel-head" style={{ marginBottom: 10 }}>
-                    <span className="panel-title">CUT / LAYER</span>
+                {/* panel-head is what the docking drag looks for, and the drag handler ignores
+                    anything inside a button - the tabs are plain divs, so they get a stopPropagation
+                    of their own rather than starting a panel drag. */}
+                <div className="panel-head" style={{ marginBottom: 8, gap: 2 }}
+                    onPointerDown={e => { if (e.target.closest('[data-tab]')) e.stopPropagation(); }}>
+                    <div style={{ display: 'flex', alignItems: 'stretch', gap: 2, flex: 1, minWidth: 0, overflowX: 'auto' }} data-tab>
+                        {tab('cut', 'CUT / LAYER', !showingText)}
+                        {textEditorBody && tab('text', 'TEXT', showingText, cancelText)}
+                    </div>
                     <button className="icon-btn" onClick={() => setShowRight(false)}><ChevronRight size={14} /></button>
                 </div>
+                {showingText && textEditorBody}
+                {/* Everything below belongs to the CUT / LAYER tab. `hidden` rather than an
+                    unmount: the cut list keeps its scroll position and its expanded rows while
+                    a text is being edited, so switching back is where you left off. */}
+                <div className="cut-tab-body" hidden={showingText}>
                 <div className="cut-list">
                     {[...cuts].sort((a, b) => (a.track || 0) - (b.track || 0) || a.startTime - b.startTime).map((cut, _i, _arr) => { const isCur = currentCutId === cut.id; const collapsed = collapsedCutIds.has(cut.id); const layerCount = cut.layers.filter(l => l.type === 'layer').length; const showTrackHeader = _i === 0 || (_arr[_i - 1].track || 0) !== (cut.track || 0); return (
                         <React.Fragment key={cut.id}>
@@ -119,6 +149,7 @@ export function CutLayerPanel({
                         ))}
                     </div>
                 )}
+                </div>
             </div>
     );
 }
