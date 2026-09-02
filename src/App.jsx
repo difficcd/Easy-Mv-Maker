@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo } from 'react';
-import { Plus, Trash2, PenLine, Pen, Feather, Eraser, Undo, Redo, Layers, Trash, ChevronRight, ChevronDown, Folder, FolderOpen, Eye, EyeOff, ClipboardPaste, GitBranch, Move, Type, Cloud, Film, Repeat, Minus, Waves, Grid3x3, Palette, Menu, PaintBucket, Pipette, RotateCcw, ArrowDownToLine } from 'lucide-react';
+import { Plus, Trash2, PenLine, Pen, Feather, Eraser, Undo, Redo, Layers, Trash, ChevronRight, ChevronDown, Folder, FolderOpen, Eye, EyeOff, ClipboardPaste, GitBranch, Move, Type, Cloud, Film, Repeat, Minus, Waves, Grid3x3, Palette, Menu, PaintBucket, Pipette, RotateCcw, ArrowDownToLine, CornerDownRight } from 'lucide-react';
 import './App.css';
 import { saveAutosave, loadAutosave, saveProject, loadProject, listProjects, deleteProject, autosaveKey } from './db';
 import { CutAnimPanel, LayerAnimPanel, JitterPanel } from './ui/AnimPanels';
@@ -44,6 +44,8 @@ import { dragOnWindow } from './core/windowDrag.js';
 // rather than of whichever layer happens to be selected.
 
 import { computeCamera, applyCamera } from './core/camera.js';
+import { clipGroups, canClip } from './core/clipping.js';
+import { setLayerClipped } from './core/cutsReducer.js';
 import { unusedBitmapIds } from './core/bitmapRefs.js';
 import { dragCut, resizeCut } from './core/cutOps.js';
 import {
@@ -3056,6 +3058,64 @@ export default function App() {
         return cnv;
     };
 
+
+    // A clipping group, flattened into one canvas.
+    //
+    // Clipping is "show only where the layer below has paint", and the way to get that from a 2D
+    // context is `destination-in`: stack the clipped layers, then keep only the pixels that
+    // overlap the base's alpha.
+    //
+    // It has to happen before the per-layer transform rather than after. A clipped layer is paint
+    // *on* the base - shading inside a shape - so it moves with the base; masking after each
+    // layer had been transformed separately would let the shadow slide out of the thing it is
+    // shading. The clipped layers' own part animations are therefore ignored, which is the same
+    // choice every drawing app makes and the reason the group is composited as a unit.
+    //
+    // Two scratch canvases and one composite pass per group, and only for groups that actually
+    // have something clipped to them - a stack with no clipping does not allocate anything.
+    const clipScratchRef = useRef(null);
+    const clipPaintRef = useRef(null);
+    const flattenClipGroup = (cutId, group) => {
+        const baseCanvas = ensureLayerCanvas(cutId, group.base);
+        if (!baseCanvas || group.clipped.length === 0) return baseCanvas;
+
+        // Every clipped layer has to be ready, or the group would flash without its shading while
+        // one frame is still decoding.
+        // A layer being dragged is drawn by the overlay with the original hidden, and a clipped
+        // one is no different - leaving it in the group would draw it twice and trail a ghost.
+        const drag = layerDragRef.current;
+        const dragging = (id) => !!drag && drag.cutId === cutId && drag.layerIds.includes(id);
+
+        const parts = [];
+        for (let k = group.clipped.length - 1; k >= 0; k--) {   // bottom-to-top within the group
+            if (dragging(group.clipped[k].id)) continue;
+            const c = ensureLayerCanvas(cutId, group.clipped[k]);
+            if (!c) return baseCanvas;
+            parts.push(c);
+        }
+        if (parts.length === 0) return baseCanvas;
+
+        const paint = clipPaintRef.current || (clipPaintRef.current = document.createElement('canvas'));
+        sizeCanvas(paint, CANVAS_W, CANVAS_H);
+        const pctx = paint.getContext('2d');
+        pctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+        pctx.globalCompositeOperation = 'source-over';
+        for (const c of parts) pctx.drawImage(c, 0, 0);
+
+        // Keep only what lands on the base.
+        pctx.globalCompositeOperation = 'destination-in';
+        pctx.drawImage(baseCanvas, 0, 0);
+        pctx.globalCompositeOperation = 'source-over';
+
+        const out = clipScratchRef.current || (clipScratchRef.current = document.createElement('canvas'));
+        sizeCanvas(out, CANVAS_W, CANVAS_H);
+        const octx = out.getContext('2d');
+        octx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+        octx.drawImage(baseCanvas, 0, 0);
+        octx.drawImage(paint, 0, 0);
+        return out;
+    };
+
     const paintFrame = useCallback((t, playing) => {
         const canvas = canvasRef.current; if (!canvas) return;
         const ctx = canvas.getContext('2d');
@@ -3134,7 +3194,11 @@ export default function App() {
         }
 
         activeCuts.forEach(ac => {
-            const order = flattenLayersInUiOrder(ac.layers || []).filter(l => l.type === 'layer' && l.visible !== false);
+            const visible = flattenLayersInUiOrder(ac.layers || []).filter(l => l.type === 'layer' && l.visible !== false);
+            // A clipped layer draws as part of the group below it rather than on its own, so the
+            // loop walks groups. With nothing clipped this is one group per layer and the code
+            // below behaves exactly as it did.
+            const order = clipGroups(visible).map(g => ({ ...g.base, __clip: g }));
             // Cut-level animation (enter/exit/deform) applies only during playback/export,
             // so editing stays at rest. Transform about the canvas centre.
             const anim = playing ? computeCutAnim(ac, t, CANVAS_W, CANVAS_H) : null;
@@ -3148,7 +3212,7 @@ export default function App() {
             // Draw bottom -> top so the topmost layer (UI top) is visually on top.
             for (let i = order.length - 1; i >= 0; i--) {
                 const l = order[i];
-                const layerCanvas = ensureLayerCanvas(ac.id, l);
+                const layerCanvas = flattenClipGroup(ac.id, l.__clip);
                 if (!layerCanvas) continue; // frame still decoding (part-scoped memory); will repaint when ready
 
                 // Per-layer ("part") transform nests inside the cut transform.
@@ -3716,6 +3780,24 @@ export default function App() {
                                 <Waves size={11} />
                             </button>
                         )}
+                        {!isFolder && (() => {
+                            // Shown even where it cannot apply, greyed out: hiding it would make
+                            // the row's controls shift position as layers are reordered, which is
+                            // worse than a disabled button.
+                            const clippable = canClip(flattenLayersInUiOrder(cut.layers || []).filter(l => l.type === 'layer'), layer.id);
+                            return (
+                                <button className="icon-btn" disabled={!clippable && !layer.clipped}
+                                    style={{ color: layer.clipped ? 'var(--accent-pale)' : undefined, opacity: (clippable || layer.clipped) ? 1 : 0.3 }}
+                                    title={layer.clipped
+                                        ? tr('클리핑 해제 (지금은 아래 레이어가 그려진 곳에만 보입니다)')
+                                        : clippable
+                                            ? tr('아래 레이어에 클리핑 — 아래 레이어가 그려진 곳에만 보이게 합니다')
+                                            : tr('맨 아래 레이어는 클리핑할 대상이 없습니다')}
+                                    onClick={e => { e.stopPropagation(); dispatchCuts(setLayerClipped(cut.id, layer.id, !layer.clipped)); }}>
+                                    <CornerDownRight size={11} />
+                                </button>
+                            );
+                        })()}
                         {!isFolder && (
                             <button className="icon-btn" title={tr('아래 레이어와 병합')}
                                 onClick={e => { e.stopPropagation(); dispatchCuts(mergeLayerDown(cut.id, layer.id, flattenLayersInUiOrder)); }}>
