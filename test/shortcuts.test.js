@@ -3,7 +3,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { keyOf, matchShortcut, loadKeymap, toolFromAction, findConflicts, DEFAULT_KEYS, KEY_LABELS } from '../src/core/shortcuts.js';
+import { keyOf, matchShortcut, keymapFrom, toolFromAction, findConflicts, DEFAULT_KEYS, KEY_LABELS } from '../src/core/shortcuts.js';
 
 const ev = (key, mods = {}) => ({ key, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...mods });
 
@@ -59,27 +59,34 @@ test('matchShortcut: a key event round-trips to its action', () => {
     assert.equal(matchShortcut(DEFAULT_KEYS, keyOf(ev('0', { metaKey: true }))), 'resetView', 'and on a Mac');
 });
 
-test('loadKeymap: a shortcut added since the user last saved is still reachable', () => {
-    // Their file has only the bindings that existed then; the rest must come from the defaults.
-    const storage = { getItem: () => JSON.stringify({ undo: 'z' }) };
-    const km = loadKeymap(storage);
-    assert.equal(km.undo, 'z', 'their change wins');
-    assert.equal(km.zoomIn, DEFAULT_KEYS.zoomIn, 'and the newer binding is present');
+test('keymapFrom: a shortcut added since the user last saved is still reachable', () => {
+    // A binding the user removed should stay removed; one that never existed has to come from
+    // the defaults or there would be no way to reach it.
+    const km = keymapFrom({ undo: 'q' });
+    assert.equal(km.undo, 'q', 'what was saved wins');
+    assert.equal(km.redo, DEFAULT_KEYS.redo, 'what was not saved comes from the defaults');
 });
 
-test('loadKeymap: unreadable or absent storage falls back to the defaults', () => {
-    assert.deepEqual(loadKeymap({ getItem: () => null }), DEFAULT_KEYS);
-    assert.deepEqual(loadKeymap({ getItem: () => 'not json' }), DEFAULT_KEYS);
-    assert.deepEqual(loadKeymap({ getItem: () => { throw new Error('blocked'); } }), DEFAULT_KEYS,
-        'private mode can make localStorage throw');
-    assert.deepEqual(loadKeymap({ getItem: () => '"a string"' }), DEFAULT_KEYS);
+test('keymapFrom: anything that is not an object is treated as absent', () => {
+    // Reading and guarding storage is readStored's job now; this only has to survive what it
+    // is handed, including what a hand-edited value might be.
+    assert.deepEqual(keymapFrom(null), DEFAULT_KEYS);
+    assert.deepEqual(keymapFrom(undefined), DEFAULT_KEYS);
+    assert.deepEqual(keymapFrom('a string'), DEFAULT_KEYS);
+    assert.deepEqual(keymapFrom(42), DEFAULT_KEYS);
+    assert.deepEqual(keymapFrom(['q']), DEFAULT_KEYS, 'an array is not a keymap');
 });
 
-test('loadKeymap: returns a copy, so editing it cannot corrupt the defaults', () => {
-    const km = loadKeymap({ getItem: () => null });
-    km.undo = 'changed';
-    assert.equal(DEFAULT_KEYS.undo, 'j');
+test('keymapFrom: an emptied binding stays empty rather than coming back', () => {
+    assert.equal(keymapFrom({ undo: '' }).undo, '');
 });
+
+test('keymapFrom: returns a copy, so editing it cannot corrupt the defaults', () => {
+    const km = keymapFrom(null);
+    km.undo = 'zzz';
+    assert.notEqual(DEFAULT_KEYS.undo, 'zzz');
+});
+
 
 test('every binding has a label, and every label a binding', () => {
     assert.deepEqual(Object.keys(DEFAULT_KEYS).sort(), Object.keys(KEY_LABELS).sort());

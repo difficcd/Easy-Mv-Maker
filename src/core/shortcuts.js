@@ -118,14 +118,20 @@ export function findConflicts(keymap) {
     return out;
 }
 
-/** The saved bindings, with anything missing filled in from the defaults. */
-export function loadKeymap(storage = typeof localStorage === 'undefined' ? null : localStorage) {
-    try {
-        const v = JSON.parse(storage.getItem('mv_keymap'));
-        // A binding the user removed should stay removed, but one that never existed - a shortcut
-        // added since they last saved - has to come from the defaults or it would be unreachable.
-        return v && typeof v === 'object' ? { ...DEFAULT_KEYS, ...v } : { ...DEFAULT_KEYS };
-    } catch {
-        return { ...DEFAULT_KEYS };
-    }
+/**
+ * A stored keymap, with anything missing filled in from the defaults.
+ *
+ * A binding the user removed should stay removed, but one that never existed - a shortcut added
+ * since they last saved - has to come from the defaults or it would be unreachable.
+ *
+ * It used to read localStorage itself. It does not any more: reading and guarding storage is
+ * readStored's job, and having a second reader meant a second try/catch to keep in step.
+ *
+ * @param {unknown} value whatever was stored, already parsed
+ * @returns {Record<string, string>} always a fresh object, so editing it cannot touch the defaults
+ */
+export function keymapFrom(value) {
+    return value && typeof value === 'object' && !Array.isArray(value)
+        ? { ...DEFAULT_KEYS, ...value }
+        : { ...DEFAULT_KEYS };
 }
