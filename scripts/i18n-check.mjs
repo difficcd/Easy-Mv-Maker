@@ -15,13 +15,16 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 const DICT = 'src/i18n.js';
+const JA_DICT = 'src/i18n.ja.js';
 const HANGUL = /[가-힣]/;
 // A single-quoted JS string: anything but a quote or a backslash, or an escape pair.
 const STRING = "((?:[^'\\\\]|\\\\.)*)";
 
-const keys = new Set(
-    [...readFileSync(DICT, 'utf8').matchAll(new RegExp("^\\s*'" + STRING + "':", 'gm'))].map(m => m[1]),
+const dictKeys = (path) => new Set(
+    [...readFileSync(path, 'utf8').matchAll(new RegExp("^\\s*'" + STRING + "':", 'gm'))].map(m => m[1]),
 );
+const keys = dictKeys(DICT);
+const jaKeys = dictKeys(JA_DICT);
 
 /** Every tr('...') literal in the source, with the first file it was seen in. */
 const used = new Map();
@@ -33,7 +36,8 @@ const walk = (dir) => {
         const name = entry.name;
         const path = join(dir, name);
         if (entry.isDirectory()) { walk(path); continue; }
-        if (!/\.jsx?$/.test(name) || path.replace(/\\/g, '/') === DICT) continue;
+        const rel = path.replace(/\\/g, '/');
+        if (!/\.jsx?$/.test(name) || rel === DICT || rel === JA_DICT) continue;
         const src = readFileSync(path, 'utf8');
         for (const m of src.matchAll(new RegExp("tr\\('" + STRING + "'", 'g'))) {
             if (!used.has(m[1])) used.set(m[1], path);
@@ -51,4 +55,27 @@ if (missing.length) {
     process.exit(1);
 }
 
+// Japanese is allowed to be incomplete - tr() falls back to English, which a Japanese reader
+// can work with. What is not allowed is a key the English dictionary does not have: English is
+// the authority on what the keys are, so an entry outside it is dead weight nobody will notice,
+// and it usually means a string was reworded and the translation left behind.
+//
+// Checking against the English dictionary rather than against the tr() literals is deliberate:
+// some strings reach tr() through a variable, so they are real keys the scanner never sees.
+// A Japanese entry may be the trimmed form of a padded English key: tr() retries with the
+// key trimmed, so one entry covers both, and requiring the padding back would be busywork.
+const trimmed = new Set([...keys].map(k => k.trim()));
+const stale = [...jaKeys].filter(k => !keys.has(k) && !trimmed.has(k));
+if (stale.length) {
+    console.error(`${stale.length} Japanese entr(y/ies) with no English key:`);
+    for (const k of stale) console.error(`    ${k}`);
+    console.error('\nRemove them from src/i18n.ja.js, or fix the key if the string was reworded.');
+    process.exit(1);
+}
+
+// Trimmed too, because tr() retries with the key trimmed: the dictionary keeps one entry
+// for '\uc0ad\uc81c \uc2e4\ud328:' and it covers the padded '\uc0ad\uc81c \uc2e4\ud328: ' as well.
+const jaHave = [...keys].filter(k => jaKeys.has(k) || jaKeys.has(k.trim())).length;
+const pct = keys.size ? Math.round((jaHave / keys.size) * 100) : 100;
 console.log(`i18n check passed - ${used.size} tr() strings, all translated`);
+console.log(`  Japanese: ${jaHave}/${keys.size} (${pct}%)${jaHave === keys.size ? `` : `, the rest falls back to English`}`);
