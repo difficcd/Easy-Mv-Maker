@@ -116,6 +116,53 @@ marquee, middle-click pan, one-finger pan/tap, two-finger pinch) in one place.
 - Files: `buildData/restore/doSave/doOpen/doNew`; server `doServerSave/openServerList/doServerOpen/doServerDelete`; autosave effect + crash-recovery effect.
 - History: `historyRef`/`historyIndexRef` + `recordHistoryRef`; the arithmetic is in `core/historyOps`.
 
+## Where the render path is going
+
+`paintFrame` is 193 lines and does two jobs at once: working out what the frame looks like at
+time `t`, and drawing it. Everything that needs a frame — playback, scrubbing, export, thumbnails,
+onion skin — reaches into that one function, so anything they should share has to be shared by
+being in it.
+
+The direction is to split those two jobs:
+
+```
+project state
+      ↓  evaluate(project, t)
+resolved scene at time t          ← pure, no canvas, testable
+      ↓  render(ctx, scene)
+canvas
+```
+
+Export then stops being a special path and becomes the same two calls in a loop:
+
+```js
+for (let t = 0; t < end; t += 1 / 30) { render(ctx, evaluate(project, t)); }
+```
+
+### Done
+
+`engine/selectCuts.js` — which cuts a frame is made of, and the onion-skin neighbours. Each of
+those was written out twice, and copies of a boundary comparison disagreeing is a flicker at a cut
+seam rather than an obvious bug.
+
+### Next, in order
+
+1. **Animation.** `computeCutAnim` is currently called twice per cut per frame — once in the layer
+   pass, once in the text pass — and the same transform is written out either side. Evaluating a
+   cut once and handing the result to both passes removes the duplicate work and the duplicate
+   code together.
+2. **Compositing.** Clip groups, sway slices, the selection mask and the layer-drag exclusion are
+   the parts that genuinely need a canvas. They stay in the renderer; what moves out is the
+   deciding.
+3. **One entry point.** `evaluate(project, t)` returning a scene, with the renderer walking it.
+
+### What is deliberately staying put
+
+The draw pipeline — `startDraw` / `onDraw` / `stopDraw` — is not part of this. It is pointer
+handling and live-stroke state, it has the most refs of anything in the component, and it has
+nothing to do with rendering a frame at a time. Moving it would be the riskiest change in the
+codebase for the least benefit.
+
 ## Run and verify
 - Web + API: `npm run dev` (web :5173 with LAN host + QR, api :8787).
 - `npm run check` — typecheck, tests, hook-lint baseline, build. **Run this before reporting done.**
