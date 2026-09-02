@@ -1044,7 +1044,7 @@ export const ANIM_DEFAULT = { inType: 'none', inDur: 0.4, inDir: 'left', outType
 export function computeCutAnim(ac, time, cw = CANVAS_W, ch = CANVAS_H) {
     const a = ac.anim;
     if (!a) return null;
-    const dur = Math.max(0.0001, ac.endTime - ac.startTime);
+    const dur = cutDuration(ac);
     const lt = time - ac.startTime;
     let alpha = 1, sx = 1, sy = 1, tx = 0, ty = 0;
     // Slide travels a full canvas dimension so the cut clearly enters from off-screen.
@@ -1088,6 +1088,39 @@ export const LAYER_ANIM_DEFAULT = { mode: 'progress', speed: 1, count: 0, tx: 0,
 
 // Easing applied to a 0..1 progress. type: linear | in (slow→fast) | out (fast→slow)
 // | inout. power (>=1) is the user-adjustable strength/weight.
+// How long a cut lasts, and how far through it a moment is.
+//
+// Written out six times between here and App - twice as bare arithmetic inside an animation
+// function, once inline in the camera call, once as a prop already named cutProgress. The
+// concept had a name before it had a function.
+//
+// The floor is the whole reason it is not just (end - start). A cut can be dragged to zero
+// length, and every one of these divides by it.
+const MIN_CUT_SECONDS = 0.0001;
+
+/**
+ * A cut's length in seconds, never zero.
+ * @param {{startTime: number, endTime: number}} ac
+ * @returns {number}
+ */
+export function cutDuration(ac) {
+    return Math.max(MIN_CUT_SECONDS, ac.endTime - ac.startTime);
+}
+
+/**
+ * How far through a cut a moment is: 0 at its start, 1 at its end.
+ *
+ * Clamped, so a time outside the cut reads as one of its ends rather than extrapolating - which
+ * matters because animations are evaluated for cuts that are merely near the playhead.
+ *
+ * @param {{startTime: number, endTime: number}} ac
+ * @param {number} time
+ * @returns {number}
+ */
+export function cutProgress(ac, time) {
+    return Math.max(0, Math.min(1, (time - ac.startTime) / cutDuration(ac)));
+}
+
 export function applyEase(t, type, power = 2) {
     t = Math.max(0, Math.min(1, t));
     if (!type || type === 'linear') return t;
@@ -1185,7 +1218,7 @@ export function computeTextAnim(t, ac, time) {
     const a = t.anim;
     if (!a) return null;
     const local = time - ac.startTime;
-    const dur = Math.max(0.0001, ac.endTime - ac.startTime);
+    const dur = cutDuration(ac);
     let alpha = 1, dx = 0, dy = 0, scale = 1, blur = 0, rot = 0;
 
     const inDur = Math.max(0.0001, a.inDur ?? 0.4);
@@ -1245,8 +1278,7 @@ export function sampleKeys(keys, p) {
 export function computeLayerAnim(layer, ac, time, cw = CANVAS_W, ch = CANVAS_H) {
     const a = layer.anim;
     if (!a) return null;
-    const dur = Math.max(0.0001, ac.endTime - ac.startTime);
-    const t = Math.max(0, Math.min(1, (time - ac.startTime) / dur));
+    const t = cutProgress(ac, time);
     const speed = a.speed || 1, count = a.count || 0;
     const keys = Array.isArray(a.keys) && a.keys.length >= 2 ? a.keys : null;
     let tx, ty, rot, sc, alpha = 1, prog;

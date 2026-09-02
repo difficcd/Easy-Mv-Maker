@@ -51,7 +51,7 @@ import {
     layerKey, imageDataToDataURL, dataURLToImageData, drawStrokesOnCtx, sizeCanvas,
     flattenForCanvas, flattenLayersInUiOrder, strokeSig, extractVideoFrames, fitRect, detectSceneCuts, curveToWave, swayWeightAt, morphPrepare,
     accentSoft, computeCutAnim, computeLayerAnim, TEXT_ANIM_DEFAULT, computeTextAnim,
-    targetCanvasFor, imageDataCanvas,
+    targetCanvasFor, imageDataCanvas, cutProgress,
 } from './canvas/canvasUtils';
 
 /**
@@ -3222,7 +3222,7 @@ export default function App() {
         // tracks above it are parts of the same shot rather than shots of their own.
         const camCut = playing ? activeCuts.find(c => c.camera) : null;
         const camAt = camCut
-            ? computeCamera(camCut.camera, (t - camCut.startTime) / Math.max(0.0001, camCut.endTime - camCut.startTime), CANVAS_W, CANVAS_H)
+            ? computeCamera(camCut.camera, cutProgress(camCut, t), CANVAS_W, CANVAS_H)
             : null;
         if (camAt) { ctx.save(); applyCamera(ctx, camAt, CANVAS_W, CANVAS_H); }
         // Video overlay track: drawn underneath everything. The <video> element is kept at time t by
@@ -3866,7 +3866,7 @@ export default function App() {
                     )}
                     {!isFolder && animLayer && animLayer.cutId === cut.id && animLayer.layerId === layer.id && (
                         <LayerAnimPanel cut={cut} layer={layer} updLayerAnim={updLayerAnim} updLayers={updLayers} pathCapture={pathCapture} setPathCapture={setPathCapture}
-                            cutProgress={(currentTime - cut.startTime) / Math.max(0.0001, cut.endTime - cut.startTime)} />
+                            cutProgress={cutProgress(cut, currentTime)} />
                     )}
                     {dt === 'after' && <div className="drop-line" />}
                     {isFolder && !layer.collapsed && renderLayers(cut, layer.id, depth + 1)}
