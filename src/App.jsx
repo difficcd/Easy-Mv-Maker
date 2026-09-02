@@ -37,7 +37,7 @@ import {
 } from './core/cutsReducer.js';
 import { measureTextBox as measureTextBoxPure, textNeedsBox, drawTextObject } from './canvas/textRender.js';
 import { migrateCuts, projectSettings, makeLoadProgress } from './core/projectFormat.js';
-import { frameStorage, frameLoad, imageExt, imageExtFromType, audioExt, videoExt } from './core/projectAssets.js';
+import { frameLoad, imageExtFromType, audioExt, videoExt, collectBitmaps } from './core/projectAssets.js';
 import { xAtTime, timeAtX, zoomAnchored, pinchZoom } from './core/timelineZoom.js';
 import { preparePath } from './core/pathMotion.js';
 import { dragOnWindow } from './core/windowDrag.js';
@@ -1126,31 +1126,10 @@ export default function App() {
     //    so autosave stays cheap and low-memory even for a huge import).
     //  - neither (local .emv file): frames embedded as base64 dataURLs so the file is self-contained.
     const buildData = async (includeAudio = true, assetSink = null, blobsOk = false) => {
-        const usedIds = new Set();
-        cuts.forEach(c => c.layers.forEach(l => safeArray(l.strokes).forEach(s => { if (s.bitmapId) usedIds.add(s.bitmapId); })));
-        const bitmaps = {};
-        const compressed = []; // ids stored as a whole encoded image (video frames) — keep compressed on restore
-        const assets = [];     // externalized frame manifest [{id, ext}] when assetSink is used
-        const cache = dataUrlCacheRef.current;
-        for (const id of usedIds) {
-            const entry = bitmapStoreRef.current.get(id);
-            if (!entry) continue;
-            // Video frames are held as a Blob (preferred) or legacy dataURL.
-            if (entry.blob || entry.url) {
-                const ext = imageExt(entry);
-                const where = frameStorage(entry, { assetSink, blobsOk });
-                if (where === 'asset') { assets.push({ id, ext, w: entry.w || 0, h: entry.h || 0 }); assetSink.push({ id, blob: entry.blob, url: entry.url, ext }); }
-                else if (where === 'blob') { bitmaps[id] = entry.blob; compressed.push(id); }
-                else { bitmaps[id] = entry.blob ? await blobToDataURL(entry.blob) : entry.url; compressed.push(id); }
-                continue;
-            }
-            if (!entry.imageData) continue;
-            const c = cache.get(id);
-            if (c && c.imageData === entry.imageData) { bitmaps[id] = c.url; continue; }
-            const url = imageDataToDataURL(entry.imageData);
-            cache.set(id, { imageData: entry.imageData, url });
-            bitmaps[id] = url;
-        }
+        const { bitmaps, compressed, assets } = await collectBitmaps(cuts, {
+            store: bitmapStoreRef.current, cache: dataUrlCacheRef.current,
+            assetSink, blobsOk, blobToDataURL, imageDataToDataURL,
+        });
         const out = {
             version: '1.5', appName: 'EasyMVMaker', savedAt: new Date().toISOString(), numTracks, onionPrev, onionNext, pps, bitmaps, compressedBitmaps: compressed,
             canvas: { w: CANVAS_W, h: CANVAS_H },
