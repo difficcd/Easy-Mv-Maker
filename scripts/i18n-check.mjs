@@ -11,7 +11,7 @@
 //
 // Presence only. Whether a translation is any good is a review question.
 
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 const DICT = 'src/i18n.js';
@@ -26,9 +26,13 @@ const keys = new Set(
 /** Every tr('...') literal in the source, with the first file it was seen in. */
 const used = new Map();
 const walk = (dir) => {
-    for (const name of readdirSync(dir)) {
+    // withFileTypes rather than a stat per entry: one syscall instead of two, and no window
+    // between asking what a path is and reading it - which is what CodeQL flags, and it is
+    // right that the two-step version is the worse way to write this.
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const name = entry.name;
         const path = join(dir, name);
-        if (statSync(path).isDirectory()) { walk(path); continue; }
+        if (entry.isDirectory()) { walk(path); continue; }
         if (!/\.jsx?$/.test(name) || path.replace(/\\/g, '/') === DICT) continue;
         const src = readFileSync(path, 'utf8');
         for (const m of src.matchAll(new RegExp("tr\\('" + STRING + "'", 'g'))) {
