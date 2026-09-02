@@ -20,6 +20,11 @@
  *
  * CACHE_NAME must be bumped whenever this file's behaviour changes, so the activate handler
  * clears what the old rules cached.
+ *
+ * There is deliberately no message handler. An earlier draft had one so a page could tell a
+ * waiting worker to take over, but nothing ever sent that message - and CodeQL was right to flag
+ * a postMessage listener with no origin check. install already calls skipWaiting, so an update
+ * takes over on the next load without being asked.
  */
 
 const CACHE_NAME = 'mv-maker-cache-v2';
@@ -105,10 +110,4 @@ self.addEventListener('fetch', (event) => {
             return new Response('Offline', { status: 503, headers: { 'Content-Type': 'text/plain' } });
         }
     })());
-});
-
-// Lets the page tell a waiting worker to take over immediately, rather than the user having to
-// close every tab before an update lands.
-self.addEventListener('message', (event) => {
-    if (event.data === 'skip-waiting') self.skipWaiting();
 });
