@@ -124,13 +124,12 @@ body {
 
 .title {
     margin: 0;
-    font-size: 16px;
-    font-weight: 700;
-    white-space: nowrap;
-    background: linear-gradient(90deg, var(--accent-bright), var(--accent-soft2));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    /* The mark, not a word: line-height 0 keeps the row from growing to fit a text box that is
+       no longer there, and the colour is what the svg draws in. */
+    display: flex;
+    align-items: center;
+    line-height: 0;
+    color: var(--accent-hi);
 }
 
 /* Top-bar buttons and dropdowns stay on one line. */
