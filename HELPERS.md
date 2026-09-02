@@ -391,6 +391,8 @@ Which pasted bitmaps a frame needs but does not have decoded yet.
 
 | | |
 |---|---|
+| `bitmapPending` | Whether a bitmap is known but not yet drawable. The four-term predicate four places wrote out separately; the cost of them disagreeing is a blank layer cached under a signature that says it is complete. |
+| `scanLayerBitmaps` | One layer split into what it can and cannot draw yet. The decoded half is only the ImageBitmaps, because that is the form the LRU evicts and so the only one worth touching. |
 | `pendingBitmapIds` | Playback asks so it can hold the last frame instead of flashing a half-drawn one; the frame exporter asks so it can wait for the decode. Both used to be the same nested loop written twice. |
 
 ## `src/engine/selectCuts.js`
