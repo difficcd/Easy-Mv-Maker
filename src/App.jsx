@@ -17,6 +17,7 @@ import { closeLassoPath, lassoBounds, applyResize } from './core/lassoOps.js';
 import { useTimelineGestures } from './hooks/useTimelineGestures.js';
 import { fmt, parseClock } from './core/timeCode.js';
 import { useHistory } from './hooks/useHistory.js';
+import { usePlayback } from './hooks/usePlayback.js';
 import { nextProbeDelay } from './core/probeBackoff.js';
 import { playbackStartFrom } from './core/playbackStart.js';
 import {
@@ -208,10 +209,8 @@ export default function App() {
      * handles.
      */
     const currentCut = cuts.find(c => c.id === currentCutId);
-    const [isPlaying, setIsPlaying] = useState(false);
     const [loopPlay, setLoopPlay] = useState(false);
     const [playbackRate, setPlaybackRate] = useState(1);
-    const [currentTime, setCurrentTime] = useState(0);
     const [rightW, setRightW] = useState(270);
     const [leftW, setLeftW] = useState(96);
     const [colorW, setColorW] = useState(200);
@@ -395,8 +394,6 @@ export default function App() {
     const mosaicRectRef = useRef(null);   // mosaic drag rectangle
     const [mosaicBlock, setMosaicBlock] = useState(14); // mosaic block size (px)
     const isDrawing = useRef(false);
-    const reqRef = useRef(null);
-    const isPlayingRef = useRef(false);
     const fileMenuRef = useRef(null);
     const mediaMenuRef = useRef(null);
     const timelineRef = useRef(null);
@@ -426,13 +423,12 @@ export default function App() {
     const fallbackCanvasRef = useRef(new Map()); // LRU of layer canvases built on demand during render
     const decodingRef = useRef(new Set()); // frame ids currently being re-decoded from their Blob
     const hotWindowRef = useRef(new Set()); // frame ids in the current prefetch window — never LRU-evicted
+    const paintFrameRef = useRef(/** @type {((t: number, playing: boolean) => void) | null} */(null)); // set below, beside paintFrame
     const prefetchRef = useRef(null); // prefetchFramesAt, called by the rAF loop with the real playhead
     const paintedOnceRef = useRef(false); // once we've painted a real frame, hold it rather than flash white
     const canvasAreaRef = useRef(null);
     const videoFileRef = useRef(null);
-    const currentTimeRef = useRef(0);       // playback clock read by the rAF loop (avoids stale closure)
     const playheadRef = useRef(null);        // moved imperatively during playback
-    const seekRef = useRef(null);            // pending seek the playback loop applies (scrub while playing)
     // Reused inside the composite loop; see the mask path in paintFrame.
     const maskScratchRef = useRef(null);
     const dataUrlCacheRef = useRef(new Map()); // id -> {imageData, url}; avoids re-encoding bitmaps each autosave
@@ -770,6 +766,7 @@ export default function App() {
     // TIMELINE_MIN_SPAN - a music video is three to five minutes, so a timeline that stops at two
     // leaves nowhere to place anything before the audio is loaded.
     const maxTime = Math.max(TIMELINE_MIN_SPAN, audioData?.endTime ?? audioDuration, videoOverlay?.endTime ?? 0, ...cuts.map(c => c.endTime)) + TIMELINE_TAIL_PAD;
+
     // Actual content bounds (where cuts/audio live) — playback & loop run between these,
     // not out to maxTime (which has empty padding for the timeline ruler).
     const contentEnd = Math.max(0, audioData?.endTime ?? 0, videoOverlay?.endTime ?? 0, ...cuts.map(c => c.endTime));
@@ -781,6 +778,22 @@ export default function App() {
     // Playback runs within the active part when one is selected, else across all content.
     const playStart = activePart ? activePart.start : contentStart;
     const playEnd = activePart ? activePart.end : contentEnd;
+
+    // Playback owns the clock: isPlaying, currentTime, and the refs the rAF loop reads instead
+    // of state so it never runs on a stale closure. Everything passed in is an input - playback
+    // is a function of the timeline, the media and where to paint - and the groups say which is
+    // which rather than leaving seventeen arguments in a row.
+    const {
+        isPlaying, setIsPlaying, currentTime, setCurrentTime,
+        currentTimeRef, seekRef, isPlayingRef,
+        playPause: handlePlayPause, stop: handleStop,
+    } = usePlayback({
+        media: { audioRef, videoElRef, audioUrl, audioData, videoOverlay },
+        range: { playStart, playEnd, maxTime, loopPlay, playbackRate, anchorTime: currentCut?.startTime },
+        paint: { pps, playheadRef, paintFrameRef, prefetchRef },
+        recording: { isExporting, exportEndRef, mediaRecorderRef },
+    });
+
 
     useEffect(() => {
         const h = (e) => {
@@ -873,91 +886,6 @@ export default function App() {
         }
     }, [currentTime, isPlaying]);
 
-    useEffect(() => {
-        isPlayingRef.current = isPlaying;
-        if (!isPlaying) {
-            if (audioRef.current) audioRef.current.pause();
-            // The video has to be stopped here too. Only `finish` paused it, which is the path
-            // for reaching the end - stopping any other way left the element rolling. Nothing
-            // showed it, because a paused canvas is not being repainted; the moment drawing began
-            // the repaints resumed and the overlay was discovered to have been playing all along.
-            if (videoElRef.current) videoElRef.current.pause();
-            cancelAnimationFrame(reqRef.current);
-            return;
-        }
-        // Export must record at real time; preview honors the chosen playback speed.
-        const rate = isExporting.current ? 1 : playbackRate;
-        const audio = audioRef.current;
-        if (audio) audio.playbackRate = rate;
-        let last = performance.now();
-        let t = currentTimeRef.current;
-        let lastUiSync = 0, lastPrefetch = 0;
-        const audible = () => audio && audioUrl && (!audioData || (t >= audioData.startTime && t < audioData.endTime));
-        // Kick audio once, seeking only at the start — not every frame (per-frame seeks stutter).
-        if (audio && audioUrl) {
-            if (audible()) { const exp = audioData ? (t - audioData.startTime) + audioData.offset : t; if (Math.abs(audio.currentTime - exp) > 0.05) audio.currentTime = exp; audio.play().catch(() => { }); }
-        }
-        // Video overlay follows the clock (audio stays the master). Seek only on real drift so the
-        // browser's native video decode plays smoothly instead of stuttering on per-frame seeks.
-        const vid = videoElRef.current;
-        if (vid && videoOverlay) vid.playbackRate = rate;
-        const syncVideo = (tt, forceSeek) => {
-            if (!vid || !videoOverlay) return;
-            if (tt >= videoOverlay.startTime && tt < videoOverlay.endTime) {
-                const exp = (tt - videoOverlay.startTime) + videoOverlay.offset;
-                if (forceSeek || Math.abs(vid.currentTime - exp) > 0.2) { try { vid.currentTime = exp; } catch { } }
-                if (vid.paused) vid.play().catch(() => { });
-            } else if (!vid.paused) vid.pause();
-        };
-        syncVideo(t, true);
-        const finish = (end) => { isPlayingRef.current = false; setIsPlaying(false); if (audio) audio.pause(); if (vid) vid.pause(); setCurrentTime(end); currentTimeRef.current = end; paintFrameRef.current?.(end, false); };
-        const step = (now) => {
-            if (!isPlayingRef.current) return;
-            const dt = (now - last) / 1000; last = now;
-            // A scrub while playing drops a target time here; jump to it and re-seek audio this frame.
-            if (seekRef.current != null) {
-                t = seekRef.current; seekRef.current = null;
-                if (audio && audioUrl) { const exp = audioData ? Math.max(0, (t - audioData.startTime) + audioData.offset) : t; try { audio.currentTime = exp; } catch { } }
-                syncVideo(t, true);
-                currentTimeRef.current = t;
-                paintFrameRef.current?.(t, true);
-                if (playheadRef.current) playheadRef.current.style.left = `${xAtTime(t, pps)}px`;
-                reqRef.current = requestAnimationFrame(step);
-                return;
-            }
-            // Audio is the master clock while it's sounding: read its time so A/V never drift and
-            // we never seek it mid-play. Fall back to wall-clock accumulation otherwise.
-            if (audio && audioUrl && audible()) {
-                if (audio.paused) { const exp = audioData ? (t - audioData.startTime) + audioData.offset : t; audio.currentTime = exp; audio.play().catch(() => { }); }
-                t = audioData ? audioData.startTime + (audio.currentTime - audioData.offset) : audio.currentTime;
-            } else {
-                if (audio && !audio.paused) audio.pause();
-                t += dt * rate;
-            }
-            syncVideo(t, false);
-            if (isExporting.current && t >= exportEndRef.current) {
-                if (mediaRecorderRef.current?.state === 'recording') mediaRecorderRef.current.stop();
-                isExporting.current = false; finish(t); return;
-            }
-            const endAt = isExporting.current ? maxTime : playEnd;
-            if (t >= endAt) {
-                if (loopPlay && !isExporting.current) {
-                    t = playStart;
-                    if (audio && audioUrl) { audio.currentTime = audioData ? Math.max(0, (playStart - audioData.startTime) + audioData.offset) : playStart; if (audible()) audio.play().catch(() => { }); }
-                } else { finish(endAt); return; }
-            }
-            currentTimeRef.current = t;
-            paintFrameRef.current?.(t, true);                                   // 60fps imperative canvas
-            if (playheadRef.current) playheadRef.current.style.left = `${xAtTime(t, pps)}px`; // 60fps imperative playhead
-            if (now - lastPrefetch > 120) { lastPrefetch = now; prefetchRef.current?.(t, true); } // decode ahead of the REAL playhead
-            if (now - lastUiSync > 200) { lastUiSync = now; setCurrentTime(t); } // ~5Hz React sync — keep re-renders off the rAF thread so prefetch keeps up
-            reqRef.current = requestAnimationFrame(step);
-        };
-        reqRef.current = requestAnimationFrame(step);
-        return () => cancelAnimationFrame(reqRef.current);
-    }, [isPlaying, maxTime, audioUrl, audioData, loopPlay, playStart, playEnd, playbackRate, pps, videoOverlay]);
-
-    useEffect(() => { if (!isPlaying) currentTimeRef.current = currentTime; }, [currentTime, isPlaying]);
 
     useEffect(() => {
         if (!isPlaying && audioRef.current && audioUrl && Math.abs(audioRef.current.currentTime - currentTime) > 0.1)
@@ -1717,40 +1645,6 @@ export default function App() {
         return () => clearTimeout(autosaveTimerRef.current);
     }, [cuts, numTracks, onionPrev, onionNext, pps]);
 
-    const handlePlayPause = () => {
-        if (!isPlaying) {
-            // Playback is cut-based: pressing play after the current cut (or all content) has
-            // finished rewinds to the CURRENT cut's start — even with music (audio re-seeks to match).
-            const cc = currentCut;
-            let anchor = cc ? cc.startTime : playStart;
-            if (anchor < playStart - 0.001 || anchor >= playEnd) anchor = playStart; // keep the anchor inside the active part
-            // Where to start is worked out in playbackStart, which is where the reasoning about
-            // "finished" versus "put there on purpose" lives.
-            const from = playbackStartFrom(currentTime, playStart, playEnd, anchor);
-            if (Math.abs(from - currentTime) > 0.001) {
-                setCurrentTime(from);
-                currentTimeRef.current = from;
-                if (audioRef.current) audioRef.current.currentTime = audioData ? Math.max(0, (from - audioData.startTime) + audioData.offset) : from;
-            }
-        } else {
-            // Pausing: stop audio immediately (don't wait for the effect).
-            isPlayingRef.current = false;
-            cancelAnimationFrame(reqRef.current);
-            if (audioRef.current) audioRef.current.pause();
-        }
-        setIsPlaying(!isPlaying);
-    };
-    const handleStop = () => {
-        // Stop should pause at the current position (do not rewind).
-        isPlayingRef.current = false;
-        cancelAnimationFrame(reqRef.current);
-        setIsPlaying(false);
-        if (audioRef.current) {
-            audioRef.current.pause();
-            // Keep audio element time aligned to the current timeline position.
-            audioRef.current.currentTime = currentTime;
-        }
-    };
     const handleAddCut = () => {
         const last = cuts[cuts.length - 1];
         const ns = last?.endTime ?? 0, trk = last?.track ?? 0;
@@ -3356,7 +3250,6 @@ export default function App() {
         if (camAt) ctx.restore();
     }, [cuts, currentCutId, currentCut, onionPrev, onionNext, selection, layerCanvasCache, frameDecodeTick, videoOverlay, boilTick, dragTick]);
 
-    const paintFrameRef = useRef(null);
     paintFrameRef.current = paintFrame;
 
     // Editing render: full frame + editing-only overlays. During playback the rAF loop
