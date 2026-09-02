@@ -4276,11 +4276,15 @@ export default function App() {
                                                     <option value="none">{tr('퇴장없음')}</option><option value="fade">{tr('페이드')}</option><option value="up">{tr('위로')}</option>
                                                     <option value="down">{tr('아래로')}</option><option value="scale">{tr('축소')}</option><option value="blur">{tr('흐림')}</option>
                                                 </select>
+                                                {/* A stagger is a modifier: it needs an entrance or a letter effect to
+                                                    spread, and typing overrides it entirely. Offering it when it can do
+                                                    nothing is what made the whole feature look broken. */}
+                                                {!an.typing && (an.inType !== 'none' || an.outType !== 'none' || (an.charFx ?? 'none') !== 'none') &&
                                                 <select className="time-input" style={{ width: 92 }} title={tr('글자 하나씩 — 등장/퇴장이 글자마다 차례로 일어납니다')} value={an.charStagger ?? 0}
                                                     onChange={e => set({ charStagger: +e.target.value })}>
                                                     <option value="0">{tr('통째로')}</option><option value="0.4">{tr('글자별 약하게')}</option>
                                                     <option value="0.7">{tr('글자별')}</option><option value="0.9">{tr('글자별 크게')}</option>
-                                                </select>
+                                                </select>}
                                                 <select className="time-input" style={{ width: 74 }} title={tr('계속 반복되는 강조')} value={an.emphasis} onChange={e => set({ emphasis: e.target.value })}>
                                                     <option value="none">{tr('강조없음')}</option><option value="pulse">{tr('두근두근')}</option><option value="shake">{tr('흔들기')}</option><option value="swing">{tr('갸우뚱')}</option>
                                                 </select>
@@ -4295,6 +4299,17 @@ export default function App() {
                                                 </label>
                                                 {an.typing && <input type="number" className="time-input" style={{ width: 56 }} title={tr('초당 글자수')} value={an.typeSpeed} step={2} min={1}
                                                     onChange={e => set({ typeSpeed: Math.max(1, +e.target.value || 1) })} />}
+                                                {/* Its own control rather than a modifier on the entrance: this is an
+                                                    entrance in itself, and needing to pick a second one as well was
+                                                    why ticking only 'typing' looked like it did nothing. */}
+                                                <select className="time-input" style={{ width: 96 }} title={tr('글자마다 따로 — 각 글자가 저마다 다른 곳에서 들어옵니다')} value={an.charFx ?? 'none'}
+                                                    onChange={e => set({ charFx: e.target.value })}>
+                                                    <option value="none">{tr('글자효과없음')}</option><option value="scatter">{tr('흩어져 모임')}</option>
+                                                    <option value="drop">{tr('하나씩 떨어짐')}</option><option value="zigzag">{tr('위아래 번갈아')}</option>
+                                                    <option value="spin">{tr('돌면서')}</option><option value="pop">{tr('톡톡 튀어나옴')}</option>
+                                                </select>
+                                                {(an.charFx ?? 'none') !== 'none' && <input type="number" className="time-input" style={{ width: 56 }} title={tr('글자 효과 세기 (px, 회전은 도)')} value={an.charFxAmount ?? 40} step={10} min={0}
+                                                    onChange={e => set({ charFxAmount: Math.max(0, +e.target.value || 0) })} />}
                                             </>}
                                         </>);
                                     })()}
