@@ -14,8 +14,7 @@ import {
     pointInPolygon, dist, safeArray, hexToRgb, fitRect, layerKey, strokeSig,
     applyEase, triwave, swayWeightAt, sampleWave, sampleKeys, targetCanvasFor,
     computeCutAnim, flattenLayersInUiOrder, sizeCanvas, dilateMask, FONT_PRESETS, fontGroups,
-cutDuration, cutProgress,
-} from '../src/canvas/canvasUtils.js';
+cutDuration, cutProgress, scratchCanvas } from '../src/canvas/canvasUtils.js';
 
 const near = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) < eps, `${a} ≈ ${b}`);
 
@@ -294,4 +293,56 @@ test('cutProgress on a zero-length cut is a number, not NaN', () => {
     const p = cutProgress({ startTime: 3, endTime: 3 }, 3);
     assert.ok(Number.isFinite(p), `got ${p}`);
     assert.ok(p >= 0 && p <= 1);
+});
+
+// --- scratchCanvas -----------------------------------------------------------------------------
+
+/** A canvas-shaped stub: enough of the surface for sizing and clearing. */
+function fakeCanvas() {
+    const ctx = { cleared: [] , clearRect: (...a) => ctx.cleared.push(a) };
+    return { width: 0, height: 0, getContext: () => ctx, _ctx: ctx };
+}
+
+test('scratchCanvas allocates once and reuses the same canvas', () => {
+    const made = [];
+    const realDoc = globalThis.document;
+    globalThis.document = { createElement: () => { const c = fakeCanvas(); made.push(c); return c; } };
+    try {
+        const ref = { current: null };
+        const a = scratchCanvas(ref, 100, 50);
+        const b = scratchCanvas(ref, 100, 50);
+        assert.equal(made.length, 1, 'a second call must not allocate 8MB again');
+        assert.equal(a.canvas, b.canvas);
+        assert.equal(ref.current, a.canvas);
+    } finally { globalThis.document = realDoc; }
+});
+
+test('scratchCanvas sizes the canvas it is given', () => {
+    const ref = { current: fakeCanvas() };
+    const { canvas } = scratchCanvas(ref, 640, 360);
+    assert.equal(canvas.width, 640);
+    assert.equal(canvas.height, 360);
+});
+
+test('a resize does the clearing, so scratchCanvas does not clear as well', () => {
+    // Assigning width to a canvas clears it. Clearing again is wasted work on a full-size canvas
+    // inside the composite loop, which is exactly where this runs.
+    const ref = { current: fakeCanvas() };
+    const { ctx } = scratchCanvas(ref, 640, 360);
+    assert.deepEqual(ctx.cleared, []);
+});
+
+test('a canvas already the right size is cleared, because nothing else did it', () => {
+    const c = fakeCanvas();
+    c.width = 640; c.height = 360;
+    const { ctx } = scratchCanvas({ current: c }, 640, 360);
+    assert.deepEqual(ctx.cleared, [[0, 0, 640, 360]]);
+});
+
+test('the second call at the same size clears, the first does not', () => {
+    const ref = { current: fakeCanvas() };
+    const { ctx } = scratchCanvas(ref, 320, 180);
+    assert.equal(ctx.cleared.length, 0, 'first call resized');
+    scratchCanvas(ref, 320, 180);
+    assert.equal(ctx.cleared.length, 1, 'second call had nothing to resize');
 });

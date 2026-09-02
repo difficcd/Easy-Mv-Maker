@@ -331,6 +331,7 @@ The drawing engine: strokes, canvases, animation, video frames. The big one.
 | `samplePath` | Sample a polyline path at normalized position s in [0,1]. |
 | `sampleWave` | Samples the waveform cyclically over 0..1 with linear interpolation. |
 | `sizeCanvas` | Resizes only when the size differs. Assigning `canvas.width` reallocates the backing store even when the value is unchanged - 8MB at 1920x1080, and the measured 79MB/s that ran the tab out of memory. |
+| `scratchCanvas` | A full-size scratch canvas kept in a ref: allocated once, then sized and cleared for reuse. Three places in the composite path did this by hand and disagreed about the clear - two cleared after a resize, which the resize had already done. Reuse is not a micro-optimisation here: a fresh canvas is 8MB per masked layer per frame. |
 | `strokeSig` | used to invalidate the layer canvas cache without stringifying the whole array. |
 | `swayWeightAt` | bend one direction while the next bends back. |
 | `targetCanvasFor` | two shapes people actually publish. |
