@@ -67,7 +67,7 @@ export function CutLayerPanel({
                                 <div className="text-panel">
                                     <div className="text-panel-title">
                                         <span>TEXT</span>
-                                        <button className="small-btn" onClick={e => { e.stopPropagation(); handleSetTool('text'); }}>+ Text</button>
+                                        <button className="small-btn" onClick={e => { e.stopPropagation(); handleSetTool('text'); }}>+ {tr('텍스트')}</button>
                                     </div>
                                     {safeArray(cut.texts).length === 0 && (
                                         <div style={{ fontSize: 11, color: '#666', padding: '6px 2px' }}>{tr('텍스트 없음')}</div>

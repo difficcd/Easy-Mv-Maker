@@ -213,7 +213,7 @@ export function Timeline({
                         missing. The width matters as much as the sticky - a block as wide as the
                         content has nothing to pin. */}
                     <div style={{ marginTop: 8, position: 'sticky', left: 0, width: 'fit-content', paddingLeft: TRACK_GUTTER, zIndex: 15 }}>
-                        <button className="small-btn" onClick={handleAddTrack}><Plus size={11} /> Add Track</button>
+                        <button className="small-btn" onClick={handleAddTrack}><Plus size={11} /> {tr('트랙 추가')}</button>
                     </div>
                     {marquee && (
                         <div style={{ position: 'absolute', left: marquee.x, top: marquee.y, width: marquee.w, height: marquee.h, background: accentSoft(0.15), border: `1px solid ${accentSoft(0.8)}`, zIndex: 16, pointerEvents: 'none' }} />
