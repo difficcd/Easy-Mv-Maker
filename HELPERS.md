@@ -116,6 +116,16 @@ Undo and redo, and the memory budget that bounds them.
 | `pushSnapshot` | Record a snapshot, returning the new list and position. The input is never modified, so the caller can keep the old pair if it wants to. |
 | `step` | Step one snapshot back or forward. |
 
+## `src/core/ids.js`
+
+Ids for the things a document is made of. These were `Date.now()`, written out nineteen times, and
+two of those sites had already worked the collision around by hand with `Date.now() + 1`.
+
+| | |
+|---|---|
+| `nextId` | The clock, or one past the last id when the clock has not moved. Monotonic within a session, which is all that is needed, and still roughly the clock so ids keep sorting by when they were made. |
+| `resetIds` | Reset the counter. For tests only, so one test's calls cannot change what another sees. |
+
 ## `src/core/lassoOps.js`
 
 Lasso selection: closing the path, bounding it, lifting the pixels.
