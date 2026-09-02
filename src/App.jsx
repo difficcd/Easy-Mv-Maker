@@ -50,8 +50,33 @@ import {
     layerKey, imageDataToDataURL, dataURLToImageData, drawStrokesOnCtx, sizeCanvas,
     flattenForCanvas, flattenLayersInUiOrder, strokeSig, extractVideoFrames, fitRect, detectSceneCuts, curveToWave, swayWeightAt, morphPrepare,
     accentSoft, computeCutAnim, computeLayerAnim, TEXT_ANIM_DEFAULT, computeTextAnim,
-    targetCanvasFor,
+    targetCanvasFor, imageDataCanvas,
 } from './canvas/canvasUtils';
+
+/**
+ * Let go of a media element's source.
+ *
+ * Three steps, and the order is the point: pause first or the browser keeps decoding a source
+ * that is being taken away; remove the attribute rather than setting src to '' or the element
+ * reloads the page URL as media and logs a failure; then load(), which is what actually drops
+ * the buffered data - without it the bytes stay held and a project with a big import never
+ * gives them back.
+ *
+ * Written out six times, three for audio and three for video, and they had drifted: the audio
+ * copies left pause() outside the try, so a detached element would throw where the video
+ * copies would not.
+ *
+ * @param {HTMLMediaElement | null | undefined} el
+ */
+const detachMedia = (el) => {
+    if (!el) return;
+    try {
+        el.pause();
+        el.removeAttribute('src');
+        el.load();
+    } catch { }
+};
+
 
 const PEN_TYPES = [
     { id: 'pen', label: 'Dot', Icon: PenLine },
@@ -407,6 +432,8 @@ export default function App() {
     const currentTimeRef = useRef(0);       // playback clock read by the rAF loop (avoids stale closure)
     const playheadRef = useRef(null);        // moved imperatively during playback
     const seekRef = useRef(null);            // pending seek the playback loop applies (scrub while playing)
+    // Reused inside the composite loop; see the mask path in paintFrame.
+    const maskScratchRef = useRef(null);
     const dataUrlCacheRef = useRef(new Map()); // id -> {imageData, url}; avoids re-encoding bitmaps each autosave
     const liveRef = useRef({}); // latest {cuts, copiedCut, selection} for safe bitmap GC from effects
     const selectionDragRef = useRef(null);
@@ -1313,7 +1340,7 @@ export default function App() {
             if (audioRef.current) audioRef.current.src = audioDataUrl;
         } else {
             audioB64Ref.current = null;
-            if (audioRef.current) { audioRef.current.pause(); try { audioRef.current.removeAttribute('src'); audioRef.current.load(); } catch { } }
+            detachMedia(audioRef.current);
             dispatchMedia(clearAudio());
         }
         // Restore the video overlay track (Blob from IDB / server asset / embedded dataURL).
@@ -1329,7 +1356,7 @@ export default function App() {
             dispatchMedia(loadVideo({ name: data.video.name || tr('영상'), startTime: data.video.startTime ?? 0, endTime: data.video.endTime ?? (data.video.duration || 0), offset: data.video.offset ?? 0, duration: data.video.duration || 0, w: data.video.w || 0, h: data.video.h || 0, cuts: data.video.cuts, cutStart: data.video.cutStart, cutOffset: data.video.cutOffset }));
         } else {
             videoBlobRef.current = null; dispatchMedia(clearVideo());
-            if (videoElRef.current) { try { videoElRef.current.pause(); videoElRef.current.removeAttribute('src'); videoElRef.current.load(); } catch { } }
+            detachMedia(videoElRef.current);
         }
         } finally { setLoadProgress(null); }
     };
@@ -1383,10 +1410,10 @@ export default function App() {
         setCopiedCut(null); setSelectedCutIds(new Set()); setActivePartId(null);
         setLayerCanvasCache({});
         serverIdRef.current = null; serverNameRef.current = '';
-        if (audioRef.current) { audioRef.current.pause(); try { audioRef.current.removeAttribute('src'); audioRef.current.load(); } catch { } }
+        detachMedia(audioRef.current);
         audioB64Ref.current = null; dispatchMedia(clearAudio());
         videoBlobRef.current = null; dispatchMedia(clearVideo()); setSceneCfg(null);
-        if (videoElRef.current) { try { videoElRef.current.pause(); videoElRef.current.removeAttribute('src'); videoElRef.current.load(); } catch { } }
+        detachMedia(videoElRef.current);
     };
     const doNew = () => {
         if (!window.confirm(tr('새 프로젝트? 저장되지 않은 내용은 사라집니다.'))) return;
@@ -3309,25 +3336,21 @@ export default function App() {
                 } else {
                     const mx = Math.round(selection.x);
                     const my = Math.round(selection.y);
-                    const tmp = document.createElement('canvas');
-                    tmp.width = CANVAS_W;
-                    tmp.height = CANVAS_H;
+                    // Reused rather than allocated. This runs inside the composite loop, so a
+                    // fresh canvas here is 8MB per masked layer per frame - sixty times a second
+                    // while playing, which is the shape of allocation that took a tab out once.
+                    const tmp = maskScratchRef.current || (maskScratchRef.current = document.createElement('canvas'));
                     const tctx = tmp.getContext('2d');
+                    if (!sizeCanvas(tmp, CANVAS_W, CANVAS_H)) tctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+                    tctx.setTransform(1, 0, 0, 1, 0, 0);
+                    tctx.globalAlpha = 1.0;
+                    tctx.globalCompositeOperation = 'source-over';
                     tctx.drawImage(layerCanvas, 0, 0);
                     tctx.globalCompositeOperation = 'destination-out';
-                    tctx.globalAlpha = 1.0;
-                    if (mb) {
-                        tctx.drawImage(mb, mx, my);
-                    } else {
-                        const mtmp = document.createElement('canvas');
-                        mtmp.width = mi.width;
-                        mtmp.height = mi.height;
-                        const mctx = mtmp.getContext('2d');
-                        mctx.putImageData(mi, 0, 0);
-                        tctx.drawImage(mtmp, mx, my);
-                    }
+                    // imageDataCanvas is a different shared canvas from this one, so nesting them
+                    // is safe - which is why they are separate helpers rather than slots of one.
+                    tctx.drawImage(mb || imageDataCanvas(mi), mx, my);
                     tctx.globalCompositeOperation = 'source-over';
-                    tctx.globalAlpha = 1.0;
                     ctx.drawImage(tmp, 0, 0);
                 }
                 ctx.restore();
@@ -3396,16 +3419,8 @@ export default function App() {
             const tw = Math.max(1, Math.round(selection.tw));
             const th = Math.max(1, Math.round(selection.th));
 
-            if (bmp) {
-                ctx.drawImage(bmp, tx, ty, tw, th);
-            } else if (img) {
-                const tmp = document.createElement('canvas');
-                tmp.width = img.width;
-                tmp.height = img.height;
-                const tctx = tmp.getContext('2d');
-                tctx.putImageData(img, 0, 0);
-                ctx.drawImage(tmp, tx, ty, tw, th);
-            }
+            if (bmp) ctx.drawImage(bmp, tx, ty, tw, th);
+            else if (img) ctx.drawImage(imageDataCanvas(img), tx, ty, tw, th);
 
             ctx.save();
             ctx.strokeStyle = accentSoft();
@@ -3576,7 +3591,7 @@ export default function App() {
     };
     const removeVideoOverlay = () => {
         dispatchMedia(clearVideo()); videoBlobRef.current = null; setSceneCfg(null);
-        const v = videoElRef.current; if (v) { try { v.pause(); v.removeAttribute('src'); v.load(); } catch { } }
+        detachMedia(videoElRef.current);
     };
     // Remember fetched/opened videos so they can be re-imported with different settings
     // without downloading again (session only — keeps at most 3 to bound memory).
@@ -3761,7 +3776,7 @@ export default function App() {
         }
     };
     const handleDeleteAudio = () => {
-        if (audioRef.current) { audioRef.current.pause(); try { audioRef.current.removeAttribute('src'); audioRef.current.load(); } catch { } }
+        detachMedia(audioRef.current);
         if (audioUrl && audioUrl.startsWith('blob:')) { try { URL.revokeObjectURL(audioUrl); } catch { } }
         audioB64Ref.current = null;
         dispatchMedia(clearAudio());
