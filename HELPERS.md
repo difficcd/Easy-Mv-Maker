@@ -332,6 +332,15 @@ The drawing engine: strokes, canvases, animation, video frames. The big one.
 | `TEXT_ANIM_DEFAULT` | - emphasis: a looping accent (pulse/shake/wave) |
 | `triwave` | Triangle wave 0->1->0 (period 2); used for ping-pong path following. |
 
+## `src/canvas/textLayout.js`
+
+Where each character of a line goes, for curving and for animating characters separately.
+
+| | |
+|---|---|
+| `layoutLine` | Per-character position and angle along an arc. The straight path is left alone on purpose: drawing character by character gives up the font's kerning and shaping, so this is the cost of curving rather than something every text pays. |
+| `charProgress` | One character's own 0..1 when they are staggered. `spread` is capped below 1, because spending the whole duration on starts leaves the last character no time to move. |
+
 ## `src/canvas/textRender.js`
 
 Measuring and drawing text objects.
@@ -389,6 +398,22 @@ thumbnails and onion skin should all describe a frame the same way.
 | `visibleCutsAt` | What to draw, which is not the same question: while paused it also includes the cut being edited, or clicking a cut and finding a blank canvas becomes normal. |
 | `onionNeighbours` | The cuts either side on the **same** track. `next` starts at `endTime`, because cuts abut and a strict comparison would find nothing in the common case. |
 | `topCutAt` | The cut the playhead selects: topmost of those it is over, since the upper tracks are what a click would land on. |
+
+## `src/hooks/useAutosave.js`
+
+Debounced background saving, so a refresh or a crash never costs work.
+
+| | |
+|---|---|
+| `useAutosave` | Saves `doc` after a quiet period. Waits for `ready()` - crash recovery has to decide first, or a new empty document overwrites the autosave the user is about to be offered - and skips while `busy()`. Failures come back as `error` rather than being swallowed. |
+
+## `src/hooks/useServerProbe.js`
+
+Whether the project-storage API is reachable, re-checked with a backoff.
+
+| | |
+|---|---|
+| `useServerProbe` | Polls with `nextProbeDelay` backoff and resets on window focus. Checking only once was the original bug: a server that was down at load stayed "down" all session, so the menus never rendered and clicking did nothing. |
 
 ## `src/hooks/useTimelineGestures.js`
 
