@@ -371,6 +371,14 @@ The playback clock: one rAF loop driving canvas, playhead, audio, video and the 
 |---|---|
 | `usePlayback` | Owns `isPlaying`, `currentTime` and the four refs the loop reads instead of state. Returns those plus `playPause` and `stop`. Export runs through the same loop, at real time whatever speed is selected. |
 
+## `src/engine/evaluateFrame.js`
+
+What the frame looks like at time t, before anything is drawn.
+
+| | |
+|---|---|
+| `evaluateFrame` | Resolves the document to a scene: which cuts, their animation, their layer groups, their texts, and the camera. Pure and canvas-free. The renderer walks the result instead of working it out mid-draw, which is what removed `computeCutAnim` being called twice per cut per frame. |
+
 ## `src/engine/selectCuts.js`
 
 Which cuts a frame is made of. The first piece of the scene engine: playback, scrubbing, export,

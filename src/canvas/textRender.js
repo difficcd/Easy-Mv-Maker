@@ -8,6 +8,9 @@
  * simply does not have that key and every read below already has a default.
  *
  * @typedef {object} TextObject
+ * @property {any} [id] the document's identity for it; the renderer never reads this, but the
+ *   type has to admit it or a text taken straight from a cut is not assignable to it
+ * @property {boolean} [visible] likewise - hiding happens before anything gets here
  * @property {string} [text] the content, newline-separated for multiple lines
  * @property {number} [x] anchor, not the left edge - see measureTextBox
  * @property {number} [y] top of the first line
