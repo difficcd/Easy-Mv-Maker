@@ -50,6 +50,8 @@
 
 /**
  * What computeTextAnim returns for one instant, or null when nothing is animating.
+ * `perChar`, when present, means the entrance belongs to the characters rather than the block:
+ * the block-level alpha and offsets have already been left at rest, so it is not added on top.
  * @typedef {object} TextAnim
  * @property {number} alpha
  * @property {number} dx
@@ -58,9 +60,21 @@
  * @property {number} blur px
  * @property {number} rot degrees
  * @property {number} chars how much of the string is revealed, for the typing effect
+ * @property {PerCharAnim | null} [perChar] set when the entrance is staggered across characters
+ */
+
+/**
+ * The raw entrance progress, handed to the renderer so each character can take its own slice.
+ * @typedef {object} PerCharAnim
+ * @property {number} spread how much of the duration separates the first character from the last
+ * @property {string} [inType]
+ * @property {number} [inU] 0..1 through the entrance
+ * @property {string} [outType]
+ * @property {number} [outU] 0..1 through the exit
  */
 
 import { layoutLine } from './textLayout.js';
+import { charAnimAt } from './canvasUtils.js';
 
 // Measuring and drawing text objects.
 //
@@ -242,8 +256,10 @@ export function drawTextObject(ctx, t, { anim = null, box = null, alpha = 1 } = 
     }
     const x = t.x ?? 0, y = t.y ?? 0;
 
-    if (t.curve) {
-        drawCurved(ctx, t, lines, { x, y, lineHeight, fontSize, fillStyle });
+    // A curve and a staggered entrance both need the characters placed one at a time, and they
+    // compose: text can arc and drop in at once.
+    if (t.curve || anim?.perChar) {
+        drawPerChar(ctx, t, lines, { x, y, lineHeight, fontSize, fillStyle, perChar: anim?.perChar ?? null });
         try { ctx.letterSpacing = '0px'; } catch { }
         ctx.restore();
         return;
@@ -273,16 +289,18 @@ export function drawTextObject(ctx, t, { anim = null, box = null, alpha = 1 } = 
 
 
 /**
- * Draw the lines along an arc, one character at a time.
+ * Draw the lines one character at a time: along an arc, with a staggered entrance, or both.
  *
- * Only reached when a curve is set. Placing characters individually gives up the font's kerning
- * and shaping, which is a real loss on Latin text - so it is the cost of curving, not something
- * every text pays.
+ * Placing characters individually gives up the font's kerning and shaping, which is a real loss
+ * on Latin text - so it is the cost of curving or staggering, not something every text pays.
  *
  * letterSpacing is applied by the layout rather than the context here: ctx.letterSpacing affects
  * a whole fillText call, and each call is now one character with nothing to space it against.
+ *
+ * A character's own motion is applied about the position it settles at, not about the origin, so
+ * a stagger drops each glyph into its place in the line rather than sliding the line apart.
  */
-function drawCurved(ctx, t, lines, { x, y, lineHeight, fontSize, fillStyle }) {
+function drawPerChar(ctx, t, lines, { x, y, lineHeight, fontSize, fillStyle, perChar = null }) {
     const spacing = t.letterSpacing || 0;
     try { ctx.letterSpacing = '0px'; } catch { }
     // Each character is drawn centred on its own point, so the arc reads as one turning line
@@ -301,10 +319,20 @@ function drawCurved(ctx, t, lines, { x, y, lineHeight, fontSize, fillStyle }) {
         const originX = align === 'center' ? x - total / 2 : align === 'right' ? x - total : x;
         const originY = y + i * lineHeight;
 
-        for (const c of placed) {
+        for (let k = 0; k < placed.length; k++) {
+            const c = placed[k];
+            const ca = perChar ? charAnimAt(perChar, k, placed.length) : null;
+            // Nothing of this character has arrived yet: skip it rather than paint nothing, so a
+            // shadow or an outline does not show where it is going to be.
+            if (ca && ca.alpha <= 0.001) continue;
             ctx.save();
-            ctx.translate(originX + c.x, originY + c.y);
+            if (ca) {
+                ctx.globalAlpha *= ca.alpha;
+                if (ca.blur > 0.05) ctx.filter = `blur(${ca.blur.toFixed(1)}px)`;
+            }
+            ctx.translate(originX + c.x + (ca ? ca.dx : 0), originY + c.y + (ca ? ca.dy : 0));
             ctx.rotate(c.angle);
+            if (ca && ca.scale !== 1) ctx.scale(ca.scale, ca.scale);
             if (t.outline) {
                 ctx.lineJoin = 'round';
                 ctx.lineWidth = Math.max(2, fontSize / 6);

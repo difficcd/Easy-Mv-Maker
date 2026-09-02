@@ -1,4 +1,6 @@
 import { tr } from '../i18n.js';
+// textLayout imports nothing of its own, so this cannot make a cycle.
+import { charProgress } from './textLayout.js';
 // Pure helpers extracted from App.jsx: constants, geometry, colour, canvas drawing,
 // layer flattening, and animation math. Kept free of React/component state so App.jsx
 // stays smaller (cheaper to read/edit) and these stay unit-testable.
@@ -1213,7 +1215,66 @@ export function sampleWave(wave, u) {
 export const TEXT_ANIM_DEFAULT = {
     inType: 'none', inDur: 0.4, outType: 'none', outDur: 0.4,
     typing: false, typeSpeed: 18, emphasis: 'none', emAmount: 20, emSpeed: 2,
+    charStagger: 0,
 };
+
+/**
+ * What one entrance or exit contributes at eased presence `e`: 0 is fully away, 1 is settled.
+ *
+ * Pulled out of computeTextAnim because the same five motions are now needed twice - once for
+ * the text as a block, and once per character when a stagger is set. Two copies of this would
+ * be two chances for a character to move differently from the block it belongs to.
+ *
+ * `dir` is +1 entering and -1 leaving, and only the vertical motions read it: 'up' means upward
+ * either way, which is coming from below on the way in and rising away on the way out.
+ *
+ * @param {string} type
+ * @param {number} e
+ * @param {1 | -1} dir
+ * @returns {{ alpha: number, dx: number, dy: number, scale: number, blur: number } | null}
+ */
+export function textAnimStep(type, e, dir) {
+    const away = 1 - e;
+    // Adding zero, because a settled 'down' works out to -0, which is equal to 0 everywhere
+    // except in a strict comparison - and that is exactly where a test would find it.
+    const noMinusZero = (v) => v + 0;
+    switch (type) {
+        case 'fade': return { alpha: e, dx: 0, dy: 0, scale: 1, blur: 0 };
+        case 'up': return { alpha: e, dx: 0, dy: noMinusZero(dir * away * 40), scale: 1, blur: 0 };
+        case 'down': return { alpha: e, dx: 0, dy: noMinusZero(-dir * away * 40), scale: 1, blur: 0 };
+        case 'scale': return { alpha: e, dx: 0, dy: 0, scale: 0.6 + 0.4 * e, blur: 0 };
+        case 'blur': return { alpha: e, dx: 0, dy: 0, scale: 1, blur: away * 10 };
+        default: return null;
+    }
+}
+
+/**
+ * One character's share of a staggered entrance or exit.
+ *
+ * The block-level values in computeTextAnim are skipped entirely when a stagger is set, so this
+ * is the whole of the entrance for that character rather than something added on top.
+ *
+ * @param {{ spread: number, inType?: string, inU?: number, outType?: string, outU?: number }} perChar
+ * @param {number} index
+ * @param {number} count
+ */
+export function charAnimAt(perChar, index, count) {
+    let alpha = 1, dx = 0, dy = 0, scale = 1, blur = 0;
+    const take = (step) => {
+        if (!step) return;
+        alpha *= step.alpha; dx += step.dx; dy += step.dy; scale *= step.scale;
+        blur = Math.max(blur, step.blur);
+    };
+    if (perChar.inType && perChar.inType !== 'none') {
+        const u = charProgress(index, count, perChar.inU ?? 1, perChar.spread);
+        take(textAnimStep(perChar.inType, 1 - Math.pow(1 - u, 3), 1));   // ease-out, as the block uses
+    }
+    if (perChar.outType && perChar.outType !== 'none') {
+        const u = charProgress(index, count, perChar.outU ?? 0, perChar.spread);
+        take(textAnimStep(perChar.outType, 1 - u * u, -1));              // ease-in, mirrored
+    }
+    return { alpha, dx, dy, scale, blur };
+}
 export function computeTextAnim(t, ac, time) {
     const a = t.anim;
     if (!a) return null;
@@ -1221,26 +1282,24 @@ export function computeTextAnim(t, ac, time) {
     const dur = cutDuration(ac);
     let alpha = 1, dx = 0, dy = 0, scale = 1, blur = 0, rot = 0;
 
+    // A stagger means the characters own the entrance, not the block. Applying it in both
+    // places would double every offset and halve every fade.
+    const stagger = Math.max(0, Math.min(1, a.charStagger ?? 0));
+
     const inDur = Math.max(0.0001, a.inDur ?? 0.4);
-    if (a.inType && a.inType !== 'none' && local < inDur) {
-        const u = Math.max(0, Math.min(1, local / inDur));
-        const e = 1 - Math.pow(1 - u, 3); // ease-out
-        if (a.inType === 'fade') alpha *= e;
-        else if (a.inType === 'up') { alpha *= e; dy += (1 - e) * 40; }
-        else if (a.inType === 'down') { alpha *= e; dy -= (1 - e) * 40; }
-        else if (a.inType === 'scale') { alpha *= e; scale *= 0.6 + 0.4 * e; }
-        else if (a.inType === 'blur') { alpha *= e; blur = (1 - e) * 10; }
+    const entering = !!a.inType && a.inType !== 'none' && local < inDur;
+    const inU = Math.max(0, Math.min(1, local / inDur));
+    if (entering && !stagger) {
+        const step = textAnimStep(a.inType, 1 - Math.pow(1 - inU, 3), 1);   // ease-out
+        if (step) { alpha *= step.alpha; dx += step.dx; dy += step.dy; scale *= step.scale; blur = Math.max(blur, step.blur); }
     }
     const outDur = Math.max(0.0001, a.outDur ?? 0.4);
     const tailStart = dur - outDur;
-    if (a.outType && a.outType !== 'none' && local > tailStart) {
-        const u = Math.max(0, Math.min(1, (local - tailStart) / outDur));
-        const e = u * u; // ease-in
-        if (a.outType === 'fade') alpha *= (1 - e);
-        else if (a.outType === 'up') { alpha *= (1 - e); dy -= e * 40; }
-        else if (a.outType === 'down') { alpha *= (1 - e); dy += e * 40; }
-        else if (a.outType === 'scale') { alpha *= (1 - e); scale *= 1 - 0.4 * e; }
-        else if (a.outType === 'blur') { alpha *= (1 - e); blur = e * 10; }
+    const leaving = !!a.outType && a.outType !== 'none' && local > tailStart;
+    const outU = Math.max(0, Math.min(1, (local - tailStart) / outDur));
+    if (leaving && !stagger) {
+        const step = textAnimStep(a.outType, 1 - outU * outU, -1);          // ease-in, mirrored
+        if (step) { alpha *= step.alpha; dx += step.dx; dy += step.dy; scale *= step.scale; blur = Math.max(blur, step.blur); }
     }
     // Emphasis runs on absolute time, so its rhythm stays constant whatever the cut length.
     const em = a.emAmount ?? 20, es = a.emSpeed ?? 2;
@@ -1251,7 +1310,17 @@ export function computeTextAnim(t, ac, time) {
     // Typing reveals typeSpeed characters per second; null means no slicing.
     let chars = null;
     if (a.typing) chars = Math.max(0, Math.floor(Math.max(0, local) * (a.typeSpeed || 18)));
-    return { alpha, dx, dy, scale, blur, rot, chars };
+
+    // Only present while something is actually staggering, so the renderer's cheap whole-line
+    // path stays the normal one.
+    const perChar = stagger && (entering || leaving)
+        ? {
+            spread: stagger,
+            inType: entering ? a.inType : 'none', inU,
+            outType: leaving ? a.outType : 'none', outU,
+        }
+        : null;
+    return { alpha, dx, dy, scale, blur, rot, chars, perChar };
 }
 
 // Keyframe tweening: interpolates between the times you set, with per-segment easing.

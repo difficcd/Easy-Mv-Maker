@@ -615,4 +615,9 @@ const EN = {
     '상하 반전': 'Mirror top to bottom',
     '좌우뒤집기': 'Flip H',
     '상하뒤집기': 'Flip V',
+    '글자 하나씩 — 등장/퇴장이 글자마다 차례로 일어납니다': 'Per character - the entrance and exit run through the letters in turn',
+    '통째로': 'All at once',
+    '글자별 약하게': 'Per char, slight',
+    '글자별': 'Per char',
+    '글자별 크게': 'Per char, wide',
 };

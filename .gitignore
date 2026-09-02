@@ -38,3 +38,6 @@ server/data/
 
 # Screenshot written by the boot smoke test when it fails; CI keeps it as an artifact.
 smoke-failure.png
+
+# Local Playwright harnesses, not part of the build
+.visualcheck/
