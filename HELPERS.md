@@ -301,6 +301,7 @@ The drawing engine: strokes, canvases, animation, video frames. The big one.
 | `FONT_PRESETS` | the app with no Japanese on screen downloads no Japanese. |
 | `fontGroups` | The presets in the order they should appear, as [group, fonts] pairs. |
 | `hexToRgb` | — |
+| `imageDataCanvas` | A canvas holding an ImageData, ready to draw. `putImageData` ignores the transform, composite mode and alpha, so anything that scales or blends ImageData needs this. Reused - valid until the next call. |
 | `imageDataToDataURL` | — |
 | `LAYER_ANIM_DEFAULT` | — |
 | `layerKey` | cross-cut collisions and an infinite cache-rebuild loop. |
