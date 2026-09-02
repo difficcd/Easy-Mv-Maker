@@ -698,4 +698,5 @@ const EN = {
     '붙여넣기': 'Paste',
     '내보내기': 'Export',
     '트랙 추가': 'Add Track',
+    '한 글자씩 나타남 — 등장 효과를 고르면 글자마다 그 효과로 들어옵니다': 'One character at a time - pick an entrance and each letter arrives with it',
 };
