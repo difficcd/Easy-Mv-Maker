@@ -19,7 +19,10 @@ import { join } from 'node:path';
 const INDEX = 'HELPERS.md';
 // Directories whose exports are shared vocabulary. App.jsx and the ui/ components are excluded:
 // those export React components, which are found by reading the screen rather than an index.
-const DIRS = ['src/core', 'src/canvas', 'src/hooks', 'server'];
+//
+// src/engine was missing when it was created, so its first four exports went unindexed and the
+// guard passed anyway - a guard with a hole in it is worse than none, because it is trusted.
+const DIRS = ['src/core', 'src/canvas', 'src/hooks', 'src/engine', 'server'];
 
 /** Exported function and const names in one module. */
 function exportsOf(source) {

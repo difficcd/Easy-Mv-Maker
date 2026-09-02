@@ -46,6 +46,7 @@ import { dragOnWindow } from './core/windowDrag.js';
 import { computeCamera, applyCamera } from './core/camera.js';
 import { clipGroups, canClip } from './core/clipping.js';
 import { setLayerClipped } from './core/cutsReducer.js';
+import { visibleCutsAt, onionNeighbours, topCutAt } from './engine/selectCuts.js';
 import { unusedBitmapIds } from './core/bitmapRefs.js';
 import { dragCut, resizeCut } from './core/cutOps.js';
 import {
@@ -883,8 +884,8 @@ export default function App() {
 
     useEffect(() => {
         if (isPlaying) {
-            const active = cuts.filter(c => currentTime >= c.startTime && currentTime < c.endTime);
-            if (active.length) { const top = active.reduce((p, c) => p.track > c.track ? p : c); if (top.id !== currentCutId) setCurrentCutId(top.id); }
+            const top = topCutAt(cuts, currentTime);
+            if (top && top.id !== currentCutId) setCurrentCutId(top.id);
         }
     }, [currentTime, isPlaying]);
 
@@ -2875,11 +2876,11 @@ export default function App() {
         if (primary) {
             visible.add(primary.id);
             if (onionPrev) {
-                const prev = cuts.filter(c => c.startTime < primary.startTime && c.track === primary.track).sort((a, b) => b.startTime - a.startTime)[0];
+                const prev = onionNeighbours(cuts, primary).prev;
                 if (prev) visible.add(prev.id);
             }
             if (onionNext) {
-                const next = cuts.filter(c => c.startTime >= primary.endTime && c.track === primary.track).sort((a, b) => a.startTime - b.startTime)[0];
+                const next = onionNeighbours(cuts, primary).next;
                 if (next) visible.add(next.id);
             }
         }
@@ -3124,9 +3125,7 @@ export default function App() {
         // alive.
         boilPhaseRef.current = t * BOIL_FPS + boilTick;
         const primary = currentCut;
-        let activeCuts = cuts.filter(c => t >= c.startTime && t < c.endTime);
-        if (!activeCuts.find(c => c.id === currentCutId) && primary && !playing) activeCuts.push(primary);
-        activeCuts.sort((a, b) => a.track - b.track);
+        const activeCuts = visibleCutsAt(cuts, t, currentCutId, playing);
         // Never flash white DURING PLAYBACK: if the frame we're about to show isn't decoded yet,
         // HOLD the last painted frame (skip this repaint) and kick a decode. The loop keeps advancing,
         // so it reads as a brief hold instead of a white flash. Paused/editing always paints normally
@@ -3172,7 +3171,7 @@ export default function App() {
 
         if (!playing && primary) {
             if (onionPrev) {
-                const prevCut = cuts.filter(c => c.startTime < primary.startTime && c.track === primary.track).sort((a, b) => b.startTime - a.startTime)[0];
+                const prevCut = onionNeighbours(cuts, primary).prev;
                 if (prevCut) {
                     const order = flattenLayersInUiOrder(prevCut.layers || []).filter(l => l.type === 'layer' && l.visible !== false);
                     for (let i = order.length - 1; i >= 0; i--) {
@@ -3182,7 +3181,7 @@ export default function App() {
                 }
             }
             if (onionNext) {
-                const nextCut = cuts.filter(c => c.startTime >= primary.endTime && c.track === primary.track).sort((a, b) => a.startTime - b.startTime)[0];
+                const nextCut = onionNeighbours(cuts, primary).next;
                 if (nextCut) {
                     const order = flattenLayersInUiOrder(nextCut.layers || []).filter(l => l.type === 'layer' && l.visible !== false);
                     for (let i = order.length - 1; i >= 0; i--) {
