@@ -18,6 +18,8 @@ import { useTimelineGestures } from './hooks/useTimelineGestures.js';
 import { fmt, parseClock } from './core/timeCode.js';
 import { useHistory } from './hooks/useHistory.js';
 import { usePlayback } from './hooks/usePlayback.js';
+import { useServerProbe } from './hooks/useServerProbe.js';
+import { useAutosave } from './hooks/useAutosave.js';
 import { nextProbeDelay } from './core/probeBackoff.js';
 import { playbackStartFrom } from './core/playbackStart.js';
 import {
@@ -441,8 +443,6 @@ export default function App() {
     const textAreaRef = useRef(null);
     const textDragRef = useRef(null);
     const textMeasureCtxRef = useRef(null);
-    const [autoSavedAt, setAutoSavedAt] = useState(null);
-    const autosaveTimerRef = useRef(null);
     const didRecoverRef = useRef(false);
     const [view, setView] = useState({ zoom: 1, x: 0, y: 0 });
     const touchPtsRef = useRef(new Map());
@@ -450,7 +450,6 @@ export default function App() {
     const tlTouchRef = useRef(new Map());
     const tlPinchRef = useRef(null);
     const [serverProjects, setServerProjects] = useState(null); // null = picker closed
-    const [serverAvailable, setServerAvailable] = useState(false); // is the project API reachable?
     const [serverBusy, setServerBusy] = useState(false);
     const [localProjects, setLocalProjects] = useState(null); // IndexedDB project picker
     const localIdRef = useRef(null);
@@ -473,8 +472,11 @@ export default function App() {
     const [backupAt, setBackupAt] = useState(null);      // time of the last server backup
     const [backupBusy, setBackupBusy] = useState(false);
     const [backupList, setBackupList] = useState(null);  // null = the list is closed
+    // Whether the project API is reachable. Re-checked with a backoff rather than once, because
+    // an app that decided at load time is an app that never notices the server starting.
+    const serverAvailable = useServerProbe();
+
     const [storageInfo, setStorageInfo] = useState(null); // local storage usage
-    const [autosaveErr, setAutosaveErr] = useState(null); // why autosave failed - never swallowed silently
     const [loadProgress, setLoadProgress] = useState(null); // {label, done, total}; total 0 means the length is unknown
     const backupKeyRef = useRef(null);
     const backupBusyRef = useRef(false);
@@ -1590,63 +1592,23 @@ export default function App() {
         return () => { cancelled = true; };
     }, []);
 
-    // Probe the project-storage API once; hide server menu when absent (static host / APK).
-    useEffect(() => {
-        let alive = true;
-        // Checking once means that if the server happened to be down when the page loaded, the
-        // app stays convinced it is down for the whole session. The YouTube menu entries then
-        // never render at all, so clicking does nothing and the console stays empty - which is
-        // exactly how one bug here hid for so long. Re-checking periodically lets it reconnect
-        // on its own once the server comes back.
-        //
-        // The interval backs off as failures pile up (see probeBackoff). A deployment has no
-        // server and never will until one is hosted, so a fixed poll there is a request failing
-        // every ten seconds for as long as the tab is open. Focus still forces an immediate
-        // check, so starting the server locally and switching back does not wait for the timer.
-        let failures = 0;
-        let timer = /** @type {any} */ (0);
-        const schedule = () => {
-            if (!alive) return;
-            clearTimeout(timer);
-            timer = setTimeout(probe, nextProbeDelay(failures));
-        };
-        const probe = () => fetch('/api/projects', { method: 'GET' })
-            .then(r => {
-                if (!alive) return;
-                failures = r.ok ? 0 : failures + 1;
-                setServerAvailable(r.ok);
-            })
-            .catch(() => {
-                if (!alive) return;
-                failures++;
-                setServerAvailable(false);
-            })
-            .finally(schedule);
-        probe();
-        // Coming back to the tab is the moment the server has most likely just been started, so
-        // the backoff is reset rather than merely interrupted.
-        const onFocus = () => { failures = 0; probe(); };
-        window.addEventListener('focus', onFocus);
-        return () => { alive = false; clearTimeout(timer); window.removeEventListener('focus', onFocus); };
-    }, []);
 
-    // Debounced autosave to IndexedDB so a refresh/crash never loses work.
-    useEffect(() => {
-        if (!didRecoverRef.current) return;
-        if (isDrawing.current || isDraggingOrResizingRef.current) return;
-        clearTimeout(autosaveTimerRef.current);
-        autosaveTimerRef.current = setTimeout(async () => {
-            try {
-                gcBitmaps(); // reclaim orphaned bitmaps before encoding the save
-                const data = await buildData(false, null, true); // IDB stores frame Blobs → cheap, low-memory
-                // Swallowing an autosave failure lets the user believe their work is being saved
-                // right up until they lose all of it.
-                saveAutosave(data).then(() => { setAutoSavedAt(Date.now()); setAutosaveErr(null); })
-                    .catch(e => setAutosaveErr(String(e?.message || e)));
-            } catch (e) { setAutosaveErr(String(e?.message || e)); }
-        }, 1500);
-        return () => clearTimeout(autosaveTimerRef.current);
-    }, [cuts, numTracks, onionPrev, onionNext, pps]);
+
+    // Debounced autosave to IndexedDB, so a refresh or a crash never costs work. It waits for
+    // crash recovery to finish deciding - otherwise a new empty document overwrites the autosave
+    // the user is about to be offered - and skips mid-gesture, where a half-drawn stroke is not
+    // worth keeping and encoding one costs frames.
+    const autosaveDoc = useMemo(() => ({ cuts, numTracks, onionPrev, onionNext, pps }), [cuts, numTracks, onionPrev, onionNext, pps]);
+    const { savedAt: autoSavedAt, error: autosaveErr } = useAutosave({
+        doc: autosaveDoc,
+        ready: () => didRecoverRef.current,
+        busy: () => isDrawing.current || isDraggingOrResizingRef.current,
+        build: () => {
+            gcBitmaps();                       // reclaim orphaned bitmaps before encoding
+            return buildData(false, null, true); // IDB stores frame Blobs -> cheap, low-memory
+        },
+        save: saveAutosave,
+    });
 
     const handleAddCut = () => {
         const last = cuts[cuts.length - 1];

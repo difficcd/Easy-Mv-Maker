@@ -374,6 +374,22 @@ thumbnails and onion skin should all describe a frame the same way.
 | `onionNeighbours` | The cuts either side on the **same** track. `next` starts at `endTime`, because cuts abut and a strict comparison would find nothing in the common case. |
 | `topCutAt` | The cut the playhead selects: topmost of those it is over, since the upper tracks are what a click would land on. |
 
+## `src/hooks/useAutosave.js`
+
+Debounced background saving, so a refresh or a crash never costs work.
+
+| | |
+|---|---|
+| `useAutosave` | Saves `doc` after a quiet period. Waits for `ready()` - crash recovery has to decide first, or a new empty document overwrites the autosave the user is about to be offered - and skips while `busy()`. Failures come back as `error` rather than being swallowed. |
+
+## `src/hooks/useServerProbe.js`
+
+Whether the project-storage API is reachable, re-checked with a backoff.
+
+| | |
+|---|---|
+| `useServerProbe` | Polls with `nextProbeDelay` backoff and resets on window focus. Checking only once was the original bug: a server that was down at load stayed "down" all session, so the menus never rendered and clicking did nothing. |
+
 ## `src/hooks/useTimelineGestures.js`
 
 Every way the timeline can be pointed at, in one place.
