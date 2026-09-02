@@ -707,4 +707,9 @@ const EN = {
     '돌면서': 'Spin in',
     '톡톡 튀어나옴': 'Pop in',
     '글자 효과 세기 (px, 회전은 도)': 'Letter effect strength (px; degrees for the turning ones)',
+    '투명 배경 내보내기 형식': 'What a transparent project exports as',
+    'GIF (한 파일, 720px)': 'GIF (one file, 720px)',
+    'PNG 시퀀스 (ZIP)': 'PNG sequence (ZIP)',
+    '{0}프레임을 내보냅니다. 메모리를 많이 쓰고 오래 걸립니다. 계속할까요?':
+        'This will export {0} frames. It uses a lot of memory and takes a while. Continue?',
 };

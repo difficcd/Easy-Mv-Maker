@@ -21,7 +21,7 @@ export function Timeline({
     setSceneCfg, setSelectedCutIds, setShowBottom, showBottom, snapLinePos,
     startTimelinePan, timelineH, timelineRef, tlWin, ungroupPart,
     videoOverlay, hiddenTracks, toggleTrackHidden, openVideoSettings, zoomTimelineAt,
-    transparentBg, setTransparentBg,
+    transparentBg, setTransparentBg, transparentFormat, setTransparentFormat,
 }) {
     return (
     <div className="timeline" style={{ height: showBottom ? timelineH : 44, flexShrink: 0 }}>
@@ -64,6 +64,14 @@ export function Timeline({
                         : tr('배경 흰색 — 눌러서 투명하게 (체커보드로 표시됩니다)')}>
                     {transparentBg ? <Grid3x3 size={12} /> : <Square size={12} />} {tr('캔버스 배경')}
                 </button>
+                {transparentBg && (
+                    <select className="time-input" style={{ width: 104 }} value={transparentFormat}
+                        onChange={e => setTransparentFormat(e.target.value)}
+                        title={tr('투명 배경 내보내기 형식')}>
+                        <option value="gif">{tr('GIF (한 파일, 720px)')}</option>
+                        <option value="png">{tr('PNG 시퀀스 (ZIP)')}</option>
+                    </select>
+                )}
                 {videoOverlay && (
                     <button className="button" onClick={openVideoSettings} title={tr('영상 설정 (농도, 장면 감지)')}>
                         <Settings size={12} /> {tr('영상 설정')}

@@ -471,6 +471,20 @@ Which addresses the importer will hand to yt-dlp.
 | `isYouTubeUrl` | Parses rather than pattern-matches, because both obvious string checks are wrong in opposite directions. |
 | `YOUTUBE_HOSTS` | Hosts yt-dlp is allowed to be pointed at. |
 
+## `src/export/gif.js`
+
+A GIF89a encoder, because a transparent animation is what was asked for and no browser API makes
+one: MediaRecorder loses the alpha channel above about 480p, and WebCodecs reports `alpha: 'keep'`
+unsupported for every codec it offers.
+
+| | |
+|---|---|
+| `encodeGif` | Assemble an animated GIF. Each frame carries its own palette, and disposal 2 is what stops a transparent animation smearing the previous frame through the gaps. |
+| `buildPalette` | Colours actually used, exact while they fit in 255. Past that the least-used fold into their nearest neighbour, which suits a drawing of flat colour plus anti-aliasing. |
+| `toIndices` | One frame as palette indices, with slot 0 for anything under the alpha cutoff. |
+| `lzwEncode` | GIF's variable-width LZW, including the clear code when the table fills - a decoder that did not expect it would read garbage from the first full table on. |
+| `paletteBits` | The bit width for a colour table of a given size, never below the 2 GIF requires. |
+
 ## `src/export/zip.js`
 
 A store-only ZIP writer, for the PNG frame sequence a transparent project exports as.
