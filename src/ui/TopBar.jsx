@@ -126,7 +126,7 @@ export function TopBar({
                     <AlertTriangle size={11} /> {tr('저장공간')} {Math.round(storageInfo.pct * 100)}%
                 </span>
             )}
-            <button className="button button-primary" onClick={handleExport} style={{ display: 'flex', alignItems: 'center', gap: 5, height: 30, background: 'var(--accent)', borderColor: 'var(--accent-hi)', color: '#fff' }}><Download size={15} /> Export</button>
+            <button className="button button-primary" onClick={handleExport} style={{ display: 'flex', alignItems: 'center', gap: 5, height: 30, background: 'var(--accent)', borderColor: 'var(--accent-hi)', color: '#fff' }}><Download size={15} /> {tr('내보내기')}</button>
         </div>
     );
 }

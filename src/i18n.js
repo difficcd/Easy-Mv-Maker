@@ -692,4 +692,9 @@ const EN = {
     '글자별 약하게': 'Per char, slight',
     '글자별': 'Per char',
     '글자별 크게': 'Per char, wide',
+    // Three buttons that had been left as English literals, so they stayed English in
+    // Korean too. The i18n check only looks inside tr(), which is why they went unnoticed.
+    '컷 추가': 'Add Cut',
+    '붙여넣기': 'Paste',
+    '내보내기': 'Export',
 };

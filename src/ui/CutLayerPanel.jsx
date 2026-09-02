@@ -99,8 +99,8 @@ export function CutLayerPanel({
                 </div>
                 <button className="button button-primary" style={{ width: '100%', marginTop: 10, opacity: currentCutId ? 1 : 0.4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, background: 'var(--accent)', borderColor: 'var(--accent-hi)', color: '#fff' }} onClick={() => handleDuplicateCut(currentCutId)} disabled={!currentCutId} title={tr('현재 컷을 다음 프레임으로 복제 (Ctrl+D)')}><CopyPlus size={14} /> {tr('다음 프레임 복제')}</button>
                 <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-                    <button className="button" style={{ flex: 1, minWidth: 0 }} onClick={handleAddCut}><Plus size={14} /> Add Cut</button>
-                    <button className="button" style={{ flex: 1, minWidth: 0, opacity: copiedCut ? 1 : 0.4 }} onClick={handlePasteCut} disabled={!copiedCut} title={tr('컷 붙여넣기 (Ctrl+V)')}><ClipboardPaste size={14} /> Paste</button>
+                    <button className="button" style={{ flex: 1, minWidth: 0 }} onClick={handleAddCut}><Plus size={14} /> {tr('컷 추가')}</button>
+                    <button className="button" style={{ flex: 1, minWidth: 0, opacity: copiedCut ? 1 : 0.4 }} onClick={handlePasteCut} disabled={!copiedCut} title={tr('컷 붙여넣기 (Ctrl+V)')}><ClipboardPaste size={14} /> {tr('붙여넣기')}</button>
                 </div>
                 {selectedCutIds.size > 1 && (
                     <button className="button del-btn" style={{ width: '100%', marginTop: 6, borderColor: 'var(--accent-hi)' }} onClick={() => handleDeleteCut(currentCutId)} title={tr('선택한 컷 삭제 (Delete)')}>
