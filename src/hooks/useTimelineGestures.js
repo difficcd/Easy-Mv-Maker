@@ -16,6 +16,7 @@
 // keeps working and still ends when the button comes up somewhere else.
 
 import { timeAtX, pinchZoom } from '../core/timelineZoom.js';
+import { dragOnWindow } from '../core/windowDrag.js';
 
 const DRAG_SLOP = 5;   // mouse travel before a click becomes a marquee drag
 const TAP_SLOP = 4;    // finger travel before a tap becomes a pan
@@ -70,18 +71,6 @@ export function useTimelineGestures({
         const cur = currentTimeRef.current ?? 0;
         const target = dir > 0 ? times.find(t => t > cur + 0.02) : [...times].reverse().find(t => t < cur - 0.02);
         if (target != null) seekToTime(target);
-    };
-
-    /** Run a drag on window listeners, so it survives the pointer leaving the timeline. */
-    const dragOnWindow = (onMove, onUp) => {
-        const mv = (ev) => onMove(ev);
-        const up = (ev) => {
-            window.removeEventListener('pointermove', mv);
-            window.removeEventListener('pointerup', up);
-            onUp?.(ev);
-        };
-        window.addEventListener('pointermove', mv);
-        window.addEventListener('pointerup', up);
     };
 
     // Middle-click pan. Handled in the capture phase by the caller so it works wherever the press

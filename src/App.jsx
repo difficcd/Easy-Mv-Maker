@@ -37,6 +37,7 @@ import { migrateCuts, projectSettings, makeLoadProgress } from './core/projectFo
 import { frameStorage, frameLoad, imageExt, imageExtFromType, audioExt, videoExt } from './core/projectAssets.js';
 import { xAtTime, timeAtX, zoomAnchored, pinchZoom } from './core/timelineZoom.js';
 import { preparePath } from './core/pathMotion.js';
+import { dragOnWindow } from './core/windowDrag.js';
 // Recording a camera path reuses the pen the way a part's motion path does; the two cannot be
 // active at once, and startDraw checks this one first because a camera is a property of the cut
 // rather than of whichever layer happens to be selected.
@@ -1014,9 +1015,7 @@ export default function App() {
             else if (splitter.type === 'color') setColorW(Math.max(150, Math.min(520, splitter.startW + (e.clientX - splitter.startX))));
             else if (splitter.type === 'bottom') setTimelineH(Math.max(100, Math.min(600, splitter.startH + (splitter.startY - e.clientY))));
         };
-        const up = () => setSplitter(null);
-        window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
-        return () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); };
+        return dragOnWindow(mv, () => setSplitter(null));
     }, [splitter]);
 
     // Zoom the timeline about a screen x (cursor), keeping the time under it fixed. The scroll
@@ -1173,8 +1172,7 @@ export default function App() {
             const lv = liveRef.current;
             recordHistoryRef.current({ cuts: lv.cuts, audioData: lv.audioData, numTracks: lv.numTracks });
         };
-        window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
-        return () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); };
+        return dragOnWindow(mv, up);
     }, [resizingData, draggingCutData, pps, numTracks]);
 
     // Record an undo point for whatever is on screen now.
@@ -2198,9 +2196,7 @@ export default function App() {
         const sx = e.clientX, sy = e.clientY, sv = { ...view };
         panningRef.current = true;
         const mv = (ev) => { lastInteractRef.current = Date.now(); setView({ zoom: sv.zoom, x: sv.x + (ev.clientX - sx), y: sv.y + (ev.clientY - sy) }); ev.preventDefault(); };
-        const up = () => { panningRef.current = false; window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); };
-        window.addEventListener('pointermove', mv);
-        window.addEventListener('pointerup', up);
+        dragOnWindow(mv, () => { panningRef.current = false; });
     };
     const onAreaPointerDown = (e) => {
         if (e.pointerType !== 'touch') {
@@ -3907,15 +3903,12 @@ export default function App() {
         const grab = { dx: e.clientX - host.left, dy: e.clientY - host.top };
         setPanelDrag({ id, x: e.clientX, y: e.clientY, zone: dropZoneAt(e.clientX), ...grab });
         const mv = (ev) => setPanelDrag(d => d && ({ ...d, x: ev.clientX, y: ev.clientY, zone: dropZoneAt(ev.clientX) }));
-        const up = (ev) => {
-            window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up);
+        dragOnWindow(mv, (ev) => {
             const zone = dropZoneAt(ev.clientX);
             setPanelDrag(null);
             setDocks(d => ({ ...d, [id]: zone }));
             if (zone === 'float') setFloatPos(p => ({ ...p, [id]: { x: Math.max(0, ev.clientX - grab.dx), y: Math.max(0, ev.clientY - grab.dy) } }));
-        };
-        window.addEventListener('pointermove', mv);
-        window.addEventListener('pointerup', up);
+        });
     };
 
     // A docked panel keeps a splitter on the side that faces the canvas.

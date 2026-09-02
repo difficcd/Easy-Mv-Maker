@@ -36,6 +36,14 @@ Camera moves: presets, drawn paths, and the transform they resolve to.
 | `resolveCamera` | No camera at all: the default, and what every existing project has. */ |
 | `zoomForDrift` | The smallest zoom at which a camera may sit that far off centre without the frame running off the artwork. |
 
+## `src/core/windowDrag.js`
+
+Running a drag on window listeners, so it survives the pointer leaving the element.
+
+| | |
+|---|---|
+| `dragOnWindow` | Listen for move until pointerup **or pointercancel**, then remove everything. Returns a stop function, which is also what a React effect wants as its cleanup. The cancel case is the one five hand-written copies all missed - a cancelled pointer never sends pointerup, so the move listener stayed for the session. |
+
 ## `src/core/cutClone.js`
 
 Copying a cut, including the pixels its strokes point at.
