@@ -8,6 +8,7 @@ import ColorPanel, { RECENT_SLOTS } from './ui/ColorPanel';
 import { TopBar } from './ui/TopBar';
 import { CutLayerPanel } from './ui/CutLayerPanel';
 import { useStored } from './hooks/useStored.js';
+import { nextId } from './core/ids.js';
 import { arrayCodec, onOffCodec, oneZeroCodec, numberCodec } from './core/persist.js';
 import { TextEditor } from './ui/TextEditor';
 import { ToolsPanel } from './ui/ToolsPanel';
@@ -668,8 +669,8 @@ export default function App() {
                     ...l,
                     strokes: [
                         ...l.strokes,
-                        { id: Date.now(), tool: 'eraseBitmap', bitmapId: maskBitmapId, x: px, y: py },
-                        { id: Date.now() + 1, tool: 'paste', bitmapId, x: tx, y: ty, w: tw, h: th },
+                        { id: nextId(), tool: 'eraseBitmap', bitmapId: maskBitmapId, x: px, y: py },
+                        { id: nextId(), tool: 'paste', bitmapId, x: tx, y: ty, w: tw, h: th },
                     ]
                 };
             })
@@ -696,8 +697,8 @@ export default function App() {
         const newId = cut ? Math.max(...cut.layers.map(l => l.id), 0) + 1 : 1;
         updLayers(sel.cutId, c => {
             const layers = patchLayer(c.layers, sel.sourceLayerId,
-                l => ({ strokes: [...l.strokes, { id: Date.now(), tool: 'eraseBitmap', bitmapId: sel.maskBitmapId, x: px, y: py }] }));
-            const partLayer = { id: newId, name: tr('파츠 {0}', newId), type: 'layer', parentId: null, visible: true, redoStrokes: [], strokes: [{ id: Date.now() + 1, tool: 'paste', bitmapId: sel.bitmapId, x: tx, y: ty, w: tw, h: th }] };
+                l => ({ strokes: [...l.strokes, { id: nextId(), tool: 'eraseBitmap', bitmapId: sel.maskBitmapId, x: px, y: py }] }));
+            const partLayer = { id: newId, name: tr('파츠 {0}', newId), type: 'layer', parentId: null, visible: true, redoStrokes: [], strokes: [{ id: nextId(), tool: 'paste', bitmapId: sel.bitmapId, x: tx, y: ty, w: tw, h: th }] };
             return { layers: [...layers, partLayer], activeLayerId: newId };
         });
         cancelSelection();
@@ -725,7 +726,7 @@ export default function App() {
         const x = Math.round(CANVAS_W / 2 - clip.w / 2), y = Math.round(CANVAS_H / 2 - clip.h / 2);
         updLayers(currentCutId, c => ({
             layers: patchLayer(c.layers, layerId,
-                l => ({ strokes: [...l.strokes, { id: Date.now(), tool: 'paste', bitmapId, x, y, w: clip.w, h: clip.h }] }))
+                l => ({ strokes: [...l.strokes, { id: nextId(), tool: 'paste', bitmapId, x, y, w: clip.w, h: clip.h }] }))
         }));
     };
 
@@ -1313,7 +1314,7 @@ export default function App() {
         if (tabBusyRef.current) return; tabBusyRef.current = true;
         try {
             await snapshotActiveTab();
-            const id = 't' + Date.now().toString(36);
+            const id = 't' + nextId().toString(36);
             setTabs(p => { const n = [...p, { id, name: tr('프로젝트 ') + (p.length + 1) }]; return n; });
             tabDocsRef.current[id] = null;
             setActiveTabId(id);
@@ -1578,7 +1579,7 @@ export default function App() {
         const last = cuts[cuts.length - 1];
         const ns = last?.endTime ?? 0, trk = last?.track ?? 0;
         if (trk >= numTracks) setNumTracks(trk + 1);
-        const nc = { id: Date.now(), name: `Cut ${cuts.length + 1}`, startTime: ns, endTime: ns + DEFAULT_CUT_DURATION, track: trk, layers: [mkLayer(1)], activeLayerId: 1, texts: [] };
+        const nc = { id: nextId(), name: `Cut ${cuts.length + 1}`, startTime: ns, endTime: ns + DEFAULT_CUT_DURATION, track: trk, layers: [mkLayer(1)], activeLayerId: 1, texts: [] };
         dispatchCuts(addCuts([nc])); setCurrentCutId(nc.id); setCurrentTime(ns);
     };
     const handleDeleteCut = (id) => {
@@ -1639,11 +1640,10 @@ export default function App() {
         const src = currentCut;
         let cursor = src ? src.endTime : (cuts.length ? Math.max(...cuts.map(c => c.endTime)) : 0);
         const trk = src ? src.track : (arr[0]?.track ?? 0);
-        const baseId = Date.now();
-        const made = arr.map((cc, idx) => {
+        const made = arr.map((cc) => {
             const dur = cc.endTime - cc.startTime;
             const { layers, activeLayerId, texts } = cloneCutContents(cc);
-            const nc = { ...cc, id: baseId + idx, name: `${cc.name} (copy)`, startTime: cursor, endTime: cursor + dur, track: trk, layers, activeLayerId, texts };
+            const nc = { ...cc, id: nextId(), name: `${cc.name} (copy)`, startTime: cursor, endTime: cursor + dur, track: trk, layers, activeLayerId, texts };
             cursor += dur;
             return nc;
         });
@@ -1676,15 +1676,14 @@ export default function App() {
         try {
             const make = morphPrepare(flattenCutToImageData(A), flattenCutToImageData(B));
             const dur = A.endTime - A.startTime;
-            const base = Date.now();
             const newCuts = [];
             for (let i = 0; i < n; i++) {
                 const img = make((i + 1) / (n + 1));
                 const bitmapId = storeBitmap(img);
                 const st = A.endTime + i * dur;
                 newCuts.push({
-                    id: base + i + 1, name: `${A.name}~${i + 1}`, startTime: st, endTime: st + dur, track: A.track,
-                    layers: [{ id: 1, name: 'L1', type: 'layer', parentId: null, visible: true, redoStrokes: [], strokes: [{ id: base + 1000 + i, tool: 'paste', bitmapId, x: 0, y: 0 }] }],
+                    id: nextId(), name: `${A.name}~${i + 1}`, startTime: st, endTime: st + dur, track: A.track,
+                    layers: [{ id: 1, name: 'L1', type: 'layer', parentId: null, visible: true, redoStrokes: [], strokes: [{ id: nextId(), tool: 'paste', bitmapId, x: 0, y: 0 }] }],
                     activeLayerId: 1, texts: [],
                 });
                 setLoadProgress({ label: tr('중간 프레임 만드는 중'), done: i + 1, total: n });
@@ -1700,7 +1699,7 @@ export default function App() {
         if (!cut) return;
         const dur = cut.endTime - cut.startTime;
         const insertAt = cut.endTime;
-        const newId = Date.now();
+        const newId = nextId();
         const { layers, activeLayerId, texts } = cloneCutContents(cut);
         const nc = { id: newId, name: `${cut.name}+`, startTime: insertAt, endTime: insertAt + dur, track: cut.track, layers, activeLayerId, texts };
         dispatchCuts(insertCutsShifting(cut.track, insertAt, dur, [nc], cut.id));
@@ -1718,7 +1717,7 @@ export default function App() {
             const findCh = (id) => c.layers.forEach(l => { if (l.parentId === id) { toRm.add(l.id); findCh(l.id); } });
             findCh(layerId);
             let nl = c.layers.filter(l => !toRm.has(l.id));
-            if (!nl.some(l => l.type === 'layer')) nl = [...nl, mkLayer(Date.now())];
+            if (!nl.some(l => l.type === 'layer')) nl = [...nl, mkLayer(nextId())];
             const na = toRm.has(c.activeLayerId) ? (nl.find(l => l.type === 'layer')?.id ?? null) : c.activeLayerId;
             return { layers: nl, activeLayerId: na };
         });
@@ -1866,7 +1865,7 @@ export default function App() {
         out.push(at(pts.length - 1));
         return out;
     };
-    const curveStrokeFromAnchors = (pts) => ({ id: Date.now(), tool: 'brush', color, opacity, size: brushSize, points: catmullThrough(pts) });
+    const curveStrokeFromAnchors = (pts) => ({ id: nextId(), tool: 'brush', color, opacity, size: brushSize, points: catmullThrough(pts) });
     const renderCurvePreview = () => {
         const ctx = liveCtx(); if (!ctx) return;
         clearLiveOverlay();
@@ -1943,7 +1942,7 @@ export default function App() {
         bctx.drawImage(mask, 0, 0);
         bctx.globalCompositeOperation = 'source-over';
         const bitmapId = storeBitmap(bctx.getImageData(0, 0, w, h));
-        commitStrokeToLayer(currentCutId, layer.id, { id: Date.now(), tool: 'paste', bitmapId, x: x0, y: y0, w, h });
+        commitStrokeToLayer(currentCutId, layer.id, { id: nextId(), tool: 'paste', bitmapId, x: x0, y: y0, w, h });
     };
 
     // Mosaic: previews the drag rectangle as a dashed outline.
@@ -1979,7 +1978,7 @@ export default function App() {
             }
         }
         const bitmapId = storeBitmap(src);
-        const stroke = { id: Date.now(), tool: 'paste', bitmapId, x: bx, y: by, w: bw, h: bh };
+        const stroke = { id: nextId(), tool: 'paste', bitmapId, x: bx, y: by, w: bw, h: bh };
         updLayers(currentCutId, c => ({ layers: patchLayer(c.layers, c.activeLayerId, l => ({ strokes: [...l.strokes, stroke] })) }));
     };
 
@@ -2291,7 +2290,7 @@ export default function App() {
         if (!region) return;
 
         const bitmapId = storeBitmap(region.imageData);
-        const stroke = { id: Date.now(), tool: 'paste', bitmapId, x: region.x, y: region.y };
+        const stroke = { id: nextId(), tool: 'paste', bitmapId, x: region.x, y: region.y };
         noteColorUsed(color);
         updLayers(currentCutId, c => ({
             layers: patchLayer(c.layers, activeLayer.id, l => ({ strokes: insertFill(l.strokes, stroke, region.overPaint) }))
@@ -2404,14 +2403,14 @@ export default function App() {
             case 'rough':
             case 'calligraphy': {
                 // Draw on the live overlay only — no layer-state writes per move (that was the lag).
-                liveStrokeRef.current = { id: Date.now(), tool: etool, color, opacity, size: brushSize, points: [pos], pen: pressureOn && e.pointerType === 'pen' };
+                liveStrokeRef.current = { id: nextId(), tool: etool, color, opacity, size: brushSize, points: [pos], pen: pressureOn && e.pointerType === 'pen' };
                 liveDrawnRef.current = 0; renderLiveStroke(true);
                 break;
             }
             case 'line': {
                 // Line ruler: the start is pinned and only the end follows, giving a two-point line.
                 lineStartRef.current = pos;
-                liveStrokeRef.current = { id: Date.now(), tool: 'brush', color, opacity, size: brushSize, points: [pos, { ...pos }], pen: pressureOn && e.pointerType === 'pen' };
+                liveStrokeRef.current = { id: nextId(), tool: 'brush', color, opacity, size: brushSize, points: [pos, { ...pos }], pen: pressureOn && e.pointerType === 'pen' };
                 liveDrawnRef.current = 0; renderLiveStroke(true);
                 break;
             }
@@ -2422,7 +2421,7 @@ export default function App() {
             }
             case 'eraser': {
                 // Eraser must composite against the layer, so it stays on the layer-write path.
-                const newStroke = { id: Date.now(), tool, color, opacity, size: eraserSize, points: [pos] };
+                const newStroke = { id: nextId(), tool, color, opacity, size: eraserSize, points: [pos] };
                 updLayers(currentCutId, c => ({
                     layers: patchLayer(c.layers, drawTargetLayerRef.current, l => ({ strokes: [...l.strokes, newStroke] }))
                 }));
@@ -2706,7 +2705,7 @@ export default function App() {
         if (!textEdit) return;
         const t = String(textEdit.text ?? '');
         if (!t.trim()) { setTextEdit(null); return; }
-        const id = textEdit.textId ?? Date.now();
+        const id = textEdit.textId ?? nextId();
         const obj = {
             id,
             x: Math.round(textEdit.x),
@@ -3445,7 +3444,7 @@ export default function App() {
         setVideoBusyBg(false);
         const label = (name || file.name).replace(/\.[^.]+$/, '').slice(0, 24);
         const srcKey = src?.key || `f:${file.name}:${file.size}`;
-        setRecentVideos(p => [{ id: 'rv_' + Date.now().toString(36), name: label, srcKey, url: src?.url || null },
+        setRecentVideos(p => [{ id: 'rv_' + nextId().toString(36), name: label, srcKey, url: src?.url || null },
         ...p.filter(v => v.srcKey !== srcKey)].slice(0, 3));
         setVideoImport({ file, srcKey, label, fps: 4, maxFrames: 60, scale: 0.5, whole: true, withAudio: false, dedupe: 'exact', quality: 'compressed', rangeOn: false, startText: '0:00', endText: '', parts: 1, canvasMode: 'source', srcW: 0, srcH: 0 });
         // Auto-suggest a part count from the video length (~1 part per 30s) so a long video comes
@@ -3497,7 +3496,7 @@ export default function App() {
         if (!selectedCutIds.size) { alert(tr('먼저 컷을 선택하세요 (타임라인에서 드래그 또는 Ctrl+클릭).')); return; }
         const name = window.prompt(tr('새 파트 이름:'), tr('파트 {0}', parts.length + 1));
         if (name == null) return;
-        const pid = 'part_' + Date.now().toString(36);
+        const pid = 'part_' + nextId().toString(36);
         dispatchCuts(assignPartTo(selectedCutIds, pid, name));
         setActivePartId(pid);
     };
@@ -3571,8 +3570,9 @@ export default function App() {
             const track = kept.find(c => c.id === currentCutId)?.track ?? 0;
             const startAt = kept.filter(c => c.track === track).reduce((m, c) => Math.max(m, c.endTime), 0);
             const dur = 1 / Math.max(0.1, fps);
-            const baseId = Date.now();
-            const batch = 'vb_' + baseId.toString(36);
+            // The batch key comes from an id rather than the clock so that importing twice in
+            // quick succession cannot produce two batches with the same name.
+            const batch = 'vb_' + nextId().toString(36);
             const label = cfg.label || cfg.file.name.replace(/\.[^.]+$/, '').slice(0, 24);
             // Native-res frames keep the source aspect, so letterbox-fit them into the canvas;
             // compressed frames are already pre-letterboxed to the canvas (full-canvas paste).
@@ -3592,9 +3592,9 @@ export default function App() {
                 const partId = nParts > 1 ? `${batch}_p${pIdx}` : batch;
                 const partName = nParts > 1 ? `${label} ${pIdx + 1}` : label;
                 made.push({
-                    id: baseId + i, name: `${label} ${i + 1}`, startTime: s, endTime: e, track,
+                    id: nextId(), name: `${label} ${i + 1}`, startTime: s, endTime: e, track,
                     activeLayerId: 1, texts: [], videoBatch: batch, videoLabel: label, videoSrc: srcKey, partId, partName,
-                    layers: [{ id: 1, name: 'L1', type: 'layer', parentId: null, visible: true, redoStrokes: [], strokes: [{ id: baseId + 100000 + i, tool: 'paste', bitmapId, x: px, y: py, w: pw, h: ph }] }],
+                    layers: [{ id: 1, name: 'L1', type: 'layer', parentId: null, visible: true, redoStrokes: [], strokes: [{ id: nextId(), tool: 'paste', bitmapId, x: px, y: py, w: pw, h: ph }] }],
                 });
             }
             dispatchCuts(replaceBatchCuts(srcKey, made));
