@@ -1,5 +1,9 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Gowun+Dodum&family=Nanum+Gothic:wght@400;700&family=Noto+Sans+KR:wght@400;700&family=Noto+Serif+KR:wght@400;700&display=swap');
+/* Korean is bundled for the same reason Japanese is, and it matters more here: this is the app's
+   own language, so with the network off it was the primary script falling back to whatever the
+   system had. Three faces are bundled and the rest stay on the CDN below. */
+@import url('./fonts/korean.css');
+@import url('https://fonts.googleapis.com/css2?family=Nanum+Gothic:wght@400;700&display=swap');
 /* Three Japanese faces are bundled, so they are there with the network off - in the APK and in
    an installed PWA, where the service worker caches the app shell but not a third-party CDN.
    Those three are gone from the CDN request below rather than duplicated in it, so they are
