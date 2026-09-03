@@ -14,7 +14,7 @@ import {
     pointInPolygon, dist, safeArray, hexToRgb, fitRect, layerKey, strokeSig,
     applyEase, triwave, swayWeightAt, sampleWave, sampleKeys, targetCanvasFor,
     computeCutAnim, flattenLayersInUiOrder, sizeCanvas, dilateMask, FONT_PRESETS, fontGroups,
-cutDuration, cutProgress, scratchCanvas , layerSig, seekTarget} from '../src/canvas/canvasUtils.js';
+cutDuration, cutProgress, scratchCanvas , layerSig, seekTarget, applyCutAnim} from '../src/canvas/canvasUtils.js';
 
 const near = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) < eps, `${a} ≈ ${b}`);
 
@@ -462,4 +462,58 @@ test('a duration that makes no sense seeks to the start rather than somewhere ne
 test('a video shorter than the clamp still seeks inside itself', () => {
     const t = seekTarget(1, 0.01);
     assert.ok(t >= 0 && t <= 0.01, `${t} is outside a 0.01s video`);
+});
+
+// --- applyCutAnim -------------------------------------------------------------------------------
+
+/** A context that records what was asked of it, which is all this needs to be checked. */
+const recorder = () => {
+    const calls = [];
+    return {
+        calls,
+        translate: (x, y) => calls.push(['translate', x, y]),
+        scale: (x, y) => calls.push(['scale', x, y]),
+    };
+};
+
+test('a cut animation pivots on the centre of the frame', () => {
+    const ctx = recorder();
+    applyCutAnim(ctx, { tx: 0, ty: 0, sx: 2, sy: 2 }, 1920, 1080);
+    assert.deepEqual(ctx.calls, [
+        ['translate', 960, 540],
+        ['scale', 2, 2],
+        ['translate', -960, -540],
+    ]);
+});
+
+test('the move is added to the centre, not applied after the scale', () => {
+    // Order matters: scaling first would multiply the offset by the scale.
+    const ctx = recorder();
+    applyCutAnim(ctx, { tx: 100, ty: -50, sx: 2, sy: 2 }, 1000, 800);
+    assert.deepEqual(ctx.calls[0], ['translate', 600, 350]);
+    assert.deepEqual(ctx.calls[1], ['scale', 2, 2]);
+});
+
+test('a cut with no animation touches the context at all', () => {
+    for (const nothing of [null, undefined]) {
+        const ctx = recorder();
+        applyCutAnim(ctx, nothing, 1920, 1080);
+        assert.deepEqual(ctx.calls, [], 'a save/restore around nothing is still cheap, a transform is not');
+    }
+});
+
+test('the artwork and the text over it get the same transform', () => {
+    // The whole point of sharing this: if the two disagreed about the pivot, a cut animation
+    // would slide its text off its drawing.
+    const anim = { tx: 12, ty: -7, sx: 1.4, sy: 0.9 };
+    const a = recorder(), b = recorder();
+    applyCutAnim(a, anim, 1920, 1080);
+    applyCutAnim(b, anim, 1920, 1080);
+    assert.deepEqual(a.calls, b.calls);
+});
+
+test('a non-uniform scale is passed through as given', () => {
+    const ctx = recorder();
+    applyCutAnim(ctx, { tx: 0, ty: 0, sx: 0.5, sy: 2 }, 100, 100);
+    assert.deepEqual(ctx.calls[1], ['scale', 0.5, 2]);
 });

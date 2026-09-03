@@ -1125,6 +1125,26 @@ export function layerSig(layer, rough = null) {
 
 export const ANIM_DEFAULT = { inType: 'none', inDur: 0.4, inDir: 'left', outType: 'none', outDur: 0.4, outDir: 'right', deformAxis: 'x', deformAmount: 0, deformReturn: false, deformSpeed: 1, deformCount: 0, moveX: 0, moveY: 0, moveReturn: false, moveSpeed: 1, moveCount: 0, ease: 'linear', easePower: 2 };
 
+/**
+ * Put a cut's animation onto a 2D context. The caller owns the save/restore.
+ *
+ * Move, scale and rotate all pivot on the centre of the frame, which is why the origin goes there
+ * and comes back. Written out at both places that draw a cut - the artwork and the text over it -
+ * and if the two ever disagreed about the pivot, a cut animation would slide its text off its
+ * drawing, which reads as a text placement bug rather than an animation one.
+ *
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {{tx:number, ty:number, sx:number, sy:number} | null | undefined} anim
+ * @param {number} [cw]
+ * @param {number} [ch]
+ */
+export function applyCutAnim(ctx, anim, cw = CANVAS_W, ch = CANVAS_H) {
+    if (!anim) return;
+    ctx.translate(cw / 2 + anim.tx, ch / 2 + anim.ty);
+    ctx.scale(anim.sx, anim.sy);
+    ctx.translate(-cw / 2, -ch / 2);
+}
+
 // Per-cut animation state at a given absolute time. Returns null when the cut is
 // at rest (no transform), so callers can skip the save/transform fast-path.
 export function computeCutAnim(ac, time, cw = CANVAS_W, ch = CANVAS_H) {

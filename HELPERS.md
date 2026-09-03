@@ -326,6 +326,7 @@ The drawing engine: strokes, canvases, animation, video frames. The big one.
 | `applyEase` | The easing curves. Everything animated should go through this rather than its own. |
 | `bucketFillTransparentRegion` | Flood fill across the transparent region under a point, with a tolerance and an optional spread so the fill creeps under the anti-aliased edge of a line instead of leaving a halo. |
 | `CANVAS_W` | The document's pixel size, 1920x1080. The canvas element is scaled by CSS; drawing coordinates are always these. |
+| `applyCutAnim` | Put a cut animation onto a context; the caller owns the save/restore. Written out at both places that draw a cut - the artwork and the text over it - and if the two disagreed about the pivot, an animation would slide a text off its own drawing. |
 | `computeCutAnim` | at rest (no transform), so callers can skip the save/transform fast-path. |
 | `computeLayerAnim` | A layer (part) animation resolved to one instant: the offset, rotation, scale, alpha and sway to draw it with. |
 | `computeTextAnim` | A text animation resolved to one instant. Returns the entrance, exit and emphasis values, how much of the string is revealed, and — when the characters own the entrance — the progress they divide between them. |
