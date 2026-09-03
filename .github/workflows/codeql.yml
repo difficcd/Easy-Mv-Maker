@@ -38,5 +38,7 @@ jobs:
           # Includes the security rules that are off by default, which is the reason to run this
           # at all rather than rely on the linter.
           queries: security-extended
+          # Which paths are worth analysing, and why the others are not.
+          config-file: ./.github/codeql-config.yml
 
       - uses: github/codeql-action/analyze@v4
