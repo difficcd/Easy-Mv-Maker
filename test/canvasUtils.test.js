@@ -14,7 +14,7 @@ import {
     pointInPolygon, dist, safeArray, hexToRgb, fitRect, layerKey, strokeSig,
     applyEase, triwave, swayWeightAt, sampleWave, sampleKeys, targetCanvasFor,
     computeCutAnim, flattenLayersInUiOrder, sizeCanvas, dilateMask, FONT_PRESETS, fontGroups,
-cutDuration, cutProgress, scratchCanvas , layerSig} from '../src/canvas/canvasUtils.js';
+cutDuration, cutProgress, scratchCanvas , layerSig, seekTarget} from '../src/canvas/canvasUtils.js';
 
 const near = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) < eps, `${a} ≈ ${b}`);
 
@@ -430,4 +430,36 @@ test('layerSig reproduces both expressions it replaced, byte for byte', () => {
             }
         }
     }
+});
+
+// --- seekTarget ---------------------------------------------------------------------------------
+
+test('a seek never lands on the very last frame', () => {
+    // Seeking to exactly the duration fires no `seeked` event in some browsers, so the promise
+    // waiting for one never settles and the import stops halfway with no error. The scene
+    // detector clamped; the frame extractor did not, and it steps right up to the end.
+    assert.ok(seekTarget(10, 10) < 10);
+    assert.equal(seekTarget(10, 10), 9.98);
+    assert.equal(seekTarget(99, 10), 9.98, 'past the end clamps too');
+});
+
+test('a seek inside the video is left alone', () => {
+    assert.equal(seekTarget(0, 10), 0);
+    assert.equal(seekTarget(3.5, 10), 3.5);
+    assert.equal(seekTarget(9.97, 10), 9.97);
+});
+
+test('a negative time becomes the start', () => {
+    assert.equal(seekTarget(-1, 10), 0);
+});
+
+test('a duration that makes no sense seeks to the start rather than somewhere negative', () => {
+    for (const bad of [0, -5, NaN, Infinity, undefined, null]) {
+        assert.equal(seekTarget(3, /** @type {any} */(bad)), 0, `duration ${bad}`);
+    }
+});
+
+test('a video shorter than the clamp still seeks inside itself', () => {
+    const t = seekTarget(1, 0.01);
+    assert.ok(t >= 0 && t <= 0.01, `${t} is outside a 0.01s video`);
 });

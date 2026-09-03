@@ -342,6 +342,8 @@ The drawing engine: strokes, canvases, animation, video frames. The big one.
 | `dilateMask` | Grow a bitmask outwards by r pixels (square structuring element, done separably so it stays O(w*h) whatever r is). Used to bleed a bucket fill under the line that bounds it. |
 | `dist` | Distance between two points. |
 | `drawStrokesOnCtx` | Draw a list of strokes onto a context: the one place that knows what each tool looks like. Clears first unless told not to, and takes the boiling options so a roughened layer draws its own phase. |
+| `openVideoFile` | Open a video file for frame-by-frame reading: the element, its duration, a clamped seek and a release. Both readers set one up the same way and tore it down the same way, and two copies of an object URL's lifetime is two chances to leak one. |
+| `seekTarget` | Where a seek should land. Never the very last frame: seeking to exactly the duration fires no `seeked` event in some browsers, so the promise waiting for one never settles and the import stops halfway with no error. |
 | `extractVideoFrames` | Pull frames out of a video file at a given rate, optionally over a range, scaled, encoded as WebP or PNG, with near-duplicate frames merged. Reports progress and can be stopped part way. |
 | `fitRect` | Letterbox rect: fit source into destination preserving aspect ratio. |
 | `flattenForCanvas` | The layers to draw, bottom first, with folders resolved and hidden branches dropped. |

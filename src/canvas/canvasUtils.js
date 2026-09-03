@@ -878,21 +878,69 @@ export function fitRect(sw, sh, dw, dh) {
 // Decode a video file into evenly spaced frames (ImageData at the project resolution) by
 // seeking. Returns { frames, fps, duration }. onProgress(done, total) for UI feedback.
 /**
+ * Where a seek should actually land.
+ *
+ * Never the very last frame: seeking to exactly `duration` fires no `seeked` event in some
+ * browsers, and the promise waiting for one then never settles - an import that stops halfway
+ * with no error. The scene detector had learnt this and clamped; the frame extractor had not,
+ * and it steps right up to the end of the range it was given.
+ *
+ * @param {number} t
+ * @param {number} duration
+ * @returns {number}
+ */
+export function seekTarget(t, duration) {
+    if (!Number.isFinite(duration) || duration <= 0) return 0;
+    return Math.max(0, Math.min(t, duration - 0.02));
+}
+
+/**
+ * Open a video file for frame-by-frame reading.
+ *
+ * Both readers - the frame importer and the scene detector - set up the same element the same
+ * way, waited for metadata the same way, and tore it down the same way. Two copies of an object
+ * URL's lifetime is two chances to leak one, and they had already drifted over the seek clamp
+ * above.
+ *
+ * The caller decides what an unusable duration means: the importer treats it as an error, the
+ * detector shrugs and reports no cuts, and that difference is deliberate.
+ *
+ * @param {File|Blob} file
+ * @returns {Promise<{video: HTMLVideoElement, duration: number,
+ *   seek: (t: number) => Promise<void>, release: () => void}>}
+ */
+export async function openVideoFile(file) {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement('video');
+    video.muted = true; video.playsInline = true; video.preload = 'auto'; video.src = url;
+    const release = () => { URL.revokeObjectURL(url); video.src = ''; };
+    try {
+        await /** @type {Promise<void>} */ (new Promise((res, rej) => {
+            video.onloadedmetadata = () => res();
+            video.onerror = () => rej(new Error(tr('영상을 읽을 수 없습니다 (형식 미지원)')));
+        }));
+    } catch (e) {
+        release();          // the element never became usable, so nothing else will free the URL
+        throw e;
+    }
+    const duration = video.duration;
+    const seek = (t) => /** @type {Promise<void>} */ (new Promise((res) => {
+        const on = () => { video.removeEventListener('seeked', on); res(); };
+        video.addEventListener('seeked', on);
+        video.currentTime = seekTarget(t, duration);
+    }));
+    return { video, duration, seek, release };
+}
+
+/**
  * @param {File|Blob} file
  * @param {{fps?:number, maxFrames?:number, start?:number, end?:number|null, scale?:number,
  *   quality?:number, dedupe?:string|number, nativeRes?:boolean, format?:string,
  *   width?:number, height?:number, onProgress?:Function, shouldStop?:Function}} [opts]
  */
 export async function extractVideoFrames(file, { fps = 6, maxFrames = 0, start = 0, end = null, width, height, scale = 1, quality = 0.82, dedupe = 'exact', nativeRes = false, format = 'webp', onProgress, shouldStop } = {}) {
-    const url = URL.createObjectURL(file);
-    const video = document.createElement('video');
-    video.muted = true; video.playsInline = true; video.preload = 'auto'; video.src = url;
+    const { video, duration, seek, release } = await openVideoFile(file);
     try {
-        await /** @type {Promise<void>} */ (new Promise((res, rej) => {
-            video.onloadedmetadata = () => res();
-            video.onerror = () => rej(new Error(tr('영상을 읽을 수 없습니다 (형식 미지원)')));
-        }));
-        const duration = video.duration;
         if (!isFinite(duration) || duration <= 0) throw new Error(tr('영상 길이를 알 수 없습니다'));
         const to = Math.min(end ?? duration, duration);
         const step = 1 / Math.max(0.1, fps);
@@ -915,11 +963,6 @@ export async function extractVideoFrames(file, { fps = 6, maxFrames = 0, start =
         const ctx = cnv.getContext('2d');
         ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high'; // crisp resampling when scaling
         const r = useNative ? { x: 0, y: 0, w: fw, h: fh } : fitRect(vW, vH, fw, fh);
-        const seek = (t) => /** @type {Promise<void>} */ (new Promise((res) => {
-            const on = () => { video.removeEventListener('seeked', on); res(); };
-            video.addEventListener('seeked', on);
-            video.currentTime = t;
-        }));
         const toBlob = format === 'png'
             ? () => new Promise((res) => cnv.toBlob(res, 'image/png'))                    // lossless
             : () => new Promise((res) => cnv.toBlob(b => b ? res(b) : cnv.toBlob(res, 'image/jpeg', quality), 'image/webp', quality));
@@ -997,8 +1040,7 @@ export async function extractVideoFrames(file, { fps = 6, maxFrames = 0, start =
         }
         return { frames, holds, skipped, fps, duration, width: fw, height: fh };
     } finally {
-        URL.revokeObjectURL(url);
-        video.src = '';
+        release();
     }
 }
 
@@ -1011,18 +1053,14 @@ export async function extractVideoFrames(file, { fps = 6, maxFrames = 0, start =
  *   refine?:boolean, onProgress?:Function, shouldStop?:Function}} [opts]
  */
 export async function detectSceneCuts(file, { start = 0, end = null, step = 0.2, threshold = 14, refine = true, onProgress, shouldStop } = {}) {
-    const url = URL.createObjectURL(file);
-    const video = document.createElement('video');
-    video.muted = true; video.playsInline = true; video.preload = 'auto'; video.src = url;
+    const { video, duration: dur, seek, release } = await openVideoFile(file);
     try {
-        await /** @type {Promise<void>} */ (new Promise((res, rej) => { video.onloadedmetadata = () => res(); video.onerror = () => rej(new Error('scene-detect: cannot read video')); }));
-        const dur = video.duration; if (!isFinite(dur) || dur <= 0) return [];
+        if (!isFinite(dur) || dur <= 0) return [];
         const to = Math.min(end ?? dur, dur), from = Math.max(0, Math.min(start, to - 0.05));
         const sw = 48, sh = 48, c = document.createElement('canvas'); c.width = sw; c.height = sh; // finer signature = more accurate
         const cx = c.getContext('2d', { willReadFrequently: true });
         const sig = () => { cx.drawImage(video, 0, 0, sw, sh); const d = cx.getImageData(0, 0, sw, sh).data, o = new Uint8Array(sw * sh); for (let i = 0, j = 0; j < o.length; i += 4, j++) o[j] = (d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114) | 0; return o; };
         const diff = (a, b) => { let s = 0; for (let i = 0; i < a.length; i++) s += Math.abs(a[i] - b[i]); return s / a.length; };
-        const seek = (t) => /** @type {Promise<void>} */ (new Promise((res) => { const on = () => { video.removeEventListener('seeked', on); res(); }; video.addEventListener('seeked', on); video.currentTime = Math.max(0, Math.min(t, dur - 0.02)); }));
         // Binary-search the exact moment the picture stops matching the pre-cut frame → precise boundary.
         const refineCut = async (refSig, a, b) => {
             for (let k = 0; k < 6; k++) { const mid = (a + b) / 2; await seek(mid); if (diff(refSig, sig()) > threshold) b = mid; else a = mid; }
@@ -1046,7 +1084,7 @@ export async function detectSceneCuts(file, { start = 0, end = null, step = 0.2,
             if (t >= to) break;
         }
         return cuts;
-    } finally { URL.revokeObjectURL(url); video.src = ''; }
+    } finally { release(); }
 }
 
 export function flattenForCanvas(layers) {
