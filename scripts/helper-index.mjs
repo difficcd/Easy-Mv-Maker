@@ -73,12 +73,23 @@ const stale = [...index.matchAll(/^\| `(\w+)`/gm)].map(m => m[1]).filter(n => !n
 // than no index, because it is trusted.
 const described = [...index.matchAll(/^\| `(\w+)` \| (.*?) \|$/gm)].map(m => ({ name: m[1], text: m[2].trim() }));
 const blank = described.filter(r => !r.text);
+// A row that starts mid-sentence. The rows were once regenerated in bulk by taking a fixed number
+// of characters from each export's comment, which sometimes started at the tail of a sentence -
+// "frame would be N times slower.", "so callers can skip the save/transform fast-path." Those are
+// not blank and not duplicated, so nothing caught them, and a row that reads as nonsense is
+// almost as bad as no row: it is the answer somebody gets when they ask what a helper is for.
+const startsLower = described.filter(r => {
+    // A row that opens with a code span is naming something, not continuing a sentence.
+    if (r.text.startsWith('`')) return false;
+    const first = r.text.split(/\s/)[0] || '';
+    return /^[a-z]/.test(first) && !['a', 'an', 'the'].includes(first.toLowerCase());
+});
 const fragment = described.filter(r => r.text.endsWith('*/'));
 const byText = new Map();
 for (const r of described) byText.set(r.text, [...(byText.get(r.text) || []), r.name]);
 const shared = [...byText.entries()].filter(([, names]) => names.length > 1);
 
-if (missing.length || stale.length || blank.length || fragment.length || shared.length) {
+if (missing.length || stale.length || blank.length || fragment.length || shared.length || startsLower.length) {
     if (missing.length) {
         console.error(`${missing.length} shared export(s) not in ${INDEX}:`);
         for (const { name, path } of missing) console.error(`  ${name}  (${path})`);
@@ -94,6 +105,11 @@ if (missing.length || stale.length || blank.length || fragment.length || shared.
     if (fragment.length) {
         console.error(`${fragment.length} row(s) ending in \`*/\`, so a comment was copied in by mistake:`);
         for (const r of fragment) console.error(`  ${r.name}`);
+    }
+    if (startsLower.length) {
+        console.error(`${startsLower.length} row(s) starting mid-sentence, so a comment was clipped rather than written:`);
+        for (const r of startsLower) console.error(`  ${r.name}
+    ${r.text.slice(0, 80)}`);
     }
     if (shared.length) {
         console.error(`${shared.length} description(s) used by more than one row - at most one of them is true:`);
