@@ -9,6 +9,7 @@ import { TopBar } from './ui/TopBar';
 import { CutLayerPanel } from './ui/CutLayerPanel';
 import { useStored } from './hooks/useStored.js';
 import { nextId } from './core/ids.js';
+import { clampZoom } from './core/viewZoom.js';
 import { arrayCodec, onOffCodec, oneZeroCodec, numberCodec } from './core/persist.js';
 import { TextEditor } from './ui/TextEditor';
 import { ToolsPanel } from './ui/ToolsPanel';
@@ -2031,7 +2032,7 @@ export default function App() {
             const [a, b] = [...touchPtsRef.current.values()];
             const dist = Math.hypot(a.x - b.x, a.y - b.y);
             const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-            const zoom = Math.max(0.25, Math.min(8, p.startView.zoom * (dist / p.startDist)));
+            const zoom = clampZoom(p.startView.zoom * (dist / p.startDist));
             lastInteractRef.current = Date.now();
             setView({ zoom, x: p.startView.x + (mid.x - p.startMid.x), y: p.startView.y + (mid.y - p.startMid.y) });
             e.preventDefault();
@@ -2075,7 +2076,7 @@ export default function App() {
     const zoomCanvas = (factor) => {
         lastInteractRef.current = Date.now();
         setView(v => {
-            const zoom = Math.max(0.1, Math.min(16, v.zoom * factor));
+            const zoom = clampZoom(v.zoom * factor);
             const k = zoom / v.zoom;
             return { zoom, x: v.x * k, y: v.y * k };
         });
@@ -2118,7 +2119,7 @@ export default function App() {
             const cx = e.clientX - r.left - r.width / 2;
             const cy = e.clientY - r.top - r.height / 2;
             setView(v => {
-                const zoom = Math.max(0.25, Math.min(8, v.zoom * (e.deltaY > 0 ? 0.9 : 1.1)));
+                const zoom = clampZoom(v.zoom * (e.deltaY > 0 ? 0.9 : 1.1));
                 const k = zoom / v.zoom;
                 return { zoom, x: cx - (cx - v.x) * k, y: cy - (cy - v.y) * k };
             });
