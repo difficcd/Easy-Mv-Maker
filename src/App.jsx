@@ -1166,8 +1166,25 @@ export default function App() {
         }
         return out;
     };
+    // Opening a project is not re-entrant. The first thing restore does is clear the bitmap
+    // store, and then it awaits - fetching assets, decoding frames. A second open starting in
+    // that window wipes the pixels the first one has already fetched, both write into the same
+    // store, and whichever finishes last swaps in its cuts on top of a store holding a mixture:
+    // a project that opens with artwork missing. Two clicks on a row of the server or local list
+    // is enough, and nothing disabled the list while it worked.
+    const restoreBusyRef = useRef(false);
+    /**
+     * Load a document into the app. False means it did not happen - the file was not ours, or
+     * another open was already running - so a caller must not record the project's identity.
+     */
     const restore = async (data, assetBase = null, label = tr('프로젝트 여는 중')) => {
-        if (data.appName !== 'EasyMVMaker') { alert(tr('올바른 .emv 파일이 아닙니다.')); return; }
+        if (data.appName !== 'EasyMVMaker') { alert(tr('올바른 .emv 파일이 아닙니다.')); return false; }
+        if (restoreBusyRef.current) return false;
+        // Set inside the try, so that nothing between here and the finally can leave the flag up.
+        // A flag that never comes down means no project can be opened again for the rest of the
+        // session, which is a worse failure than the one being prevented.
+        try {
+        restoreBusyRef.current = true;
         // Rebuild the bitmap store before swapping cuts in, so fill/lasso/paste render correctly.
         const store = bitmapStoreRef.current;
         store.clear();
@@ -1178,7 +1195,6 @@ export default function App() {
         const total = assetCount + bmpCount;
         const { heavy, tick } = makeLoadProgress(total, p => setLoadProgress({ label, ...p }));
         if (heavy) setLoadProgress({ label, done: 0, total });
-        try {
         // Externalized frame assets (server projects): fetch one at a time and keep as a Blob
         // (off-heap). Bounded memory — one frame in flight.
         if (assetBase && Array.isArray(data.assets)) {
@@ -1260,7 +1276,8 @@ export default function App() {
             videoBlobRef.current = null; dispatchMedia(clearVideo());
             detachMedia(videoElRef.current);
         }
-        } finally { setLoadProgress(null); }
+        } finally { setLoadProgress(null); restoreBusyRef.current = false; }
+        return true;
     };
     const doSave = async (asNew = false) => {
         const json = JSON.stringify(await buildData(), null, 2);
@@ -1286,18 +1303,21 @@ export default function App() {
             setLoadProgress({ label: tr('파일 분석 중'), done: 0, total: 0 });
             await new Promise(r => setTimeout(r, 0)); // give the bar a chance to paint once
             const data = JSON.parse(text);
-            await restore(data);
+            return await restore(data);
         } catch (err) {
             setLoadProgress(null);
             alert(tr('파일 오류: ') + err.message);
+            return false;
         }
     };
     const doOpen = async () => {
         if ('showOpenFilePicker' in window) {
             try {
                 const [h] = await window.showOpenFilePicker({ types: [{ description: 'Easy MV Project', accept: { 'application/json': ['.emv'] } }] });
-                fileHandleRef.current = h;
-                await readAndRestore(async () => (await h.getFile()).text());
+                // Only after the file is actually open. Set first, the handle pointed at a file
+                // that had not been loaded - and the next save would write whatever is on screen
+                // over it.
+                if (await readAndRestore(async () => (await h.getFile()).text())) fileHandleRef.current = h;
                 return;
             } catch (e) { if (e.name === 'AbortError') return; }
         }
@@ -1435,7 +1455,9 @@ export default function App() {
     const doServerOpen = async (id, name) => {
         try {
             const data = await apiFetch(`/api/projects/${id}`);
-            await restore(data, `/api/projects/${id}`); // fetch externalized frame assets from this project
+            // Only claim the identity if the document actually went in - otherwise the next save
+            // would write this project's id over whatever is really on screen.
+            if (!await restore(data, `/api/projects/${id}`)) return; // assets come from this project
             serverIdRef.current = id; serverNameRef.current = name || '';
             setServerProjects(null);
         } catch (e) { alert(tr('서버에서 열기 실패: ') + e.message); }
@@ -1512,7 +1534,7 @@ export default function App() {
         try {
             const key = getBackupKey();
             const data = await apiFetch(`/api/backups/${key}/${stamp}`);
-            await restore(data, `/api/projects/${key}`); // assets come from the store under the same key
+            if (!await restore(data, `/api/projects/${key}`)) return; // assets come from the same key
             setBackupList(null);
         } catch (e) { alert(tr('백업 복구 실패: ') + e.message); }
     };
@@ -1573,7 +1595,13 @@ export default function App() {
         catch (e) { alert(tr('로컬 목록 실패: ') + e.message); }
     };
     const doLocalOpen = async (id, name) => {
-        try { const data = await loadProject(id); if (!data) { alert(tr('데이터가 없습니다.')); return; } await restore(data); localIdRef.current = id; localNameRef.current = name || ''; setLocalProjects(null); }
+        try {
+            const data = await loadProject(id);
+            if (!data) { alert(tr('데이터가 없습니다.')); return; }
+            // As in doServerOpen: the identity is only ours once the document is actually in.
+            if (!await restore(data)) return;
+            localIdRef.current = id; localNameRef.current = name || ''; setLocalProjects(null);
+        }
         catch (e) { alert(tr('로컬 열기 실패: ') + e.message); }
     };
     const doLocalDelete = async (id) => {
