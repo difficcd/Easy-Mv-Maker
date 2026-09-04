@@ -495,6 +495,16 @@ Which addresses the importer will hand to yt-dlp.
 | `isYouTubeUrl` | Parses rather than pattern-matches, because both obvious string checks are wrong in opposite directions. |
 | `YOUTUBE_HOSTS` | Hosts yt-dlp is allowed to be pointed at. |
 
+## `src/export/download.js`
+
+Handing a finished file to the browser. Written three times over - the project save's fallback,
+the frame/GIF export and the screen recording - and two of the three never revoked the object URL,
+which pins the whole Blob for the life of the page.
+
+| | |
+|---|---|
+| `downloadBlob` | Save a Blob to the user's downloads under a given name. Revokes the URL on a delay, because the click only starts the download and revoking mid-read cancels it. |
+
 ## `src/export/gif.js`
 
 A GIF89a encoder, because a transparent animation is what was asked for and no browser API makes
