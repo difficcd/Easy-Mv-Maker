@@ -58,6 +58,7 @@ import { evaluateFrame } from './engine/evaluateFrame.js';
 import { pendingBitmapIds, scanLayerBitmaps } from './engine/pendingBitmaps.js';
 import { makeZip, frameName } from './export/zip.js';
 import { encodeGif } from './export/gif.js';
+import { downloadBlob } from './export/download.js';
 import { unusedBitmapIds } from './core/bitmapRefs.js';
 import { dragCut, resizeCut } from './core/cutOps.js';
 import {
@@ -1246,10 +1247,15 @@ export default function App() {
         if ('showSaveFilePicker' in window && (asNew || !fileHandleRef.current)) {
             try { const h = await window.showSaveFilePicker({ suggestedName: 'project.emv', types: [{ description: 'Easy MV Project', accept: { 'application/json': ['.emv'] } }] }); fileHandleRef.current = h; const w = await h.createWritable(); await w.write(json); await w.close(); return; } catch (e) { if (e.name === 'AbortError') return; }
         } else if ('showSaveFilePicker' in window && fileHandleRef.current) {
-            try { const w = await fileHandleRef.current.createWritable(); await w.write(json); await w.close(); return; } catch (e) { }
+            try { const w = await fileHandleRef.current.createWritable(); await w.write(json); await w.close(); return; } catch (e) {
+                // The handle stopped working. The download below still saves the work, but it
+                // goes to the downloads folder rather than over the file the user chose, so
+                // silence here would read as a successful overwrite.
+                fileHandleRef.current = null;
+                setToast(tr('저장한 파일에 쓸 수 없어 다운로드로 저장합니다'));
+            }
         }
-        const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([json], { type: 'application/json' })), download: 'project.emv' });
-        a.click();
+        downloadBlob(new Blob([json], { type: 'application/json' }), 'project.emv');
     };
     // A large .emv looks frozen during the read and parse alone, so that stretch shows just a
     // label with an indeterminate bar (total 0); restore then takes over with real progress.
@@ -1308,12 +1314,17 @@ export default function App() {
     const [activeTabId, setActiveTabId] = useState('t1');
     const tabDocsRef = useRef({}); // id -> doc snapshot (null = fresh/empty)
     const tabBusyRef = useRef(false);
-    const snapshotActiveTab = async () => { try { tabDocsRef.current[activeTabId] = await buildData(true, null, true); } catch { } };
+    const snapshotActiveTab = async () => {
+        // A failure here is not cosmetic: the snapshot is the only copy of this tab's work once we
+        // switch away from it, so the caller must not switch.
+        tabDocsRef.current[activeTabId] = await buildData(true, null, true);
+    };
     const switchTab = async (id) => {
         if (id === activeTabId || tabBusyRef.current) return;
         tabBusyRef.current = true;
         try {
-            await snapshotActiveTab();
+            try { await snapshotActiveTab(); }
+            catch (e) { setAppError(tr('현재 탭을 저장할 수 없어 탭을 바꾸지 않았습니다: ') + (e?.message || String(e))); return; }
             setActiveTabId(id);
             const doc = tabDocsRef.current[id];
             if (doc) await restore(doc); else resetToEmpty();
@@ -1322,7 +1333,10 @@ export default function App() {
     const newTab = async () => {
         if (tabBusyRef.current) return; tabBusyRef.current = true;
         try {
-            await snapshotActiveTab();
+            // Same reasoning as switchTab: opening a new tab means leaving this one, and leaving
+            // it without a snapshot loses it.
+            try { await snapshotActiveTab(); }
+            catch (e) { setAppError(tr('현재 탭을 저장할 수 없어 새 탭을 열지 않았습니다: ') + (e?.message || String(e))); return; }
             const id = 't' + nextId().toString(36);
             setTabs(p => { const n = [...p, { id, name: tr('프로젝트 ') + (p.length + 1) }]; return n; });
             tabDocsRef.current[id] = null;
@@ -3715,10 +3729,7 @@ export default function App() {
                     type: 'image/gif', name: 'mv_export.gif',
                 }
                 : { bytes: makeZip(entries), type: 'application/zip', name: 'mv_frames.zip' };
-            const url = URL.createObjectURL(new Blob([bytes], { type }));
-            const a = Object.assign(document.createElement('a'), { href: url, download: name, style: 'display:none' });
-            document.body.appendChild(a); a.click(); document.body.removeChild(a);
-            setTimeout(() => URL.revokeObjectURL(url), 10000);
+            downloadBlob(new Blob([bytes], { type }), name);
             alert(tr('완료!'));
         } catch (e) {
             alert(tr('내보내기 실패: ') + (e && e.message ? e.message : String(e)));
@@ -3751,7 +3762,7 @@ export default function App() {
         const blobType = mimeType || 'video/webm';
         const chunks = [];
         mr.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
-        mr.onstop = () => { const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob(chunks, { type: blobType })), download: `mv_export.${ext}`, style: 'display:none' }); document.body.appendChild(a); a.click(); document.body.removeChild(a); alert(tr('완료!')); isExporting.current = false; };
+        mr.onstop = () => { downloadBlob(new Blob(chunks, { type: blobType }), `mv_export.${ext}`); alert(tr('완료!')); isExporting.current = false; };
         exportEndRef.current = ctMax; isExporting.current = true; mediaRecorderRef.current = mr; mr.start(); setIsPlaying(true);
     };
 
