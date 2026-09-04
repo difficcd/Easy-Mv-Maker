@@ -1,6 +1,6 @@
 import React from 'react';
 import { tr } from '../i18n';
-import { NumField } from './NumField';
+import { NumField, clampNum } from './NumField';
 import { FONT_PRESETS, fontGroups, TEXT_ANIM_DEFAULT } from '../canvas/canvasUtils';
 
 /**
@@ -174,16 +174,16 @@ export function TextEditor({ textEdit, setTextEdit, textAreaRef, commitText, can
                                 <option value="none">{tr('강조없음')}</option><option value="pulse">{tr('두근두근')}</option><option value="shake">{tr('흔들기')}</option><option value="swing">{tr('갸우뚱')}</option>
                             </select>
                             {an.emphasis !== 'none' && <>
-                                <input type="number" className="time-input" style={{ width: 50 }} title={tr('강조 세기')} value={an.emAmount} step={5} min={0}
-                                    onChange={e => set({ emAmount: Math.max(0, +e.target.value || 0) })} />
-                                <input type="number" className="time-input" style={{ width: 50 }} title={tr('강조 속도')} value={an.emSpeed} step={0.5} min={0}
-                                    onChange={e => set({ emSpeed: Math.max(0, +e.target.value || 0) })} />
+                                <NumField width={50} title={tr('강조 세기')} value={an.emAmount} step={5} min={0}
+                                    onChange={v => set({ emAmount: clampNum(v, 0) })} />
+                                <NumField width={50} title={tr('강조 속도')} value={an.emSpeed} step={0.5} min={0}
+                                    onChange={v => set({ emSpeed: clampNum(v, 0) })} />
                             </>}
                             <label className="te-check" title={tr('한 글자씩 나타남 — 등장 효과를 고르면 글자마다 그 효과로 들어옵니다')}>
                                 <input type="checkbox" checked={!!an.typing} onChange={e => set({ typing: e.target.checked })} />{tr('타이핑')}
                             </label>
-                            {an.typing && <input type="number" className="time-input" style={{ width: 56 }} title={tr('초당 글자수')} value={an.typeSpeed} step={2} min={1}
-                                onChange={e => set({ typeSpeed: Math.max(1, +e.target.value || 1) })} />}
+                            {an.typing && <NumField width={56} title={tr('초당 글자수')} value={an.typeSpeed} step={2} min={1}
+                                onChange={v => set({ typeSpeed: clampNum(v || 1, 1) })} />}
                             {/* Its own control rather than a modifier on the entrance: this is an
                                 entrance in itself, and needing to pick a second one as well was
                                 why ticking only 'typing' looked like it did nothing. */}
@@ -193,8 +193,8 @@ export function TextEditor({ textEdit, setTextEdit, textAreaRef, commitText, can
                                 <option value="drop">{tr('하나씩 떨어짐')}</option><option value="zigzag">{tr('위아래 번갈아')}</option>
                                 <option value="spin">{tr('돌면서')}</option><option value="pop">{tr('톡톡 튀어나옴')}</option>
                             </select>
-                            {(an.charFx ?? 'none') !== 'none' && <input type="number" className="time-input" style={{ width: 56 }} title={tr('글자 효과 세기 (px, 회전은 도)')} value={an.charFxAmount ?? 40} step={10} min={0}
-                                onChange={e => set({ charFxAmount: Math.max(0, +e.target.value || 0) })} />}
+                            {(an.charFx ?? 'none') !== 'none' && <NumField width={56} title={tr('글자 효과 세기 (px, 회전은 도)')} value={an.charFxAmount ?? 40} step={10} min={0}
+                                onChange={v => set({ charFxAmount: clampNum(v, 0) })} />}
                         </>}
                     </>);
                 })()}

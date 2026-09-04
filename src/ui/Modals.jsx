@@ -4,6 +4,7 @@ import { tr } from '../i18n';
 import { TOOL_PREFIX } from '../core/shortcuts.js';
 import { targetCanvasFor } from '../canvas/canvasUtils';
 import { Modal } from './Modal.jsx';
+import { NumField, clampNum } from './NumField.jsx';
 
 // Overlays and dialogs split out of App.jsx. All state arrives as props; these only display.
 // (App.jsx had grown to 4,800 lines, so the screens moved into files you can actually read.)
@@ -100,8 +101,8 @@ export function SettingsModal({
                         <div className="color-section-label" style={{ marginBottom: 6 }}>{tr('UI 채도 — 패널·버튼 배경에 테마색이 섞이는 정도')}</div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <input type="range" min="0" max="60" step="1" value={uiSat} onChange={e => setUiSat(+e.target.value)} style={{ flex: 1 }} />
-                            <input type="number" className="time-input" style={{ width: 60 }} min="0" max="60" value={uiSat}
-                                onChange={e => setUiSat(Math.max(0, Math.min(60, +e.target.value || 0)))} />
+                            <NumField width={60} min={0} max={60} value={uiSat}
+                                onChange={v => setUiSat(clampNum(v, 0, 60))} />
                             <span style={{ fontSize: 11, color: '#888' }}>%</span>
                         </div>
                         <div style={{ fontSize: 10, color: '#777', marginTop: 4 }}>{tr('0%로 두면 완전한 무채색 회색 UI가 됩니다.')}</div>
@@ -117,9 +118,9 @@ export function SettingsModal({
                                     <input type="range" min="0" max="100" step="1" style={{ flex: 1 }}
                                         value={Math.round(videoOpacity * 100)}
                                         onChange={e => setVideoOpacity(+e.target.value / 100)} />
-                                    <input type="number" className="time-input" style={{ width: 60 }} min="0" max="100"
+                                    <NumField width={60} min={0} max={100}
                                         value={Math.round(videoOpacity * 100)}
-                                        onChange={e => setVideoOpacity(Math.max(0, Math.min(100, +e.target.value || 0)) / 100)} />
+                                        onChange={v => setVideoOpacity(clampNum(v, 0, 100) / 100)} />
                                     <span style={{ fontSize: 11, color: '#888' }}>%</span>
                                 </div>
                             )}
@@ -214,8 +215,8 @@ export function VideoImportModal({
                         </label>
                         {!videoImport.whole && (
                             <label style={{ display: 'flex', alignItems: 'center', gap: 4 }} title={tr('가져올 컷 개수 (중복 병합분은 제외한 실제 컷 수)')}>
-                                <input type="number" className="time-input" style={{ width: 70 }} min={1} max={5000} value={videoImport.maxFrames}
-                                    onChange={e => setVideoImport(v => ({ ...v, maxFrames: Math.max(1, Math.min(5000, Math.floor(+e.target.value) || 1)) }))} />
+                                <NumField width={70} min={1} max={5000} value={videoImport.maxFrames}
+                                    onChange={n => setVideoImport(v => ({ ...v, maxFrames: clampNum(Math.floor(n) || 1, 1, 5000) }))} />
                                 <span style={{ color: '#888' }}>{tr('컷')}</span>
                             </label>
                         )}
@@ -241,8 +242,8 @@ export function VideoImportModal({
                             </select>
                         </label>
                         <label style={{ display: 'flex', alignItems: 'center', gap: 4 }} title={tr('긴 영상을 여러 파트로 나눠서 가져오기 (재생 시 파트별/전체 선택 가능)')}>
-                            <input type="number" className="time-input" style={{ width: 46 }} min={1} max={50} value={videoImport.parts}
-                                onChange={e => setVideoImport(v => ({ ...v, parts: Math.max(1, Math.min(50, Math.floor(+e.target.value) || 1)) }))} />
+                            <NumField width={46} min={1} max={50} value={videoImport.parts}
+                                onChange={n => setVideoImport(v => ({ ...v, parts: clampNum(Math.floor(n) || 1, 1, 50) }))} />
                             <span style={{ color: 'var(--accent-soft)' }}>{tr('파트로 나누기')}</span>
                         </label>
                         <label style={{ display: 'flex', alignItems: 'center', gap: 4 }} title={tr('세로 영상(쇼츠)을 가로 캔버스에 넣으면 대부분이 여백이 됩니다. 영상에 맞추거나 직접 고르세요.')}>

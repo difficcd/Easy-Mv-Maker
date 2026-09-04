@@ -168,6 +168,23 @@ const applyTheme = (base, uiSat = 3) => {
 // A muted indigo. The raw colour is hsl(243 17% 25%) - dark and desaturated - but the floors
 // in applyTheme (0.35 saturation, 0.36 lightness) mean the accent actually paints as
 // hsl(243 35% 36%).
+// How wide each side panel may be dragged, per panel rather than per side - a panel keeps its
+// limits when it is docked to the other edge.
+//
+// These numbers were already written down, in three branches of the splitter handler that nothing
+// could reach any more: every drag now arrives as type 'panel'. The live branch clamped all three
+// panels to one shared 120..640 instead, which let the tool strip - 96px by default, and a strip
+// of icons at any width - be dragged out to 640, and let the colour panel down to 120, where the
+// wheel hits its own 96px floor and the layout breaks. That is what moving it out of a 96px strip
+// was meant to fix in the first place.
+const PANEL_W = {
+    color: [150, 520],
+    tools: [56, 420],
+    cut: [150, 640],
+};
+// Derived, so the panels and their widths cannot drift apart.
+const PANEL_IDS = Object.keys(PANEL_W);
+
 const DEFAULT_THEME = '#36354b';
 // The long edge a GIF is scaled to fit. Every pixel of a GIF is a palette index with no
 // inter-frame compression, so full size is tens of megabytes a second and as slow again to write.
@@ -909,14 +926,12 @@ export default function App() {
                 // A left-docked panel grows as the pointer moves right; a right-docked one is the
                 // mirror image, so the sign follows the side it is docked to.
                 const delta = splitter.side === 'left' ? (e.clientX - splitter.startX) : (splitter.startX - e.clientX);
-                const w = Math.max(120, Math.min(640, splitter.startW + delta));
+                const [lo, hi] = PANEL_W[splitter.id] || PANEL_W.cut;
+                const w = Math.max(lo, Math.min(hi, splitter.startW + delta));
                 if (splitter.id === 'color') setColorW(w);
                 else if (splitter.id === 'tools') setLeftW(w);
                 else setRightW(w);
             }
-            else if (splitter.type === 'right') setRightW(Math.max(150, Math.min(640, splitter.startW + (splitter.startX - e.clientX))));
-            else if (splitter.type === 'left') setLeftW(Math.max(56, Math.min(420, splitter.startW + (e.clientX - splitter.startX))));
-            else if (splitter.type === 'color') setColorW(Math.max(150, Math.min(520, splitter.startW + (e.clientX - splitter.startX))));
             else if (splitter.type === 'bottom') setTimelineH(Math.max(100, Math.min(600, splitter.startH + (splitter.startY - e.clientY))));
         };
         return dragOnWindow(mv, () => setSplitter(null));
@@ -3855,7 +3870,6 @@ export default function App() {
     const isSelectionTool = tool === 'lasso' || !!selection;
     liveRef.current = { cuts, copiedCut, selection, audioData, numTracks }; // current GC + history sources
 
-    const PANEL_IDS = ['color', 'tools', 'cut'];
     const PANEL_ROOTS = { color: '.color-panel', tools: '.toolbar', cut: '.right-panel' };
     const panelWidth = { color: colorW, tools: toolW, cut: rightW };
     const panelOpen = { color: leftDock === 'color', tools: showLeft, cut: showRight };
