@@ -14,6 +14,7 @@
 // that exact shape came up during the conversion.
 
 import { JA } from './i18n.ja.js';
+import { readStored, writeStored } from './core/persist.js';
 
 /** The languages with a dictionary. Korean needs none: it is the key. */
 export const LANGS = ['en', 'ko', 'ja'];
@@ -24,15 +25,8 @@ export const getLang = () => lang;
 export const setLangValue = (l) => { lang = LANGS.includes(l) ? l : 'en'; };
 // English is the default: the repository, the README and the screenshots are English, so a
 // first-time visitor should land in English. The others are one click away and are remembered.
-export const loadLang = () => {
-    try {
-        const saved = localStorage.getItem('mv_lang');
-        return LANGS.includes(saved) ? saved : 'en';
-    } catch { return 'en'; }
-};
-export const saveLang = (l) => {
-    try { localStorage.setItem('mv_lang', l); } catch { }
-};
+export const loadLang = () => readStored('mv_lang', 'en', (raw) => (LANGS.includes(raw) ? raw : undefined));
+export const saveLang = (l) => writeStored('mv_lang', l);
 
 /**
  * Look one string up in one dictionary, allowing for the padding some call sites add.

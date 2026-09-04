@@ -3,6 +3,7 @@ import React from 'react';
 import { ANIM_DEFAULT, LAYER_ANIM_DEFAULT } from '../canvas/canvasUtils';
 import { CAMERA_DEFAULT, CAMERA_PRESETS, resolveCamera } from '../core/camera.js';
 import { randomId } from '../core/ids.js';
+import { readStored, writeStored, arrayCodec } from '../core/persist.js';
 import { NumField } from './NumField';
 import { tr } from '../i18n';
 
@@ -167,8 +168,8 @@ const MOVE_PRESETS = [
 
 // Per-layer ("part") animation (move/rotate/scale/path + ping-pong/speed/count/easing).
 // Presets the user saved: same shape as the built-in ones, kept in the browser.
-const loadCustomPresets = () => { try { const v = JSON.parse(localStorage.getItem('mv_move_presets')); return Array.isArray(v) ? v : []; } catch { return []; } };
-const saveCustomPresets = (list) => { try { localStorage.setItem('mv_move_presets', JSON.stringify(list)); } catch { } };
+const loadCustomPresets = () => readStored('mv_move_presets', [], arrayCodec.decode);
+const saveCustomPresets = (list) => writeStored('mv_move_presets', list, arrayCodec.encode);
 
 export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCapture, setPathCapture, cutProgress = 0 }) {
     const a = { ...LAYER_ANIM_DEFAULT, ...layer.anim };

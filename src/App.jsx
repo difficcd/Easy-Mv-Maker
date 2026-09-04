@@ -10,7 +10,7 @@ import { CutLayerPanel } from './ui/CutLayerPanel';
 import { useStored } from './hooks/useStored.js';
 import { nextId, randomId } from './core/ids.js';
 import { clampZoom } from './core/viewZoom.js';
-import { arrayCodec, onOffCodec, oneZeroCodec, numberCodec } from './core/persist.js';
+import { readStored, writeStored, arrayCodec, onOffCodec, oneZeroCodec, numberCodec } from './core/persist.js';
 import { TextEditor } from './ui/TextEditor';
 import { ToolsPanel } from './ui/ToolsPanel';
 import { Timeline } from './ui/Timeline';
@@ -194,15 +194,17 @@ const TOOL_TYPES = [
 function LayerThumbnail({ layer, cutId, layerCanvasCache }) {
     const ref = useRef(null);
     const key = layerKey(cutId, layer.id);
+    // Read outside the effect so the dependency is a value the linter can check, rather than an
+    // expression it has to give up on - which is what hid 'key' and the cache itself from it.
+    const layerCanvas = layerCanvasCache[key];
     useEffect(() => {
         const c = ref.current; if (!c) return;
         const ctx = c.getContext('2d');
         ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, 56, 31);
-        const layerCanvas = layerCanvasCache[key];
         if (layerCanvas) {
             ctx.drawImage(layerCanvas, 0, 0, 56, 31);
         }
-    }, [layer, layerCanvasCache[key]]);
+    }, [layer, layerCanvas]);
     return <canvas ref={ref} width={56} height={31} style={{ width: 42, height: 23, borderRadius: 3, background: '#fff', flexShrink: 0, border: '1px solid hsl(var(--ui-h) var(--ui-s) 22%)' }} />;
 }
 
@@ -1433,11 +1435,10 @@ export default function App() {
     const getBackupKey = () => {
         if (serverIdRef.current) return serverIdRef.current; // group under the server project if there is one
         if (!backupKeyRef.current) {
-            let k = null;
-            try { k = localStorage.getItem('mv_backup_key'); } catch { }
+            let k = readStored('mv_backup_key', '');
             if (!k) {
                 k = randomId('bk_');
-                try { localStorage.setItem('mv_backup_key', k); } catch { }
+                writeStored('mv_backup_key', k);
             }
             backupKeyRef.current = k;
         }
