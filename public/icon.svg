@@ -3,26 +3,24 @@
   Three frames receding, the front one carrying a play mark.
 
   The stack is the onion skin - the thing this app is actually for - and the play mark says the
-  stack is a film rather than a pile of drawings. One colour throughout: the two ghosts are the
-  same value at lower opacity, which is what onion skin looks like on the canvas.
+  stack is a film rather than a pile of drawings.
 
-  The front frame takes the larger share deliberately. A favicon is often drawn at 16px, where
-  three equal shapes turn into one blob; giving the front frame the weight keeps a square and a
-  play mark readable while the ghosts fade to a suggestion of depth.
+  Drawn as solid shapes rather than outlines. The first version used thin strokes at low opacity
+  for the two frames behind, which reads as depth at 256px and as dirt at 32: a 3px stroke is
+  under half a pixel once a desktop scales it down, so the ghosts turned to smudges and the icon
+  looked grubby rather than layered. Three opaque tones of the one colour survive any size,
+  because a filled shape cannot thin out.
 
-  The colour is the app's default accent, the one the Play and Export buttons wear.
+  Centred in the box for the same reason - the stack used to trail off to one corner, which reads
+  as lopsided at the size a desktop actually draws it.
+
+  The play mark is painted white rather than cut out of the front frame. A knockout shows whatever
+  is behind the icon, so on a dark desktop it was a dark triangle on a dark-ish square and simply
+  vanished below about 32px. White holds against every wallpaper.
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="512" height="512" role="img" aria-label="Easy MV Maker">
-  <defs>
-    <mask id="playCut">
-      <rect x="0" y="0" width="64" height="64" fill="#000"/>
-      <rect x="4" y="22" width="40" height="40" rx="12" fill="#fff"/>
-      <path d="M18 32 L34 42 L18 52 Z" fill="#000"/>
-    </mask>
-  </defs>
-  <g fill="none" stroke="#5e5aaf" stroke-width="3.5">
-    <rect x="21" y="4" width="39" height="39" rx="12" opacity="0.3"/>
-    <rect x="13" y="13" width="39" height="39" rx="12" opacity="0.58"/>
-  </g>
-  <rect x="4" y="22" width="40" height="40" rx="12" fill="#5e5aaf" mask="url(#playCut)"/>
+  <rect x="20" y="6" width="38" height="38" rx="11" fill="#a5a2d6"/>
+  <rect x="13" y="13" width="38" height="38" rx="11" fill="#7d79c2"/>
+  <rect x="6" y="20" width="38" height="38" rx="11" fill="#5e5aaf"/>
+  <path d="M19 29 L36 39 L19 49 Z" fill="#fff"/>
 </svg>
