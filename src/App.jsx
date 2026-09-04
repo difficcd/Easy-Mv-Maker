@@ -34,6 +34,7 @@ import {
 import { cloneCutContents as cloneCutContentsPure } from './core/cutClone.js';
 import { DEFAULT_KEYS, KEY_LABELS, keyOf, matchShortcut, keymapFrom, toolFromAction, findConflicts } from './core/shortcuts.js';
 import { derivePartsFrom, deriveVideoBatches } from './core/partOps.js';
+import { playRange } from './core/playRange.js';
 import {
     cutsReducer, replaceCuts, addCuts, updateCut, setCutAnim, setCutCamera, clearCut,
     updateLayer, setLayerAnim, moveLayers, upsertText, moveText, deleteText, toggleTextVisible as toggleTextVisibleAction,
@@ -781,17 +782,15 @@ export default function App() {
     // leaves nowhere to place anything before the audio is loaded.
     const maxTime = Math.max(TIMELINE_MIN_SPAN, audioData?.endTime ?? audioDuration, videoOverlay?.endTime ?? 0, ...cuts.map(c => c.endTime)) + TIMELINE_TAIL_PAD;
 
-    // Actual content bounds (where cuts/audio live) — playback & loop run between these,
-    // not out to maxTime (which has empty padding for the timeline ruler).
-    const contentEnd = Math.max(0, audioData?.endTime ?? 0, videoOverlay?.endTime ?? 0, ...cuts.map(c => c.endTime));
-    const contentStart = (cuts.length || videoOverlay) ? Math.max(0, Math.min(videoOverlay?.startTime ?? Infinity, ...cuts.map(c => c.startTime), audioData?.startTime ?? Infinity)) : 0;
+    // Content bounds - playback and loop run between these, not out to maxTime, which has empty
+    // padding for the timeline ruler.
     // Parts (scenes): cuts grouped by partId. Each video import is one part; cuts can also be
     // grouped manually. Selecting a part scopes playback (and dims the rest) to it.
     const parts = derivePartsFrom(cuts, tr('파트'));
     const activePart = activePartId ? parts.find(p => p.id === activePartId) : null;
-    // Playback runs within the active part when one is selected, else across all content.
-    const playStart = activePart ? activePart.start : contentStart;
-    const playEnd = activePart ? activePart.end : contentEnd;
+    // Playback runs within the active part when one is selected, else across all content. The
+    // exports use the same two numbers - see playRange.js for what that fixed.
+    const { start: playStart, end: playEnd } = playRange({ cuts, audio: audioData, video: videoOverlay, part: activePart });
 
     // Playback owns the clock: isPlaying, currentTime, and the refs the rAF loop reads instead
     // of state so it never runs on a stale closure. Everything passed in is an input - playback
@@ -3672,8 +3671,12 @@ export default function App() {
     // holding the previous frame the way playback does.
     const handleExportFrames = async () => {
         const canvas = canvasRef.current; if (!canvas) return;
-        const ctMax = Math.max(...cuts.map(c => c.endTime), 0);
-        if (ctMax <= 0) { alert(tr('내보낼 콘텐츠가 없습니다.')); return; }
+        // The range playback uses, so what you watch is what comes out: it starts where the
+        // content starts rather than at zero, and it follows the selected part the way playback
+        // and the dimming already do. Exporting from zero meant a project whose first cut sits at
+        // three seconds began with three seconds of nothing.
+        const from = playStart, to = playEnd;
+        if (to <= from) { alert(tr('내보낼 콘텐츠가 없습니다.')); return; }
         // A GIF at 30fps is enormous and plays no better; twelve is what hand-drawn animation
         // usually runs at anyway. A PNG sequence is going into an editor, so it keeps the full
         // rate.
@@ -3688,7 +3691,7 @@ export default function App() {
         const gh = Math.max(1, Math.round(CANVAS_H * gifScale));
         // One scratch canvas for the whole export rather than one a frame.
         const gifScratch = { current: null };
-        const total = Math.max(1, Math.round(ctMax * fps));
+        const total = Math.max(1, Math.round((to - from) * fps));
         // Every frame is held in memory until the file is built, so the cap is about RAM, not
         // patience: a thousand 1080p frames is already a few hundred megabytes.
         if (total > 1000 && !confirm(tr('{0}프레임을 내보냅니다. 메모리를 많이 쓰고 오래 걸립니다. 계속할까요?').replace('{0}', String(total)))) return;
@@ -3699,7 +3702,7 @@ export default function App() {
         const entries = [];
         try {
             for (let i = 0; i < total; i++) {
-                const t = i / fps;
+                const t = from + i / fps;
                 // Wait for what this frame needs rather than painting without it.
                 const scene = evaluateFrame(cuts, t, { playing: true, currentCutId, cw: CANVAS_W, ch: CANVAS_H });
                 const missing = pendingBitmapIds(scene.cuts.map(e => e.cut), bitmapStoreRef.current);
@@ -3758,12 +3761,14 @@ export default function App() {
         if (typeof canvas.captureStream !== 'function' || typeof window.MediaRecorder === 'undefined') {
             alert(tr('이 환경에서는 내보내기를 지원하지 않습니다.\nPC 브라우저(Chrome 등)에서 실행해 주세요.')); return;
         }
-        const ctMax = Math.max(...cuts.map(c => c.endTime), audioData?.endTime ?? 0);
-        if (ctMax <= 0) { alert(tr('내보낼 콘텐츠가 없습니다.')); return; }
+        // Same range as the frame export and as playback. This used to be its own third answer
+        // to "where does the content end" - cuts and audio, but not the reference video, which is
+        // on the canvas being recorded.
+        if (playEnd <= playStart) { alert(tr('내보낼 콘텐츠가 없습니다.')); return; }
         const candidates = ['video/mp4;codecs=h264', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
         const mimeType = candidates.find(t => { try { return MediaRecorder.isTypeSupported(t); } catch { return false; } }) || '';
         const ext = mimeType.startsWith('video/mp4') ? 'mp4' : 'webm';
-        alert(tr('녹화가 시작됩니다.')); setCurrentTime(0); if (audioRef.current) audioRef.current.currentTime = 0;
+        alert(tr('녹화가 시작됩니다.')); setCurrentTime(playStart); if (audioRef.current) audioRef.current.currentTime = audioData ? Math.max(0, (playStart - audioData.startTime) + audioData.offset) : playStart;
         const stream = canvas.captureStream(30), tracks = [...stream.getVideoTracks()];
         if (audioRef.current && audioUrl && !audioSourceRef.current) { try { audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)(); audioDestRef.current = audioCtxRef.current.createMediaStreamDestination(); audioSourceRef.current = audioCtxRef.current.createMediaElementSource(audioRef.current); audioSourceRef.current.connect(audioDestRef.current); audioSourceRef.current.connect(audioCtxRef.current.destination); } catch (e) { } }
         if (audioDestRef.current) tracks.push(...audioDestRef.current.stream.getAudioTracks());
@@ -3774,7 +3779,7 @@ export default function App() {
         const chunks = [];
         mr.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
         mr.onstop = () => { downloadBlob(new Blob(chunks, { type: blobType }), `mv_export.${ext}`); alert(tr('완료!')); isExporting.current = false; };
-        exportEndRef.current = ctMax; isExporting.current = true; mediaRecorderRef.current = mr; mr.start(); setIsPlaying(true);
+        exportEndRef.current = playEnd; isExporting.current = true; mediaRecorderRef.current = mr; mr.start(); setIsPlaying(true);
     };
 
     const renderLayers = (cut, parentId = null, depth = 0) => {

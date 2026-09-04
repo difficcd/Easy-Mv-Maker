@@ -197,6 +197,17 @@ Typing into a number field without the value fighting the cursor.
 | `commitNumber` | The value to settle on when the field is left: unreadable text falls back to the old value. |
 | `liveNumber` | The value to report while typing; null means "not a number yet, hold on". Intermediate states like "", "-", "." and "1e" hold rather than snapping to zero. |
 
+## `src/core/playRange.js`
+
+Where the content starts and where it ends. Answered in three places with three different answers
+before this: playback counted cuts, audio and the reference video; the screen recording left out
+the reference video it was capturing; the frame and GIF export counted only the cuts and always
+began at zero.
+
+| | |
+|---|---|
+| `playRange` | The time range to play, or export. A selected part wins outright; otherwise the range spans everything that occupies time. An empty project gives 0..0, so callers read that as nothing to do rather than testing for emptiness themselves. |
+
 ## `src/core/partOps.js`
 
 Parts: groups of cuts made from an import or a selection.
