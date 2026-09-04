@@ -40,22 +40,19 @@ function signedDist(mask, w, h) {
     return s;
 }
 
-// Morph the whole pixel distribution of A into B at t (0..1) via signed-distance-field
-// interpolation: the shape itself moves/grows between frames (not an A/B crossfade).
-// Filled with the A->B average ink colour; soft 1px edge.
-export function morphFrames(aImg, bImg, t) {
-    return morphSequence(aImg, bImg, [t])[0];
-}
-
-// Several in-between frames at once. Computing the distance fields (sA/sB) is most of the
-// work and does not depend on t, so it is done once and reused - calling morphFrames per
-// frame would be N times slower.
-export function morphSequence(aImg, bImg, ts) {
-    const f = morphPrepare(aImg, bImg);
-    return ts.map(f);
-}
-// Computes the distance fields once and returns a function that produces a single frame,
-// so the caller can update progress or yield to the UI between frames.
+// Morph the whole pixel distribution of A into B via signed-distance-field interpolation: the
+// shape itself moves and grows between the two frames, rather than one crossfading into the
+// other. Filled with the A->B average ink colour, with a soft 1px edge.
+//
+// The distance fields are most of the work and do not depend on t, so this computes them once
+// and returns a function that produces a single in-between frame. The caller drives it, which is
+// what lets the tweening dialog show progress and yield to the UI between frames.
+//
+// There used to be morphFrames(a, b, t) and morphSequence(a, b, ts) in front of this. Nothing
+// called either - morphSequence only ever had morphFrames as a caller, and morphFrames had none -
+// and their own comment said calling them per frame would be N times slower than this. An unused
+// wrapper that is also the slow way to do the thing is worse than no wrapper: it reads like the
+// entry point.
 export function morphPrepare(aImg, bImg) {
     const w = aImg.width, h = aImg.height, N = w * h;
     const A = aImg.data, B = bImg.data;

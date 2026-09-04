@@ -71,7 +71,7 @@ Copying a cut, including the pixels its strokes point at.
 
 | | |
 |---|---|
-| `cloneCutContents` | id; given the shared cache so it can return the same new id for a repeated old one |
+| `cloneCutContents` | A cut's layers, texts and active layer, copied for a new cut. Takes the bitmap cloner so the pixels come with it, sharing one cache so a bitmap used twice becomes one copy rather than two. |
 
 ## `src/core/cutOps.js`
 
@@ -320,7 +320,7 @@ Timeline pixels to time, and zooming without the content sliding.
 | `clampPps` | Pixels per second, clamped to the usable range. Not a number field: an unclamped value from a pinch is a timeline nobody can grab. |
 | `pinchZoom` | The same thing for a pinch, which scales from where the fingers started rather than from the current value - accumulating a factor per move event would drift. |
 | `PPS_MAX` | Above three hundred pixels a second a few seconds fill the screen and scrolling is the only way to see anything. |
-| `PPS_MIN` | fill the screen and scrolling becomes the only way to see anything. |
+| `PPS_MIN` | Below ten pixels a second the cuts are too small to grab. |
 | `scrollToHold` | Scroll position that puts a time back under a point on screen. Never negative: scrolling before the start is not a place the timeline can be, and asking for it once left the first track label overlapping the ruler. |
 | `timeAtX` | The time under a point, given where the timeline is scrolled to. |
 | `TRACK_GUTTER` | Width of the sticky track-label column. Time zero is one of these in from the left edge, so every screen-x-to-time conversion needs it. Must match `.tl-track-label` in App.css. |
@@ -339,7 +339,7 @@ The drawing engine: strokes, canvases, animation, video frames. The big one.
 | `bucketFillTransparentRegion` | Flood fill across the transparent region under a point, with a tolerance and an optional spread so the fill creeps under the anti-aliased edge of a line instead of leaving a halo. |
 | `CANVAS_W` | The document's pixel size, 1920x1080. The canvas element is scaled by CSS; drawing coordinates are always these. |
 | `applyCutAnim` | Put a cut animation onto a context; the caller owns the save/restore. Written out at both places that draw a cut - the artwork and the text over it - and if the two disagreed about the pivot, an animation would slide a text off its own drawing. |
-| `computeCutAnim` | at rest (no transform), so callers can skip the save/transform fast-path. |
+| `computeCutAnim` | A cut's animation at a given absolute time. Returns null when the cut is at rest, so callers can skip the save/transform entirely rather than applying an identity one. |
 | `computeLayerAnim` | A layer (part) animation resolved to one instant: the offset, rotation, scale, alpha and sway to draw it with. |
 | `computeTextAnim` | A text animation resolved to one instant. Returns the entrance, exit and emphasis values, how much of the string is revealed, and — when the characters own the entrance — the progress they divide between them. |
 | `textAnimStep` | What one entrance or exit contributes at eased presence `e`. Shared so a staggered character cannot move differently from the block it belongs to. `dir` is +1 entering, -1 leaving, and only the vertical motions read it. |
@@ -367,10 +367,8 @@ The drawing engine: strokes, canvases, animation, video frames. The big one.
 | `imageDataCanvas` | A canvas holding an ImageData, ready to draw. `putImageData` ignores the transform, composite mode and alpha, so anything that scales or blends ImageData needs this. Reused - valid until the next call. |
 | `imageDataToDataURL` | Encode pixels as a dataURL, through a reused canvas — allocating one per call is the trap sizeCanvas exists for. |
 | `LAYER_ANIM_DEFAULT` | A part animation with nothing turned on, every field present for the same reason ANIM_DEFAULT has them. |
-| `layerKey` | cross-cut collisions and an infinite cache-rebuild loop. |
-| `morphFrames` | Filled with the A->B average ink colour; soft 1px edge. |
-| `morphPrepare` | so the caller can update progress or yield to the UI between frames. |
-| `morphSequence` | frame would be N times slower. |
+| `layerKey` | The cache key for one baked layer. Keyed per (cut, layer) because layer ids are **not** unique across cuts - each cut numbers from 1 - and keying by layer id alone caused cross-cut collisions and an infinite cache-rebuild loop. |
+| `morphPrepare` | Morph the pixel distribution of one frame into another by interpolating signed distance fields, so the shape moves and grows rather than one crossfading into the other. Computes the fields once and returns a function that makes a single in-between frame, which is what lets the tweening dialog show progress and yield between frames. |
 | `pointInPolygon` | Whether a point is inside a polygon, by ray casting. What decides if a lasso caught something. |
 | `safeArray` | Anything-to-array, for fields that older projects may not have at all. |
 | `sampleKeys` | This is tweening in the original animation sense of the word. |
@@ -378,10 +376,10 @@ The drawing engine: strokes, canvases, animation, video frames. The big one.
 | `sampleWave` | Samples the waveform cyclically over 0..1 with linear interpolation. |
 | `sizeCanvas` | Resizes only when the size differs. Assigning `canvas.width` reallocates the backing store even when the value is unchanged - 8MB at 1920x1080, and the measured 79MB/s that ran the tab out of memory. |
 | `scratchCanvas` | A full-size scratch canvas kept in a ref: allocated once, then sized and cleared for reuse. Three places in the composite path did this by hand and disagreed about the clear - two cleared after a resize, which the resize had already done. Reuse is not a micro-optimisation here: a fresh canvas is 8MB per masked layer per frame. |
-| `strokeSig` | used to invalidate the layer canvas cache without stringifying the whole array. |
+| `strokeSig` | A cheap change signature for a layer's strokes, used to invalidate the layer canvas cache without stringifying the whole array. Sound because strokes here are only ever appended or replaced. |
 | `layerSig` | The cache key for one baked layer canvas. Two caches use it and compare their keys against each other, so for a layer that is not boiling both forms must come out byte-identical - otherwise every such layer misses the cache and is redrawn every frame, with no visible symptom. |
-| `swayWeightAt` | bend one direction while the next bends back. |
-| `targetCanvasFor` | two shapes people actually publish. |
+| `swayWeightAt` | How much a point along the axis sways, interpolated smoothly between the control weights. Zero holds a point still; a negative weight bends it the other way, so one stretch can bend one direction while the next bends back. |
+| `targetCanvasFor` | Which canvas a video import should land in. A vertical clip dropped into a landscape canvas is mostly empty margin, so the import can match the source instead, or be pinned to one of the two shapes people actually publish. |
 | `TEXT_ANIM_DEFAULT` | - emphasis: a looping accent (pulse/shake/wave) |
 | `triwave` | Triangle wave 0->1->0 (period 2); used for ping-pong path following. |
 
