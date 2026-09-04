@@ -326,6 +326,7 @@ The drawing engine: strokes, canvases, animation, video frames. The big one.
 | `applyEase` | The easing curves. Everything animated should go through this rather than its own. |
 | `bucketFillTransparentRegion` | Flood fill across the transparent region under a point, with a tolerance and an optional spread so the fill creeps under the anti-aliased edge of a line instead of leaving a halo. |
 | `CANVAS_W` | The document's pixel size, 1920x1080. The canvas element is scaled by CSS; drawing coordinates are always these. |
+| `applyCutAnim` | Put a cut animation onto a context; the caller owns the save/restore. Written out at both places that draw a cut - the artwork and the text over it - and if the two disagreed about the pivot, an animation would slide a text off its own drawing. |
 | `computeCutAnim` | at rest (no transform), so callers can skip the save/transform fast-path. |
 | `computeLayerAnim` | A layer (part) animation resolved to one instant: the offset, rotation, scale, alpha and sway to draw it with. |
 | `computeTextAnim` | A text animation resolved to one instant. Returns the entrance, exit and emphasis values, how much of the string is revealed, and — when the characters own the entrance — the progress they divide between them. |
@@ -342,6 +343,8 @@ The drawing engine: strokes, canvases, animation, video frames. The big one.
 | `dilateMask` | Grow a bitmask outwards by r pixels (square structuring element, done separably so it stays O(w*h) whatever r is). Used to bleed a bucket fill under the line that bounds it. |
 | `dist` | Distance between two points. |
 | `drawStrokesOnCtx` | Draw a list of strokes onto a context: the one place that knows what each tool looks like. Clears first unless told not to, and takes the boiling options so a roughened layer draws its own phase. |
+| `openVideoFile` | Open a video file for frame-by-frame reading: the element, its duration, a clamped seek and a release. Both readers set one up the same way and tore it down the same way, and two copies of an object URL's lifetime is two chances to leak one. |
+| `seekTarget` | Where a seek should land. Never the very last frame: seeking to exactly the duration fires no `seeked` event in some browsers, so the promise waiting for one never settles and the import stops halfway with no error. |
 | `extractVideoFrames` | Pull frames out of a video file at a given rate, optionally over a range, scaled, encoded as WebP or PNG, with near-duplicate frames merged. Reports progress and can be stopped part way. |
 | `fitRect` | Letterbox rect: fit source into destination preserving aspect ratio. |
 | `flattenForCanvas` | The layers to draw, bottom first, with folders resolved and hidden branches dropped. |

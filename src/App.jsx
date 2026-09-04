@@ -63,7 +63,7 @@ import {
     DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT, FONT_PRESETS, fontGroups,
     pointInPolygon, dist, safeArray, hexToRgb, bucketFillTransparentRegion,
     layerKey, imageDataToDataURL, dataURLToImageData, drawStrokesOnCtx, sizeCanvas, scratchCanvas,
-    flattenForCanvas, flattenLayersInUiOrder, layerSig, extractVideoFrames, fitRect, detectSceneCuts, curveToWave, swayWeightAt, morphPrepare,
+    flattenForCanvas, flattenLayersInUiOrder, layerSig, applyCutAnim, extractVideoFrames, fitRect, detectSceneCuts, curveToWave, swayWeightAt, morphPrepare,
     accentSoft, computeCutAnim, computeLayerAnim, TEXT_ANIM_DEFAULT, computeTextAnim,
     targetCanvasFor, imageDataCanvas, cutProgress,
 } from './canvas/canvasUtils';
@@ -3129,9 +3129,7 @@ export default function App() {
             ctx.save();
             if (anim) {
                 ctx.globalAlpha = anim.alpha;
-                ctx.translate(CANVAS_W / 2 + anim.tx, CANVAS_H / 2 + anim.ty);
-                ctx.scale(anim.sx, anim.sy);
-                ctx.translate(-CANVAS_W / 2, -CANVAS_H / 2);
+                applyCutAnim(ctx, anim, CANVAS_W, CANVAS_H);
             }
             // Draw bottom -> top so the topmost layer (UI top) is visually on top.
             for (let i = groups.length - 1; i >= 0; i--) {
@@ -3214,11 +3212,10 @@ export default function App() {
         // Text objects live outside paint layers ("text layer").
         scene.cuts.forEach(({ anim, texts }) => {
             ctx.save();
-            if (anim) {
-                ctx.translate(CANVAS_W / 2 + anim.tx, CANVAS_H / 2 + anim.ty);
-                ctx.scale(anim.sx, anim.sy);
-                ctx.translate(-CANVAS_W / 2, -CANVAS_H / 2);
-            }
+            // The alpha is not set here the way it is for the artwork: a text has its own
+            // opacity, so drawTextObject multiplies the two rather than being handed a context
+            // that already has one applied.
+            applyCutAnim(ctx, anim, CANVAS_W, CANVAS_H);
             for (const { text, anim: ta } of texts) {
                 drawTextObject(ctx, text, {
                     anim: ta,
