@@ -8,7 +8,7 @@ import ColorPanel, { RECENT_SLOTS } from './ui/ColorPanel';
 import { TopBar } from './ui/TopBar';
 import { CutLayerPanel } from './ui/CutLayerPanel';
 import { useStored } from './hooks/useStored.js';
-import { nextId } from './core/ids.js';
+import { nextId, randomId } from './core/ids.js';
 import { clampZoom } from './core/viewZoom.js';
 import { arrayCodec, onOffCodec, oneZeroCodec, numberCodec } from './core/persist.js';
 import { TextEditor } from './ui/TextEditor';
@@ -67,7 +67,7 @@ import {
     layerKey, imageDataToDataURL, dataURLToImageData, drawStrokesOnCtx, sizeCanvas, scratchCanvas,
     flattenForCanvas, flattenLayersInUiOrder, layerSig, applyCutAnim, extractVideoFrames, fitRect, detectSceneCuts, curveToWave, swayWeightAt, morphPrepare,
     accentSoft, computeCutAnim, computeLayerAnim, TEXT_ANIM_DEFAULT, computeTextAnim,
-    targetCanvasFor, imageDataCanvas, cutProgress,
+    targetCanvasFor, imageDataCanvas, cutProgress, seekTarget,
 } from './canvas/canvasUtils';
 
 /**
@@ -287,7 +287,6 @@ export default function App() {
     const [autoSceneDetect, setAutoSceneDetect] = useStored('mv_auto_scene', true, onOffCodec);
     const videoElRef = useRef(null);      // hidden <video> element that decodes/plays the overlay
     const videoBlobRef = useRef(null);    // the video Blob, for saving
-    const videoSeekTokRef = useRef(0);    // paused-seek token so a stale 'seeked' doesn't repaint
     const [videoImport, setVideoImport] = useState(null); // {file, fps, maxFrames} dialog
     const [recentVideos, setRecentVideos] = useState([]); // fetched/opened videos, reusable without re-downloading
     const [videoBusy, setVideoBusy] = useState(null); // {done, total} while extracting
@@ -325,7 +324,6 @@ export default function App() {
         encode: JSON.stringify,
     });
     const [activePalette, setActivePalette] = useState(0);
-    const [paletteEdit, setPaletteEdit] = useState(false); // when on, tapping a swatch deletes it (for tablets)
     const addToPalette = (c) => setPalettes(ps => ps.map((p, i) => i === activePalette && !p.colors.some(x => x.toLowerCase() === c.toLowerCase()) ? { ...p, colors: [...p.colors, c] } : p));
     const removeFromPalette = (ci) => setPalettes(ps => ps.map((p, i) => i === activePalette ? { ...p, colors: p.colors.filter((_, j) => j !== ci) } : p));
     const addPalette = () => { setPalettes(ps => [...ps, { name: tr('팔레트 {0}', ps.length + 1), colors: [] }]); setActivePalette(palettes.length); };
@@ -367,7 +365,6 @@ export default function App() {
     const canvasRef = useRef(null);
     const liveCanvasRef = useRef(null);   // overlay for the in-progress stroke (drawn without touching layer state)
     const liveStrokeRef = useRef(null);   // the stroke currently being drawn
-    const liveClearTokRef = useRef(0);
     const liveClearPendingRef = useRef(false); // after a commit, clear the overlay only once the layer cache has drawn the new stroke,
     // which avoids a flicker or a vanishing line
     const lineStartRef = useRef(null);    // start point of the line tool
@@ -435,7 +432,6 @@ export default function App() {
     const tlTouchRef = useRef(new Map());
     const tlPinchRef = useRef(null);
     const [serverProjects, setServerProjects] = useState(null); // null = picker closed
-    const [serverBusy, setServerBusy] = useState(false);
     const [localProjects, setLocalProjects] = useState(null); // IndexedDB project picker
     const localIdRef = useRef(null);
     const localNameRef = useRef('');
@@ -546,7 +542,7 @@ export default function App() {
     const [cameraCapture, setCameraCapture] = useState(null); // {cutId} while drawing a camera path
 
     const storeBitmap = (imageData) => {
-        const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
+        const id = randomId();
         bitmapStoreRef.current.set(id, { imageData, imageBitmap: null });
         // Best-effort bitmap for fast preview; fall back to ImageData rendering if this fails.
         createImageBitmap(imageData).then(bmp => {
@@ -564,7 +560,7 @@ export default function App() {
     // ImageBitmap at import is what OOMs a big video (hundreds of full-res bitmaps resident).
     // The bitmap is decoded lazily on first display and released under an LRU cap.
     const storeBitmapBlob = async (blob, w = 0, h = 0) => {
-        const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
+        const id = randomId();
         const ext = (blob.type.match(/image\/(\w+)/)?.[1] || 'webp');
         bitmapStoreRef.current.set(id, { imageData: null, imageBitmap: null, blob, ext, w, h });
         return id;
@@ -898,7 +894,8 @@ export default function App() {
         const v = videoElRef.current; if (!v || !videoOverlay) return;
         if (currentTime >= videoOverlay.startTime && currentTime < videoOverlay.endTime) {
             const exp = (currentTime - videoOverlay.startTime) + videoOverlay.offset;
-            if (Math.abs(v.currentTime - exp) > 0.03) { try { v.currentTime = exp; } catch { } }
+            const want = seekTarget(exp, v.duration);
+            if (Math.abs(v.currentTime - want) > 0.03) { try { v.currentTime = want; } catch { } }
         }
     }, [currentTime, isPlaying, videoOverlay]);
 
@@ -1380,7 +1377,6 @@ export default function App() {
         }
     };
     const doServerSave = async (forceNew = false) => {
-        setServerBusy(true);
         try {
             const assetSink = [];
             const data = await buildData(true, assetSink); // frames/audio externalized → small JSON
@@ -1407,7 +1403,7 @@ export default function App() {
         } catch (e) {
             console.error('[import]', e);
             setAppError(tr('서버 저장 실패: ') + e.message + '\n' + tr('(API 서버가 실행 중인지 확인하세요. 큰 프로젝트는 저장에 시간이 걸립니다.)'));
-        } finally { setServerBusy(false); setLoadProgress(null); }
+        } finally { setLoadProgress(null); }
     };
     const openServerList = async () => {
         try { setServerProjects(await apiFetch('/api/projects')); }
@@ -1440,7 +1436,7 @@ export default function App() {
             let k = null;
             try { k = localStorage.getItem('mv_backup_key'); } catch { }
             if (!k) {
-                k = 'bk_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+                k = randomId('bk_');
                 try { localStorage.setItem('mv_backup_key', k); } catch { }
             }
             backupKeyRef.current = k;
@@ -1544,7 +1540,7 @@ export default function App() {
             if (!forceNew && localIdRef.current) { await saveProject(localIdRef.current, data, localNameRef.current || 'Untitled'); alert(tr('로컬에 저장했습니다.')); return; }
             const name = window.prompt(tr('로컬 저장 이름:'), localNameRef.current || 'MV Project');
             if (!name) return;
-            const id = 'l_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+            const id = randomId('l_');
             await saveProject(id, data, name);
             localIdRef.current = id; localNameRef.current = name;
             alert(tr('로컬에 저장했습니다.'));

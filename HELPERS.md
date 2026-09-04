@@ -136,6 +136,7 @@ two of those sites had already worked the collision around by hand with `Date.no
 | | |
 |---|---|
 | `nextId` | The clock, or one past the last id when the clock has not moved. Monotonic within a session, which is all that is needed, and still roughly the clock so ids keep sorting by when they were made. |
+| `randomId` | A unique string id, optionally prefixed: the clock in base 36 plus eight random characters. The clock keeps ids sorting by creation; the random tail is what makes them unique, since a video import mints one per frame inside the same millisecond. |
 | `resetIds` | Reset the counter. For tests only, so one test's calls cannot change what another sees. |
 
 ## `src/core/lassoOps.js`

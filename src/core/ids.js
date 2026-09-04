@@ -30,6 +30,26 @@ export function nextId() {
 }
 
 /**
+ * A unique string id, optionally prefixed.
+ *
+ * The clock in base 36 followed by eight random characters. The clock keeps ids sorting by
+ * creation and makes them readable in a saved file; the random tail is what actually makes them
+ * unique, because several of these are minted inside one millisecond routinely - importing a
+ * video mints one per frame.
+ *
+ * This existed five times over in four shapes: tails of `slice(2)`, `slice(2, 6)` and
+ * `slice(2, 7)`, and one that wrote the clock in decimal rather than base 36. Four different
+ * collision odds for one idea, none of them chosen on purpose. The prefix is cosmetic: nothing
+ * reads it back, it is there so a stray id in a debugger says what it belongs to.
+ *
+ * @param {string} [prefix]
+ * @returns {string}
+ */
+export function randomId(prefix = '') {
+    return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+}
+
+/**
  * Reset the counter. For tests only, so one test's calls cannot make another's assertions
  * depend on how many ids were handed out before it ran.
  */
