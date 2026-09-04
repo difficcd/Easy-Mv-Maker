@@ -54,7 +54,7 @@ function ColorWheel({ color, onPick, size = 168 }) {
             ctx.arc(cx, cy, (R_OUT + R_IN) / 2, (a - 0.7) * Math.PI / 180, (a + 0.7) * Math.PI / 180);
             ctx.stroke();
         }
-    }, [WHEEL, RING]);
+    }, [WHEEL, RING, R_OUT, R_IN]);
 
     // The square is redrawn whenever the hue changes.
     React.useEffect(() => {
