@@ -222,21 +222,23 @@ export function hexToRgb(hex) {
  */
 export function dilateMask(mask, w, h, r) {
     if (!(r > 0)) return mask;
+    // One line of the mask, walked from one end. Set pixels reset the counter and every pixel
+    // within r of one is marked, so walking both ways covers a set pixel's neighbours on both
+    // sides. Written once and called twice rather than the loop appearing twice with only its
+    // bounds changed.
+    const sweep = (src, dst, base, stride, from, to, step) => {
+        let since = -1;   // pixels travelled since the last set one; -1 = none seen yet
+        for (let i = from; i !== to; i += step) {
+            const idx = base + i * stride;
+            if (src[idx]) since = 0; else if (since >= 0) since++;
+            if (since >= 0 && since <= r) dst[idx] = 1;
+        }
+    };
     const pass = (src, dst, stride, outer, inner) => {
         for (let o = 0; o < outer; o++) {
             const base = o * (stride === 1 ? w : 1);
-            let since = -1; // pixels travelled since the last set one; -1 = none seen yet
-            for (let i = 0; i < inner; i++) {
-                const idx = base + i * stride;
-                if (src[idx]) since = 0; else if (since >= 0) since++;
-                if (since >= 0 && since <= r) dst[idx] = 1;
-            }
-            since = -1;
-            for (let i = inner - 1; i >= 0; i--) {
-                const idx = base + i * stride;
-                if (src[idx]) since = 0; else if (since >= 0) since++;
-                if (since >= 0 && since <= r) dst[idx] = 1;
-            }
+            sweep(src, dst, base, stride, 0, inner, 1);
+            sweep(src, dst, base, stride, inner - 1, -1, -1);
         }
     };
     const tmp = new Uint8Array(w * h);

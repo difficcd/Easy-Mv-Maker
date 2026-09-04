@@ -45,6 +45,18 @@ Clipping: a layer that only shows where the layer beneath it has paint.
 | `canClip` | Whether the clip toggle would do anything. False only for the bottom layer, which has nothing to clip to. |
 | `clipGroups` | Which layers clip to which base. A run of clipped layers all attach to the same base, and a clipped layer with nothing below it draws normally rather than vanishing. |
 
+## `src/core/viewZoom.js`
+
+How far the canvas view may be zoomed. It was in three places and they disagreed: pinch and the
+wheel clamped to 0.25-8 while the buttons clamped to 0.1-16, so a pinch stopped where a button did
+not, and one notch of the wheel snapped a 16x view back to 8x.
+
+| | |
+|---|---|
+| `clampZoom` | Constrain a canvas zoom to the usable range, and turn anything that is not a number into 1 - a pinch divides by the starting finger distance, which can be zero, and a NaN zoom propagates into the view transform and blanks the canvas. |
+| `ZOOM_MIN` | Below this the artwork is too small to place a stroke on. |
+| `ZOOM_MAX` | Above this a single pixel fills a large part of the screen and panning is the only control left. |
+
 ## `src/core/windowDrag.js`
 
 Running a drag on window listeners, so it survives the pointer leaving the element.
