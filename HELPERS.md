@@ -23,6 +23,20 @@ Which stored bitmaps are still reachable, for garbage collection.
 | `collectUsedBitmapIds` | Every bitmap id still referenced by anything that can bring it back: the cuts, the undo history, the cut clipboard, the lasso clipboard and the live selection. Freeing something an undo still needs is not a leak, it is an undo that comes back blank. |
 | `unusedBitmapIds` | Ids present in the store that nothing references any more. |
 
+## `src/core/brushSize.js`
+
+How wide a brush may be, and how a keystroke changes it. The range was written twice - once for
+typing a size, once for the shortcut - which is the shape the canvas zoom bug had before one copy
+was edited and the other was not.
+
+| | |
+|---|---|
+| `BRUSH_MIN` | One pixel. |
+| `BRUSH_MAX` | Two hundred. The slider stops at 80 on purpose and shows `min(80, size)` past that, because a slider spanning the whole range puts every ordinary size in its first fifth. |
+| `clampBrush` | A width the app will accept: a whole number inside the range, and never NaN. |
+| `brushUp` | A quarter wider, plus one. The plus one is not decoration - 1 x 1.25 rounds back to 1, so without it the shortcut does nothing at the sizes where a single pixel matters most. |
+| `brushDown` | The mirror of it, which was missing: 2 / 1.25 rounds back to 2, so the shortcut for a smaller brush did nothing at all at size 2. Takes at least one pixel off, so the key always moves. |
+
 ## `src/core/camera.js`
 
 Camera moves: presets, drawn paths, and the transform they resolve to.

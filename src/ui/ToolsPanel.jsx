@@ -2,6 +2,7 @@ import React from 'react';
 import { Layers, Undo, Redo, Trash, Repeat, ClipboardPaste, Pipette } from 'lucide-react';
 import { NumField } from './NumField';
 import { tr } from '../i18n';
+import { BRUSH_MIN, BRUSH_MAX } from '../core/brushSize.js';
 
 // TOOLS panel: the tool grid, the colour swatch, and whatever settings the current tool has.
 //
@@ -18,8 +19,7 @@ function ToolSettings({
     softMode = undefined, setSoftMode = undefined,
     rulerMode = undefined, setRulerMode = undefined, commitCurve = undefined,
     mosaicBlock = undefined, setMosaicBlock = undefined,
-    brushSize = undefined, setBrushSize = undefined,
-    eraserSize = undefined, setEraserSize = undefined,
+    toolSize = undefined, setToolSize = undefined,
     pressureOn = true, setPressureOn = undefined,
 }) {
     if (tool === 'soft') {
@@ -54,17 +54,14 @@ function ToolSettings({
             <span style={{ fontSize: 9, color: '#888', textAlign: 'center' }}>{tr('화면 위를 드래그')}</span>
         </>);
     }
-    // Everything else is a brush of some width. The eraser keeps its own, so switching to it and
-    // back does not lose the size you were drawing with.
-    const curSize = tool === 'eraser' ? eraserSize : brushSize;
-    const setSize = (v) => {
-        const n = Math.max(1, Math.min(200, Math.round(v) || 1));
-        if (tool === 'eraser') setEraserSize(n); else setBrushSize(n);
-    };
+    // Everything else is a brush of some width. Which size belongs to which tool is App's
+    // question - it owns both pieces of state - and it was being answered here as well, with a
+    // second copy of the range to go with it.
+    const curSize = toolSize, setSize = setToolSize;
     return (<>
         <span className="slider-label">{tool === 'eraser' ? tr('지우개') : 'Size'}</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 2, justifyContent: 'center' }}>
-            <NumField value={curSize} onChange={setSize} min={1} max={200} width={46} style={{ textAlign: 'center' }} />
+            <NumField value={curSize} onChange={setSize} min={BRUSH_MIN} max={BRUSH_MAX} width={46} style={{ textAlign: 'center' }} />
             <span style={{ fontSize: 10, color: '#888' }}>px</span>
         </div>
         <div className="size-grid" style={{ margin: '4px 0' }}>
