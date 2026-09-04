@@ -35,6 +35,7 @@ import { cloneCutContents as cloneCutContentsPure } from './core/cutClone.js';
 import { DEFAULT_KEYS, KEY_LABELS, keyOf, matchShortcut, keymapFrom, toolFromAction, findConflicts } from './core/shortcuts.js';
 import { derivePartsFrom, deriveVideoBatches } from './core/partOps.js';
 import { playRange } from './core/playRange.js';
+import { clampBrush, brushUp, brushDown } from './core/brushSize.js';
 import {
     cutsReducer, replaceCuts, addCuts, updateCut, setCutAnim, setCutCamera, clearCut,
     updateLayer, setLayerAnim, moveLayers, upsertText, moveText, deleteText, toggleTextVisible as toggleTextVisibleAction,
@@ -368,6 +369,12 @@ export default function App() {
     const [pressureOn, setPressureOn] = useStored('mv_pressure', true, onOffCodec);
     const [eraserSize, setEraserSize] = useState(20);
     const [opacity, setOpacity] = useState(1.0);
+    // The width the current tool draws with. The eraser keeps its own, so switching to it and
+    // back does not lose the size you were drawing with - which is why every caller has to ask
+    // which tool it is before reading or writing a size, and why that question is asked here
+    // once rather than at each of them.
+    const toolSize = tool === 'eraser' ? eraserSize : brushSize;
+    const setToolSize = (n) => { const v = clampBrush(n); if (tool === 'eraser') setEraserSize(v); else setBrushSize(v); };
     const [expandedCuts, setExpandedCuts] = useState(new Set());
     const [collapsedCutIds, setCollapsedCutIds] = useState(new Set());
     const [renamingCutId, setRenamingCutId] = useState(null);
@@ -854,8 +861,8 @@ export default function App() {
                 else if (hit === 'zoomIn') zoomCanvas(1.25);
                 else if (hit === 'zoomOut') zoomCanvas(1 / 1.25);
                 else if (hit === 'resetView') resetView();
-                else if (hit === 'brushUp') { const s = tool === 'eraser' ? eraserSize : brushSize; const n = Math.min(200, Math.round(s * 1.25) + 1); tool === 'eraser' ? setEraserSize(n) : setBrushSize(n); }
-                else if (hit === 'brushDown') { const s = tool === 'eraser' ? eraserSize : brushSize; const n = Math.max(1, Math.round(s / 1.25)); tool === 'eraser' ? setEraserSize(n) : setBrushSize(n); }
+                else if (hit === 'brushUp') setToolSize(brushUp(toolSize));
+                else if (hit === 'brushDown') setToolSize(brushDown(toolSize));
                 return;
             }
             if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); globalUndo(); }
@@ -3929,8 +3936,7 @@ export default function App() {
             softMode={softMode} setSoftMode={setSoftMode}
             rulerMode={rulerMode} setRulerMode={setRulerMode} commitCurve={commitCurve}
             mosaicBlock={mosaicBlock} setMosaicBlock={setMosaicBlock}
-            brushSize={brushSize} setBrushSize={setBrushSize}
-            eraserSize={eraserSize} setEraserSize={setEraserSize}
+            toolSize={toolSize} setToolSize={setToolSize}
             pressureOn={pressureOn} setPressureOn={setPressureOn} />
     );
 
