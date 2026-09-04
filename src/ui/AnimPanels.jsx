@@ -2,6 +2,7 @@ import { Circle } from 'lucide-react';
 import React from 'react';
 import { ANIM_DEFAULT, LAYER_ANIM_DEFAULT } from '../canvas/canvasUtils';
 import { CAMERA_DEFAULT, CAMERA_PRESETS, resolveCamera } from '../core/camera.js';
+import { randomId } from '../core/ids.js';
 import { NumField } from './NumField';
 import { tr } from '../i18n';
 
@@ -184,7 +185,7 @@ export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCaptur
         // The id is what lets React follow a key that changes position: the list is kept sorted,
         // so editing a %  moves the row, and with an index for a key React would instead hand the
         // focused input the next key's values mid-edit.
-        setKeys(cur ? keys.map(k => k === cur ? { ...k, ...val } : k) : [...keys, { id: 'k' + Date.now() + Math.random().toString(36).slice(2, 6), ...val }]);
+        setKeys(cur ? keys.map(k => k === cur ? { ...k, ...val } : k) : [...keys, { id: randomId('k'), ...val }]);
     };
     const updKey = (i, o) => setKeys(keys.map((k, j) => j === i ? { ...k, ...o } : k));
     return (
