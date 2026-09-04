@@ -1171,7 +1171,7 @@ export function computeCutAnim(ac, time, cw = CANVAS_W, ch = CANVAS_H) {
         // Ping-pong (return): oscillates back to the original; speed is cycles across the cut,
         // count caps how many.
         let prog;
-        if (a.deformReturn) { const cyc = (a.deformSpeed || 1) * t; prog = (a.deformCount > 0 && cyc >= a.deformCount) ? 0 : Math.sin(2 * Math.PI * cyc); }
+        if (a.deformReturn) prog = swing(SWING.through, t, a.deformSpeed, a.deformCount);
         else prog = applyEase(t, a.ease, a.easePower);
         const f = 1 + a.deformAmount * prog;
         if (a.deformAxis === 'x') sx *= f; else sy *= f;
@@ -1181,7 +1181,7 @@ export function computeCutAnim(ac, time, cw = CANVAS_W, ch = CANVAS_H) {
         // out and back (0→1→0) at `speed` cycles, capped by `count`.
         const t = Math.max(0, Math.min(1, lt / dur));
         let prog;
-        if (a.moveReturn) { const cyc = (a.moveSpeed || 1) * t; prog = (a.moveCount > 0 && cyc >= a.moveCount) ? 0 : (1 - Math.cos(2 * Math.PI * cyc)) / 2; }
+        if (a.moveReturn) prog = swing(SWING.there, t, a.moveSpeed, a.moveCount);
         else prog = applyEase(t, a.ease, a.easePower);
         tx += (a.moveX || 0) * prog; ty += (a.moveY || 0) * prog;
     }
@@ -1238,6 +1238,42 @@ export function applyEase(t, type, power = 2) {
 
 // Triangle wave 0->1->0 (period 2); used for ping-pong path following.
 export function triwave(x) { const m = ((x % 2) + 2) % 2; return m < 1 ? m : 2 - m; }
+
+// The three shapes a "왕복" (return) animation can take, and the cap they share.
+//
+// Four call sites wrote this out, each with its own arithmetic, and they do not all mean the same
+// thing - which is the point of naming them rather than merging them:
+//
+//   SWING.through   -1..1   past the resting position and out the other side. What the layer
+//                           presets are: 둥실둥실 bobs above and below, 숨쉬기 breathes in as
+//                           well as out. A one-way version of these would not read as floating.
+//   SWING.there     0..1    out to the target and back, never past the start. The cut's move.
+//   SWING.along     0..1    the same trip, at constant speed - for following a drawn path, where
+//                           there is nothing on the far side of the first point to travel to.
+//
+// One cycle is one whole trip in every case, so `speed` means the same thing to all three.
+export const SWING = {
+    through: (cycles) => Math.sin(2 * Math.PI * cycles),
+    there: (cycles) => (1 - Math.cos(2 * Math.PI * cycles)) / 2,
+    along: (cycles) => triwave(2 * cycles),
+};
+
+/**
+ * A return animation's progress, or 0 once it has run out of repeats.
+ *
+ * @param {(cycles: number) => number} shape one of SWING
+ * @param {number} t how far through the cut, 0..1
+ * @param {number} [speed] trips across the cut
+ * @param {number} [count] how many trips before it settles; 0 or less means forever
+ * @returns {number}
+ */
+export function swing(shape, t, speed = 1, count = 0) {
+    const cycles = (speed || 1) * t;
+    // Settling at 0 rather than wherever the wave happened to be: every shape passes through 0 at
+    // the end of a whole trip, so this is where it would have stopped anyway.
+    if (count > 0 && cycles >= count) return 0;
+    return shape(cycles);
+}
 // Sample a polyline path at normalized position s in [0,1].
 export function samplePath(path, s) {
     const n = path.length;
@@ -1609,7 +1645,7 @@ export function computeLayerAnim(layer, ac, time, cw = CANVAS_W, ch = CANVAS_H) 
         alpha = Math.max(0, Math.min(1, k.op ?? 1));
         prog = t;
     } else {
-        if (a.mode === 'return') { const cyc = speed * t; prog = (count > 0 && cyc >= count) ? 0 : Math.sin(2 * Math.PI * cyc); }
+        if (a.mode === 'return') prog = swing(SWING.through, t, speed, count);
         else prog = applyEase(t, a.ease, a.easePower);
         tx = (a.tx || 0) * prog; ty = (a.ty || 0) * prog;
         rot = (a.rot || 0) * prog * Math.PI / 180;
@@ -1617,7 +1653,7 @@ export function computeLayerAnim(layer, ac, time, cw = CANVAS_W, ch = CANVAS_H) 
     }
     if (!keys && a.path && a.path.length > 1) {
         let s;
-        if (a.mode === 'return') { let x = 2 * speed * t; if (count > 0 && x >= 2 * count) x = 0; s = triwave(x); }
+        if (a.mode === 'return') s = swing(SWING.along, t, speed, count);
         else s = applyEase(t, a.ease, a.easePower);
         const p0 = a.path[0], pt = samplePath(a.path, s);
         tx += pt.x - p0.x; ty += pt.y - p0.y;
