@@ -290,6 +290,27 @@ export default function App() {
     const { audioFile, audioUrl, audioDuration, audioData } = media;
     const audioRef = useRef(null);
     const audioB64Ref = useRef(null); // audio as base64 data URL, embedded into saves
+    // The same audio as a Blob, for the saves that can hold one.
+    //
+    // The video overlay has had three shapes for a while - a server asset, a Blob, or a base64
+    // dataURL - and the audio only ever had two, no Blob. That gap is why autosave was built with
+    // includeAudio false: writing a whole song into IndexedDB as a base64 string on every
+    // debounce is not something to do. The cost of the workaround was that crash recovery brought
+    // the video overlay back and left the music behind.
+    //
+    // Keyed by the dataURL it came from, so switching tracks or clearing the audio invalidates it
+    // on its own rather than needing every site that touches audioB64Ref to remember to.
+    const audioBlobRef = useRef(/** @type {{src: string|null, blob: Blob|null}} */({ src: null, blob: null }));
+    const audioAsBlob = async () => {
+        const src = audioB64Ref.current;
+        if (!src) return null;
+        if (audioBlobRef.current.src === src) return audioBlobRef.current.blob;
+        try {
+            const blob = await (await fetch(src)).blob();
+            audioBlobRef.current = { src, blob };
+            return blob;
+        } catch { return null; }
+    };
     // Video overlay track: play the original video underneath the drawing layers (no per-frame
     // cuts) - for drawing over a video. Like audio, but painted onto the canvas each frame.
     const { videoOverlay } = media; // { name, startTime, endTime, offset, duration, w, h, cuts? }
@@ -1151,6 +1172,11 @@ export default function App() {
                 const ext = audioExt(audioB64Ref.current);
                 assetSink.push({ id: '__audio__', url: audioB64Ref.current, ext });
                 out.audio = { ...meta, asset: true, ext };
+            } else if (blobsOk) {
+                // Same three shapes as the video below. Falls through to the dataURL if the Blob
+                // cannot be made, because a large autosave beats an autosave with no music in it.
+                const blob = await audioAsBlob();
+                out.audio = blob ? { ...meta, blob } : { ...meta, dataUrl: audioB64Ref.current };
             } else {
                 out.audio = { ...meta, dataUrl: audioB64Ref.current };
             }
@@ -1244,6 +1270,13 @@ export default function App() {
         // Restore audio: embedded (dataUrl) or externalized as a server asset. Either way we end
         // up with a dataURL in audioB64Ref so a later LOCAL save stays self-contained.
         let audioDataUrl = data.audio?.dataUrl || null;
+        if (!audioDataUrl && data.audio?.blob instanceof Blob) {
+            // Back to a dataURL, because everything downstream - the <audio> src, a later local
+            // save - wants one, and this keeps that invariant in the one place that states it.
+            try {
+                audioDataUrl = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(data.audio.blob); });
+            } catch { }
+        }
         if (!audioDataUrl && data.audio?.asset && assetBase) {
             try {
                 const blob = await (await fetch(`${assetBase}/asset/__audio__`)).blob();
@@ -1632,14 +1665,18 @@ export default function App() {
     // crash recovery to finish deciding - otherwise a new empty document overwrites the autosave
     // the user is about to be offered - and skips mid-gesture, where a half-drawn stroke is not
     // worth keeping and encoding one costs frames.
-    const autosaveDoc = useMemo(() => ({ cuts, numTracks, onionPrev, onionNext, pps }), [cuts, numTracks, onionPrev, onionNext, pps]);
+    // audioData and videoOverlay are in here because trimming either one is a change worth
+    // keeping - and without them nothing about the media reached the autosave until the next
+    // stroke happened to trigger one.
+    const autosaveDoc = useMemo(() => ({ cuts, numTracks, onionPrev, onionNext, pps, audioData, videoOverlay }),
+        [cuts, numTracks, onionPrev, onionNext, pps, audioData, videoOverlay]);
     const { savedAt: autoSavedAt, error: autosaveErr } = useAutosave({
         doc: autosaveDoc,
         ready: () => didRecoverRef.current,
         busy: () => isDrawing.current || isDraggingOrResizingRef.current,
         build: () => {
             gcBitmaps();                       // reclaim orphaned bitmaps before encoding
-            return buildData(false, null, true); // IDB stores frame Blobs -> cheap, low-memory
+            return buildData(true, null, true); // IDB stores frames and audio as Blobs natively
         },
         save: saveAutosave,
     });
