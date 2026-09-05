@@ -1223,13 +1223,14 @@ export default function App() {
         if (heavy) setLoadProgress({ label, done: 0, total });
         // Externalized frame assets (server projects): fetch one at a time and keep as a Blob
         // (off-heap). Bounded memory — one frame in flight.
+        let missingAssets = 0;
         if (assetBase && Array.isArray(data.assets)) {
             for (const a of data.assets) {
                 try {
-                    const blob = await (await fetch(`${assetBase}/asset/${a.id}`)).blob();
+                    const blob = await fetchAsset(`${assetBase}/asset/${a.id}`);
                     // Don't decode here — lazy decode on display keeps opening a big project from OOMing.
                     store.set(a.id, { imageData: null, imageBitmap: null, blob, ext: a.ext, w: a.w || 0, h: a.h || 0 });
-                } catch { }
+                } catch { missingAssets++; }
                 tick();
             }
         }
@@ -1279,9 +1280,9 @@ export default function App() {
         }
         if (!audioDataUrl && data.audio?.asset && assetBase) {
             try {
-                const blob = await (await fetch(`${assetBase}/asset/__audio__`)).blob();
+                const blob = await fetchAsset(`${assetBase}/asset/__audio__`);
                 audioDataUrl = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(blob); });
-            } catch { }
+            } catch { missingAssets++; }
         }
         if (audioDataUrl) {
             audioB64Ref.current = audioDataUrl;
@@ -1297,7 +1298,7 @@ export default function App() {
         // Restore the video overlay track (Blob from IDB / server asset / embedded dataURL).
         let videoBlob = null;
         if (data.video?.blob instanceof Blob) videoBlob = data.video.blob;
-        else if (data.video?.asset && assetBase) { try { videoBlob = await (await fetch(`${assetBase}/asset/__video__`)).blob(); } catch { } }
+        else if (data.video?.asset && assetBase) { try { videoBlob = await fetchAsset(`${assetBase}/asset/__video__`); } catch { missingAssets++; } }
         else if (data.video?.dataUrl) { try { videoBlob = await (await fetch(data.video.dataUrl)).blob(); } catch { } }
         if (videoBlob) {
             videoBlobRef.current = videoBlob;
@@ -1309,6 +1310,10 @@ export default function App() {
             videoBlobRef.current = null; dispatchMedia(clearVideo());
             detachMedia(videoElRef.current);
         }
+            // Said once, after everything that could be loaded has been. A project that opens
+            // with holes in it should say so - the alternative is blank frames that look like the
+            // work was lost.
+            if (missingAssets) setAppError(tr('{0}개의 파일을 서버에서 찾지 못해 비어 있습니다.', missingAssets));
         } finally { setLoadProgress(null); restoreBusyRef.current = false; }
         return true;
     };
@@ -1429,6 +1434,20 @@ export default function App() {
             const doc = tabDocsRef.current[target.id];
             if (doc) await restore(doc); else resetToEmpty();
         }
+    };
+
+    // Fetch one stored asset, or throw.
+    //
+    // fetch only rejects on a network failure: a 404 is a perfectly good response, and calling
+    // .blob() on it succeeds. The server answers a missing asset with 404 {"error":"not found"},
+    // so without this check that JSON became the frame's image data - and the silent catch around
+    // the call never fired, because nothing threw. The project opened with blank frames and no
+    // explanation, and for the audio it was worse: the error page ended up in audioB64Ref and was
+    // written into the next .emv file.
+    const fetchAsset = async (url) => {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.blob();
     };
 
     // --- Server-side project storage (separate from local download / .emv file) ---
