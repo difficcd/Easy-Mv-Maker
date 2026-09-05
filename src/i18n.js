@@ -663,6 +663,7 @@ const EN = {
     '저장한 파일에 쓸 수 없어 다운로드로 저장합니다': 'Could not write to the saved file, so it was downloaded instead',
     '현재 탭을 저장할 수 없어 탭을 바꾸지 않았습니다: ': 'The current tab could not be saved, so the tab was not switched: ',
     '현재 탭을 저장할 수 없어 새 탭을 열지 않았습니다: ': 'The current tab could not be saved, so no new tab was opened: ',
+    '{0}개의 파일을 서버에서 찾지 못해 비어 있습니다.': '{0} file(s) could not be found on the server, so they are empty.',
     '서버 저장 실패: ': 'Could not save to the server: ',
     '서버 목록을 불러오지 못했습니다: ': 'Could not load the server list: ',
     '서버에서 열기 실패: ': 'Could not open from the server: ',
