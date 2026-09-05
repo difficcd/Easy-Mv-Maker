@@ -27,44 +27,64 @@ function openDB() {
     return dbPromise;
 }
 
-function tx(db, mode) {
-    return db.transaction(STORE, mode).objectStore(STORE);
-}
-
-export async function saveProject(id, data, name) {
+/**
+ * Run one request in one transaction, and settle when the transaction does.
+ *
+ * The four operations below were four copies of the same six lines, and all four resolved on
+ * `request.onsuccess`. That is early. A request succeeding means the store accepted it; the
+ * transaction still has to commit, and a commit can fail afterwards - running out of quota is
+ * the one that actually happens here, because an autosave carries the whole project, frames and
+ * audio included. Resolving on the request meant a save that never landed was reported as saved,
+ * and the autosave error the UI already knows how to show could not fire.
+ *
+ * `map` runs while the result is still valid, and its value is held until the commit.
+ *
+ * @template T
+ * @param {IDBTransactionMode} mode
+ * @param {(store: IDBObjectStore) => IDBRequest} make
+ * @param {(result: any) => T} [map]
+ * @returns {Promise<T>}
+ */
+async function run(mode, make, map) {
     const db = await openDB();
-    return /** @type {Promise<void>} */ (new Promise((resolve, reject) => {
-        const req = tx(db, 'readwrite').put({ id, name: name ?? data?.name ?? id, savedAt: data?.savedAt ?? new Date().toISOString(), data });
-        req.onsuccess = () => resolve();
-        req.onerror = () => reject(req.error);
+    return /** @type {Promise<T>} */ (new Promise((resolve, reject) => {
+        let t;
+        try { t = db.transaction(STORE, mode); } catch (e) { reject(e); return; }
+        let value = /** @type {any} */ (undefined);
+        let failed = false;
+        const fail = (e) => { if (!failed) { failed = true; reject(e instanceof Error ? e : new Error(String(e || 'IndexedDB failed'))); } };
+        let req;
+        try { req = make(t.objectStore(STORE)); } catch (e) { fail(e); return; }
+        req.onsuccess = () => { try { value = map ? map(req.result) : undefined; } catch (e) { fail(e); } };
+        req.onerror = () => fail(req.error);
+        t.oncomplete = () => { if (!failed) resolve(value); };
+        t.onabort = () => fail(t.error || new Error('IndexedDB transaction aborted'));
+        t.onerror = () => fail(t.error);
     }));
 }
 
-export async function loadProject(id) {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-        const req = tx(db, 'readonly').get(id);
-        req.onsuccess = () => resolve(req.result ? req.result.data : null);
-        req.onerror = () => reject(req.error);
-    });
-}
-
-export async function listProjects() {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-        const req = tx(db, 'readonly').getAll();
-        req.onsuccess = () => resolve((req.result || []).map(r => ({ id: r.id, name: r.name, savedAt: r.savedAt })));
-        req.onerror = () => reject(req.error);
-    });
-}
-
-export async function deleteProject(id) {
-    const db = await openDB();
-    return /** @type {Promise<void>} */ (new Promise((resolve, reject) => {
-        const req = tx(db, 'readwrite').delete(id);
-        req.onsuccess = () => resolve();
-        req.onerror = () => reject(req.error);
+/** @returns {Promise<void>} */
+export function saveProject(id, data, name) {
+    return run('readwrite', (store) => store.put({
+        id,
+        name: name ?? data?.name ?? id,
+        savedAt: data?.savedAt ?? new Date().toISOString(),
+        data,
     }));
+}
+
+export function loadProject(id) {
+    return run('readonly', (store) => store.get(id), (r) => (r ? r.data : null));
+}
+
+export function listProjects() {
+    return run('readonly', (store) => store.getAll(),
+        (rows) => (rows || []).map(r => ({ id: r.id, name: r.name, savedAt: r.savedAt })));
+}
+
+/** @returns {Promise<void>} */
+export function deleteProject(id) {
+    return run('readwrite', (store) => store.delete(id));
 }
 
 export const autosaveKey = AUTOSAVE_ID;
