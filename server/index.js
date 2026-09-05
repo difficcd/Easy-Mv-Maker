@@ -68,11 +68,28 @@ const AUDIO_MIME = { webm: 'audio/webm', mp4: 'audio/mp4', ogg: 'audio/ogg', m4a
  * from. Two copies of the stored shape are two chances for "save as new" and "overwrite" to
  * write different files - and the difference would only show up when one of them was opened.
  */
-async function writeProject(id, req, res) {
+async function writeProject(rawId, req, res) {
+    // Sanitised here rather than by one of the two callers, so it is done once and the id written
+    // into the file always matches the filename fileFor builds from it. Every path builder does
+    // its own safeId as well; a caller doing it too made the ones that did not look unguarded.
+    const id = safeId(rawId);
     const name = req.body?.name || 'Untitled';
     // The body is either { name, data } or the document itself, depending on which client wrote it.
     const data = req.body?.data ?? req.body;
-    await fs.writeFile(fileFor(id), JSON.stringify({ id, name, savedAt: new Date().toISOString(), data }));
+    // Temp file then rename, the same way a backup is written, and for the same reason its
+    // comment gives: a crash or a full disk part-way through must not leave a half-written file.
+    // Only the backup had it. The project - the thing a backup exists to protect - was written
+    // straight over the previous copy, so an interrupted save destroyed the good one. That this
+    // happens is not hypothetical: listJsonDir below already skips files that will not parse,
+    // "so one corrupt save should not make the project list unopenable". This is where they came
+    // from.
+    //
+    // The temp name ends in .json.tmp, which the .json filters everywhere else already skip, so
+    // one left behind by a failed rename is inert rather than showing up as a project.
+    const target = fileFor(id);
+    const tmp = `${target}.tmp`;
+    await fs.writeFile(tmp, JSON.stringify({ id, name, savedAt: new Date().toISOString(), data }));
+    await fs.rename(tmp, target);
     res.json({ id, name });
 }
 
@@ -121,7 +138,7 @@ app.post('/api/projects', async (req, res) => {
 // Overwrite an existing project.
 app.put('/api/projects/:id', async (req, res) => {
     try {
-        await writeProject(safeId(req.params.id), req, res);
+        await writeProject(req.params.id, req, res);
     } catch (e) { res.status(500).json({ error: String(e) }); }
 });
 
