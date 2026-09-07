@@ -37,6 +37,7 @@ import {
 import { cloneCutContents as cloneCutContentsPure } from './core/cutClone.js';
 import { DEFAULT_KEYS, KEY_LABELS, keyOf, matchShortcut, keymapFrom, toolFromAction, findConflicts } from './core/shortcuts.js';
 import { derivePartsFrom, deriveVideoBatches } from './core/partOps.js';
+import { importPlacement, buildImportedCuts } from './core/videoCuts.js';
 import { playRange } from './core/playRange.js';
 import { clampBrush, brushUp, brushDown } from './core/brushSize.js';
 import {
@@ -3495,10 +3496,7 @@ export default function App() {
             }
             // Re-importing the same source replaces its old frames instead of piling up duplicates.
             const srcKey = cfg.srcKey;
-            const kept = cuts.filter(c => c.videoSrc !== srcKey);
-            const track = kept.find(c => c.id === currentCutId)?.track ?? 0;
-            const startAt = kept.filter(c => c.track === track).reduce((m, c) => Math.max(m, c.endTime), 0);
-            const dur = 1 / Math.max(0.1, fps);
+            const { track, startAt } = importPlacement(cuts, srcKey, currentCutId);
             // The batch key comes from an id rather than the clock so that importing twice in
             // quick succession cannot produce two batches with the same name.
             const batch = 'vb_' + nextId().toString(36);
@@ -3506,26 +3504,15 @@ export default function App() {
             // Native-res frames keep the source aspect, so letterbox-fit them into the canvas;
             // compressed frames are already pre-letterboxed to the canvas (full-canvas paste).
             const fit = (isNative && fW && fH) ? fitRect(fW, fH, TW, TH) : { x: 0, y: 0, w: TW, h: TH };
-            const px = Math.round(fit.x), py = Math.round(fit.y), pw = Math.round(fit.w), ph = Math.round(fit.h);
-            // Split the import into N sequential parts (part1~n) so a long video comes in already
-            // organized. videoBatch stays one value (the frame manager deletes the whole import).
-            const nParts = Math.max(1, Math.min(frames.length, Math.floor(cfg.parts) || 1));
-            const perPart = Math.ceil(frames.length / nParts);
-            const made = [];
-            let t = startAt;
-            for (let i = 0; i < frames.length; i++) {
-                const bitmapId = await storeBitmapBlob(frames[i], fW, fH);
-                const s = t, e = t + dur * (holds[i] || 1); // held frames span their whole duplicate run
-                t = e;
-                const pIdx = nParts > 1 ? Math.floor(i / perPart) : 0;
-                const partId = nParts > 1 ? `${batch}_p${pIdx}` : batch;
-                const partName = nParts > 1 ? `${label} ${pIdx + 1}` : label;
-                made.push({
-                    id: nextId(), name: `${label} ${i + 1}`, startTime: s, endTime: e, track,
-                    activeLayerId: 1, texts: [], videoBatch: batch, videoLabel: label, videoSrc: srcKey, partId, partName,
-                    layers: [{ id: 1, name: 'L1', type: 'layer', parentId: null, visible: true, redoStrokes: [], strokes: [{ id: nextId(), tool: 'paste', bitmapId, x: px, y: py, w: pw, h: ph }] }],
-                });
-            }
+            const rect = { x: Math.round(fit.x), y: Math.round(fit.y), w: Math.round(fit.w), h: Math.round(fit.h) };
+            // Storing the blobs is the only part of this that has to happen here: everything after
+            // it - where the cuts go, how long each lasts, which part it belongs to - is arithmetic,
+            // and lives in core/videoCuts.js where it can be tested.
+            const bitmapIds = [];
+            for (let i = 0; i < frames.length; i++) bitmapIds.push(await storeBitmapBlob(frames[i], fW, fH));
+            const made = buildImportedCuts({
+                bitmapIds, holds, fps, track, startAt, batch, label, srcKey, parts: cfg.parts, rect, nextId,
+            });
             dispatchCuts(replaceBatchCuts(srcKey, made));
             setCurrentCutId(made[0].id);
             setCurrentTime(made[0].startTime);

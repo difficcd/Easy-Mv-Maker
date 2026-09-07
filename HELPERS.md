@@ -85,6 +85,20 @@ Clipping: a layer that only shows where the layer beneath it has paint.
 | `canClip` | Whether the clip toggle would do anything. False only for the bottom layer, which has nothing to clip to. |
 | `clipGroups` | Which layers clip to which base. A run of clipped layers all attach to the same base, and a clipped layer with nothing below it draws normally rather than vanishing. |
 
+## `src/core/videoCuts.js`
+
+Turning extracted video frames into cuts: the arithmetic in the middle of the import, with the
+file reading and the bitmap storing taken off either end. It was inline in a function that also
+picks a canvas size, decodes a video, stores blobs, loads the audio and moves the playhead - so
+the part with the actual rules in it was the part nobody could test.
+
+| | |
+|---|---|
+| `importPlacement` | Which track an import goes on and where it starts: after whatever is already on that track, so a second video does not land on the first. Cuts from the same source are ignored, since a re-import replaces them. |
+| `frameDurations` | How long each frame lasts. One frame's worth, except where the extractor collapsed a run of identical frames - a held frame spans its whole run, so a still shot stays still. Never zero: a cut of no length cannot be selected. |
+| `partAssigner` | Which part each frame belongs to. Split by count, so the last part is the short one; with a single part there are no part suffixes at all. |
+| `buildImportedCuts` | The cuts themselves, laid end to end, each holding one paste stroke of its frame - which is what makes an imported frame drawable over rather than a background. |
+
 ## `src/core/viewZoom.js`
 
 How far the canvas view may be zoomed. It was in three places and they disagreed: pinch and the
