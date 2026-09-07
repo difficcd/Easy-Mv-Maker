@@ -295,22 +295,30 @@ app.get('/api/youtube-audio', async (req, res) => {
     if (!isYouTubeUrl(url)) { res.status(400).json({ error: 'not a YouTube address' }); return; }
     const dir = path.join(os.tmpdir(), `yt_${Date.now()}_${Math.random().toString(36).slice(2)}`);
     await fs.mkdir(dir, { recursive: true });
-    // bestaudio in its native container — no ffmpeg needed; browser plays m4a/webm.
-    const p = spawn('yt-dlp', ['-f', 'bestaudio/best', '--no-playlist', '--extractor-args', 'youtube:player_client=default,web_safari,android', '-o', path.join(dir, 'audio.%(ext)s'), url]);
-    let err = '';
-    p.stderr.on('data', d => { err += d; });
-    p.on('error', (e) => { fs.rm(dir, { recursive: true, force: true }); res.status(500).json({ error: 'yt-dlp 실행 불가 (설치 필요): ' + e.message }); });
-    p.on('close', async (code) => {
-        try {
-            if (code !== 0) { res.status(500).json({ error: friendlyYtError(err) }); return; }
-            const files = await fs.readdir(dir);
-            if (!files.length) { res.status(500).json({ error: '오디오 파일 없음' }); return; }
-            const f = files[0];
-            res.setHeader('Content-Type', audioType(path.extname(f).toLowerCase()));
-            res.send(await fs.readFile(path.join(dir, f)));
-        } catch (e) { res.status(500).json({ error: String(e) }); }
-        finally { fs.rm(dir, { recursive: true, force: true }).catch(() => { }); }
-    });
+    try {
+        // bestaudio in its native container — no ffmpeg needed; browser plays m4a/webm.
+        //
+        // Through runYtdlp, like the video route below, rather than wiring 'error' and 'close' by
+        // hand. A failed spawn emits BOTH of those - measured, not assumed: a missing binary gives
+        // error then close(-4058) - so the hand-wired version answered the request twice, once
+        // with the useful "yt-dlp 실행 불가 (설치 필요)" and again with whatever friendlyYtError
+        // made of an empty stderr. A promise can only settle once, which is the whole reason
+        // runYtdlp exists.
+        const { code, err } = await runYtdlp(['-f', 'bestaudio/best', '--no-playlist', '--extractor-args', 'youtube:player_client=default,web_safari,android', '-o', path.join(dir, 'audio.%(ext)s'), url]);
+        if (err.startsWith('SPAWN:')) { res.status(500).json({ error: 'yt-dlp 실행 불가 (설치 필요): ' + err.slice(6) }); return; }
+        if (code !== 0) { res.status(500).json({ error: friendlyYtError(err) }); return; }
+        // .part is a half-written download. The video route already skipped these; this one took
+        // whatever readdir happened to return first, and readdir promises no order.
+        const files = (await fs.readdir(dir)).filter(f => !f.endsWith('.part'));
+        if (!files.length) { res.status(500).json({ error: '오디오 파일 없음' }); return; }
+        const f = files[0];
+        res.setHeader('Content-Type', audioType(path.extname(f).toLowerCase()));
+        res.send(await fs.readFile(path.join(dir, f)));
+    } catch (e) {
+        res.status(500).json({ error: String(e) });
+    } finally {
+        fs.rm(dir, { recursive: true, force: true }).catch(() => { });
+    }
 });
 
 // Local-only: fetch a video by URL for frame extraction. Progressive single-file formats
