@@ -24,7 +24,7 @@
     "@capacitor/android": "^8.5.1",
     "@capacitor/core": "^8.5.1",
     "express": "^5.2.1",
-    "lucide-react": "^1.37.0",
+    "lucide-react": "^1.40.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
