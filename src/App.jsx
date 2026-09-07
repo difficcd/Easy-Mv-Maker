@@ -25,6 +25,7 @@ import { useHistory } from './hooks/useHistory.js';
 import { usePlayback } from './hooks/usePlayback.js';
 import { useServerProbe } from './hooks/useServerProbe.js';
 import { useServerStorage } from './hooks/useServerStorage.js';
+import { usePanelLayout } from './hooks/usePanelLayout.js';
 import { fetchAsset } from './core/api.js';
 import { useAutosave } from './hooks/useAutosave.js';
 import { nextProbeDelay } from './core/probeBackoff.js';
@@ -252,17 +253,21 @@ export default function App() {
     const currentCut = cuts.find(c => c.id === currentCutId);
     const [loopPlay, setLoopPlay] = useState(false);
     const [playbackRate, setPlaybackRate] = useState(1);
-    const [rightW, setRightW] = useState(270);
     // Which tab the cut panel is showing. It follows the editor rather than being chosen: a text
     // you have just opened is the thing you want to see.
     const [rightTab, setRightTab] = useState('cut');
-    const [leftW, setLeftW] = useState(96);
-    const [colorW, setColorW] = useState(200);
-    const [timelineH, setTimelineH] = useState(240);
+    // Panel geometry: where each panel is docked, how wide it is, and the drags that change
+    // either. It reads nothing about the document, which is why it could leave whole.
+    const {
+        leftW, rightW, colorW, toolW, timelineH,
+        setLeftW, setRightW, setColorW, setTimelineH,
+        panelWidth, docks, floatPos, panelDrag,
+        onDockPointerDown, startPanelResize, startBottomResize,
+    } = usePanelLayout({ panelIds: PANEL_IDS, widthRange: PANEL_W });
+
     const [showLeft, setShowLeft] = useState(true);
     const [showRight, setShowRight] = useState(true);
     const [showBottom, setShowBottom] = useState(true);
-    const [splitter, setSplitter] = useState(null);
     // True while the playhead is being dragged. Rendering treats it as playback (see paintFrame).
     const [scrubbing, setScrubbing] = useState(false);
 
@@ -270,19 +275,6 @@ export default function App() {
 
     // Where each panel lives: 'left', 'right' or 'float'. Panels are drawn from these rather than
     // from fixed positions in the layout, so dragging one only has to change this value.
-    const [docks, setDocks] = useStored('mv_docks', { tools: 'left', color: 'left', cut: 'right' }, {
-        // A layout stored by a version that docked differently is treated as absent rather than
-        // restored into a shape this one cannot lay out.
-        decode: (raw) => { const v = JSON.parse(raw); return v && ['left', 'right', 'float'].includes(v.tools) ? v : undefined; },
-        encode: JSON.stringify,
-    });
-    const [floatPos, setFloatPos] = useStored('mv_floats',
-        { tools: { x: 120, y: 120 }, color: { x: 160, y: 160 }, cut: { x: 200, y: 200 } }, {
-        decode: (raw) => { const v = JSON.parse(raw); return v && typeof v === 'object' ? v : undefined; },
-        encode: JSON.stringify,
-    });
-    // The panel being dragged by its header, plus where it would land if dropped now.
-    const [panelDrag, setPanelDrag] = useState(null);
 
     const [snapLinePos, setSnapLinePos] = useState(null);
     // The audio and video tracks move together - loading audio sets four of these at once - so
@@ -937,24 +929,6 @@ export default function App() {
         }
     }, [currentTime, isPlaying, videoOverlay]);
 
-    useEffect(() => {
-        if (!splitter) return;
-        const mv = (e) => {
-            // Relative to grab point so the panel doesn't jump on first move (precise drag).
-            if (splitter.type === 'panel') {
-                // A left-docked panel grows as the pointer moves right; a right-docked one is the
-                // mirror image, so the sign follows the side it is docked to.
-                const delta = splitter.side === 'left' ? (e.clientX - splitter.startX) : (splitter.startX - e.clientX);
-                const [lo, hi] = PANEL_W[splitter.id] || PANEL_W.cut;
-                const w = Math.max(lo, Math.min(hi, splitter.startW + delta));
-                if (splitter.id === 'color') setColorW(w);
-                else if (splitter.id === 'tools') setLeftW(w);
-                else setRightW(w);
-            }
-            else if (splitter.type === 'bottom') setTimelineH(Math.max(100, Math.min(600, splitter.startH + (splitter.startY - e.clientY))));
-        };
-        return dragOnWindow(mv, () => setSplitter(null));
-    }, [splitter]);
 
     // Zoom the timeline about a screen x (cursor), keeping the time under it fixed. The scroll
     // adjustment is deferred to a layout effect so it runs after the new width is laid out.
@@ -3790,7 +3764,6 @@ export default function App() {
     };
 
     // Tool panel: the buttons keep a comfortable size and the column count follows the width.
-    const toolW = Math.max(56, leftW || 96);
     // Named rather than inlined as [!!textEdit]: a dependency the linter cannot read is a
     // dependency nobody can check. This way it runs when the editor opens or closes and not
     // on every keystroke, which would drag the user back from the cut list mid-edit.
@@ -3800,35 +3773,7 @@ export default function App() {
     const isSelectionTool = tool === 'lasso' || !!selection;
     liveRef.current = { cuts, copiedCut, selection, audioData, numTracks }; // current GC + history sources
 
-    const PANEL_ROOTS = { color: '.color-panel', tools: '.toolbar', cut: '.right-panel' };
-    const panelWidth = { color: colorW, tools: toolW, cut: rightW };
     const panelOpen = { color: leftDock === 'color', tools: showLeft, cut: showRight };
-
-    // Which dock a pointer position means. The edge bands are wide enough to hit on a tablet;
-    // anywhere else means the panel is being pulled out into its own window.
-    const dropZoneAt = (x) => (x < 140 ? 'left' : x > window.innerWidth - 140 ? 'right' : 'float');
-
-    // Header drag is delegated from main-content rather than wired into each panel, so ColorPanel
-    // and CutLayerPanel keep their own markup and know nothing about docking.
-    const onDockPointerDown = (e) => {
-        if (e.button !== undefined && e.button !== 0) return;
-        const head = e.target.closest?.('.panel-head');
-        if (!head) return;
-        if (e.target.closest('button, input, select, textarea')) return;   // ✕ and controls still work
-        const id = PANEL_IDS.find(p => head.closest(PANEL_ROOTS[p]));
-        if (!id) return;
-        e.preventDefault();
-        const host = head.closest(PANEL_ROOTS[id]).getBoundingClientRect();
-        const grab = { dx: e.clientX - host.left, dy: e.clientY - host.top };
-        setPanelDrag({ id, x: e.clientX, y: e.clientY, zone: dropZoneAt(e.clientX), ...grab });
-        const mv = (ev) => setPanelDrag(d => d && ({ ...d, x: ev.clientX, y: ev.clientY, zone: dropZoneAt(ev.clientX) }));
-        dragOnWindow(mv, (ev) => {
-            const zone = dropZoneAt(ev.clientX);
-            setPanelDrag(null);
-            setDocks(d => ({ ...d, [id]: zone }));
-            if (zone === 'float') setFloatPos(p => ({ ...p, [id]: { x: Math.max(0, ev.clientX - grab.dx), y: Math.max(0, ev.clientY - grab.dy) } }));
-        });
-    };
 
     // A docked panel keeps a splitter on the side that faces the canvas.
     const panelSplitter = (id, side) => (
@@ -3836,7 +3781,7 @@ export default function App() {
             title={tr('드래그로 패널 너비 조절')}
             onPointerDown={e => {
                 try { e.currentTarget.setPointerCapture(e.pointerId); } catch { }
-                setSplitter({ type: 'panel', id, side, startX: e.clientX, startW: panelWidth[id] });
+                startPanelResize(id, side, e.clientX);
             }} />
     );
 
@@ -4127,7 +4072,7 @@ export default function App() {
                 <div className="dock-hint" style={{ [panelDrag.zone]: 0 }} />
             )}
 
-            {showBottom && <div className="splitter-h" style={{ touchAction: 'none' }} onPointerDown={e => { try { e.currentTarget.setPointerCapture(e.pointerId); } catch { } setSplitter({ type: 'bottom', startY: e.clientY, startH: timelineH }); }} />}
+            {showBottom && <div className="splitter-h" style={{ touchAction: 'none' }} onPointerDown={e => { try { e.currentTarget.setPointerCapture(e.pointerId); } catch { } startBottomResize(e.clientY); }} />}
 
             <Timeline
                 activePartId={activePartId} audioData={audioData} audioFile={audioFile} audioRef={audioRef}
