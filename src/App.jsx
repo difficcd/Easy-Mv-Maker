@@ -24,6 +24,8 @@ import { fmt, parseClock } from './core/timeCode.js';
 import { useHistory } from './hooks/useHistory.js';
 import { usePlayback } from './hooks/usePlayback.js';
 import { useServerProbe } from './hooks/useServerProbe.js';
+import { useServerStorage } from './hooks/useServerStorage.js';
+import { fetchAsset } from './core/api.js';
 import { useAutosave } from './hooks/useAutosave.js';
 import { nextProbeDelay } from './core/probeBackoff.js';
 import { playbackStartFrom } from './core/playbackStart.js';
@@ -339,7 +341,6 @@ export default function App() {
     // looks like it simply did nothing - which is exactly why one bug here took so long to find.
     const [appError, setAppError] = useState(null);
     const [toast, setToast] = useState(null);            // unobtrusive notice
-    const [backupProg, setBackupProg] = useState(null);  // automatic-backup progress, shown in the corner
     useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 3000); return () => clearTimeout(t); }, [toast]);
     const videoStopRef = useRef(false);
     const isExporting = useRef(false);
@@ -479,7 +480,6 @@ export default function App() {
     const pinchRef = useRef(null);
     const tlTouchRef = useRef(new Map());
     const tlPinchRef = useRef(null);
-    const [serverProjects, setServerProjects] = useState(null); // null = picker closed
     const [localProjects, setLocalProjects] = useState(null); // IndexedDB project picker
     const localIdRef = useRef(null);
     const localNameRef = useRef('');
@@ -491,16 +491,11 @@ export default function App() {
     // whatever was on screen: frames from project 1 appearing in project 2. Each job takes a copy
     // of this when it starts and drops its result if it no longer matches.
     const docEpochRef = useRef(0);
-    const serverIdRef = useRef(null);
-    const serverNameRef = useRef('');
     const cutDragMovedRef = useRef(false); // distinguishes a click (select) from a real drag (move)
     const cutDragArmedRef = useRef(false); // long-press must arm before a touch can drag a cut
     const cutDragTimerRef = useRef(null);
     const [animLayer, setAnimLayer] = useState(null); // {cutId, layerId} whose part-anim panel is open
     const [jitterLayer, setJitterLayer] = useState(null); // {cutId, layerId} whose boiling-settings panel is open
-    const [backupAt, setBackupAt] = useState(null);      // time of the last server backup
-    const [backupBusy, setBackupBusy] = useState(false);
-    const [backupList, setBackupList] = useState(null);  // null = the list is closed
     // A transparent canvas is a different document, not a different view: the frame really has
     // no background, and the checkerboard behind it is CSS on the element rather than pixels.
     // Painting the checkerboard in would put it in every export.
@@ -514,9 +509,6 @@ export default function App() {
 
     const [storageInfo, setStorageInfo] = useState(null); // local storage usage
     const [loadProgress, setLoadProgress] = useState(null); // {label, done, total}; total 0 means the length is unknown
-    const backupKeyRef = useRef(null);
-    const backupBusyRef = useRef(false);
-    const lastBackupSigRef = useRef('');
     // The lang state exists only to trigger a redraw; lookups read the module variable.
     // Nothing here is memoised, so changing it re-renders the whole tree in the new language.
     const [lang, setLang] = useState(loadLang);
@@ -1317,6 +1309,23 @@ export default function App() {
         } finally { setLoadProgress(null); restoreBusyRef.current = false; }
         return true;
     };
+
+    // Server projects and their rotating backups. Called here rather than beside the other hooks
+    // because it needs buildData and restore, and both are defined above this point - a hook may
+    // be called anywhere in the body as long as it is called unconditionally and in the same
+    // order every render, and this is the first place both exist.
+    const {
+        serverProjects, setServerProjects,
+        backupAt, backupBusy, backupList, setBackupList, backupProg,
+        serverIdRef, serverNameRef, forgetProject,
+        doServerSave, openServerList, doServerOpen, doServerDelete,
+        doServerBackup, openBackupList, doBackupRestore, doBackupDelete,
+    } = useServerStorage({
+        serverAvailable, buildData, restore,
+        setLoadProgress, setAppError, setToast,
+        liveRef, localNameRef,
+    });
+
     const doSave = async (asNew = false) => {
         const json = JSON.stringify(await buildData(), null, 2);
         if ('showSaveFilePicker' in window && (asNew || !fileHandleRef.current)) {
@@ -1374,7 +1383,7 @@ export default function App() {
         setNumTracks(2); setCurrentCutId(1); setCurrentTime(0); setExpandedCuts(new Set());
         setCopiedCut(null); setSelectedCutIds(new Set()); setActivePartId(null);
         setLayerCanvasCache({});
-        serverIdRef.current = null; serverNameRef.current = '';
+        forgetProject();
         detachMedia(audioRef.current);
         audioB64Ref.current = null; dispatchMedia(clearAudio());
         videoBlobRef.current = null; dispatchMedia(clearVideo()); setSceneCfg(null);
@@ -1435,181 +1444,6 @@ export default function App() {
             if (doc) await restore(doc); else resetToEmpty();
         }
     };
-
-    // Fetch one stored asset, or throw.
-    //
-    // fetch only rejects on a network failure: a 404 is a perfectly good response, and calling
-    // .blob() on it succeeds. The server answers a missing asset with 404 {"error":"not found"},
-    // so without this check that JSON became the frame's image data - and the silent catch around
-    // the call never fired, because nothing threw. The project opened with blank frames and no
-    // explanation, and for the audio it was worse: the error page ended up in audioB64Ref and was
-    // written into the next .emv file.
-    const fetchAsset = async (url) => {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.blob();
-    };
-
-    // --- Server-side project storage (separate from local download / .emv file) ---
-    const apiFetch = async (url, opts) => {
-        const res = await fetch(url, opts);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
-    };
-    // Upload externalized frame assets one at a time (binary, no base64) so peak memory is a
-    // single frame — this is what keeps big/original-quality projects from OOMing on save.
-    const uploadAssets = async (id, assetSink) => {
-        const total = assetSink.length;
-        for (let i = 0; i < total; i++) {
-            const a = assetSink[i];
-            // Prefer the Blob (uploads directly, no decode); fall back to a legacy dataURL.
-            const blob = a.blob || await (await fetch(a.url)).blob();
-            const res = await fetch(`/api/projects/${id}/asset/${a.id}?ext=${encodeURIComponent(a.ext)}`, {
-                method: 'PUT', headers: { 'Content-Type': blob.type || 'application/octet-stream' }, body: blob,
-            });
-            if (!res.ok) throw new Error(tr('프레임 업로드 실패 ({0}/{1})', i + 1, total));
-            if (total > 12) setLoadProgress({ label: tr('서버에 올리는 중'), done: i + 1, total });
-        }
-    };
-    const doServerSave = async (forceNew = false) => {
-        try {
-            const assetSink = [];
-            const data = await buildData(true, assetSink); // frames/audio externalized → small JSON
-            let id = (!forceNew && serverIdRef.current) ? serverIdRef.current : null;
-            let name = serverNameRef.current || 'Untitled';
-            if (!id) {
-                name = window.prompt(tr('서버에 저장할 프로젝트 이름:'), serverNameRef.current || 'MV Project');
-                if (!name) return;
-                // Create the record first (just to get an id); the real data is committed LAST.
-                const r = await apiFetch('/api/projects', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name, data: { appName: 'EasyMVMaker', pending: true } }),
-                });
-                id = r.id; serverIdRef.current = r.id; serverNameRef.current = r.name;
-            }
-            // Upload assets BEFORE writing the manifest, so an interrupted save never leaves the
-            // project JSON pointing at frames/audio that aren't on disk (which caused 404s + blanks).
-            if (assetSink.length) await uploadAssets(id, assetSink);
-            await apiFetch(`/api/projects/${id}`, {
-                method: 'PUT', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, data }),
-            });
-            alert(tr('서버에 저장했습니다.'));
-        } catch (e) {
-            console.error('[import]', e);
-            setAppError(tr('서버 저장 실패: ') + e.message + '\n' + tr('(API 서버가 실행 중인지 확인하세요. 큰 프로젝트는 저장에 시간이 걸립니다.)'));
-        } finally { setLoadProgress(null); }
-    };
-    const openServerList = async () => {
-        try { setServerProjects(await apiFetch('/api/projects')); }
-        catch (e) { alert(tr('서버 목록을 불러오지 못했습니다: ') + e.message + '\n' + tr('(API 서버 실행 확인: npm run dev)')); }
-    };
-    const doServerOpen = async (id, name) => {
-        try {
-            const data = await apiFetch(`/api/projects/${id}`);
-            // Only claim the identity if the document actually went in - otherwise the next save
-            // would write this project's id over whatever is really on screen.
-            if (!await restore(data, `/api/projects/${id}`)) return; // assets come from this project
-            serverIdRef.current = id; serverNameRef.current = name || '';
-            setServerProjects(null);
-        } catch (e) { alert(tr('서버에서 열기 실패: ') + e.message); }
-    };
-    const doServerDelete = async (id) => {
-        if (!window.confirm(tr('이 프로젝트를 서버에서 삭제할까요?'))) return;
-        try {
-            await apiFetch(`/api/projects/${id}`, { method: 'DELETE' });
-            if (serverIdRef.current === id) { serverIdRef.current = null; serverNameRef.current = ''; }
-            openServerList();
-        } catch (e) { alert(tr('삭제 실패: ') + e.message); }
-    };
-
-    // --- Rotating server backups of the autosave (a safety net separate from Save) ---------
-    // The local IndexedDB autosave protects against a crash/refresh; this protects against the
-    // browser profile itself being lost or a project being overwritten. Snapshots are kept as
-    // separate timestamped files server-side and rotated, so you can roll back.
-    const getBackupKey = () => {
-        if (serverIdRef.current) return serverIdRef.current; // group under the server project if there is one
-        if (!backupKeyRef.current) {
-            let k = readStored('mv_backup_key', '');
-            if (!k) {
-                k = randomId('bk_');
-                writeStored('mv_backup_key', k);
-            }
-            backupKeyRef.current = k;
-        }
-        return backupKeyRef.current;
-    };
-    // Skip frames the server already has — otherwise every backup of a video project would
-    // re-upload hundreds of MB. Assets are keyed by bitmapId, so presence means identical.
-    const uploadAssetsDeduped = async (key, assetSink, onProgress) => {
-        let have = new Set();
-        try { have = new Set((await apiFetch(`/api/projects/${key}/assets`)).map(String)); } catch { }
-        const todo = assetSink.filter(a => !have.has(String(a.id)));
-        for (let i = 0; i < todo.length; i++) {
-            const a = todo[i];
-            const blob = a.blob || await (await fetch(a.url)).blob();
-            const res = await fetch(`/api/projects/${key}/asset/${a.id}?ext=${encodeURIComponent(a.ext)}`, {
-                method: 'PUT', headers: { 'Content-Type': blob.type || 'application/octet-stream' }, body: blob,
-            });
-            if (!res.ok) throw new Error(tr('에셋 업로드 실패 ({0}/{1})', i + 1, todo.length));
-            setBackupProg({ done: i + 1, total: todo.length });
-            onProgress?.(i + 1, todo.length);
-        }
-        return todo.length;
-    };
-    // The automatic backup runs itself every five minutes, so it must never block the screen.
-    // It used to raise a full-screen progress overlay, which stopped all work while it ran.
-    const doServerBackup = async (silent = true) => {
-        if (!serverAvailable || backupBusyRef.current) return;
-        backupBusyRef.current = true; setBackupBusy(true); setBackupProg(null);
-        try {
-            const key = getBackupKey();
-            const assetSink = [];
-            const data = await buildData(true, assetSink); // frames and audio go out as separate assets, keeping the JSON small
-            if (assetSink.length) await uploadAssetsDeduped(key, assetSink);
-            await apiFetch(`/api/backups/${key}`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: serverNameRef.current || localNameRef.current || tr('자동 백업'), data }),
-            });
-            setBackupAt(Date.now());
-            if (!silent) setToast(tr('서버에 백업했습니다.'));
-        } catch (e) {
-            if (!silent) setAppError(tr('서버 백업 실패: ') + e.message);
-        } finally { backupBusyRef.current = false; setBackupBusy(false); setBackupProg(null); }
-    };
-    const openBackupList = async () => {
-        try { setBackupList(await apiFetch(`/api/backups/${getBackupKey()}`)); }
-        catch (e) { alert(tr('백업 목록을 불러오지 못했습니다: ') + e.message); }
-    };
-    const doBackupRestore = async (stamp) => {
-        if (!window.confirm(tr('이 백업으로 되돌릴까요? 현재 작업 내용은 사라집니다.'))) return;
-        try {
-            const key = getBackupKey();
-            const data = await apiFetch(`/api/backups/${key}/${stamp}`);
-            if (!await restore(data, `/api/projects/${key}`)) return; // assets come from the same key
-            setBackupList(null);
-        } catch (e) { alert(tr('백업 복구 실패: ') + e.message); }
-    };
-    const doBackupDelete = async (stamp) => {
-        if (!window.confirm(tr('이 백업을 삭제할까요?'))) return;
-        try { await apiFetch(`/api/backups/${getBackupKey()}/${stamp}`, { method: 'DELETE' }); openBackupList(); }
-        catch (e) { alert(tr('삭제 실패: ') + e.message); }
-    };
-    // Periodic backup. Reads the newest state through a ref: putting `cuts` in the deps would
-    // restart the timer on every stroke, so it would never actually fire while you draw.
-    const backupFnRef = useRef(null);
-    backupFnRef.current = doServerBackup;
-    useEffect(() => {
-        if (!serverAvailable) return;
-        const id = setInterval(() => {
-            const cs = liveRef.current?.cuts || [];
-            const sig = cs.length + ':' + cs.map(c => safeArray(c.layers).reduce((n, l) => n + safeArray(l.strokes).length, 0)).join(',');
-            if (sig === lastBackupSigRef.current) return; // nothing changed, so skip
-            lastBackupSigRef.current = sig;
-            backupFnRef.current?.(true);
-        }, 5 * 60 * 1000);
-        return () => clearInterval(id);
-    }, [serverAvailable]);
 
     // Ask the browser to make local storage persistent, so the IndexedDB autosave isn't
     // silently evicted under storage pressure (the main way local-only work gets lost).
