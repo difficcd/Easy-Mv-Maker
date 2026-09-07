@@ -2,6 +2,7 @@ import React from 'react';
 import { ChevronDown, Download, Upload, Film, Settings, AlertTriangle, DatabaseBackup } from 'lucide-react';
 import { tr } from '../i18n';
 import { Logo } from './Logo.jsx';
+import { clampCanvasSize } from '../core/canvasSize.js';
 
 // Top menu bar: the File and Media menus, resolution, canvas zoom, save state, Export.
 export function TopBar({
@@ -90,7 +91,7 @@ export function TopBar({
                         if (!s) return;
                         const m = s.match(/(\d+)\s*[xX*,\s]\s*(\d+)/);
                         if (!m) { alert(tr('예: 1920x1080')); return; }
-                        setCanvasSize({ w: Math.max(64, Math.min(8192, +m[1])), h: Math.max(64, Math.min(8192, +m[2])) });
+                        setCanvasSize(clampCanvasSize(m[1], m[2]) || { w: 1920, h: 1080 });
                     } else {
                         const [w, h] = e.target.value.split('x').map(Number);
                         setCanvasSize({ w, h });

@@ -37,6 +37,18 @@ was edited and the other was not.
 | `brushUp` | A quarter wider, plus one. The plus one is not decoration - 1 x 1.25 rounds back to 1, so without it the shortcut does nothing at the sizes where a single pixel matters most. |
 | `brushDown` | The mirror of it, which was missing: 2 / 1.25 rounds back to 2, so the shortcut for a smaller brush did nothing at all at size 2. Takes at least one pixel off, so the key always moves. |
 
+## `src/core/canvasSize.js`
+
+How large a project's canvas is allowed to be. The custom-size prompt already clamped to these two
+numbers as literals; the loader clamped nothing, so the limits applied to what a person can type
+and not to what a file can say - and a file is the easier of the two to get a wrong number into.
+
+| | |
+|---|---|
+| `CANVAS_MIN_EDGE` | 64px. Below this there is nothing to draw on. |
+| `CANVAS_MAX_EDGE` | 8192px. A canvas costs width x height x 4 bytes and is held more than once, so 8192 square is already 268MB a copy. |
+| `clampCanvasSize` | A size the app can actually allocate, or null when there isn't one here. Half a size counts as none: a width with no height gives a canvas of NaN, which fails far away from here. |
+
 ## `src/core/camera.js`
 
 Camera moves: presets, drawn paths, and the transform they resolve to.
@@ -311,6 +323,7 @@ Reading a saved project, including ones written by older versions.
 |---|---|
 | `makeLoadProgress` | Throttled progress for a load: no bar for a small project, at most a hundred repaints for a large one. |
 | `migrateCuts` | Bring saved cuts up to the current shape. Written as spread-then-override so a field the file already has always wins, and adding a new default here can never overwrite real data in an existing project. |
+| `MAX_TRACKS` | The most timeline tracks a project may claim. Every track is a rendered row, so this is a rendering budget rather than a rule about music videos - nothing in the app creates this many, but a file can still say so. |
 | `projectSettings` | What the app should look like after opening this project, with defaults for anything absent. |
 
 ## `src/core/shortcuts.js`

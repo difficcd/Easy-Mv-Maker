@@ -5,7 +5,9 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { projectSettings, migrateCuts, makeLoadProgress } from '../src/core/projectFormat.js';
+import { projectSettings, migrateCuts, makeLoadProgress, MAX_TRACKS } from '../src/core/projectFormat.js';
+import { PPS_MIN, PPS_MAX } from '../src/core/timelineZoom.js';
+import { CANVAS_MAX_EDGE } from '../src/core/canvasSize.js';
 
 // ── settings ───────────────────────────────────────────────────────────────
 test('projectSettings: takes what the file says', () => {
@@ -30,10 +32,40 @@ test('projectSettings: fills in everything an older file never wrote', () => {
 
 test('projectSettings: onion skin off is honoured, not treated as missing', () => {
     // `||` here would silently turn a deliberate false back on at every load.
-    const s = projectSettings({ cuts: [], onionPrev: false, onionNext: false, pps: 0 });
+    const s = projectSettings({ cuts: [], onionPrev: false, onionNext: false });
     assert.equal(s.onionPrev, false);
     assert.equal(s.onionNext, false);
-    assert.equal(s.pps, 0, 'a real zoom of zero is kept as written');
+});
+
+// This assertion used to read "a real zoom of zero is kept as written", guarding the same `||`
+// mistake as the flags above. But zero is not a real zoom: PPS_MIN is 10 because "below ten pixels
+// a second the cuts are too small to grab", so keeping a stored 0 restores a timeline that cannot
+// be used. Absence and wrongness are handled apart now - `??` for the first, a clamp for the
+// second - so the rule the test was written for still holds.
+test('projectSettings: a stored zoom of zero becomes the smallest usable one, not the default', () => {
+    assert.equal(projectSettings({ cuts: [], pps: 0 }).pps, PPS_MIN);
+    assert.equal(projectSettings({ cuts: [] }).pps, 50, 'and an absent one is still the default');
+});
+
+test('projectSettings: a zoom no gesture could reach is brought back into range', () => {
+    assert.equal(projectSettings({ cuts: [], pps: 99999 }).pps, PPS_MAX);
+    assert.equal(projectSettings({ cuts: [], pps: 'abc' }).pps, PPS_MIN);
+    assert.equal(projectSettings({ cuts: [], pps: 80 }).pps, 80, 'an ordinary one is untouched');
+});
+
+test('projectSettings: track counts a timeline can actually render', () => {
+    assert.equal(projectSettings({ cuts: [], numTracks: 0 }).numTracks, 1, 'a cut needs somewhere to sit');
+    assert.equal(projectSettings({ cuts: [], numTracks: -5 }).numTracks, 1,
+        'negative would put cuts on track -1, where nothing draws them');
+    assert.equal(projectSettings({ cuts: [], numTracks: 9999 }).numTracks, MAX_TRACKS,
+        'every track is a rendered row');
+    assert.equal(projectSettings({ cuts: [] }).numTracks, 2, 'absent is the default, not the floor');
+    assert.equal(projectSettings({ cuts: [], numTracks: 3 }).numTracks, 3);
+});
+
+test('projectSettings: a canvas nobody could allocate is brought back to the ceiling', () => {
+    assert.deepEqual(projectSettings({ cuts: [], canvas: { w: 100000, h: 100000 } }).canvas,
+        { w: CANVAS_MAX_EDGE, h: CANVAS_MAX_EDGE });
 });
 
 test('projectSettings: half a canvas size is no canvas size', () => {
