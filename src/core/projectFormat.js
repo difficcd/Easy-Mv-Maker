@@ -15,18 +15,49 @@
 //     plain layer at the root
 //   - texts arrived later still, so older cuts have no texts array at all
 
-/** What the app should look like after opening this project, with defaults for anything absent. */
+import { clampPps } from './timelineZoom.js';
+import { clampCanvasSize } from './canvasSize.js';
+
+/**
+ * The most timeline tracks a project may claim.
+ *
+ * Every track is a row the timeline renders, so this is a rendering budget rather than a rule
+ * about music videos. Nothing in the app creates this many; a file can still say so.
+ */
+export const MAX_TRACKS = 64;
+
+/** At least one track to put a cut on, at most MAX_TRACKS. Anything unreadable is the default 2. */
+function clampTracks(n) {
+    const t = Math.round(Number(n));
+    if (!Number.isFinite(t)) return 2;
+    return Math.max(1, Math.min(MAX_TRACKS, t));
+}
+
+/**
+ * What the app should look like after opening this project, with defaults for anything absent.
+ *
+ * This is the boundary where a file becomes app state, and it was the one place that applied none
+ * of the limits the app applies everywhere else. The custom-size prompt clamps what a person can
+ * type; the timeline clamps what a pinch or a wheel can reach. A file went straight in. A file is
+ * the easier of the two to get a wrong number into - hand-edited, written by an older version, or
+ * half-corrupted - and the failures land far from here: a pps of 0 renders every cut at zero
+ * width, a negative numTracks puts cuts on track -1 where nothing draws them, and a canvas of
+ * 100000 square asks for forty gigabytes.
+ */
 export function projectSettings(data) {
     const cuts = Array.isArray(data?.cuts) ? data.cuts : [];
-    const w = data?.canvas?.w, h = data?.canvas?.h;
     return {
-        // Only a complete size counts: half of one would give a canvas of NaN.
-        canvas: (w && h) ? { w, h } : null,
-        numTracks: data?.numTracks || 2,
+        // Half a size is treated as none at all: a width with no height gives a canvas of NaN.
+        canvas: clampCanvasSize(data?.canvas?.w, data?.canvas?.h),
+        // Absent and wrong are different, and `||` cannot tell them apart - which is what the
+        // onion-skin flags below are tested for. So absence is `??`, and a value that is present
+        // but unusable is clamped rather than replaced: a stored zoom of 0 becomes the smallest
+        // zoom the timeline can be read at, not the default someone else would have picked.
+        numTracks: clampTracks(data?.numTracks ?? 2),
         currentCutId: cuts[0]?.id ?? 1,
         onionPrev: data?.onionPrev ?? false,
         onionNext: data?.onionNext ?? false,
-        pps: data?.pps ?? 50,
+        pps: clampPps(data?.pps ?? 50),
     };
 }
 
