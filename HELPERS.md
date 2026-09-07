@@ -629,6 +629,7 @@ unsupported for every codec it offers.
 
 | | |
 |---|---|
+| `GifWriter` | A GIF being written one frame at a time; `encodeGif` is this with every frame handed over at once. Streaming is easy for this format because every frame already carries its own local colour table - nothing is shared, so a frame written after the next piece is loaded encodes identically. Refuses to finish with no frames, since a GIF of a header and a trailer is something a viewer opens and shows nothing for. |
 | `encodeGif` | Assemble an animated GIF. Each frame carries its own palette, and disposal 2 is what stops a transparent animation smearing the previous frame through the gaps. |
 | `buildPalette` | Colours actually used, exact while they fit in 255. Past that the least-used fold into their nearest neighbour, which suits a drawing of flat colour plus anti-aliasing. |
 | `toIndices` | One frame as palette indices, with slot 0 for anything under the alpha cutoff. |

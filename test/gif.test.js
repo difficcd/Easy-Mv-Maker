@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildPalette, toIndices, lzwEncode, paletteBits, encodeGif } from '../src/export/gif.js';
+import { execFileSync } from 'node:child_process';
+import { writeFileSync, unlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { buildPalette, toIndices, lzwEncode, paletteBits, encodeGif, GifWriter } from '../src/export/gif.js';
 
 const rgba = (...px) => new Uint8ClampedArray(px.flat());
 const OPAQUE_RED = [255, 0, 0, 255];
@@ -265,3 +269,127 @@ test('the pixels come back out of the file', () => {
         assert.deepEqual(table[indices[i]], [px[i * 4], px[i * 4 + 1], px[i * 4 + 2]], `pixel ${i}`);
     }
 });
+
+// --- the streaming writer ------------------------------------------------------------------
+// encodeGif is this class with every frame handed over at once, so the tests above already cover
+// the bytes. What is left is what only streaming can get wrong.
+
+const solid = (w, h, [r, g, b, a]) => {
+    const px = new Uint8ClampedArray(w * h * 4);
+    for (let i = 0; i < px.length; i += 4) { px[i] = r; px[i + 1] = g; px[i + 2] = b; px[i + 3] = a; }
+    return px;
+};
+
+test('GifWriter: one frame at a time gives the same file as all at once', () => {
+    const a = solid(4, 4, [255, 0, 0, 255]);
+    const b = solid(4, 4, [0, 128, 255, 255]);
+    const atOnce = encodeGif([{ rgba: a }, { rgba: b }], { width: 4, height: 4, delayMs: 80 });
+    const gif = new GifWriter({ width: 4, height: 4, delayMs: 80 });
+    gif.addFrame(a);
+    gif.addFrame(b);
+    assert.deepEqual([...gif.finish()], [...atOnce], 'a queue must not produce a different file');
+});
+
+// The reason streaming is easy for this format, stated as a test: nothing carries between frames,
+// so a frame written after another piece was loaded encodes exactly as if it had always been here.
+test('GifWriter: frames are independent, so writing them apart changes nothing', () => {
+    const a = solid(3, 3, [10, 20, 30, 255]);
+    const b = solid(3, 3, [200, 100, 50, 255]);
+    const together = new GifWriter({ width: 3, height: 3 });
+    together.addFrame(a); together.addFrame(b);
+    const bytes = together.finish();
+
+    // Encode b on its own and find its frame block inside the two-frame file: identical bytes.
+    const alone = new GifWriter({ width: 3, height: 3 });
+    alone.addFrame(b);
+    const aloneBytes = alone.finish();
+    // Both files share the same header, and both end with the trailer; strip those and the
+    // second frame of the pair must contain the whole of the single frame's block.
+    const body = aloneBytes.subarray(headerLength(aloneBytes), aloneBytes.length - 1);
+    assert.ok(indexOfSub(bytes, body) > 0, "the frame's bytes are the same wherever it was written");
+});
+
+test('GifWriter: the caller may reuse the pixel buffer it handed over', () => {
+    const px = solid(2, 2, [1, 2, 3, 255]);
+    const gif = new GifWriter({ width: 2, height: 2 });
+    gif.addFrame(px);
+    const afterFirst = gif.out.position;
+    px.fill(255);                                   // as a queue reusing one buffer would
+    gif.addFrame(px);
+    const bytes = gif.finish();
+    assert.ok(bytes.length > afterFirst, 'the second frame was encoded from the new contents');
+    assert.equal(bytes[bytes.length - 1], 0x3b);
+});
+
+test('GifWriter: a queue that produced nothing is refused, not written empty', () => {
+    assert.throws(() => new GifWriter({ width: 4, height: 4 }).finish(), /at least one frame/);
+});
+
+test('GifWriter: adding after finishing, or finishing twice, is refused', () => {
+    const gif = new GifWriter({ width: 2, height: 2 });
+    gif.addFrame(solid(2, 2, [0, 0, 0, 255]));
+    gif.finish();
+    assert.throws(() => gif.addFrame(solid(2, 2, [0, 0, 0, 255])), /already finished/);
+    assert.throws(() => gif.finish(), /already finished/);
+});
+
+test('GifWriter: a per-frame delay still overrides the default', () => {
+    const gif = new GifWriter({ width: 2, height: 2, delayMs: 1000 });
+    gif.addFrame(solid(2, 2, [0, 0, 0, 255]), { delayMs: 20 });
+    const bytes = gif.finish();
+    const gce = indexOfSub(bytes, new Uint8Array([0x21, 0xf9, 0x04]));
+    assert.equal(bytes[gce + 4] | (bytes[gce + 5] << 8), 2, '20ms is 2 hundredths');
+});
+
+/** Bytes before the first graphic-control extension: header, screen descriptor, loop block. */
+function headerLength(bytes) {
+    return indexOfSub(bytes, new Uint8Array([0x21, 0xf9, 0x04]));
+}
+
+/** Index of `needle` in `hay`, or -1. Small and linear, which is plenty for these sizes. */
+function indexOfSub(hay, needle) {
+    outer: for (let i = 0; i + needle.length <= hay.length; i++) {
+        for (let j = 0; j < needle.length; j++) if (hay[i + j] !== needle[j]) continue outer;
+        return i;
+    }
+    return -1;
+}
+
+// The counterpart to the unzip test in zip.test.js: our own byte assertions can only say the file
+// matches what we meant to write. This asks something that has never seen our code whether it is
+// a GIF. Skipped where ffprobe is not installed, since it is not a dependency.
+test('ffprobe reads a GIF written the way a queue writes one', { skip: !hasFfprobe() }, () => {
+    const W = 8, H = 8;
+    const solid = ([r, g, b, a]) => {
+        const px = new Uint8ClampedArray(W * H * 4);
+        for (let i = 0; i < px.length; i += 4) { px[i] = r; px[i + 1] = g; px[i + 2] = b; px[i + 3] = a; }
+        return px;
+    };
+    const gif = new GifWriter({ width: W, height: H, delayMs: 100 });
+    // Three "pieces", each releasing its pixels before the next is opened - the pattern the
+    // multi-piece export uses, rather than one array of frames built up first.
+    for (const colour of [[255, 0, 0, 255], [0, 255, 0, 255], [0, 0, 255, 255]]) {
+        let px = solid(colour);
+        gif.addFrame(px);
+        px = null;
+    }
+    const path = join(tmpdir(), `mv-gif-${process.pid}.gif`);
+    try {
+        writeFileSync(path, gif.finish());
+        const out = execFileSync('ffprobe', [
+            '-v', 'error', '-count_frames', '-select_streams', 'v:0',
+            '-show_entries', 'stream=nb_read_frames,width,height,codec_name',
+            '-of', 'default=noprint_wrappers=1', path,
+        ], { encoding: 'utf8' });
+        assert.match(out, /codec_name=gif/);
+        assert.match(out, /width=8/);
+        assert.match(out, /height=8/);
+        assert.match(out, /nb_read_frames=3/, 'all three frames are there and decodable');
+    } finally {
+        try { unlinkSync(path); } catch { }
+    }
+});
+
+function hasFfprobe() {
+    try { execFileSync('ffprobe', ['-version'], { stdio: 'ignore' }); return true; } catch { return false; }
+}

@@ -165,6 +165,103 @@ export function paletteBits(n) {
  */
 
 /**
+ * A GIF being written, one frame at a time.
+ *
+ * The whole-animation version had to be handed every frame before it could start. That is fine
+ * for one project and wrong for a queue of them (#123), which works by never holding more than
+ * one piece - so an encoder that wants them all at once takes that back.
+ *
+ * Streaming is unusually easy here, and worth saying why: this encoder already gives **every
+ * frame its own local colour table**. Nothing is shared between frames, so a frame written now
+ * and a frame written after the next piece is loaded are encoded identically to two frames of
+ * one animation. There is no seam. (Stitching finished GIF *files* together would have a palette
+ * problem; writing frames into one file does not.)
+ */
+export class GifWriter {
+    /**
+     * @param {{width: number, height: number, delayMs?: number, loop?: boolean, alphaCutoff?: number}} opts
+     */
+    constructor({ width, height, delayMs = 100, loop = true, alphaCutoff = 128 }) {
+        this.width = width;
+        this.height = height;
+        this.delayMs = delayMs;
+        this.alphaCutoff = alphaCutoff;
+        this.frames = 0;
+        this.finished = false;
+        const out = this.out = new ByteWriter();
+
+        out.str('GIF89a');
+        out.u16(width); out.u16(height);
+        // No global colour table: every frame brings its own, so this byte only says how deep the
+        // screen is. Background index and pixel aspect are both zero.
+        out.u8(0x70); out.u8(0); out.u8(0);
+
+        if (loop) {
+            // The Netscape extension. Not in the specification, universally implemented, and the
+            // only way to say "repeat forever".
+            out.u8(0x21); out.u8(0xff); out.u8(11);
+            out.str('NETSCAPE2.0');
+            out.u8(3); out.u8(1); out.u16(0); out.u8(0);
+        }
+    }
+
+    /**
+     * Add one frame. Its pixels are encoded immediately, so the caller may release them after -
+     * which is the whole point: a queue drops each piece's frames as it goes.
+     *
+     * @param {Uint8ClampedArray} rgba
+     * @param {{delayMs?: number}} [opts]
+     */
+    addFrame(rgba, { delayMs } = {}) {
+        if (this.finished) throw new Error('gif already finished');
+        const out = this.out;
+        const { palette, indexOf } = buildPalette(rgba, this.alphaCutoff);
+        const indices = toIndices(rgba, indexOf, this.alphaCutoff);
+        const bits = paletteBits(palette.length + 1);   // +1 for the transparent slot
+        const tableSize = 1 << bits;
+
+        // Graphic control: the delay, the transparent index, and disposal 2 so the frame is
+        // cleared rather than left underneath the next one.
+        out.u8(0x21); out.u8(0xf9); out.u8(4);
+        out.u8((2 << 2) | 1);                                        // disposal 2, transparency on
+        out.u16(Math.max(1, Math.round((delayMs ?? this.delayMs) / 10)));   // hundredths
+        out.u8(TRANSPARENT);
+        out.u8(0);
+
+        out.u8(0x2c);                                                // image descriptor
+        out.u16(0); out.u16(0); out.u16(this.width); out.u16(this.height);
+        out.u8(0x80 | (bits - 1));                                   // local colour table, its size
+
+        // Slot 0 is the transparent one. Its colour is never drawn, but it has to be present.
+        out.u8(0); out.u8(0); out.u8(0);
+        for (let i = 0; i < tableSize - 1; i++) {
+            const rgb = palette[i] ?? 0;
+            out.u8((rgb >> 16) & 255); out.u8((rgb >> 8) & 255); out.u8(rgb & 255);
+        }
+
+        const minCodeSize = Math.max(2, bits);
+        out.u8(minCodeSize);
+        writeSubBlocks(out, lzwEncode(indices, minCodeSize));
+        this.frames++;
+    }
+
+    /**
+     * Write the trailer and hand back the file.
+     * @returns {Uint8Array<ArrayBuffer>}
+     */
+    finish() {
+        if (this.finished) throw new Error('gif already finished');
+        // Guarded here rather than at the caller, so it covers a queue that turned out to have
+        // nothing in it as well as an encodeGif handed an empty list. A GIF with no frames is a
+        // header and a trailer: something a viewer will open and show nothing for.
+        if (!this.frames) throw new Error('a GIF needs at least one frame');
+        this.finished = true;
+        this.out.u8(0x3b);   // trailer
+        return this.out.done();
+    }
+}
+
+/**
  * Assemble an animated GIF.
  *
  * Each frame carries its own palette (a local colour table), so a colour that appears in one
@@ -182,56 +279,7 @@ export function paletteBits(n) {
  * @returns {Uint8Array<ArrayBuffer>}
  */
 export function encodeGif(frames, { width, height, delayMs = 100, loop = true, alphaCutoff = 128 }) {
-    if (!frames.length) throw new Error('a GIF needs at least one frame');
-    const out = new ByteWriter();
-    const u8 = (v) => out.u8(v);
-    const u16 = (v) => out.u16(v);
-    const str = (s) => out.str(s);
-
-    str('GIF89a');
-    u16(width); u16(height);
-    // No global colour table: every frame brings its own, so this byte only says how deep the
-    // screen is. Background index and pixel aspect are both zero.
-    u8(0x70); u8(0); u8(0);
-
-    if (loop) {
-        // The Netscape extension. Not in the specification, universally implemented, and the
-        // only way to say "repeat forever".
-        u8(0x21); u8(0xff); u8(11);
-        str('NETSCAPE2.0');
-        u8(3); u8(1); u16(0); u8(0);
-    }
-
-    for (const frame of frames) {
-        const { palette, indexOf } = buildPalette(frame.rgba, alphaCutoff);
-        const indices = toIndices(frame.rgba, indexOf, alphaCutoff);
-        const bits = paletteBits(palette.length + 1);   // +1 for the transparent slot
-        const tableSize = 1 << bits;
-
-        // Graphic control: the delay, the transparent index, and disposal 2 so the frame is
-        // cleared rather than left underneath the next one.
-        u8(0x21); u8(0xf9); u8(4);
-        u8((2 << 2) | 1);                                     // disposal 2, transparency on
-        u16(Math.max(1, Math.round((frame.delayMs ?? delayMs) / 10)));   // hundredths
-        u8(TRANSPARENT);
-        u8(0);
-
-        u8(0x2c);                                             // image descriptor
-        u16(0); u16(0); u16(width); u16(height);
-        u8(0x80 | (bits - 1));                                // local colour table, its size
-
-        // Slot 0 is the transparent one. Its colour is never drawn, but it has to be present.
-        u8(0); u8(0); u8(0);
-        for (let i = 0; i < tableSize - 1; i++) {
-            const rgb = palette[i] ?? 0;
-            u8((rgb >> 16) & 255); u8((rgb >> 8) & 255); u8(rgb & 255);
-        }
-
-        const minCodeSize = Math.max(2, bits);
-        u8(minCodeSize);
-        writeSubBlocks(out, lzwEncode(indices, minCodeSize));
-    }
-
-    u8(0x3b);   // trailer
-    return out.done();
+    const gif = new GifWriter({ width, height, delayMs, loop, alphaCutoff });
+    for (const frame of frames) gif.addFrame(frame.rgba, { delayMs: frame.delayMs });
+    return gif.finish();
 }
