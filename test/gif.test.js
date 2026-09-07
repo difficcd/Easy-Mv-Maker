@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { writeFileSync, unlinkSync } from 'node:fs';
+import { writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildPalette, toIndices, lzwEncode, paletteBits, encodeGif, GifWriter } from '../src/export/gif.js';
@@ -373,7 +373,10 @@ test('ffprobe reads a GIF written the way a queue writes one', { skip: !hasFfpro
         gif.addFrame(px);
         px = null;
     }
-    const path = join(tmpdir(), `mv-gif-${process.pid}.gif`);
+    // A directory of our own, as zip.test.js already does for its unzip run. A predictable name
+    // in the shared temp dir is a file anyone else on the machine can point a symlink at first.
+    const dir = mkdtempSync(join(tmpdir(), 'gif-'));
+    const path = join(dir, 'out.gif');
     try {
         writeFileSync(path, gif.finish());
         const out = execFileSync('ffprobe', [
@@ -385,9 +388,7 @@ test('ffprobe reads a GIF written the way a queue writes one', { skip: !hasFfpro
         assert.match(out, /width=8/);
         assert.match(out, /height=8/);
         assert.match(out, /nb_read_frames=3/, 'all three frames are there and decodable');
-    } finally {
-        try { unlinkSync(path); } catch { }
-    }
+    } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
 function hasFfprobe() {
