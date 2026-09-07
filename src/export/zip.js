@@ -9,6 +9,8 @@
 // at that listing. Zip64 is not written, so this tops out at 4GB or 65535 files - far past any
 // frame sequence this app produces, but the limits are checked rather than silently exceeded.
 
+import { ByteWriter } from './byteWriter.js';
+
 const LOCAL_SIG = 0x04034b50;
 const CENTRAL_SIG = 0x02014b50;
 const END_SIG = 0x06054b50;
@@ -58,7 +60,108 @@ export function dosDateTime(d) {
 }
 
 /**
+ * A ZIP being written, one entry at a time.
+ *
+ * The whole-archive version had to know every entry before it could start, because it measured
+ * everything to allocate one exact buffer. That is fine for a single project's frames and wrong
+ * for a queue of them: exporting several pieces as one file (#123) works precisely by never
+ * holding more than one piece, and an archive builder that wants them all at once takes that back.
+ *
+ * Streaming costs one thing - the archive is written into a growing buffer rather than an exact
+ * one - and saves a bigger one: the caller can drop each piece's frames as soon as they are in,
+ * so peak memory is the archive plus one frame rather than the archive plus every frame.
+ *
+ * Store-only, like the whole-archive version, because PNGs are already deflated.
+ */
+export class ZipWriter {
+    /** @param {{ date?: Date }} [opts] */
+    constructor({ date = new Date() } = {}) {
+        const { time, date: dosDate } = dosDateTime(date);
+        this.time = time;
+        this.dosDate = dosDate;
+        this.w = new ByteWriter();
+        this.enc = new TextEncoder();
+        /** @type {{name: Uint8Array, crc: number, size: number, offset: number}[]} */
+        this.files = [];
+        this.finished = false;
+    }
+
+    /**
+     * Add one file. Its bytes are written immediately, so the caller may release them after.
+     *
+     * @param {string} name
+     * @param {Uint8Array} data
+     */
+    add(name, data) {
+        if (this.finished) throw new Error('zip already finished');
+        if (this.files.length >= 0xffff) throw new Error('too many files for a non-zip64 archive');
+        const encoded = this.enc.encode(name);
+        if (encoded.length > 0xffff) throw new Error('file name too long: ' + name);
+        const offset = this.w.position;
+        // An entry that starts past 4GB cannot be pointed at by a 32-bit central directory offset,
+        // and refusing here says which file it was rather than writing a header that lies.
+        if (offset > 0xffffffff) throw new Error('archive too large for a non-zip64 archive');
+        const crc = crc32(data);
+        const w = this.w;
+        w.u32(LOCAL_SIG);
+        w.u16(20);              // version needed
+        w.u16(0);               // flags
+        w.u16(0);               // method: stored
+        w.u16(this.time); w.u16(this.dosDate);
+        w.u32(crc);
+        w.u32(data.length);     // compressed
+        w.u32(data.length);     // uncompressed
+        w.u16(encoded.length);
+        w.u16(0);               // extra field length
+        w.bytes(encoded);
+        w.bytes(data);
+        this.files.push({ name: encoded, crc, size: data.length, offset });
+    }
+
+    /**
+     * Write the central directory and hand back the archive.
+     *
+     * @returns {Uint8Array<ArrayBuffer>}
+     */
+    finish() {
+        if (this.finished) throw new Error('zip already finished');
+        this.finished = true;
+        const w = this.w;
+        const centralStart = w.position;
+        for (const f of this.files) {
+            w.u32(CENTRAL_SIG);
+            w.u16(20);          // version made by
+            w.u16(20);          // version needed
+            w.u16(0); w.u16(0); // flags, method
+            w.u16(this.time); w.u16(this.dosDate);
+            w.u32(f.crc);
+            w.u32(f.size); w.u32(f.size);
+            w.u16(f.name.length);
+            w.u16(0); w.u16(0); // extra, comment
+            w.u16(0);           // disk number
+            w.u16(0);           // internal attrs
+            w.u32(0);           // external attrs
+            w.u32(f.offset);
+            w.bytes(f.name);
+        }
+        // Taken before the end record is written: position is a cursor, and by the time the size
+        // field is reached it has already moved past the directory it is meant to measure.
+        const centralEnd = w.position;
+        w.u32(END_SIG);
+        w.u16(0); w.u16(0);     // this disk, disk with central directory
+        w.u16(this.files.length); w.u16(this.files.length);
+        w.u32(centralEnd - centralStart);
+        w.u32(centralStart);
+        w.u16(0);               // comment length
+        return w.done();
+    }
+}
+
+/**
  * Build a ZIP archive from entries already in memory.
+ *
+ * Kept as the name every existing caller uses; it is the streaming writer with all the entries
+ * handed over at once.
  *
  * @param {ZipEntry[]} entries
  * @param {{ date?: Date }} [opts]
@@ -66,73 +169,9 @@ export function dosDateTime(d) {
  */
 export function makeZip(entries, { date = new Date() } = {}) {
     if (entries.length > 0xffff) throw new Error('too many files for a non-zip64 archive');
-    const enc = new TextEncoder();
-    const { time, date: dosDate } = dosDateTime(date);
-
-    const files = entries.map(e => {
-        const name = enc.encode(e.name);
-        if (name.length > 0xffff) throw new Error('file name too long: ' + e.name);
-        return { name, data: e.data, crc: crc32(e.data) };
-    });
-
-    const localSize = files.reduce((n, f) => n + 30 + f.name.length + f.data.length, 0);
-    const centralSize = files.reduce((n, f) => n + 46 + f.name.length, 0);
-    const total = localSize + centralSize + 22;
-    if (total > 0xffffffff) throw new Error('archive too large for a non-zip64 archive');
-
-    // Backed by a plain ArrayBuffer rather than an inferred ArrayBufferLike, so the result
-    // can be handed straight to a Blob.
-    const out = new Uint8Array(new ArrayBuffer(total));
-    const view = new DataView(out.buffer);
-    let p = 0;
-    const u32 = (v) => { view.setUint32(p, v, true); p += 4; };
-    const u16 = (v) => { view.setUint16(p, v, true); p += 2; };
-
-    const offsets = [];
-    for (const f of files) {
-        offsets.push(p);
-        u32(LOCAL_SIG);
-        u16(20);            // version needed
-        u16(0);             // flags
-        u16(0);             // method: stored
-        u16(time); u16(dosDate);
-        u32(f.crc);
-        u32(f.data.length); // compressed
-        u32(f.data.length); // uncompressed
-        u16(f.name.length);
-        u16(0);             // extra field length
-        out.set(f.name, p); p += f.name.length;
-        out.set(f.data, p); p += f.data.length;
-    }
-
-    const centralStart = p;
-    files.forEach((f, i) => {
-        u32(CENTRAL_SIG);
-        u16(20);            // version made by
-        u16(20);            // version needed
-        u16(0); u16(0);     // flags, method
-        u16(time); u16(dosDate);
-        u32(f.crc);
-        u32(f.data.length); u32(f.data.length);
-        u16(f.name.length);
-        u16(0); u16(0);     // extra, comment
-        u16(0);             // disk number
-        u16(0);             // internal attrs
-        u32(0);             // external attrs
-        u32(offsets[i]);
-        out.set(f.name, p); p += f.name.length;
-    });
-
-    // Taken before the end record is written: `p` is a cursor, and by the time the size field
-    // is reached it has already moved past the directory it is meant to measure.
-    const centralEnd = p;
-    u32(END_SIG);
-    u16(0); u16(0);         // this disk, disk with central directory
-    u16(files.length); u16(files.length);
-    u32(centralEnd - centralStart);
-    u32(centralStart);
-    u16(0);                 // comment length
-    return out;
+    const zip = new ZipWriter({ date });
+    for (const e of entries) zip.add(e.name, e.data);
+    return zip.finish();
 }
 
 /**

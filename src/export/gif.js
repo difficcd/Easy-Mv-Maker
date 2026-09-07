@@ -14,38 +14,7 @@
 //     drawing. Line art and flat colour are comfortable inside that; a photographic frame is not.
 //   - delays are in hundredths of a second, so the frame rate is quantised.
 
-/**
- * A growable byte buffer.
- *
- * The obvious thing is to collect bytes in a plain array and convert at the end, and for a small
- * picture it is fine. A full-size frame is two million pixels, and a JS array holds each byte as
- * a number - eight bytes of heap for one byte of output - so a handful of frames turns into
- * hundreds of megabytes before anything is written. This doubles a Uint8Array instead.
- */
-class ByteWriter {
-    constructor(capacity = 1 << 16) {
-        this.buf = new Uint8Array(capacity);
-        this.len = 0;
-    }
-    _room(n) {
-        if (this.len + n <= this.buf.length) return;
-        let size = this.buf.length;
-        while (size < this.len + n) size *= 2;
-        const next = new Uint8Array(size);
-        next.set(this.buf.subarray(0, this.len));
-        this.buf = next;
-    }
-    u8(v) { this._room(1); this.buf[this.len++] = v & 255; }
-    u16(v) { this._room(2); this.buf[this.len++] = v & 255; this.buf[this.len++] = (v >> 8) & 255; }
-    str(text) { this._room(text.length); for (let i = 0; i < text.length; i++) this.buf[this.len++] = text.charCodeAt(i); }
-    bytes(arr) { this._room(arr.length); this.buf.set(arr, this.len); this.len += arr.length; }
-    /** @returns {Uint8Array<ArrayBuffer>} backed by a plain ArrayBuffer, ready for a Blob. */
-    done() {
-        const out = new Uint8Array(new ArrayBuffer(this.len));
-        out.set(this.buf.subarray(0, this.len));
-        return out;
-    }
-}
+import { ByteWriter } from './byteWriter.js';
 
 const TRANSPARENT = 0;   // palette slot 0 is reserved for it, so every frame agrees where it is.
 

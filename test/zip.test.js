@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { crc32, dosDateTime, makeZip, frameName } from '../src/export/zip.js';
+import { crc32, dosDateTime, makeZip, frameName, ZipWriter } from '../src/export/zip.js';
 
 const bytes = (s) => new TextEncoder().encode(s);
 
@@ -124,3 +124,68 @@ test('a system unzip can list and extract the archive', { skip: !hasUnzip() }, (
 function hasUnzip() {
     try { execFileSync('unzip', ['-v'], { stdio: 'ignore' }); return true; } catch { return false; }
 }
+
+// --- the streaming writer ------------------------------------------------------------------
+// makeZip is this class with everything handed over at once, so the tests above already cover the
+// bytes it produces. What is left is the thing only streaming can get wrong: state carried across
+// calls, and the promise that a caller may release each entry's data once it has been added.
+
+test('ZipWriter: adding one at a time gives the same archive as all at once', () => {
+    const entries = [
+        { name: 'frame_0001.png', data: new Uint8Array([1, 2, 3]) },
+        { name: 'frame_0002.png', data: new Uint8Array([4, 5]) },
+        { name: 'frame_0003.png', data: new Uint8Array([6, 7, 8, 9]) },
+    ];
+    const date = new Date('2026-02-03T04:05:06Z');
+    const atOnce = makeZip(entries, { date });
+    const zip = new ZipWriter({ date });
+    for (const e of entries) zip.add(e.name, e.data);
+    assert.deepEqual([...zip.finish()], [...atOnce], 'a queue must not produce a different file');
+});
+
+// The whole point: a caller writes a piece's frames, drops them, and moves on. If the writer kept
+// a reference instead of copying, the archive would come out full of whatever the buffer held next.
+test('ZipWriter: the caller may reuse or clear the buffer it handed over', () => {
+    const zip = new ZipWriter({ date: new Date('2026-02-03T04:05:06Z') });
+    const scratch = new Uint8Array([1, 2, 3, 4]);
+    zip.add('a.bin', scratch);
+    scratch.fill(0xff);                    // as a caller reusing one buffer per frame would
+    zip.add('b.bin', scratch);
+    const out = zip.finish();
+    const first = out.subarray(30 + 'a.bin'.length, 30 + 'a.bin'.length + 4);
+    assert.deepEqual([...first], [1, 2, 3, 4], 'the bytes were copied in, not pointed at');
+});
+
+test('ZipWriter: an empty archive is still a valid one', () => {
+    const out = new ZipWriter().finish();
+    assert.equal(out.length, 22);
+    assert.equal(new DataView(out.buffer).getUint32(0, true), 0x06054b50);
+});
+
+test('ZipWriter: finishing twice, or adding after finishing, is refused', () => {
+    const zip = new ZipWriter();
+    zip.add('a.bin', new Uint8Array([1]));
+    zip.finish();
+    assert.throws(() => zip.add('b.bin', new Uint8Array([2])), /already finished/);
+    assert.throws(() => zip.finish(), /already finished/);
+});
+
+test('ZipWriter: offsets keep counting across many entries', async () => {
+    const zip = new ZipWriter({ date: new Date('2026-02-03T04:05:06Z') });
+    const n = 200;
+    for (let i = 0; i < n; i++) zip.add(frameName(i, n), new Uint8Array(64).fill(i & 255));
+    const out = zip.finish();
+    const view = new DataView(out.buffer);
+    // Read the end record, walk the central directory, and check every offset points at a local
+    // header - which is what a reader does, and what a wrong cursor would break.
+    const centralStart = view.getUint32(out.length - 6, true);
+    let p = centralStart;
+    for (let i = 0; i < n; i++) {
+        assert.equal(view.getUint32(p, true), 0x02014b50, `central entry ${i}`);
+        const nameLen = view.getUint16(p + 28, true);
+        const offset = view.getUint32(p + 42, true);
+        assert.equal(view.getUint32(offset, true), 0x04034b50, `entry ${i} points at a local header`);
+        p += 46 + nameLen;
+    }
+    assert.equal(view.getUint16(out.length - 12, true), n, 'and the count agrees');
+});
