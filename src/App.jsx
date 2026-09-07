@@ -62,8 +62,8 @@ import { setLayerClipped } from './core/cutsReducer.js';
 import { onionNeighbours, topCutAt } from './engine/selectCuts.js';
 import { evaluateFrame } from './engine/evaluateFrame.js';
 import { pendingBitmapIds, scanLayerBitmaps } from './engine/pendingBitmaps.js';
-import { makeZip, frameName } from './export/zip.js';
-import { encodeGif } from './export/gif.js';
+import { frameName, ZipWriter } from './export/zip.js';
+import { GifWriter } from './export/gif.js';
 import { downloadBlob } from './export/download.js';
 import { unusedBitmapIds } from './core/bitmapRefs.js';
 import { dragCut, resizeCut } from './core/cutOps.js';
@@ -3548,6 +3548,73 @@ export default function App() {
     // overlay anyway. Drawing each frame deliberately rather than recording one in real time also
     // means no dropped or duplicated frames, and it waits for pasted bitmaps to decode instead of
     // holding the previous frame the way playback does.
+    /**
+     * Put one painted canvas into the file being written.
+     *
+     * The two formats want opposite things from the same canvas: a GIF wants raw pixels, scaled
+     * down, because a full-size GIF is tens of megabytes a second and going through a PNG and
+     * back would cost an encode and a decode a frame for nothing. A PNG sequence wants the file
+     * itself, full size, because it is going into an editor.
+     *
+     * @param {GifWriter|ZipWriter} writer
+     * @param {HTMLCanvasElement} src the canvas as just painted
+     * @param {number} i frame number across the whole export, so a queue keeps counting
+     */
+    const captureFrame = async (writer, src, i, { gif, gw, gh, gifScale, gifScratch, total }) => {
+        if (gif) {
+            let from = src;
+            if (gifScale < 1) {
+                const { canvas: small, ctx: sctx } = scratchCanvas(gifScratch, gw, gh);
+                sctx.imageSmoothingQuality = 'high';
+                sctx.drawImage(src, 0, 0, gw, gh);
+                from = small;
+            }
+            /** @type {GifWriter} */(writer).addFrame(from.getContext('2d').getImageData(0, 0, gw, gh).data);
+            return;
+        }
+        const blob = await new Promise(res => src.toBlob(res, 'image/png'));
+        if (!blob) throw new Error('toBlob returned nothing');
+        /** @type {ZipWriter} */(writer).add(frameName(i, total), new Uint8Array(await blob.arrayBuffer()));
+    };
+
+    /**
+     * Paint a range and hand each finished frame to `capture`.
+     *
+     * Split out from the export below because the multi-piece export (#123) runs it once per
+     * piece into one shared writer. Nothing here knows what is being written, which is what lets
+     * a second piece carry on into the same file.
+     *
+     * Frames are painted with the app's own paint path rather than a second renderer built for
+     * exporting. A parallel renderer is a thing that agrees with the real one until it quietly
+     * does not, and the first anyone hears of it is an export that looks wrong.
+     */
+    const renderFrameRange = async ({ from, to, fps, capture, onProgress, indexBase = 0 }) => {
+        const canvas = canvasRef.current; if (!canvas) return 0;
+        const count = Math.max(1, Math.round((to - from) * fps));
+        for (let i = 0; i < count; i++) {
+            const t = from + i / fps;
+            // Wait for what this frame needs rather than painting without it.
+            const scene = evaluateFrame(cuts, t, { playing: true, currentCutId, cw: CANVAS_W, ch: CANVAS_H });
+            const missing = pendingBitmapIds(scene.cuts.map(e => e.cut), bitmapStoreRef.current);
+            if (missing.length) {
+                const store = bitmapStoreRef.current;
+                for (const id of missing) {
+                    const e = store.get(id); if (!e || !e.blob) continue;
+                    try { e.imageBitmap = await decodeFrameBitmap(e); } catch { }
+                }
+                invalidateCutsUsing(missing);
+            }
+            paintFrame(t, true);
+            await capture(canvas, indexBase + i);
+            // Yield often enough that the progress bar moves and the tab stays answerable.
+            if (i % 5 === 0 || i === count - 1) {
+                onProgress?.(indexBase + i + 1);
+                await new Promise(res => setTimeout(res, 0));
+            }
+        }
+        return count;
+    };
+
     const handleExportFrames = async () => {
         const canvas = canvasRef.current; if (!canvas) return;
         // The range playback uses, so what you watch is what comes out: it starts where the
@@ -3571,57 +3638,26 @@ export default function App() {
         // One scratch canvas for the whole export rather than one a frame.
         const gifScratch = { current: null };
         const total = Math.max(1, Math.round((to - from) * fps));
-        // Every frame is held in memory until the file is built, so the cap is about RAM, not
-        // patience: a thousand 1080p frames is already a few hundred megabytes.
-        if (total > 1000 && !confirm(tr('{0}프레임을 내보냅니다. 메모리를 많이 쓰고 오래 걸립니다. 계속할까요?').replace('{0}', String(total)))) return;
+        // Each frame is encoded as it is painted now, rather than every frame being held until
+        // the end, so this is about how long it takes and how big the file gets rather than
+        // whether the tab survives it.
+        if (total > 1000 && !confirm(tr('{0}프레임을 내보냅니다. 오래 걸립니다. 계속할까요?').replace('{0}', String(total)))) return;
 
         const label = tr('프레임 내보내는 중');
         setLoadProgress({ label, done: 0, total });
         isExporting.current = true;
-        const entries = [];
+        const writer = gif
+            ? new GifWriter({ width: gw, height: gh, delayMs: Math.round(1000 / fps) })
+            : new ZipWriter();
         try {
-            for (let i = 0; i < total; i++) {
-                const t = from + i / fps;
-                // Wait for what this frame needs rather than painting without it.
-                const scene = evaluateFrame(cuts, t, { playing: true, currentCutId, cw: CANVAS_W, ch: CANVAS_H });
-                const missing = pendingBitmapIds(scene.cuts.map(e => e.cut), bitmapStoreRef.current);
-                if (missing.length) {
-                    const store = bitmapStoreRef.current;
-                    for (const id of missing) {
-                        const e = store.get(id); if (!e || !e.blob) continue;
-                        try { e.imageBitmap = await decodeFrameBitmap(e); } catch { }
-                    }
-                    invalidateCutsUsing(missing);
-                }
-                paintFrame(t, true);
-                if (gif) {
-                    // Straight off the canvas as pixels: going through a PNG and back would cost
-                    // an encode and a decode a frame for nothing.
-                    let src = canvas;
-                    if (gifScale < 1) {
-                        const { canvas: small, ctx: sctx } = scratchCanvas(gifScratch, gw, gh);
-                        sctx.imageSmoothingQuality = 'high';
-                        sctx.drawImage(canvas, 0, 0, gw, gh);
-                        src = small;
-                    }
-                    entries.push({ rgba: src.getContext('2d').getImageData(0, 0, gw, gh).data });
-                } else {
-                    const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
-                    if (!blob) throw new Error('toBlob returned nothing');
-                    entries.push({ name: frameName(i, total), data: new Uint8Array(await blob.arrayBuffer()) });
-                }
-                // Yield often enough that the progress bar moves and the tab stays answerable.
-                if (i % 5 === 0 || i === total - 1) {
-                    setLoadProgress({ label, done: i + 1, total });
-                    await new Promise(res => setTimeout(res, 0));
-                }
-            }
+            await renderFrameRange({
+                from, to, fps,
+                capture: (src, i) => captureFrame(writer, src, i, { gif, gw, gh, gifScale, gifScratch, total }),
+                onProgress: (done) => setLoadProgress({ label, done, total }),
+            });
             const { bytes, type, name } = gif
-                ? {
-                    bytes: encodeGif(entries, { width: gw, height: gh, delayMs: Math.round(1000 / fps) }),
-                    type: 'image/gif', name: 'mv_export.gif',
-                }
-                : { bytes: makeZip(entries), type: 'application/zip', name: 'mv_frames.zip' };
+                ? { bytes: /** @type {GifWriter} */(writer).finish(), type: 'image/gif', name: 'mv_export.gif' }
+                : { bytes: /** @type {ZipWriter} */(writer).finish(), type: 'application/zip', name: 'mv_frames.zip' };
             downloadBlob(new Blob([bytes], { type }), name);
             alert(tr('완료!'));
         } catch (e) {
