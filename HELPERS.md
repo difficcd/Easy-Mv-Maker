@@ -526,6 +526,16 @@ the narrowest.
 |---|---|
 | `useServerStorage` | Save, open and delete server projects; snapshot every five minutes and rotate. Takes `buildData` and `restore` as functions rather than reaching for the document itself, because building one reads most of App's state and restoring one writes most of it - threading either in would make the seam wider than the thing it separates. |
 
+## `src/hooks/usePanelLayout.js`
+
+Where the panels are and how wide they are: three panels that each dock left, dock right or float,
+the drags that move and resize them, and the timeline's height. Pure geometry - it reads nothing
+about the document, which is what made it separable whole.
+
+| | |
+|---|---|
+| `usePanelLayout` | Owns the widths, the dock assignments, the floating positions and both drags. Returns the numbers to lay out with and three gesture starters. The panels themselves stay in App: a hook that returned them would need every prop each one takes, which is most of App. |
+
 ## `src/hooks/useServerProbe.js`
 
 Whether the project-storage API is reachable, re-checked with a backoff.
