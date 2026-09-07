@@ -182,6 +182,22 @@ Undo and redo, and the memory budget that bounds them.
 | `pushSnapshot` | Record a snapshot, returning the new list and position. The input is never modified, so the caller can keep the old pair if it wants to. |
 | `step` | Step one snapshot back or forward. |
 
+## `src/core/exportQueue.js`
+
+Exporting several separately-made pieces as one file (#123). Past a certain number of cuts the app
+lags, and that is not really fixable, so the advice is to work in pieces - which is only advice
+worth giving if combining them is easy. The rule the design follows: **never hold more than one
+piece**, since an exporter that loaded them all would reintroduce the state that made splitting
+necessary. Planning is separate from rendering because planning is arithmetic and rendering needs
+a browser.
+
+| | |
+|---|---|
+| `pieceRange` | How much of a piece contributes, using the same range playback and export already use - so a piece exports as its author saw it, and one that starts late does not contribute silence to the front. |
+| `planQueue` | Which output frame comes from which piece at what time inside it. One frame rate for the whole output, since a file whose rate changes halfway is not something players honour. Frames sample the start of each interval: sampling the end would land the last frame of a piece past its final cut. |
+| `seamTimes` | Where each piece begins in the finished file, for progress or chapter marks. |
+| `queueProgress` | How far through, counted in frames rather than pieces - pieces differ in length, and a bar that jumps when a short one finishes reads as broken. |
+
 ## `src/core/ids.js`
 
 Ids for the things a document is made of. These were `Date.now()`, written out nineteen times, and
@@ -335,6 +351,7 @@ How each piece of a project is stored, and how it comes back.
 | `audioExt` | The file extension for the audio track, from its dataURL. |
 | `frameLoad` | How a bitmap read back from a saved project has to be loaded. Only drawing layers are decoded to ImageData up front, because those are the ones the user can still edit pixel by pixel. |
 | `frameStorage` | Which of the three ways a frame is saved. A legacy entry with no Blob still embeds rather than being dropped. |
+| `loadBitmapStore` | Rebuild a bitmap store from a saved project's bitmaps, the reverse of `collectBitmaps`. Written inline in App's restore before, which meant the only way to read a project's pixels was to open the project and replace whatever was on screen. An entry that will not load is skipped and counted, so one bad frame costs that frame rather than the file. |
 | `collectBitmaps` | Every bitmap the cuts reference, packed the way this kind of save wants them. The loop around frameStorage, which used to live in App.jsx where it could be read but never run. Encoders are injected because one needs FileReader and the other a canvas. |
 | `imageExt` | The file extension for a frame bitmap. |
 | `imageExtFromType` | The file extension for an image, from a Blob MIME type. |
