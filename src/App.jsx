@@ -48,7 +48,7 @@ import {
 } from './core/cutsReducer.js';
 import { measureTextBox as measureTextBoxPure, textNeedsBox, drawTextObject } from './canvas/textRender.js';
 import { migrateCuts, projectSettings, makeLoadProgress } from './core/projectFormat.js';
-import { frameLoad, imageExtFromType, audioExt, videoExt, collectBitmaps } from './core/projectAssets.js';
+import { imageExtFromType, audioExt, videoExt, collectBitmaps, loadBitmapStore } from './core/projectAssets.js';
 import { xAtTime, timeAtX, zoomAnchored, pinchZoom } from './core/timelineZoom.js';
 import { preparePath } from './core/pathMotion.js';
 import { dragOnWindow } from './core/windowDrag.js';
@@ -1201,29 +1201,19 @@ export default function App() {
                 tick();
             }
         }
-        if (data.bitmaps) {
-            const compressedSet = new Set(data.compressedBitmaps || []);
-            const entries = await Promise.all(Object.entries(data.bitmaps).map(async ([id, val]) => {
-                try {
-                    // Frames may arrive as a Blob (IndexedDB autosave) or a dataURL (embedded .emv).
-                    // Keep them as a Blob (off-heap) and decode lazily. Drawing layers (small PNG
-                    // dataURLs, not flagged compressed) become editable ImageData up front.
-                    const how = frameLoad(val, compressedSet, id);
-                    if (how === 'blob') {
-                        return [id, { imageData: null, imageBitmap: null, blob: val, ext: imageExtFromType(val.type) }];
-                    }
-                    if (how === 'compressed') {
-                        const blob = await (await fetch(val)).blob();
-                        return [id, { imageData: null, imageBitmap: null, blob, ext: imageExtFromType(blob.type) }];
-                    }
-                    const imageData = await dataURLToImageData(val);
-                    let imageBitmap = null;
-                    try { imageBitmap = await createImageBitmap(imageData); } catch { }
-                    return [id, { imageData, imageBitmap }];
-                } catch { return null; } finally { tick(); }
-            }));
-            entries.forEach(e => { if (e) store.set(e[0], e[1]); });
-        }
+        // Frames may arrive as a Blob (IndexedDB autosave) or a dataURL (embedded .emv); which is
+        // which, and what each becomes, is projectAssets' decision rather than a second opinion
+        // taken here. Reading a document's pixels without opening the document is also what the
+        // export queue needs (#123), which is why this is a function and no longer a block.
+        const { store: loaded, failed } = await loadBitmapStore(data, {
+            dataURLToImageData,
+            createBitmap: (img) => createImageBitmap(img),
+            urlToBlob: async (url) => (await fetch(url)).blob(),
+            extFromType: imageExtFromType,
+            onEach: tick,
+        });
+        for (const [id, entry] of loaded) store.set(id, entry);
+        missingAssets += failed;
         // Older files are brought up to the current shape in projectFormat, where the renames and
         // added fields are written down and tested.
         docEpochRef.current++;   // opening a project: anything still running belongs to the old one
@@ -1279,8 +1269,10 @@ export default function App() {
         }
             // Said once, after everything that could be loaded has been. A project that opens
             // with holes in it should say so - the alternative is blank frames that look like the
-            // work was lost.
-            if (missingAssets) setAppError(tr('{0}개의 파일을 서버에서 찾지 못해 비어 있습니다.', missingAssets));
+            // work was lost. Deliberately not "not found on the server": this counts a missing
+            // server asset and a frame that would not decode out of a local file, and only one of
+            // those has a server in it.
+            if (missingAssets) setAppError(tr('{0}개의 파일을 불러오지 못해 비어 있습니다.', missingAssets));
         } finally { setLoadProgress(null); restoreBusyRef.current = false; }
         return true;
     };

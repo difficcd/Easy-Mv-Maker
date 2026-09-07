@@ -179,3 +179,55 @@ export async function collectBitmaps(cuts, {
 
     return { bitmaps, compressed, assets };
 }
+
+/**
+ * Rebuild a bitmap store from a saved project's `bitmaps` map.
+ *
+ * The reverse of collectBitmaps, and it was written inline inside App's restore - which meant the
+ * only way to open a project's pixels was to open the project, replacing whatever was on screen.
+ * Exporting several separately-made pieces as one file (#123) needs to read a piece's frames
+ * without the app ever opening it, and so does anything else that wants to look at a file rather
+ * than become it.
+ *
+ * Frames stay Blobs and are decoded lazily on display; drawing layers become editable ImageData up
+ * front. Which of those a value is comes from frameLoad, so the routing is the same one the save
+ * side uses rather than a second opinion about it.
+ *
+ * An entry that will not load is skipped rather than thrown: one unreadable frame in a thousand
+ * should cost that frame, not the project. The count comes back so a caller can say so.
+ *
+ * @param {{bitmaps?: Record<string, any>, compressedBitmaps?: string[]}} data
+ * @param {object} deps
+ * @param {(url: string) => Promise<ImageData>} deps.dataURLToImageData
+ * @param {(img: ImageData) => Promise<any>} [deps.createBitmap] best-effort fast path
+ * @param {(url: string) => Promise<Blob>} deps.urlToBlob
+ * @param {(type: string) => string} deps.extFromType
+ * @param {() => void} [deps.onEach] called once per entry, loaded or not, for progress
+ * @returns {Promise<{store: Map<string, any>, failed: number}>}
+ */
+export async function loadBitmapStore(data, { dataURLToImageData, createBitmap, urlToBlob, extFromType, onEach }) {
+    const store = new Map();
+    if (!data?.bitmaps) return { store, failed: 0 };
+    const compressedSet = new Set(data.compressedBitmaps || []);
+    const entries = await Promise.all(Object.entries(data.bitmaps).map(async ([id, val]) => {
+        try {
+            const how = frameLoad(val, compressedSet, id);
+            if (how === 'blob') {
+                return [id, { imageData: null, imageBitmap: null, blob: val, ext: extFromType(val.type) }];
+            }
+            if (how === 'compressed') {
+                const blob = await urlToBlob(val);
+                return [id, { imageData: null, imageBitmap: null, blob, ext: extFromType(blob.type) }];
+            }
+            const imageData = await dataURLToImageData(val);
+            let imageBitmap = null;
+            try { imageBitmap = createBitmap ? await createBitmap(imageData) : null; } catch { }
+            return [id, { imageData, imageBitmap }];
+        } catch { return null; } finally { onEach?.(); }
+    }));
+    let failed = 0;
+    for (const e of entries) {
+        if (e) store.set(e[0], e[1]); else failed++;
+    }
+    return { store, failed };
+}
