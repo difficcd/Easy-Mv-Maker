@@ -23,6 +23,20 @@ Which stored bitmaps are still reachable, for garbage collection.
 | `collectUsedBitmapIds` | Every bitmap id still referenced by anything that can bring it back: the cuts, the undo history, the cut clipboard, the lasso clipboard and the live selection. Freeing something an undo still needs is not a leak, it is an undo that comes back blank. |
 | `unusedBitmapIds` | Ids present in the store that nothing references any more. |
 
+## `src/core/api.js`
+
+Talking to the local project server. The only thing these add to `fetch` is the check `fetch` does
+not do: a 404 or a 500 is a perfectly good response as far as it is concerned, and it rejects only
+when the network itself fails. That is not hypothetical tidiness - before the asset path had this
+check, a 404 came back as a Blob of `{"error":"not found"}` and was written into a project as a
+frame's image data.
+
+| | |
+|---|---|
+| `apiFetch` | A JSON endpoint, or throw on any status that is not ok. |
+| `fetchAsset` | One stored binary asset - a frame, the audio, the reference video - as a Blob, or throw. |
+| `putAsset` | Upload one asset as a Blob rather than base64, throwing the caller's own message so it can be localised and numbered. A legacy dataURL is fetched back into a Blob first. |
+
 ## `src/core/brushSize.js`
 
 How wide a brush may be, and how a keystroke changes it. The range was written twice - once for
@@ -500,6 +514,17 @@ Debounced background saving, so a refresh or a crash never costs work.
 | | |
 |---|---|
 | `useAutosave` | Saves `doc` after a quiet period. Waits for `ready()` - crash recovery has to decide first, or a new empty document overwrites the autosave the user is about to be offered - and skips while `busy()`. Failures come back as `error` rather than being swallowed. |
+
+## `src/hooks/useServerStorage.js`
+
+Keeping projects on the local API server, and the rotating backups of them. Two hundred lines that
+never touch cuts, layers, strokes, the canvas or the timeline - which is what made this the first
+thing worth cutting out of App: not that it was the biggest concern in there, but that the cut was
+the narrowest.
+
+| | |
+|---|---|
+| `useServerStorage` | Save, open and delete server projects; snapshot every five minutes and rotate. Takes `buildData` and `restore` as functions rather than reaching for the document itself, because building one reads most of App's state and restoring one writes most of it - threading either in would make the seam wider than the thing it separates. |
 
 ## `src/hooks/useServerProbe.js`
 
