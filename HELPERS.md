@@ -601,6 +601,16 @@ Which addresses the importer will hand to yt-dlp.
 | `isYouTubeUrl` | Parses rather than pattern-matches, because both obvious string checks are wrong in opposite directions. |
 | `YOUTUBE_HOSTS` | Hosts yt-dlp is allowed to be pointed at. |
 
+## `src/export/byteWriter.js`
+
+A growable byte buffer, little-endian. Both export formats want one for the same reason: a JS array
+holds each byte as a number - eight bytes of heap per byte of output - so a handful of full-size
+frames becomes hundreds of megabytes before anything is written.
+
+| | |
+|---|---|
+| `ByteWriter` | Doubles a Uint8Array instead of collecting bytes in an array. `u32` uses `>>>` so a CRC or an offset with its top bit set does not come out negative and write the wrong bytes. |
+
 ## `src/export/download.js`
 
 Handing a finished file to the browser. Written three times over - the project save's fallback,
@@ -631,6 +641,7 @@ A store-only ZIP writer, for the PNG frame sequence a transparent project export
 
 | | |
 |---|---|
+| `ZipWriter` | A ZIP being written one entry at a time. `makeZip` is this with every entry handed over at once. The whole-archive version had to know all of them first, to allocate one exact buffer - fine for one project, wrong for a queue of them (#123), which works by never holding more than one piece. Entry bytes are copied in, so a caller may reuse one buffer per frame. |
 | `makeZip` | Builds the archive in memory. Store-only because PNGs are already deflated, which keeps this pure arithmetic that unit tests can check without a browser. Refuses zip64-sized input rather than writing a wrong header. |
 | `crc32` | The checksum ZIP entries carry. Table built on first use. |
 | `dosDateTime` | Packs a `Date` into the two 16-bit fields the format stores. Clamps below 1980 instead of writing a negative year. |
