@@ -557,6 +557,17 @@ the narrowest.
 |---|---|
 | `useServerStorage` | Save, open and delete server projects; snapshot every five minutes and rotate. Takes `buildData` and `restore` as functions rather than reaching for the document itself, because building one reads most of App's state and restoring one writes most of it - threading either in would make the seam wider than the thing it separates. |
 
+## `src/hooks/useLocalDocuments.js`
+
+The document on this machine: `.emv` files, IndexedDB projects, the autosave crash recovery offers,
+and the tabs that hold several documents at once. The mirror of `useServerStorage`, split along the
+same line - three things that look separate and are one concern, because all three are "a document
+that lives here rather than on a server" and all three go through `buildData` and `restore`.
+
+| | |
+|---|---|
+| `useLocalDocuments` | Owns the local pickers, the tab list and their in-memory snapshots. Takes `buildData`, `restore` and `resetToEmpty` as functions: the first two because building a document reads most of App's state and restoring one writes most of it, the third for the same reason from the other end - emptying the document is App's business. |
+
 ## `src/hooks/usePanelLayout.js`
 
 Where the panels are and how wide they are: three panels that each dock left, dock right or float,
