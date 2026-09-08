@@ -130,17 +130,23 @@ function hasUnzip() {
 // bytes it produces. What is left is the thing only streaming can get wrong: state carried across
 // calls, and the promise that a caller may release each entry's data once it has been added.
 
-test('ZipWriter: adding one at a time gives the same archive as all at once', () => {
-    const entries = [
-        { name: 'frame_0001.png', data: new Uint8Array([1, 2, 3]) },
-        { name: 'frame_0002.png', data: new Uint8Array([4, 5]) },
-        { name: 'frame_0003.png', data: new Uint8Array([6, 7, 8, 9]) },
-    ];
-    const date = new Date('2026-02-03T04:05:06Z');
-    const atOnce = makeZip(entries, { date });
-    const zip = new ZipWriter({ date });
-    for (const e of entries) zip.add(e.name, e.data);
-    assert.deepEqual([...zip.finish()], [...atOnce], 'a queue must not produce a different file');
+// This slot used to hold "adding one at a time gives the same archive as all at once", comparing
+// ZipWriter against makeZip. That test could not fail: makeZip *is* a ZipWriter with every entry
+// handed over, so it compared a function with its own inlining. It read as reassurance and was
+// worth nothing, which is worse than having no test there.
+//
+// What it was reaching for - "a change to the writer must not silently change the bytes" - is a
+// real thing to want, and this is it. The archive below was produced by the writer and checked by
+// a system unzip, so it is a record of output that is known to work rather than of output that
+// merely exists.
+const GOLDEN_ZIP = [80,75,3,4,20,0,0,0,0,0,163,104,67,92,29,128,188,85,3,0,0,0,3,0,0,0,5,0,0,0,97,46,98,105,110,1,2,3,80,75,3,4,20,0,0,0,0,0,163,104,67,92,116,35,223,85,2,0,0,0,2,0,0,0,5,0,0,0,98,46,98,105,110,4,5,80,75,1,2,20,0,20,0,0,0,0,0,163,104,67,92,29,128,188,85,3,0,0,0,3,0,0,0,5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,46,98,105,110,80,75,1,2,20,0,20,0,0,0,0,0,163,104,67,92,116,35,223,85,2,0,0,0,2,0,0,0,5,0,0,0,0,0,0,0,0,0,0,0,0,0,38,0,0,0,98,46,98,105,110,80,75,5,6,0,0,0,0,2,0,2,0,102,0,0,0,75,0,0,0,0,0];
+
+test('ZipWriter: the bytes are exactly what they were, entry by entry', () => {
+    const zip = new ZipWriter({ date: new Date('2026-02-03T04:05:06Z') });
+    zip.add('a.bin', new Uint8Array([1, 2, 3]));
+    zip.add('b.bin', new Uint8Array([4, 5]));
+    assert.deepEqual([...zip.finish()], GOLDEN_ZIP,
+        'a change here is a change to every archive the app writes - deliberate or not');
 });
 
 // The whole point: a caller writes a piece's frames, drops them, and moves on. If the writer kept
