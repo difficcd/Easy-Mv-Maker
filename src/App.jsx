@@ -354,18 +354,6 @@ export default function App() {
     // See noteColorUsed below.
     const [recentColors, setRecentColors] = useStored('mv_recent_colors', [], arrayCodec);
     const [pickingColor, setPickingColor] = useState(false); // eyedropper: next canvas click samples a pixel
-    // Palettes start empty - no built-in presets. The user fills them.
-    const [palettes, setPalettes] = useStored('mv_palettes', [{ name: tr('내 팔레트'), colors: [] }], {
-        // An empty stored list means the starting palette, not no palettes at all.
-        decode: (raw) => { const v = JSON.parse(raw); return Array.isArray(v) && v.length ? v : undefined; },
-        encode: JSON.stringify,
-    });
-    const [activePalette, setActivePalette] = useState(0);
-    const addToPalette = (c) => setPalettes(ps => ps.map((p, i) => i === activePalette && !p.colors.some(x => x.toLowerCase() === c.toLowerCase()) ? { ...p, colors: [...p.colors, c] } : p));
-    const removeFromPalette = (ci) => setPalettes(ps => ps.map((p, i) => i === activePalette ? { ...p, colors: p.colors.filter((_, j) => j !== ci) } : p));
-    const addPalette = () => { setPalettes(ps => [...ps, { name: tr('팔레트 {0}', ps.length + 1), colors: [] }]); setActivePalette(palettes.length); };
-    const deletePalette = () => { if (palettes.length <= 1) return; setPalettes(ps => ps.filter((_, i) => i !== activePalette)); setActivePalette(i => Math.max(0, i - 1)); };
-    const renamePalette = () => { const n = window.prompt(tr('팔레트 이름'), palettes[activePalette]?.name); if (n) setPalettes(ps => ps.map((p, i) => i === activePalette ? { ...p, name: n } : p)); };
     const applyColor = (c) => { if (!c) return; setColor(c); };
     // "Used" means something was actually drawn in that colour; only then does it join Recent.
     const noteColorUsed = (c) => {
