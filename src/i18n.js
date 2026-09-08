@@ -710,4 +710,12 @@ const EN = {
     'PNG 시퀀스 (ZIP)': 'PNG sequence (ZIP)',
     '{0}프레임을 내보냅니다. 오래 걸립니다. 계속할까요?':
         'This will export {0} frames. It takes a while. Continue?',
+    '현재 작업을 저장할 수 없어 내보내기를 시작하지 않았습니다: ': 'The current work could not be saved, so the export did not start: ',
+    '조각 내보내는 중': 'Exporting pieces',
+    '{0}: 읽을 수 없는 파일입니다': '{0}: this file cannot be read',
+    '{0}: 열 수 없습니다': '{0}: could not be opened',
+    '작업 내용 복구 중': 'Restoring your work',
+    '내보내기는 끝났지만 원래 작업을 되돌리지 못했습니다: ': 'The export finished, but your original work could not be put back: ',
+    '여러 .emv 파일을 순서대로 이어서 한 파일로 내보냅니다. 한 번에 하나씩만 열기 때문에 큰 작업을 나눠서 만들 수 있습니다.': 'Export several .emv files as one, in order. Only one is open at a time, so a large piece of work can be made in parts.',
+    '조각 이어서 내보내기...': 'Export pieces as one...',
 };

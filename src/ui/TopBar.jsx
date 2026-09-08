@@ -13,7 +13,7 @@ export function TopBar({
     showFileMenu, setShowFileMenu, showMediaMenu, setShowMediaMenu, fileMenuRef,
     mediaMenuRef, canvasW, canvasH, setCanvasSize, setShowHelp,
     setShowSettings, keymap, view, zoomCanvas, resetView,
-    autoSavedAt, autosaveErr, backupAt, storageInfo, handleExport,
+    autoSavedAt, autosaveErr, backupAt, storageInfo, handleExport, handleExportPieces,
 }) {
     return (
         <div className="top-bar">
@@ -32,6 +32,13 @@ export function TopBar({
                         <button className="file-menu-item" onClick={() => { doSave(true); setShowFileMenu(false); }}>{tr('다른 이름으로 저장...')}</button>
                         <div className="file-menu-sep" />
                         <button className="file-menu-item" onClick={() => { doOpen(); setShowFileMenu(false); }}>{tr('로컬 파일 열기...')}</button>
+                        <div className="file-menu-sep" />
+                        {/* Sits under the file actions rather than beside Export, because what it
+                            asks for is files: the thing being exported is not what is open. */}
+                        <button className="file-menu-item" onClick={() => { handleExportPieces(); setShowFileMenu(false); }}
+                            title={tr('여러 .emv 파일을 순서대로 이어서 한 파일로 내보냅니다. 한 번에 하나씩만 열기 때문에 큰 작업을 나눠서 만들 수 있습니다.')}>
+                            {tr('조각 이어서 내보내기...')}
+                        </button>
                         <div className="file-menu-sep" />
                         <div style={{ fontSize: 10, color: '#777', padding: '4px 12px 2px' }}>{tr('로컬 (브라우저 저장)')}</div>
                         <button className="file-menu-item" onClick={() => { doLocalSave(false); setShowFileMenu(false); }}>{tr('로컬에 저장')}</button>
