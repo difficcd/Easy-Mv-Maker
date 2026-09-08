@@ -28,8 +28,9 @@ test/       one file per module, same name
 
 A file in `core/` importing React or reaching for `document` is the sign it is in the wrong
 folder — or that the part which needs them should stay behind in the component and be passed in.
-That is how `measureTextBox` takes a context, `cloneCutContents` takes a bitmap copier, and
-`loadKeymap` takes its storage.
+That is how `measureTextBox` takes a context and `cloneCutContents` takes a bitmap copier. The
+keymap went one better: `keymapFrom` takes a value that has already been parsed and does not
+know storage exists at all, because reading it is `useStored`'s decoder.
 
 - `src/App.jsx` — the `App()` component: state, handlers, JSX. Use the section map below to jump.
 - `src/i18n.js` — `tr()` plus the English dictionary. Korean source text is the lookup key, so
@@ -58,7 +59,7 @@ That is how `measureTextBox` takes a context, `cloneCutContents` takes a bitmap 
   `projectSettings`, `makeLoadProgress`.
 - `historyOps.js` — undo/redo. `pushSnapshot` sizes how far back it reaches by memory rather than
   a step count, since a snapshot copies the whole document.
-- `shortcuts.js` — `DEFAULT_KEYS`, `keyOf`, `matchShortcut`, `loadKeymap`.
+- `shortcuts.js` — `DEFAULT_KEYS`, `KEY_LABELS`, `keyOf`, `matchShortcut`, `keymapFrom`, `findConflicts`.
 - `timeCode.js` — `fmt` / `parseClock` for the timeline clock.
 - `numInput.js` — the rules behind a number field that can be typed into.
 - `bitmapRefs.js` — `collectUsedBitmapIds` / `unusedBitmapIds`. Every reference source is named in
@@ -80,8 +81,24 @@ That is how `measureTextBox` takes a context, `cloneCutContents` takes a bitmap 
 `JitterPanel`), `CutLayerPanel.jsx`, `ColorPanel.jsx`, `ToolsPanel.jsx`, `Timeline.jsx`,
 `TopBar.jsx`, `Modals.jsx`, and `NumField.jsx` — **use NumField for any new numeric field.**
 
-**hooks/** — `useTimelineGestures.js`: every way the timeline can be pointed at (ruler scrub,
-marquee, middle-click pan, one-finger pan/tap, two-finger pinch) in one place.
+**hooks/** — state that belongs together, lifted out of App so its wiring is somewhere with a
+name. Each takes what it cannot own as arguments, and the rule for what it cannot own is the same
+every time: `buildData` reads most of App's state and `restore` writes most of it, so a hook that
+needs a document takes those two functions rather than the document.
+
+- `useTimelineGestures.js` — every way the timeline can be pointed at (ruler scrub, marquee,
+  middle-click pan, one-finger pan/tap, two-finger pinch) in one place.
+- `usePlayback.js` — the playback clock: the rAF loop, and the audio and video it drags along.
+- `useHistory.js` — undo and redo. Snapshots the document on change; the arithmetic is in
+  `core/historyOps`.
+- `useAutosave.js` — saving to IndexedDB in the background, debounced, skipped mid-gesture.
+- `useLocalDocuments.js` — the document on this machine: `.emv` files, IndexedDB projects, crash
+  recovery, and the tabs that hold several at once.
+- `useServerStorage.js` — projects on the local API server, and the rotating backups of them.
+- `useServerProbe.js` — is that API there? Backs off rather than retrying forever.
+- `usePanelLayout.js` — where the panels are docked and how wide they are. Pure geometry: it reads
+  nothing about the document, which is why it could leave whole.
+- `useStored.js` — state that remembers itself in localStorage, through `core/persist`.
 
 - `server/index.js` — Express file-backed project DB on :8787, files under `server/data/`.
   Proxied at `/api` (vite.config).
@@ -112,9 +129,17 @@ marquee, middle-click pan, one-finger pan/tap, two-finger pinch) in one place.
   of a pointer handler takes the whole app down; it has happened.
 - Timeline: `seekToClientX`, `startTimelineScrub` (mouse), `onTimelinePointer*` (touch: 1=pan/tap-seek, 2=pinch zoom pps). Cut blocks: drag = long-press on touch (`cutDragArmedRef`), resize = absolute delta (`initialStart/initialEnd`). `splitter` for panel resize.
 - Canvas nav: `onAreaPointer*` (1-finger pan / 2-finger pinch), `view={zoom,x,y}`.
-- Playback: rAF effect; bounds `contentStart..contentEnd` (NOT maxTime); `loopPlay` repeats.
-- Files: `buildData/restore/doSave/doOpen/doNew`; server `doServerSave/openServerList/doServerOpen/doServerDelete`; autosave effect + crash-recovery effect.
-- History: `historyRef`/`historyIndexRef` + `recordHistoryRef`; the arithmetic is in `core/historyOps`.
+- Playback: `usePlayback`; bounds are `playStart..playEnd` from `core/playRange` (NOT maxTime) —
+  the same range export uses, so what you watch is what comes out. `loopPlay` repeats.
+- Files: `buildData` and `restore` are in App, because one reads most of its state and the other
+  writes most of it. Everything around them is not: `doSave/doOpen/doNew` and the tabs are in
+  `useLocalDocuments`, `doServerSave/openServerList/doServerOpen/doServerDelete` and the backups
+  in `useServerStorage`, the debounced write in `useAutosave`.
+- History: `useHistory`. It owns the stack and the refs; App passes the snapshot and a predicate
+  for "not now, a gesture is in progress".
+- Export: `renderFrameRange` paints a range and hands each frame to a capture function, so the
+  multi-piece export can run it once per piece into one writer. `captureFrame` decides what a
+  format wants from a painted canvas.
 
 ## Where the render path is going
 
@@ -165,7 +190,15 @@ codebase for the least benefit.
 
 ## Run and verify
 - Web + API: `npm run dev` (web :5173 with LAN host + QR, api :8787).
-- `npm run check` — typecheck, tests, hook-lint baseline, build. **Run this before reporting done.**
+- `npm run check` — typecheck, tests, then four checks that each exist because something went
+  wrong once, then the build. **Run this before reporting done.**
+  - `hook-baseline` — hook-dependency warnings may not grow. Most of the remaining ones are
+    deliberate; the baseline pins them rather than demanding zero.
+  - `helper-index` — every shared export is in HELPERS.md, so a helper cannot quietly go missing
+    from the index someone would have checked before writing a second one.
+  - `unreachable` — App-level names nothing reaches. Catches a feature cut from the UI and left
+    behind: a group that only refers to itself is dead however busy it looks.
+  - `i18n-check` — every `tr()` string is translated, or the English UI shows Korean.
 - `npm test` alone runs the suite (Node's built-in runner, no test framework dependency).
 - Build: `npm run build`. Android: `npm run android:sync` then `android:open`.
 
