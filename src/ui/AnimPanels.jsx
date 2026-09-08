@@ -171,7 +171,7 @@ const MOVE_PRESETS = [
 const loadCustomPresets = () => readStored('mv_move_presets', [], arrayCodec.decode);
 const saveCustomPresets = (list) => writeStored('mv_move_presets', list, arrayCodec.encode);
 
-export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCapture, setPathCapture, cutProgress = 0 }) {
+export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCapture, setPathCapture, spineEdit, setSpineEdit, cutProgress = 0 }) {
     const a = { ...LAYER_ANIM_DEFAULT, ...layer.anim };
     const [custom, setCustom] = React.useState(loadCustomPresets);
     const keys = Array.isArray(a.keys) ? a.keys : [];
@@ -327,6 +327,11 @@ export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCaptur
                                         <option value="y">{tr('세로축')}</option><option value="x">{tr('가로축')}</option>
                                     </select>
                                     <NumIn label={tr('지점')} value={prof.length} onChange={v => resize(Math.max(2, Math.min(8, Math.round(v))))} min={2} max={8} w={40} title={tr('제어 지점 개수 (2~8)')} />
+                                    <button className={`small-btn${spineEdit?.layerId === layer.id ? ' active' : ''}`}
+                                        onClick={() => setSpineEdit(spineEdit?.layerId === layer.id ? null : { cutId: cut.id, layerId: layer.id })}
+                                        title={tr('그림 위에서 점을 끌어 조절합니다. 숫자를 상상해서 입력하지 않아도 됩니다.')}>
+                                        {spineEdit?.layerId === layer.id ? tr('편집 중') : tr('그림에서 조절')}
+                                    </button>
                                     <button className="small-btn" onClick={() => setProf(null)}>{tr('끄기')}</button>
                                 </>}
                         </div>

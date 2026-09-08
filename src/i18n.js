@@ -710,4 +710,9 @@ const EN = {
     'PNG 시퀀스 (ZIP)': 'PNG sequence (ZIP)',
     '{0}프레임을 내보냅니다. 오래 걸립니다. 계속할까요?':
         'This will export {0} frames. It takes a while. Continue?',
+    '그림 위에서 점을 끌어 조절합니다. 숫자를 상상해서 입력하지 않아도 됩니다.': 'Drag the points on the drawing instead of picturing the result and typing a number.',
+    '편집 중': 'Editing',
+    '그림에서 조절': 'Edit on canvas',
+    '{0}% 지점 — 끌어서 흔들림 조절': '{0}% along — drag to set how far it swings',
+    '점 편집 끝': 'Done',
 };
