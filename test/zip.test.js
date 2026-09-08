@@ -139,10 +139,14 @@ function hasUnzip() {
 // real thing to want, and this is it. The archive below was produced by the writer and checked by
 // a system unzip, so it is a record of output that is known to work rather than of output that
 // merely exists.
-const GOLDEN_ZIP = [80,75,3,4,20,0,0,0,0,0,163,104,67,92,29,128,188,85,3,0,0,0,3,0,0,0,5,0,0,0,97,46,98,105,110,1,2,3,80,75,3,4,20,0,0,0,0,0,163,104,67,92,116,35,223,85,2,0,0,0,2,0,0,0,5,0,0,0,98,46,98,105,110,4,5,80,75,1,2,20,0,20,0,0,0,0,0,163,104,67,92,29,128,188,85,3,0,0,0,3,0,0,0,5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,46,98,105,110,80,75,1,2,20,0,20,0,0,0,0,0,163,104,67,92,116,35,223,85,2,0,0,0,2,0,0,0,5,0,0,0,0,0,0,0,0,0,0,0,0,0,38,0,0,0,98,46,98,105,110,80,75,5,6,0,0,0,0,2,0,2,0,102,0,0,0,75,0,0,0,0,0];
+const GOLDEN_ZIP = [80,75,3,4,20,0,0,0,0,0,163,32,67,92,29,128,188,85,3,0,0,0,3,0,0,0,5,0,0,0,97,46,98,105,110,1,2,3,80,75,3,4,20,0,0,0,0,0,163,32,67,92,116,35,223,85,2,0,0,0,2,0,0,0,5,0,0,0,98,46,98,105,110,4,5,80,75,1,2,20,0,20,0,0,0,0,0,163,32,67,92,29,128,188,85,3,0,0,0,3,0,0,0,5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,46,98,105,110,80,75,1,2,20,0,20,0,0,0,0,0,163,32,67,92,116,35,223,85,2,0,0,0,2,0,0,0,5,0,0,0,0,0,0,0,0,0,0,0,0,0,38,0,0,0,98,46,98,105,110,80,75,5,6,0,0,0,0,2,0,2,0,102,0,0,0,75,0,0,0,0,0];
 
+// The date is built from local components rather than parsed from a Z-suffixed string, because
+// ZIP stores wall-clock time in whatever zone wrote the file - dosDateTime uses getHours and
+// getMonth, correctly. A UTC string put the timezone of whoever ran the test into the fixture,
+// which passed here and failed on CI, where the clock is UTC and mine is not.
 test('ZipWriter: the bytes are exactly what they were, entry by entry', () => {
-    const zip = new ZipWriter({ date: new Date('2026-02-03T04:05:06Z') });
+    const zip = new ZipWriter({ date: new Date(2026, 1, 3, 4, 5, 6) });
     zip.add('a.bin', new Uint8Array([1, 2, 3]));
     zip.add('b.bin', new Uint8Array([4, 5]));
     assert.deepEqual([...zip.finish()], GOLDEN_ZIP,
