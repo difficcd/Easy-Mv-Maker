@@ -280,14 +280,22 @@ const solid = (w, h, [r, g, b, a]) => {
     return px;
 };
 
-test('GifWriter: one frame at a time gives the same file as all at once', () => {
-    const a = solid(4, 4, [255, 0, 0, 255]);
-    const b = solid(4, 4, [0, 128, 255, 255]);
-    const atOnce = encodeGif([{ rgba: a }, { rgba: b }], { width: 4, height: 4, delayMs: 80 });
-    const gif = new GifWriter({ width: 4, height: 4, delayMs: 80 });
-    gif.addFrame(a);
-    gif.addFrame(b);
-    assert.deepEqual([...gif.finish()], [...atOnce], 'a queue must not produce a different file');
+// This slot used to hold "one frame at a time gives the same file as all at once", comparing
+// GifWriter against encodeGif. That test could not fail: encodeGif *is* a GifWriter with every
+// frame handed over, so it compared a function with its own inlining. It read as reassurance and
+// was worth nothing, which is worse than having no test there.
+//
+// What it was reaching for - "a change to the writer must not silently change the bytes" - is a
+// real thing to want, and this is it. The file below was produced by the writer and read back by
+// ffprobe, so it is a record of output known to decode rather than of output that merely exists.
+const GOLDEN_GIF = [71,73,70,56,57,97,2,0,2,0,112,0,0,33,255,11,78,69,84,83,67,65,80,69,50,46,48,3,1,0,0,0,33,249,4,9,10,0,0,0,44,0,0,0,0,2,0,2,0,129,0,0,0,255,0,0,0,0,0,0,0,0,2,2,140,83,0,33,249,4,9,10,0,0,0,44,0,0,0,0,2,0,2,0,129,0,0,0,0,0,255,0,0,0,0,0,0,2,2,140,83,0,59];
+
+test('GifWriter: the bytes are exactly what they were, frame by frame', () => {
+    const gif = new GifWriter({ width: 2, height: 2, delayMs: 100 });
+    gif.addFrame(solid(2, 2, [255, 0, 0, 255]));
+    gif.addFrame(solid(2, 2, [0, 0, 255, 255]));
+    assert.deepEqual([...gif.finish()], GOLDEN_GIF,
+        'a change here is a change to every GIF the app writes - deliberate or not');
 });
 
 // The reason streaming is easy for this format, stated as a test: nothing carries between frames,
