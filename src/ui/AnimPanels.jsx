@@ -6,6 +6,7 @@ import { randomId } from '../core/ids.js';
 import { readStored, writeStored, arrayCodec } from '../core/persist.js';
 import { NumField } from './NumField';
 import { tr } from '../i18n';
+import { swayPointAt, swayWeightAt } from '../canvas/canvasUtils';
 
 // Animation control panels, split out of App.jsx so editing the (frequently-tweaked)
 // animation UI doesn't require loading the whole component.
@@ -305,14 +306,18 @@ export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCaptur
             {(() => {
                 const prof = Array.isArray(a.swayProfile) ? a.swayProfile : null;
                 const setProf = (arr) => updLayerAnim(cut.id, layer.id, { swayProfile: arr });
+                // A point may carry its own position now, so the panel reads through the same
+                // helper the renderer does rather than assuming every entry is a bare weight.
+                const pointAt = prof ? swayPointAt(prof) : null;
+                const points = prof ? prof.map((_, i) => pointAt(i)) : null;
+                // Resizing keeps the shape by sampling the curve that exists, and spaces the new
+                // points evenly - a count is a request for "this many", not for particular places.
                 const resize = (n) => {
                     const cur = prof || [0, 1];
-                    const next = Array.from({ length: n }, (_, i) => {
-                        const p = i / (n - 1);
-                        const x = p * (cur.length - 1), lo = Math.floor(x), f = x - lo;
-                        return Math.round(((cur[lo] ?? 0) + ((cur[Math.min(lo + 1, cur.length - 1)] ?? 0) - (cur[lo] ?? 0)) * f) * 100) / 100;
-                    });
-                    setProf(next);
+                    setProf(Array.from({ length: n }, (_, i) => {
+                        const p = n > 1 ? i / (n - 1) : 0;
+                        return { p, w: Math.round(swayWeightAt(cur, p) * 100) / 100 };
+                    }));
                 };
                 return (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 10, color: '#8bd' }}>
@@ -337,12 +342,12 @@ export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCaptur
                         </div>
                         {prof && (
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, paddingLeft: 26 }}>
-                                {prof.map((w, i) => (
+                                {points.map((pt, i) => (
                                     <React.Fragment key={i}>
-                                        <NumIn value={Math.round(w * 100)} step={10} min={-100} max={100} w={46}
-                                            label={<span style={{ color: '#667' }}>{Math.round(i / (prof.length - 1) * 100)}%</span>}
-                                            title={tr('{0} {1}% 지점의 흔들림 정도(%)', a.swayAxis === 'x' ? tr('왼쪽→오른쪽') : tr('위→아래'), Math.round(i / (prof.length - 1) * 100))}
-                                            onChange={v => setProf(prof.map((x, j) => j === i ? v / 100 : x))} />
+                                        <NumIn value={Math.round(pt.w * 100)} step={10} min={-100} max={100} w={46}
+                                            label={<span style={{ color: '#667' }}>{Math.round(pt.p * 100)}%</span>}
+                                            title={tr('{0} {1}% 지점의 흔들림 정도(%)', a.swayAxis === 'x' ? tr('왼쪽→오른쪽') : tr('위→아래'), Math.round(pt.p * 100))}
+                                            onChange={v => setProf(points.map((x, j) => (j === i ? { ...x, w: v / 100 } : x)))} />
                                     </React.Fragment>
                                 ))}
                             </div>

@@ -11,10 +11,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    pointInPolygon, dist, safeArray, hexToRgb, fitRect, layerKey, strokeSig,
-    applyEase, triwave, swayWeightAt, sampleWave, sampleKeys, targetCanvasFor,
-    computeCutAnim, flattenLayersInUiOrder, sizeCanvas, dilateMask, FONT_PRESETS, fontGroups,
-cutDuration, cutProgress, scratchCanvas , layerSig, seekTarget, applyCutAnim} from '../src/canvas/canvasUtils.js';
+    pointInPolygon, dist, safeArray, hexToRgb, fitRect, layerKey, strokeSig, applyEase, triwave, swayWeightAt, sampleWave, sampleKeys, targetCanvasFor, computeCutAnim, flattenLayersInUiOrder, sizeCanvas, dilateMask, FONT_PRESETS, fontGroups, cutDuration, cutProgress, scratchCanvas, layerSig, seekTarget, applyCutAnim, sortSwayProfile,
+} from '../src/canvas/canvasUtils.js';
 
 const near = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) < eps, `${a} ≈ ${b}`);
 
@@ -516,4 +514,76 @@ test('a non-uniform scale is passed through as given', () => {
     const ctx = recorder();
     applyCutAnim(ctx, { tx: 0, ty: 0, sx: 0.5, sy: 2 }, 100, 100);
     assert.deepEqual(ctx.calls[1], ['scale', 0.5, 2]);
+});
+
+// --- sway points that carry their own position ---------------------------------------------
+// A profile used to be weights alone, spaced evenly - three meant top, middle, bottom. Fine for
+// hair, useless for an arm, where the point that matters is wherever the elbow is. Both shapes are
+// read rather than one being migrated, so a project saved before this still moves as it did.
+
+test('swayWeightAt: the old evenly-spaced shape is unchanged', () => {
+    const old = (profile, p) => {
+        const n = profile.length;
+        if (n === 1) return profile[0];
+        const x = Math.min(1, Math.max(0, p)) * (n - 1);
+        const i = Math.min(n - 2, Math.floor(x));
+        const f = x - i;
+        const t = f * f * (3 - 2 * f);
+        return profile[i] + (profile[i + 1] - profile[i]) * t;
+    };
+    for (const prof of [[0, 1], [0, 0.5, 1], [0, 1, 0], [1, -1, 0.5, 0]]) {
+        for (let k = 0; k <= 100; k++) {
+            const p = k / 100;
+            assert.ok(Math.abs(swayWeightAt(prof, p) - old(prof, p)) < 1e-12,
+                `profile ${JSON.stringify(prof)} at ${p}`);
+        }
+    }
+});
+
+test('swayWeightAt: a positioned profile bends where its points are', () => {
+    // The same three weights, but the middle one moved down to 80% - an elbow low on the arm.
+    const prof = [{ p: 0, w: 0 }, { p: 0.8, w: 1 }, { p: 1, w: 0 }];
+    assert.equal(swayWeightAt(prof, 0), 0);
+    assert.equal(swayWeightAt(prof, 0.8), 1, 'the peak is where the point was put');
+    assert.equal(swayWeightAt(prof, 1), 0);
+    assert.ok(swayWeightAt(prof, 0.4) < 0.6, 'halfway up is still on the way, not at the top');
+    assert.ok(swayWeightAt(prof, 0.9) > 0.4, 'and it falls away quickly past the peak');
+});
+
+test('swayWeightAt: evenly-spaced points written the long way match the short way', () => {
+    const short = [0, 1, 0];
+    const long = [{ p: 0, w: 0 }, { p: 0.5, w: 1 }, { p: 1, w: 0 }];
+    for (let k = 0; k <= 50; k++) {
+        const p = k / 50;
+        assert.ok(Math.abs(swayWeightAt(short, p) - swayWeightAt(long, p)) < 1e-12, `at ${p}`);
+    }
+});
+
+test('swayWeightAt: outside the points, the nearest one wins outright', () => {
+    // Nothing is placed above 30%, so nothing is said about the top - and a point at the elbow
+    // says nothing about the hand.
+    const prof = [{ p: 0.3, w: 1 }, { p: 0.6, w: -1 }];
+    assert.equal(swayWeightAt(prof, 0), 1);
+    assert.equal(swayWeightAt(prof, 0.1), 1);
+    assert.equal(swayWeightAt(prof, 1), -1);
+});
+
+test('swayWeightAt: two points at the same place do not divide by zero', () => {
+    const prof = [{ p: 0.5, w: 0 }, { p: 0.5, w: 1 }];
+    assert.ok(Number.isFinite(swayWeightAt(prof, 0.5)));
+    assert.ok(Number.isFinite(swayWeightAt(prof, 0.2)));
+});
+
+test('swayWeightAt: junk in a point is a still point, not NaN in the render', () => {
+    const prof = [{ p: 0, w: 0 }, { p: NaN, w: 1 }, {}];
+    for (let k = 0; k <= 10; k++) assert.ok(Number.isFinite(swayWeightAt(prof, k / 10)));
+});
+
+test('sortSwayProfile: dragging a point past its neighbour reorders rather than reversing', () => {
+    const prof = [{ p: 0, w: 0 }, { p: 0.9, w: 1 }, { p: 0.4, w: -1 }];
+    assert.deepEqual(sortSwayProfile(prof).map(x => x.p), [0, 0.4, 0.9]);
+    // The old shape comes back as points, because that is what an edit produces - reading still
+    // accepts both, so a project nobody edits is never rewritten.
+    assert.deepEqual(sortSwayProfile([0, 1, 0]), [{ p: 0, w: 0 }, { p: 0.5, w: 1 }, { p: 1, w: 0 }]);
+    assert.deepEqual(sortSwayProfile(null), []);
 });
