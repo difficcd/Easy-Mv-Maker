@@ -386,6 +386,17 @@ Key bindings, and what a key event means.
 | `TOOL_PREFIX` | Selecting a tool is a binding like any other, distinguished by this prefix so the handler can route it without a list of tool ids to keep in step with the toolbar. |
 | `toolFromAction` | The tool a binding selects, or null if it is not a tool binding. |
 
+## `src/core/splitProject.js`
+
+Cutting one long project into pieces that can be worked on separately - the other half of #123,
+where the export queue is the combining. Advice to work in pieces is only followable if both
+halves exist, and until this the pieces had to be made by hand.
+
+| | |
+|---|---|
+| `splitProject` | One piece per part, each carrying only the pixels its own cuts reference - which is the whole point, since a piece that dragged every frame along would be the size of the project it came from. Times are left alone, so a split and a recombine come back to the same film. **No cut may be lost:** cuts belonging to no part become a piece rather than being dropped. |
+| `pieceFileName` | `01_Chorus.emv` - padded so a directory listing is the running order, and stripped of the characters a file name cannot hold. |
+
 ## `src/core/timeCode.js`
 
 Formatting and parsing times.

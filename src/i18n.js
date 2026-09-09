@@ -707,4 +707,10 @@ const EN = {
     'PNG 시퀀스 (ZIP)': 'PNG sequence (ZIP)',
     '{0}프레임을 내보냅니다. 오래 걸립니다. 계속할까요?':
         'This will export {0} frames. It takes a while. Continue?',
+    '프로젝트 나누는 중': 'Splitting the project',
+    '나눌 파트가 없습니다. 컷을 파트로 묶은 뒤 다시 시도하세요.': 'There are no parts to split into. Group some cuts into parts first.',
+    '{0}개 파트로 나눴습니다.': 'Split into {0} parts.',
+    '나누기 실패: ': 'Split failed: ',
+    '파트마다 하나씩, 따로 열 수 있는 .emv 파일로 나눠 zip으로 받습니다. 컷이 많아 무거워졌을 때 나눠서 작업하고 나중에 합치기 위한 것입니다.': 'One .emv per part, each openable on its own, delivered as a zip. For working in pieces when a project has grown heavy, and combining them later.',
+    '파트별로 나눠 저장...': 'Split by part...',
 };
