@@ -713,4 +713,5 @@ const EN = {
     '나누기 실패: ': 'Split failed: ',
     '파트마다 하나씩, 따로 열 수 있는 .emv 파일로 나눠 zip으로 받습니다. 컷이 많아 무거워졌을 때 나눠서 작업하고 나중에 합치기 위한 것입니다.': 'One .emv per part, each openable on its own, delivered as a zip. For working in pieces when a project has grown heavy, and combining them later.',
     '파트별로 나눠 저장...': 'Split by part...',
+    '파트들이 시간 순서로 나뉘어 있지 않습니다. 이대로 나누면 조각끼리 시간이 겹쳐서, 나중에 이어 붙일 때 빈 구간이 생깁니다. 계속할까요?': 'These parts are not in timeline order. Split like this and the pieces overlap in time, so joining them later leaves blank stretches. Continue?',
 };
