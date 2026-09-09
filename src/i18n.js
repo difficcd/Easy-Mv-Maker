@@ -721,4 +721,6 @@ const EN = {
     '{0}% 지점 — 끌어서 위치와 흔들림 조절, 축 밖으로 끌면 삭제': '{0}% along — drag to move it and set how far it swings; drag off the axis to remove',
     '놓으면 삭제': 'Release to remove',
     '아무 곳이나 눌러 점 추가 · 축 밖으로 끌어 삭제': 'Tap anywhere to add a point · drag off the axis to remove',
+    '점은 {0}개까지입니다': 'Up to {0} points',
+    '흔들림 강도가 0이라 점을 움직여도 변화가 없습니다': 'Sway strength is 0, so moving a point changes nothing',
 };
