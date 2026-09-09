@@ -713,4 +713,9 @@ const EN = {
     '나누기 실패: ': 'Split failed: ',
     '파트마다 하나씩, 따로 열 수 있는 .emv 파일로 나눠 zip으로 받습니다. 컷이 많아 무거워졌을 때 나눠서 작업하고 나중에 합치기 위한 것입니다.': 'One .emv per part, each openable on its own, delivered as a zip. For working in pieces when a project has grown heavy, and combining them later.',
     '파트별로 나눠 저장...': 'Split by part...',
+    '그림 위에서 점을 끌어 조절합니다. 숫자를 상상해서 입력하지 않아도 됩니다.': 'Drag the points on the drawing instead of picturing the result and typing a number.',
+    '편집 중': 'Editing',
+    '그림에서 조절': 'Edit on canvas',
+    '{0}% 지점 — 끌어서 흔들림 조절': '{0}% along — drag to set how far it swings',
+    '점 편집 끝': 'Done',
 };
