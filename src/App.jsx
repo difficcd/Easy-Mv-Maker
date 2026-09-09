@@ -1298,7 +1298,7 @@ export default function App() {
     // because it needs buildData, restore and resetToEmpty, and this is the first point at which
     // all three exist.
     const {
-        doSave, doOpen, doNew, readAndRestore,
+        doSave, doOpen, doNew, readAndRestore, doSplitSave,
         localProjects, setLocalProjects, localIdRef,
         doLocalSave, openLocalList, doLocalOpen, doLocalDelete,
         tabs, activeTabId, switchTab, newTab, closeTab, renameTab,
@@ -3822,7 +3822,7 @@ export default function App() {
                 fileMenuRef={fileMenuRef} mediaMenuRef={mediaMenuRef} canvasW={CANVAS_W} canvasH={CANVAS_H}
                 setCanvasSize={setCanvasSize} setShowHelp={setShowHelp} setShowSettings={setShowSettings}
                 keymap={keymap} view={view} zoomCanvas={zoomCanvas} resetView={resetView} autoSavedAt={autoSavedAt}
-                autosaveErr={autosaveErr} backupAt={backupAt} storageInfo={storageInfo} handleExport={handleExport} />
+                autosaveErr={autosaveErr} backupAt={backupAt} storageInfo={storageInfo} handleExport={handleExport} doSplitSave={doSplitSave} />
             {/* Project (document) tab bar, below the File and Media menus. */}
             <div className="doc-tabs" style={{ display: 'flex', alignItems: 'stretch', gap: 2, background: 'hsl(var(--ui-h) var(--ui-s) 11%)', borderBottom: '1px solid hsl(var(--ui-h) var(--ui-s) 20%)', padding: '3px 6px 0', overflowX: 'auto', flexShrink: 0 }}>
                 {tabs.map(t => (

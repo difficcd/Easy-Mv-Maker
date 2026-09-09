@@ -20,6 +20,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { saveProject, loadProject, listProjects, deleteProject, loadAutosave, autosaveKey } from '../db.js';
 import { downloadBlob } from '../export/download.js';
+import { ZipWriter } from '../export/zip.js';
+import { splitProject, pieceFileName } from '../core/splitProject.js';
 import { randomId, nextId } from '../core/ids.js';
 import { safeArray } from '../canvas/canvasUtils.js';
 import { tr } from '../i18n.js';
@@ -109,6 +111,44 @@ export function useLocalDocuments({ buildData, restore, resetToEmpty, setAppErro
             readAndRestore(() => new Promise((res, rej) => { const r = new FileReader(); r.onload = ev => res(ev.target.result); r.onerror = rej; r.readAsText(f); }));
         };
         inp.click();
+    };
+
+    /**
+     * Split this project into one .emv per part, delivered as a single zip.
+     *
+     * The other half of #123: the export queue can combine pieces, and until now the pieces had
+     * to be made by hand. Past a certain number of cuts the app lags, so the advice is to work in
+     * pieces - advice that is only followable if splitting is one action.
+     *
+     * A zip rather than several downloads, because a browser blocks the second and third file of
+     * a burst and there is no way to tell that has happened from in here.
+     *
+     * Built once and sliced, rather than the app being rearranged once per piece: splitProject is
+     * a function of the document, so nothing on screen moves while this runs.
+     */
+    const doSplitSave = async () => {
+        try {
+            setLoadProgress({ label: tr('프로젝트 나누는 중'), done: 0, total: 0 });
+            // Self-contained pieces: base64 rather than Blobs, because each one has to open on its
+            // own on a machine that has nothing else.
+            const full = await buildData();
+            const pieces = splitProject(full, tr('파트'));
+            if (pieces.length < 2) {
+                setAppError(tr('나눌 파트가 없습니다. 컷을 파트로 묶은 뒤 다시 시도하세요.'));
+                return;
+            }
+            const zip = new ZipWriter();
+            const enc = new TextEncoder();
+            pieces.forEach((piece, i) => {
+                zip.add(pieceFileName(i, pieces.length, piece.name), enc.encode(JSON.stringify(piece.doc)));
+            });
+            downloadBlob(new Blob([zip.finish()], { type: 'application/zip' }), 'mv_parts.zip');
+            setToast(tr('{0}개 파트로 나눴습니다.', pieces.length));
+        } catch (e) {
+            setAppError(tr('나누기 실패: ') + (e?.message || String(e)));
+        } finally {
+            setLoadProgress(null);
+        }
     };
 
     const doNew = () => {
@@ -244,7 +284,7 @@ export function useLocalDocuments({ buildData, restore, resetToEmpty, setAppErro
     }, []);
 
     return {
-        doSave, doOpen, doNew, readAndRestore,
+        doSave, doOpen, doNew, readAndRestore, doSplitSave,
         localProjects, setLocalProjects, localIdRef, localNameRef,
         doLocalSave, openLocalList, doLocalOpen, doLocalDelete,
         tabs, activeTabId, switchTab, newTab, closeTab, renameTab,
