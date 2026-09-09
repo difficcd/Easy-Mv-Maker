@@ -718,8 +718,7 @@ const EN = {
     '그림에서 조절': 'Edit on canvas',
     '{0}% 지점 — 끌어서 흔들림 조절': '{0}% along — drag to set how far it swings',
     '점 편집 끝': 'Done',
-    '선을 눌러 점 추가': 'Tap the line to add a point',
     '{0}% 지점 — 끌어서 위치와 흔들림 조절, 축 밖으로 끌면 삭제': '{0}% along — drag to move it and set how far it swings; drag off the axis to remove',
     '놓으면 삭제': 'Release to remove',
-    '선을 눌러 추가 · 축 밖으로 끌어 삭제': 'Tap the line to add · drag off the axis to remove',
+    '아무 곳이나 눌러 점 추가 · 축 밖으로 끌어 삭제': 'Tap anywhere to add a point · drag off the axis to remove',
 };

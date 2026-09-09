@@ -5,18 +5,22 @@ import { tr } from '../i18n';
 // Placing the points a sway bends around, on the drawing.
 //
 // The profile decides how far each part of a layer moves: hair swings from its roots, a ribbon
-// trails from where it is held. The renderer for it has been right for a while - it slices the
-// layer along an axis and shears each slice, so the displacement varies continuously and leaves
-// no seam.
+// trails from where it is held. The renderer has been right for a while - it slices the layer
+// along an axis and shears each slice, so the displacement varies continuously and leaves no seam.
 //
-// What this is not: a rigging tool. There are no joints and no rotation - a point says "this far
-// along the axis moves this much sideways", and the motion is a wave, not a chain. Bones would be
-// a different deformation model and a different renderer.
+// Points go anywhere on the canvas. The axis stays as the frame of reference, because the renderer
+// is built on it, but nothing has to be tapped exactly: a point dropped beside the character reads
+// its place in the profile from where it landed along the axis, and its swing from how far off the
+// resting line it is. Tap to add, drag to adjust, drag off the axis to remove.
 //
-// What it is: the points are placed where the drawing needs them. They used to be spaced evenly -
-// three meant top, middle, bottom - which suits hair and is useless for an arm, where the point
-// that matters is wherever the elbow is. Drag along the axis to move a point, across it to set
-// how far that part swings, tap the line to add one, and drag a point off the axis to remove it.
+// What this still is not: a rigging tool. There are no joints and no rotation, and two points at
+// the same height along the axis are one point as far as the renderer is concerned - the profile
+// is a function of position along the axis, not a chain in two dimensions. Bones would be a
+// different deformation model and a different renderer.
+//
+// The reach band is drawn for that reason. A tap further out than the sway can throw clamps to the
+// edge of what is possible, and a dot landing somewhere other than the finger is confusing unless
+// the limit was visible before the tap.
 //
 // An SVG overlay rather than painting into the canvas: the stage is already relative and scaled,
 // so a viewBox in canvas coordinates lines up exactly at any zoom, and the handles stay crisp.
@@ -30,6 +34,8 @@ const OFF_AXIS = 0.08;
 /** A profile needs two points to interpolate between. */
 const MIN_POINTS = 2;
 const MAX_POINTS = 12;
+/** Two points closer than this along the axis are one point as far as the renderer is concerned. */
+const TOO_CLOSE = 0.02;
 
 /**
  * @param {object} props
@@ -112,12 +118,18 @@ export function SwaySpine({ profile, axis, amount, cw, ch, onChange, onClose }) 
         setWouldDrop(false);
     };
 
-    // Tapping the line adds a point there, at whatever the curve already says - so adding one
-    // never moves the drawing, it only gives you somewhere to pull from.
+    // Tap anywhere to add a point there. Where it lands along the axis is its place in the profile;
+    // how far it lands from the resting line is how far that part swings. So dropping a point out
+    // beside the character's hand says "the hand goes that way", in one gesture.
+    //
+    // A tap on an existing point is a grab, not an add - that handler runs first and stops this one
+    // - and a tap at the same height as one is refused rather than making a second point the
+    // renderer cannot tell apart from the first.
     const addAt = (e) => {
         if (points.length >= MAX_POINTS) return;
-        const { p } = fromCanvas(toCanvas(e));
-        commit([...points, { p, w: swayWeightAt(profile, p) }]);
+        const { p, w } = fromCanvas(toCanvas(e));
+        if (points.some(pt => Math.abs(pt.p - p) < TOO_CLOSE)) return;
+        commit([...points, { p, w }]);
     };
 
     // The curve the renderer will follow, sampled through the same function rather than drawn as
@@ -128,34 +140,44 @@ export function SwaySpine({ profile, axis, amount, cw, ch, onChange, onClose }) 
         const { x, y } = xy({ p, w: swayWeightAt(profile, p) });
         curve.push(`${s ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`);
     }
-    const rest = vertical
-        ? `M${across / 2} 0 L${across / 2} ${along}`
-        : `M0 ${across / 2} L${along} ${across / 2}`;
+    /** A line parallel to the axis, `offset` px across from the resting one. */
+    const line = (offset) => (vertical
+        ? `M${across / 2 + offset} 0 L${across / 2 + offset} ${along}`
+        : `M0 ${across / 2 + offset} L${along} ${across / 2 + offset}`);
 
     return (
         <svg
             ref={svgRef}
             className="sway-spine"
             viewBox={`0 0 ${cw} ${ch}`}
-            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', touchAction: 'none', zIndex: 6 }}
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', touchAction: 'none', zIndex: 6, cursor: 'copy' }}
+            onPointerDown={addAt}
             onPointerMove={move}
             onPointerUp={release}
             onPointerCancel={release}
         >
+            {/* How far the sway can actually throw a point. Drawn because a tap outside it clamps,
+                and a dot landing somewhere other than the finger has to have been predictable. */}
+            {reach > 0 && (
+                <g stroke="rgba(253,224,71,0.22)" strokeWidth={2} fill="none">
+                    <path d={line(reach)} />
+                    <path d={line(-reach)} />
+                </g>
+            )}
             {/* Where the layer sits at rest, so the swing reads as a departure from something. */}
-            <path d={rest} stroke="rgba(255,255,255,0.35)" strokeWidth={2} strokeDasharray="6 6" fill="none" />
-            {/* A wide invisible band on the rest line: tapping it adds a point there. */}
-            <path d={rest} stroke="transparent" strokeWidth={GRAB_R} fill="none"
-                style={{ cursor: 'copy' }} onPointerDown={addAt}>
-                <title>{tr('선을 눌러 점 추가')}</title>
-            </path>
+            <path d={line(0)} stroke="rgba(255,255,255,0.35)" strokeWidth={2} strokeDasharray="6 6" fill="none" />
             <path d={curve.join(' ')} stroke="#fde047" strokeWidth={3} fill="none" strokeLinecap="round" />
             {points.map((pt, i) => {
                 const { x, y } = xy(pt);
                 const held = dragging === i;
                 const dropping = held && wouldDrop;
+                // A tie back to the resting line, so a point far out still reads as "this height,
+                // thrown this far" rather than as a dot floating on its own.
+                const tie = vertical ? { x: across / 2, y } : { x, y: across / 2 };
                 return (
                     <g key={i}>
+                        <line x1={tie.x} y1={tie.y} x2={x} y2={y}
+                            stroke="rgba(253,224,71,0.45)" strokeWidth={2} strokeDasharray="4 4" pointerEvents="none" />
                         {/* A target much larger than the dot: a pen is not precise, and a handle
                             that has to be hit exactly is a handle that feels broken. */}
                         <circle cx={x} cy={y} r={GRAB_R} fill="transparent" style={{ cursor: 'grab' }}
@@ -173,10 +195,10 @@ export function SwaySpine({ profile, axis, amount, cw, ch, onChange, onClose }) 
                 );
             })}
             {/* On the canvas rather than in the panel, because that is where the eyes are. */}
-            <foreignObject x={cw - 320} y={10} width={310} height={40}>
+            <foreignObject x={cw - 380} y={10} width={370} height={40}>
                 <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                     <span style={{ fontSize: 13, color: '#fde047', alignSelf: 'center' }}>
-                        {tr('선을 눌러 추가 · 축 밖으로 끌어 삭제')}
+                        {tr('아무 곳이나 눌러 점 추가 · 축 밖으로 끌어 삭제')}
                     </span>
                     <button className="button" onClick={onClose} style={{ height: 28 }}>{tr('점 편집 끝')}</button>
                 </div>
