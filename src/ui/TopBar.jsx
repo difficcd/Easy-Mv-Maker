@@ -1,4 +1,3 @@
-import React from 'react';
 import { ChevronDown, Download, Upload, Film, Settings, AlertTriangle, DatabaseBackup } from 'lucide-react';
 import { tr } from '../i18n';
 import { Logo } from './Logo.jsx';

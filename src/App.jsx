@@ -1,16 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo } from 'react';
-import { X, Plus, PenLine, Pen, Feather, Eraser, Undo, Redo, Layers, Trash, ChevronRight, Folder, ClipboardPaste, GitBranch, Move, Type, Cloud, Repeat, Minus, Grid3x3, Palette, Menu, PaintBucket, Pipette, RotateCcw } from 'lucide-react';
+import { Plus, PenLine, Pen, Feather, Eraser, Undo, Layers, ChevronRight, Folder, GitBranch, Move, Type, Cloud, Minus, Grid3x3, Palette, Menu, PaintBucket, RotateCcw } from 'lucide-react';
 import './App.css';
-import { saveAutosave, loadAutosave, saveProject, loadProject, listProjects, deleteProject, autosaveKey } from './db';
-import { CutAnimPanel } from './ui/AnimPanels';
-import { NumField, clampNum } from './ui/NumField';
+import { saveAutosave } from './db';
 import ColorPanel, { RECENT_SLOTS } from './ui/ColorPanel';
 import { TopBar } from './ui/TopBar';
 import { CutLayerPanel } from './ui/CutLayerPanel';
 import { useStored } from './hooks/useStored.js';
 import { nextId, randomId } from './core/ids.js';
 import { clampZoom } from './core/viewZoom.js';
-import { readStored, writeStored, arrayCodec, onOffCodec, oneZeroCodec, numberCodec } from './core/persist.js';
+import { arrayCodec, onOffCodec, oneZeroCodec, numberCodec } from './core/persist.js';
 import { TextEditor } from './ui/TextEditor';
 import { ToolsPanel } from './ui/ToolsPanel';
 import { Timeline } from './ui/Timeline';
@@ -34,8 +32,6 @@ import { drawSwayed } from './canvas/swayRender.js';
 import { detachMedia } from './core/mediaEl.js';
 import { useAutosave } from './hooks/useAutosave.js';
 import { useAudioTrack } from './hooks/useAudioTrack.js';
-import { nextProbeDelay } from './core/probeBackoff.js';
-import { playbackStartFrom } from './core/playbackStart.js';
 import {
     mediaReducer, EMPTY_MEDIA, loadAudio, setAudioDuration, setAudioClip, clearAudio,
     loadVideo, clearVideo, setVideoCuts, setVideoOpacity, clearVideoCuts, moveTrack, resizeAudio,
@@ -62,8 +58,7 @@ import { dragOnWindow } from './core/windowDrag.js';
 // active at once, and startDraw checks this one first because a camera is a property of the cut
 // rather than of whichever layer happens to be selected.
 
-import { computeCamera, applyCamera } from './core/camera.js';
-import { clipGroups } from './core/clipping.js';
+import { applyCamera } from './core/camera.js';
 import { onionNeighbours, topCutAt } from './engine/selectCuts.js';
 import { evaluateFrame } from './engine/evaluateFrame.js';
 import { pendingBitmapIds, scanLayerBitmaps } from './engine/pendingBitmaps.js';
@@ -73,11 +68,10 @@ import { downloadBlob } from './export/download.js';
 import { unusedBitmapIds } from './core/bitmapRefs.js';
 import { dragCut, resizeCut } from './core/cutOps.js';
 import {
-    DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT, FONT_PRESETS, fontGroups,
+    DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT,
     pointInPolygon, dist, safeArray, hexToRgb, bucketFillTransparentRegion,
-    layerKey, imageDataToDataURL, dataURLToImageData, drawStrokesOnCtx, sizeCanvas, scratchCanvas,
-    flattenForCanvas, flattenLayersInUiOrder, layerSig, applyCutAnim, extractVideoFrames, fitRect, detectSceneCuts, curveToWave, morphPrepare,
-    accentSoft, computeCutAnim, computeLayerAnim, TEXT_ANIM_DEFAULT, computeTextAnim,
+    layerKey, imageDataToDataURL, dataURLToImageData, drawStrokesOnCtx, sizeCanvas, scratchCanvas, flattenLayersInUiOrder, layerSig, applyCutAnim, extractVideoFrames, fitRect, detectSceneCuts, curveToWave, morphPrepare,
+    accentSoft,
     targetCanvasFor, imageDataCanvas, seekTarget,
 } from './canvas/canvasUtils';
 
