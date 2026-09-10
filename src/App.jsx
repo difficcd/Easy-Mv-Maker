@@ -1944,14 +1944,21 @@ export default function App() {
         sizeCanvas(tmpCanvas, CANVAS_W, CANVAS_H);
         const tctx = tmpCanvas.getContext('2d');
 
-        const activeCanvas = layerCanvasCache[layerKey(currentCut.id, activeLayer.id)];
+        // Through ensureLayerCanvas, not layerCanvasCache directly. The cache is keyed by layer
+        // id alone, so an entry can hold pixels from before the last stroke; ensureLayerCanvas
+        // compares the layer's signature and redraws when it does not match. Reading the map
+        // raw meant a line drawn and then immediately filled inside was invisible to the fill,
+        // which leaked straight across it.
+        const activeCanvas = ensureLayerCanvas(currentCut.id, activeLayer);
         if (activeCanvas) tctx.drawImage(activeCanvas, 0, 0);
         else drawStrokesOnCtx(tctx, activeLayer.strokes, false, bitmapStoreRef.current);
 
         const stack = flattenLayersInUiOrder(currentCut?.layers || []).filter(l => l.type === 'layer' && l.visible !== false);
         const activeIndex = stack.findIndex(l => l.id === activeLayer.id);
         for (let i = 0; i < activeIndex; i++) {
-            const lc = layerCanvasCache[layerKey(currentCut.id, stack[i].id)];
+            // Same for the layers above: they are boundaries for the fill, so a stale one is a
+            // boundary that is not there.
+            const lc = ensureLayerCanvas(currentCut.id, stack[i]);
             if (lc) tctx.drawImage(lc, 0, 0);
         }
 
@@ -2341,8 +2348,12 @@ export default function App() {
         const activeLayer = currentCut?.layers.find(l => l.id === currentCut.activeLayerId);
         if (!activeLayer) return;
 
-        // Rendered from the current strokes rather than the cached canvas, which may be a
-        // repaint behind.
+        // Deliberately NOT ensureLayerCanvas, which is what everything else on screen uses. That
+        // canvas holds one boil phase, and the mask taken from it outlives the phase it was cut
+        // from - it is applied to whichever phase is on screen when the selection is committed,
+        // so it would fit at the moment of the lasso and drift afterwards. The un-boiled strokes
+        // sit at the middle of the wobble instead, which is the closest one mask can be to every
+        // phase. (The cache is signature-checked and never stale; that is not the reason.)
         const tmpCanvas = document.createElement('canvas');
         sizeCanvas(tmpCanvas, CANVAS_W, CANVAS_H);
         const ctx = tmpCanvas.getContext('2d');
