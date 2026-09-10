@@ -1,4 +1,3 @@
-import React from 'react';
 
 /**
  * The app mark: three frames receding, the front one carrying a play mark.

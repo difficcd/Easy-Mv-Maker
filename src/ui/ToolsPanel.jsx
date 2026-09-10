@@ -1,4 +1,3 @@
-import React from 'react';
 import { Layers, Undo, Redo, Trash, Repeat, ClipboardPaste, Pipette } from 'lucide-react';
 import { NumField } from './NumField';
 import { tr } from '../i18n';
