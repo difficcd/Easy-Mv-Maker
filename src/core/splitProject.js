@@ -15,6 +15,7 @@
 
 import { collectUsedBitmapIds } from './bitmapRefs.js';
 import { derivePartsFrom } from './partOps.js';
+import { pieceRange } from './exportQueue.js';
 
 /**
  * The pieces a project splits into, one per part.
@@ -55,6 +56,30 @@ export function splitProject(doc, fallbackName = 'Part') {
             count: g.cuts.length,
             doc: pieceOf(doc, g.cuts),
         }));
+}
+
+/**
+ * Whether these pieces lie end to end, or overlap in time.
+ *
+ * A part is any group of cuts, adjacent or not. Group every other cut into two parts and each
+ * piece spans from its first cut to its last - so the two pieces cover the same stretch twice,
+ * and laying them end to end afterwards gives a longer film with the gaps rendered blank.
+ *
+ * That is a real consequence of grouping non-adjacent cuts rather than a fault, but it is not
+ * what "split my timeline into chunks" leads anyone to expect, so it is worth saying before the
+ * files are written rather than after the export comes out wrong.
+ *
+ * @param {{doc: any}[]} pieces
+ * @returns {boolean} true when each piece begins at or after the end of the one before it
+ */
+export function piecesAreSequential(pieces) {
+    let end = -Infinity;
+    for (const piece of pieces) {
+        const { start, end: e } = pieceRange(piece.doc);
+        if (start < end - 1e-9) return false;
+        end = e;
+    }
+    return true;
 }
 
 /**
