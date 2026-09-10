@@ -384,6 +384,7 @@ How each piece of a project is stored, and how it comes back.
 | `frameLoad` | How a bitmap read back from a saved project has to be loaded. Only drawing layers are decoded to ImageData up front, because those are the ones the user can still edit pixel by pixel. |
 | `frameStorage` | Which of the three ways a frame is saved. A legacy entry with no Blob still embeds rather than being dropped. |
 | `loadBitmapStore` | Rebuild a bitmap store from a saved project's bitmaps, the reverse of `collectBitmaps`. Written inline in App's restore before, which meant the only way to read a project's pixels was to open the project and replace whatever was on screen. An entry that will not load is skipped and counted, so one bad frame costs that frame rather than the file. |
+| `blobToDataURL` | A Blob as a base64 dataURL — the conversion the "a local .emv must stand alone" rule rests on, and the way back for bytes that have to reach a media element and then be saved again. |
 | `collectBitmaps` | Every bitmap the cuts reference, packed the way this kind of save wants them. The loop around frameStorage, which used to live in App.jsx where it could be read but never run. Encoders are injected because one needs FileReader and the other a canvas. |
 | `imageExt` | The file extension for a frame bitmap. |
 | `imageExtFromType` | The file extension for an image, from a Blob MIME type. |
@@ -626,7 +627,7 @@ The music track: the element that plays it, the copies of it a save needs, and t
 
 | | |
 |---|---|
-| `useAudioTrack` | Owns `audioRef` and the AudioContext the export recorder taps, plus the two extra shapes of the same sound — a base64 dataURL so an `.emv` is self-contained, and a Blob (cached by the dataURL it came from) because IndexedDB can hold one and autosave cannot afford base64. |
+| `useAudioTrack` | Owns `audioRef` and the AudioContext the export recorder taps, plus the two extra shapes of the same sound — a base64 dataURL so an `.emv` is self-contained, and a Blob (cached by the dataURL it came from) because IndexedDB can hold one and autosave cannot afford base64. Also `restoreAudio`, which puts a saved track back from any of its three stored shapes. |
 
 ## `src/hooks/useAutosave.js`
 
