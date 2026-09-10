@@ -242,6 +242,7 @@ The DOM side of the media tracks: `mediaReducer` says what the audio and video a
 | | |
 |---|---|
 | `detachMedia` | Let go of an `<audio>`/`<video>` element's source. Pause, remove the attribute, then `load()` — without the last one the bytes stay held, and a revoked blob: URL never gives its memory back. |
+| `safeMediaSrc` | A URL that may reach a media element, or null. Opening a project assigns a URL read out of a file; only `blob:` and a `data:` of the matching kind get through. Also catches the duller case — an error page in the audio field fails visibly instead of becoming a track that never plays. |
 
 ## `src/core/mediaReducer.js`
 
