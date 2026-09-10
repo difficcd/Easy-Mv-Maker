@@ -469,10 +469,15 @@ body {
     height: 100%;
 }
 
+/* Pinned to the canvas area, centred at the top with the other action bars - not to the stage,
+   which carries the zoom and pan transform and would take these buttons with it. */
 .selection-actions {
     position: absolute;
-    left: 10px;
-    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    top: 8px;
+    z-index: 31;
+    white-space: nowrap;
     display: flex;
     gap: 8px;
     padding: 8px;

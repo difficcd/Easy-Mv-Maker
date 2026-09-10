@@ -688,14 +688,23 @@ export default function App() {
         const clip = lassoClipRef.current;
         const cut = currentCut;
         if (!clip || !cut) return;
-        const layerId = cut.activeLayerId;
+        // Through the same two guards a stroke goes through, because paste had neither and so
+        // had two ways to do nothing at all while reporting success:
+        //
+        //   - `cut.activeLayerId` can be a folder, or an id whose layer is gone. patchLayer then
+        //     matches nothing and the paste evaporates.
+        //   - the target layer, or a folder above it, can be hidden. The paste lands and is
+        //     invisible, which reads exactly the same from the outside.
+        //
+        // resolveDrawLayer answers the first, commitStroke reveals for the second - the pair
+        // drawing has used all along.
+        const layer = resolveDrawLayer(cut);
+        if (!layer) return;
         const bmpCache = new Map();
         const bitmapId = cloneBitmapId(clip.bitmapId, bmpCache); // independent copy per paste
         const x = Math.round(CANVAS_W / 2 - clip.w / 2), y = Math.round(CANVAS_H / 2 - clip.h / 2);
-        updLayers(currentCutId, c => ({
-            layers: patchLayer(c.layers, layerId,
-                l => ({ strokes: [...l.strokes, { id: nextId(), tool: 'paste', bitmapId, x, y, w: clip.w, h: clip.h }] }))
-        }));
+        commitStrokeToLayer(currentCutId, layer.id, { id: nextId(), tool: 'paste', bitmapId, x, y, w: clip.w, h: clip.h });
+        setToast(tr('붙여넣었습니다 — 캔버스 가운데'));
     };
 
     const handleSetTool = (newTool) => {
@@ -3614,11 +3623,29 @@ export default function App() {
                             <button className="button" style={{ height: 24, padding: '0 8px' }} onClick={() => setPathCapture(null)}>{tr('취소')}</button>
                         </div>
                     )}
+                    {/* Outside the stage, not in it. The stage carries the zoom and pan
+                        transform, so these buttons used to scale with the drawing and slide off
+                        with it - a menu attached to the artwork rather than to the window. The
+                        other action bars were already out here; this one had been left behind. */}
+                    {selection && (
+                        <div className="selection-actions">
+                            <button className="button button-primary" onClick={extractSelectionToPart} style={{ height: 30, padding: '0 10px' }} title={tr('선택 영역을 별도 레이어(파츠)로 분리해 애니메이션')}>{tr('파츠로 분리')}</button>
+                            <button className="button" onClick={copyLassoSelection} style={{ height: 30, padding: '0 10px' }} title={tr('선택 영역 복사 (다른 컷/레이어에 붙여넣기)')}>{tr('복사')}</button>
+                            <button className="button" onClick={commitSelection} style={{ height: 30, padding: '0 10px' }} title={tr('제자리에 적용(이동/크기)')}>{tr('완료')}</button>
+                            <button className="button" onClick={cancelSelection} style={{ height: 30, padding: '0 10px' }}>{tr('취소')}</button>
+                        </div>
+                    )}
                     {etool === 'curve' && (
                         <div style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', zIndex: 31, background: 'hsl(var(--ui-h) var(--ui-s) 20%)', color: '#fff', fontSize: 12, padding: '6px 12px', borderRadius: 6, display: 'flex', gap: 8, alignItems: 'center', border: '1px solid #444' }}>
+                            {/* No anchors yet means there is nothing to finish and nothing to
+                                cancel. They were rendered disabled, which on a tablet is a
+                                button that looks pressable and does nothing - the same reading
+                                as a broken app. */}
                             {curvePts === 0 ? tr('점을 찍어 곡선을 만드세요') : tr('앵커 {0}개 (누른 채 끌어 미세조정)', curvePts)}
-                            <button className="button" style={{ height: 24, padding: '0 10px', background: '#4ea1ff' }} disabled={curvePts < 2} onClick={commitCurve}>{tr('완료')}</button>
-                            <button className="button" style={{ height: 24, padding: '0 8px' }} disabled={curvePts === 0} onClick={cancelCurve}>{tr('취소')}</button>
+                            {curvePts > 0 && <>
+                                <button className="button" style={{ height: 24, padding: '0 10px', background: '#4ea1ff' }} disabled={curvePts < 2} onClick={commitCurve}>{tr('완료')}</button>
+                                <button className="button" style={{ height: 24, padding: '0 8px' }} onClick={cancelCurve}>{tr('취소')}</button>
+                            </>}
                         </div>
                     )}
                     {(view.zoom !== 1 || view.x !== 0 || view.y !== 0) && (
@@ -3639,14 +3666,6 @@ export default function App() {
                             hiding the drawing and making committed strokes look as if they
                             vanished. */}
                         <canvas ref={liveCanvasRef} width={CANVAS_W} height={CANVAS_H} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', background: 'transparent', boxShadow: 'none' }} />
-                        {selection && (
-                            <div className="selection-actions">
-                                <button className="button button-primary" onClick={extractSelectionToPart} style={{ height: 30, padding: '0 10px' }} title={tr('선택 영역을 별도 레이어(파츠)로 분리해 애니메이션')}>{tr('파츠로 분리')}</button>
-                                <button className="button" onClick={copyLassoSelection} style={{ height: 30, padding: '0 10px' }} title={tr('선택 영역 복사 (다른 컷/레이어에 붙여넣기)')}>{tr('복사')}</button>
-                                <button className="button" onClick={commitSelection} style={{ height: 30, padding: '0 10px' }} title={tr('제자리에 적용(이동/크기)')}>{tr('완료')}</button>
-                                <button className="button" onClick={cancelSelection} style={{ height: 30, padding: '0 10px' }}>{tr('취소')}</button>
-                            </div>
-                        )}
                     </div>
                 </div>
 
