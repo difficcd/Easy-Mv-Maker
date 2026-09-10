@@ -31,7 +31,7 @@ import { fetchAsset } from './core/api.js';
 import { PLAYBACK_RATES, RATE_DEFAULT, playbackRateCodec } from './core/playbackRate.js';
 import { scaleProjectTimes, bakePlan } from './core/timeScale.js';
 import { drawSwayed } from './canvas/swayRender.js';
-import { detachMedia } from './core/mediaEl.js';
+import { detachMedia, safeMediaSrc } from './core/mediaEl.js';
 import { useAutosave } from './hooks/useAutosave.js';
 import { useAudioTrack } from './hooks/useAudioTrack.js';
 import { useToolSettings } from './hooks/useToolSettings.js';
@@ -1194,7 +1194,9 @@ export default function App() {
             dispatchMedia(loadAudio(data.audio.name || tr('오디오'), audioDataUrl));
             dispatchMedia(setAudioDuration(data.audio.duration || 30));
             dispatchMedia(setAudioClip({ startTime: data.audio.startTime ?? 0, endTime: data.audio.endTime ?? (data.audio.duration || 30), offset: data.audio.offset ?? 0 }));
-            if (audioRef.current) audioRef.current.src = audioDataUrl;
+            // Checked, not trusted: this URL came out of a project file. See core/mediaEl.
+            const audioSrc = safeMediaSrc(audioDataUrl, 'audio');
+            if (audioRef.current && audioSrc) audioRef.current.src = audioSrc;
         } else {
             audioB64Ref.current = null;
             detachMedia(audioRef.current);
@@ -1209,7 +1211,10 @@ export default function App() {
             videoBlobRef.current = videoBlob;
             const url = URL.createObjectURL(videoBlob);
             const v = videoElRef.current;
-            if (v) { v.muted = true; v.playsInline = true; v.src = url; v.onseeked = () => setFrameDecodeTick(t => t + 1); v.onloadedmetadata = () => { try { v.currentTime = data.video.offset || 0; } catch { } }; }
+            // The url here is ours (createObjectURL), but it goes through the same gate as the
+            // audio so there is one rule about what may reach a media element, not two.
+            const videoSrc = safeMediaSrc(url, 'video');
+            if (v && videoSrc) { v.muted = true; v.playsInline = true; v.src = videoSrc; v.onseeked = () => setFrameDecodeTick(t => t + 1); v.onloadedmetadata = () => { try { v.currentTime = data.video.offset || 0; } catch { } }; }
             dispatchMedia(loadVideo({ name: data.video.name || tr('영상'), startTime: data.video.startTime ?? 0, endTime: data.video.endTime ?? (data.video.duration || 0), offset: data.video.offset ?? 0, duration: data.video.duration || 0, w: data.video.w || 0, h: data.video.h || 0, cuts: data.video.cuts, cutStart: data.video.cutStart, cutOffset: data.video.cutOffset }));
         } else {
             videoBlobRef.current = null; dispatchMedia(clearVideo());

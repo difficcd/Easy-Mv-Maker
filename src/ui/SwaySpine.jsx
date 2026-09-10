@@ -93,6 +93,17 @@ export function SwaySpine({ profile, axis, amount, cw, ch, onChange, onClose }) 
 
     const commit = (next) => onChange(sortSwayProfile(next));
 
+    /** Keep a press inside the toolbar from reaching the canvas handler behind it. */
+    const swallow = (e) => e.stopPropagation();
+
+    // Escape leaves. A second way out matters more here than usual: every tap on the canvas does
+    // something, so an editor that will not close is an editor that keeps changing the drawing.
+    React.useEffect(() => {
+        const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } };
+        window.addEventListener('keydown', onKey, true);
+        return () => window.removeEventListener('keydown', onKey, true);
+    }, [onClose]);
+
     const grab = (i) => (e) => {
         e.stopPropagation();
         e.preventDefault();
@@ -125,8 +136,10 @@ export function SwaySpine({ profile, axis, amount, cw, ch, onChange, onClose }) 
     // A tap on an existing point is a grab, not an add - that handler runs first and stops this one
     // - and a tap at the same height as one is refused rather than making a second point the
     // renderer cannot tell apart from the first.
+    const full = points.length >= MAX_POINTS;
+
     const addAt = (e) => {
-        if (points.length >= MAX_POINTS) return;
+        if (full) return;   // the toolbar says why; silently ignoring a tap reads as a dead app
         const { p, w } = fromCanvas(toCanvas(e));
         if (points.some(pt => Math.abs(pt.p - p) < TOO_CLOSE)) return;
         commit([...points, { p, w }]);
@@ -195,12 +208,24 @@ export function SwaySpine({ profile, axis, amount, cw, ch, onChange, onClose }) 
                 );
             })}
             {/* On the canvas rather than in the panel, because that is where the eyes are. */}
-            <foreignObject x={cw - 380} y={10} width={370} height={40}>
-                <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                    <span style={{ fontSize: 13, color: '#fde047', alignSelf: 'center' }}>
-                        {tr('아무 곳이나 눌러 점 추가 · 축 밖으로 끌어 삭제')}
+            {/* The toolbar swallows pointer events. Without that, pressing the close button also
+                reaches the svg's own handler, which adds a point and re-renders - and the button
+                the press started on is gone before the click can land, so the editor cannot be
+                left at all. Reported as "점찍다가 exit 못하는경우". */}
+            <foreignObject x={cw - 380} y={10} width={370} height={44}
+                onPointerDown={swallow} onPointerUp={swallow} onPointerMove={swallow}>
+                <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
+                    <span style={{ fontSize: 13, color: (full || !reach) ? '#f87171' : '#fde047' }}>
+                        {/* At zero strength every point sits on the resting line and dragging one
+                            changes nothing, which looks like a broken editor rather than a
+                            setting. Say which it is. */}
+                        {!reach ? tr('흔들림 강도가 0이라 점을 움직여도 변화가 없습니다')
+                            : full ? tr('점은 {0}개까지입니다', MAX_POINTS)
+                                : tr('아무 곳이나 눌러 점 추가 · 축 밖으로 끌어 삭제')}
                     </span>
-                    <button className="button" onClick={onClose} style={{ height: 28 }}>{tr('점 편집 끝')}</button>
+                    <button className="button" onClick={onClose} style={{ height: 30, padding: '0 12px' }}>
+                        {tr('점 편집 끝')}
+                    </button>
                 </div>
             </foreignObject>
         </svg>
