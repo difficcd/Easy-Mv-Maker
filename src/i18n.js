@@ -724,4 +724,7 @@ const EN = {
     '음원과 영상은 늘릴 수 없어 제자리에 남습니다. 굳힌 뒤 위치를 다시 맞춰주세요.': 'Audio and video cannot be stretched and stay where they are. Reposition them after baking.',
     '{0}배로 굳히기': 'Bake at {0}x',
     '되돌리기(Ctrl+Z)로 취소할 수 있습니다.': 'Ctrl+Z undoes this.',
+    '재생': 'Playback',
+    '미리보기 속도입니다 · 내보내기는 항상 정상 속도': 'Preview speed only; exports always run at normal speed.',
+    '재생 설정 — 이 속도를 실제 속도로 굳히기': "Playback settings — make this the film's real speed",
 };

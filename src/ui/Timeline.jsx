@@ -14,7 +14,7 @@ export function Timeline({
     draggingCutData, fmt, goToScene, handleAddTrack, handleDeleteAudio,
     handleDeleteTrack, handlePlayPause, handleStop, isPlaying, loopPlay,
     makePartFromSelection, marquee, maxTime, mkLayer, numTracks,
-    onTimelinePointerDown, onTimelinePointerMove, onTimelinePointerUp, parts, playbackRate,
+    onTimelinePointerDown, onTimelinePointerMove, onTimelinePointerUp, parts, playbackRate, openPlaybackSettings,
     playheadRef, pps, removeVideoOverlay, renamePart, sceneDetect,
     seekToTime, selectPart, selectedCutIds, setCurrentCutId, setCurrentTime,
     addCuts, setDraggingCutData, setLoopPlay, setPlaybackRate, setResizingData,
@@ -54,6 +54,14 @@ export function Timeline({
                     value={playbackRate} onChange={e => setPlaybackRate(+e.target.value)}>
                     {PLAYBACK_RATES.map(v => <option key={v} value={v}>{v}x</option>)}
                 </select>
+                {/* The way to the playback settings, where a preview speed can be made the
+                    film's real one. Beside the selector because that is where the question
+                    comes up; behind a gear because the answer rewrites every cut. */}
+                <button className="icon-btn" onClick={openPlaybackSettings}
+                    style={{ marginLeft: 2, color: playbackRate === RATE_DEFAULT ? undefined : 'var(--accent-pale)' }}
+                    title={tr('재생 설정 — 이 속도를 실제 속도로 굳히기')}>
+                    <Settings size={12} />
+                </button>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 2, marginLeft: 12 }} title={tr('타임라인 확대/축소 (마우스 휠은 커서 기준)')}>
                     <button className="icon-btn" onClick={() => { const el = timelineRef.current; const r = el?.getBoundingClientRect(); zoomTimelineAt(r ? r.left + el.clientWidth / 2 : 0, 1 / 1.25); }}>−</button>
                     <span style={{ fontSize: 11, color: '#888', minWidth: 30, textAlign: 'center' }}>{Math.round(pps)}</span>

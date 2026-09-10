@@ -27,7 +27,7 @@ import { useServerStorage } from './hooks/useServerStorage.js';
 import { usePanelLayout } from './hooks/usePanelLayout.js';
 import { useLocalDocuments } from './hooks/useLocalDocuments.js';
 import { fetchAsset } from './core/api.js';
-import { RATE_DEFAULT, playbackRateCodec } from './core/playbackRate.js';
+import { PLAYBACK_RATES, RATE_DEFAULT, playbackRateCodec } from './core/playbackRate.js';
 import { scaleProjectTimes, bakePlan } from './core/timeScale.js';
 import { drawSwayed } from './canvas/swayRender.js';
 import { detachMedia } from './core/mediaEl.js';
@@ -3495,7 +3495,8 @@ export default function App() {
                     videoOpacity={videoOverlay ? (videoOverlay.opacity ?? 1) : null} setVideoOpacity={v => dispatchMedia(setVideoOpacity(v))}
                     setShowToolKeys={setShowToolKeys}
                     lang={lang} changeLang={changeLang}
-                    playbackRate={playbackRate} bakeInfo={bakeInfo} bakePlaybackSpeed={bakePlaybackSpeed}
+                    playbackRate={playbackRate} setPlaybackRate={setPlaybackRate} playbackRates={PLAYBACK_RATES}
+                    bakeInfo={bakeInfo} bakePlaybackSpeed={bakePlaybackSpeed}
                     rebinding={rebinding} setRebinding={setRebinding} />
             )}
             {serverProjects !== null && <ProjectPicker title={tr('서버에서 열기')} items={serverProjects} onOpen={doServerOpen} onDelete={doServerDelete} onClose={() => setServerProjects(null)} />}
@@ -3701,6 +3702,7 @@ export default function App() {
                 numTracks={numTracks} onTimelinePointerDown={onTimelinePointerDown}
                 onTimelinePointerMove={onTimelinePointerMove} onTimelinePointerUp={onTimelinePointerUp} parts={parts}
                 playbackRate={playbackRate} playheadRef={playheadRef} pps={pps}
+                openPlaybackSettings={() => { setSettingsTab('play'); setShowSettings(true); }}
                 removeVideoOverlay={removeVideoOverlay} renamePart={renamePart} sceneDetect={sceneDetect}
                 hiddenTracks={hiddenTracks} toggleTrackHidden={toggleTrackHidden}
                 openVideoSettings={() => setSceneCfg(c => c || { threshold: 14, rangeOn: false, startText: '0:00', endText: '' })}
