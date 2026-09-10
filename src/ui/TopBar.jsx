@@ -12,7 +12,7 @@ export function TopBar({
     showFileMenu, setShowFileMenu, showMediaMenu, setShowMediaMenu, fileMenuRef,
     mediaMenuRef, canvasW, canvasH, setCanvasSize, setShowHelp,
     setShowSettings, keymap, view, zoomCanvas, resetView,
-    autoSavedAt, autosaveErr, backupAt, storageInfo, handleExport, doSplitSave,
+    autoSavedAt, autosaveErr, backupAt, storageInfo, handleExport, doSplitSave, handleExportPieces,
 }) {
     return (
         <div className="top-bar">
@@ -34,6 +34,13 @@ export function TopBar({
                         <button className="file-menu-item" onClick={() => { doSplitSave(); setShowFileMenu(false); }}
                             title={tr('파트마다 하나씩, 따로 열 수 있는 .emv 파일로 나눠 zip으로 받습니다. 컷이 많아 무거워졌을 때 나눠서 작업하고 나중에 합치기 위한 것입니다.')}>
                             {tr('파트별로 나눠 저장...')}
+                        </button>
+                        <div className="file-menu-sep" />
+                        {/* Sits under the file actions rather than beside Export, because what it
+                            asks for is files: the thing being exported is not what is open. */}
+                        <button className="file-menu-item" onClick={() => { handleExportPieces(); setShowFileMenu(false); }}
+                            title={tr('여러 .emv 파일을 순서대로 이어서 한 파일로 내보냅니다. 한 번에 하나씩만 열기 때문에 큰 작업을 나눠서 만들 수 있습니다.')}>
+                            {tr('조각 이어서 내보내기...')}
                         </button>
                         <div className="file-menu-sep" />
                         <div style={{ fontSize: 10, color: '#777', padding: '4px 12px 2px' }}>{tr('로컬 (브라우저 저장)')}</div>

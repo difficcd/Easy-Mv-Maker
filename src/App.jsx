@@ -44,6 +44,7 @@ import { DEFAULT_KEYS, KEY_LABELS, keyOf, matchShortcut, keymapFrom, toolFromAct
 import { derivePartsFrom, deriveVideoBatches } from './core/partOps.js';
 import { importPlacement, buildImportedCuts } from './core/videoCuts.js';
 import { playRange } from './core/playRange.js';
+import { pieceRange } from './core/exportQueue.js';
 import { brushUp, brushDown } from './core/brushSize.js';
 import {
     cutsReducer, replaceCuts, addCuts, updateCut, setCutAnim, setCutCamera, clearCut,
@@ -366,6 +367,7 @@ export default function App() {
     const decodingRef = useRef(new Set()); // frame ids currently being re-decoded from their Blob
     const hotWindowRef = useRef(new Set()); // frame ids in the current prefetch window — never LRU-evicted
     const paintFrameRef = useRef(/** @type {((t: number, playing: boolean) => void) | null} */(null)); // set below, beside paintFrame
+    const renderStateRef = useRef(/** @type {{cuts: any[], currentCutId: any, cw: number, ch: number}} */({ cuts: [], currentCutId: null, cw: 1920, ch: 1080 })); // set below, beside liveRef
     const prefetchRef = useRef(null); // prefetchFramesAt, called by the rAF loop with the real playhead
     const paintedOnceRef = useRef(false); // once we've painted a real frame, hold it rather than flash white
     const canvasAreaRef = useRef(null);
@@ -3240,19 +3242,25 @@ export default function App() {
      * @param {HTMLCanvasElement} src the canvas as just painted
      * @param {number} i frame number across the whole export, so a queue keeps counting
      */
-    const captureFrame = async (writer, src, i, { gif, gw, gh, gifScale, gifScratch, total }) => {
+    const captureFrame = async (writer, src, i, { gif, gw, gh, scratch, total }) => {
+        // Scaled whenever the canvas is not already the output size. That is the same condition
+        // as "the GIF was scaled down" for a single project, and it is also what makes a queue of
+        // pieces work: each piece has its own canvas size, and a file has one.
+        const needsFit = src.width !== gw || src.height !== gh;
+        let from = src;
+        if (needsFit) {
+            const { canvas: fitted, ctx: fctx } = scratchCanvas(scratch, gw, gh);
+            fctx.imageSmoothingQuality = 'high';
+            fctx.drawImage(src, 0, 0, gw, gh);
+            from = fitted;
+        }
         if (gif) {
-            let from = src;
-            if (gifScale < 1) {
-                const { canvas: small, ctx: sctx } = scratchCanvas(gifScratch, gw, gh);
-                sctx.imageSmoothingQuality = 'high';
-                sctx.drawImage(src, 0, 0, gw, gh);
-                from = small;
-            }
+            // Straight off the canvas as pixels: going through a PNG and back would cost an
+            // encode and a decode a frame for nothing.
             /** @type {GifWriter} */(writer).addFrame(from.getContext('2d').getImageData(0, 0, gw, gh).data);
             return;
         }
-        const blob = await new Promise(res => src.toBlob(res, 'image/png'));
+        const blob = await new Promise(res => from.toBlob(res, 'image/png'));
         if (!blob) throw new Error('toBlob returned nothing');
         /** @type {ZipWriter} */(writer).add(frameName(i, total), new Uint8Array(await blob.arrayBuffer()));
     };
@@ -3273,8 +3281,10 @@ export default function App() {
         const count = Math.max(1, Math.round((to - from) * fps));
         for (let i = 0; i < count; i++) {
             const t = from + i / fps;
+            // Read per frame, not once: between pieces the whole document changes underneath this.
+            const live = renderStateRef.current;
             // Wait for what this frame needs rather than painting without it.
-            const scene = evaluateFrame(cuts, t, { playing: true, currentCutId, cw: CANVAS_W, ch: CANVAS_H });
+            const scene = evaluateFrame(live.cuts, t, { playing: true, currentCutId: live.currentCutId, cw: live.cw, ch: live.ch });
             const missing = pendingBitmapIds(scene.cuts.map(e => e.cut), bitmapStoreRef.current);
             if (missing.length) {
                 const store = bitmapStoreRef.current;
@@ -3284,7 +3294,7 @@ export default function App() {
                 }
                 invalidateCutsUsing(missing);
             }
-            paintFrame(t, true);
+            paintFrameRef.current?.(t, true);
             await capture(canvas, indexBase + i);
             // Yield often enough that the progress bar moves and the tab stays answerable.
             if (i % 5 === 0 || i === count - 1) {
@@ -3293,6 +3303,126 @@ export default function App() {
             }
         }
         return count;
+    };
+
+    /**
+     * Ask for files, and resolve with what was chosen - or nothing, if the dialog was dismissed.
+     *
+     * A plain input rather than showOpenFilePicker: this needs several files at once, and it has
+     * to work on the tablet, where the picker API is not there. `cancel` fires on browsers that
+     * have it; where it does not, the promise settles when the dialog is used, and a dismissed
+     * dialog simply leaves it pending until the page goes - which costs nothing, since nothing is
+     * held open waiting for it.
+     *
+     * @param {string} accept
+     * @param {boolean} [multiple]
+     * @returns {Promise<File[]>}
+     */
+    const pickFiles = (accept, multiple = false) => new Promise((resolve) => {
+        const inp = document.createElement('input');
+        inp.type = 'file';
+        inp.accept = accept;
+        inp.multiple = multiple;
+        inp.onchange = () => resolve([...(inp.files || [])]);
+        inp.oncancel = () => resolve([]);
+        inp.click();
+    });
+
+    /**
+     * Export several separately-made projects as one file (#123).
+     *
+     * Past a certain number of cuts the app lags, so the advice is to work in pieces - which is
+     * only worth saying if combining them is easy. This is the combining.
+     *
+     * The design in one line: **a piece is a temporary tab.** Opening a document, painting it and
+     * putting it back is what tab switching already does, and it does it with buildData and
+     * restore, both of which are here. So the queue snapshots what is open, opens each piece in
+     * turn, paints its frames straight into one writer, and puts the original document back at
+     * the end.
+     *
+     * That gets two things for free. Peak memory stays at one piece, which is the whole reason
+     * for splitting. And the frames come out of the app's own paint path, so there is no second
+     * renderer to drift from the first - which is what a headless exporter would have been.
+     *
+     * The output is the size of the document that is open now. It needs no lookahead, and it is a
+     * number the user can see before they start; a piece of another size is fitted to it.
+     */
+    const handleExportPieces = async () => {
+        const canvas = canvasRef.current; if (!canvas) return;
+        const files = await pickFiles('.emv', true);
+        if (!files.length) return;
+
+        const gif = transparentFormat === 'gif';
+        const fps = gif ? 12 : 30;
+        const scale = gif ? Math.min(1, GIF_MAX_EDGE / Math.max(CANVAS_W, CANVAS_H)) : 1;
+        const gw = Math.max(1, Math.round(CANVAS_W * scale));
+        const gh = Math.max(1, Math.round(CANVAS_H * scale));
+        const scratch = { current: null };
+        // Frame names are padded to a fixed width rather than to the real total, because the total
+        // is not known until every piece has been opened - and opening them twice, once to measure
+        // and once to draw, is the cost this whole feature exists to avoid. Five digits sorts
+        // correctly up to a hundred thousand frames, which is an hour at thirty a second.
+        const NAME_WIDTH = 99999;
+
+        let snapshot = null;
+        try {
+            snapshot = await buildData(true, null, true);
+        } catch (e) {
+            setAppError(tr('현재 작업을 저장할 수 없어 내보내기를 시작하지 않았습니다: ') + (e?.message || String(e)));
+            return;
+        }
+
+        const label = tr('조각 내보내는 중');
+        isExporting.current = true;
+        videoStopRef.current = false;
+        const writer = gif
+            ? new GifWriter({ width: gw, height: gh, delayMs: Math.round(1000 / fps) })
+            : new ZipWriter();
+        let written = 0;
+        let opened = 0;
+        try {
+            for (let p = 0; p < files.length; p++) {
+                setLoadProgress({ label: `${label} (${p + 1}/${files.length})`, done: written, total: 0 });
+                const text = await files[p].text();
+                let doc;
+                try { doc = JSON.parse(text); }
+                catch { throw new Error(tr('{0}: 읽을 수 없는 파일입니다', files[p].name)); }
+                if (!await restore(doc)) throw new Error(tr('{0}: 열 수 없습니다', files[p].name));
+                opened++;
+                // restore dispatches; the refs the renderer reads are written during the render
+                // that follows. Yielding a macrotask lets that render happen, so the first frame
+                // of this piece is this piece.
+                await new Promise(res => setTimeout(res, 0));
+                // The range comes from the document rather than from playStart, which is state and
+                // is still the previous piece's until React re-renders.
+                const { start, end } = pieceRange({ cuts: doc.cuts, audio: doc.audio, video: doc.video });
+                if (end <= start) continue;   // an empty piece contributes nothing, and no gap
+                written += await renderFrameRange({
+                    from: start, to: end, fps, indexBase: written,
+                    capture: (src, i) => captureFrame(writer, src, i, { gif, gw, gh, scratch, total: NAME_WIDTH }),
+                    onProgress: (done) => setLoadProgress({ label: `${label} (${p + 1}/${files.length})`, done, total: 0 }),
+                });
+            }
+            if (!written) throw new Error(tr('내보낼 콘텐츠가 없습니다.'));
+            const { bytes, type, name } = gif
+                ? { bytes: /** @type {GifWriter} */(writer).finish(), type: 'image/gif', name: 'mv_pieces.gif' }
+                : { bytes: /** @type {ZipWriter} */(writer).finish(), type: 'application/zip', name: 'mv_pieces.zip' };
+            downloadBlob(new Blob([bytes], { type }), name);
+            alert(tr('완료!'));
+        } catch (e) {
+            setAppError(tr('내보내기 실패: ') + (e && e.message ? e.message : String(e)));
+        } finally {
+            isExporting.current = false;
+            // Put back what was open. Only if a piece actually replaced it - restoring a snapshot
+            // over the document it was taken from is work for nothing, and it would also throw
+            // away an undo history the user still has.
+            if (opened) {
+                try { await restore(snapshot, null, tr('작업 내용 복구 중')); }
+                catch (e) { setAppError(tr('내보내기는 끝났지만 원래 작업을 되돌리지 못했습니다: ') + (e?.message || String(e))); }
+            }
+            setLoadProgress(null);
+            paintFrame(currentTimeRef.current, false);
+        }
     };
 
     const handleExportFrames = async () => {
@@ -3332,7 +3462,7 @@ export default function App() {
         try {
             await renderFrameRange({
                 from, to, fps,
-                capture: (src, i) => captureFrame(writer, src, i, { gif, gw, gh, gifScale, gifScratch, total }),
+                capture: (src, i) => captureFrame(writer, src, i, { gif, gw, gh, scratch: gifScratch, total }),
                 onProgress: (done) => setLoadProgress({ label, done, total }),
             });
             const { bytes, type, name } = gif
@@ -3403,6 +3533,11 @@ export default function App() {
 
     const isSelectionTool = tool === 'lasso' || !!selection;
     liveRef.current = { cuts, copiedCut, selection, audioData, numTracks }; // current GC + history sources
+    // What renderFrameRange paints from, read through a ref rather than closed over. The
+    // multi-piece export opens a document and paints it inside one async run, and everything
+    // captured when that run started is the *previous* document - so closing over cuts would
+    // export the piece before the one that was just opened, silently and looking fine.
+    renderStateRef.current = { cuts, currentCutId, cw: CANVAS_W, ch: CANVAS_H };
 
     const panelOpen = { color: leftDock === 'color', tools: showLeft, cut: showRight };
 
@@ -3613,7 +3748,8 @@ export default function App() {
                 fileMenuRef={fileMenuRef} mediaMenuRef={mediaMenuRef} canvasW={CANVAS_W} canvasH={CANVAS_H}
                 setCanvasSize={setCanvasSize} setShowHelp={setShowHelp} setShowSettings={setShowSettings}
                 keymap={keymap} view={view} zoomCanvas={zoomCanvas} resetView={resetView} autoSavedAt={autoSavedAt}
-                autosaveErr={autosaveErr} backupAt={backupAt} storageInfo={storageInfo} handleExport={handleExport} doSplitSave={doSplitSave} />
+                autosaveErr={autosaveErr} backupAt={backupAt} storageInfo={storageInfo} handleExport={handleExport}
+                doSplitSave={doSplitSave} handleExportPieces={handleExportPieces} />
             {/* Project (document) tab bar, below the File and Media menus. */}
             <div className="doc-tabs" style={{ display: 'flex', alignItems: 'stretch', gap: 2, background: 'hsl(var(--ui-h) var(--ui-s) 11%)', borderBottom: '1px solid hsl(var(--ui-h) var(--ui-s) 20%)', padding: '3px 6px 0', overflowX: 'auto', flexShrink: 0 }}>
                 {tabs.map(t => (
