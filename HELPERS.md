@@ -239,6 +239,7 @@ Lasso selection: closing the path, bounding it, lifting the pixels.
 |---|---|
 | `applyResize` | Resize a selection by dragging one of its handles. The handle names read as compass points, so which edges move falls out of the letters: 'nw' moves the top and left, 'e' moves the right edge alone. |
 | `closeLassoPath` | Close a freehand path into a polygon. If the ends are far apart the path is left as drawn and joined back to the start, adding an edge. |
+| `cutOutPolygon` | The pixels inside a lasso, and the hole they leave, from one pass — they describe the same set from both sides, and a mask that drifts from its selection leaves a ghost in the layer. Only non-transparent pixels are lifted, and the inside test is at the pixel centre so a boundary on the grid is not a coin toss. |
 | `lassoBounds` | The pixel rectangle a lasso covers, clamped to the canvas. Returned as integers because it indexes into image data: the left and top round down and the right and bottom round up, so a region is never clipped by a fraction of a pixel. |
 | `MIN_SELECTION_SIZE` | Smallest a selection may be dragged to, in pixels. Below this it is impossible to grab again. |
 
