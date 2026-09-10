@@ -169,6 +169,17 @@ Every change the document can undergo, as named actions. Build them with these c
 | `updateLayer` | Change fields on one layer. |
 | `upsertText` | Add a text if it is new, otherwise update it in place. |
 
+## `src/core/frameExport.js`
+
+What a frame export is going to be, before any of it happens — the arithmetic three exports were each working out again from the same constants.
+
+| | |
+|---|---|
+| `frameExportPlan` | Rates, scale, output size, frame count and whether there is anything to export. A GIF gets 12fps and is fitted to 720 on the long edge (every pixel is a palette index and nothing is inter-frame compressed); a PNG sequence keeps 30fps and full size, because it is going into an editor. |
+| `exportFileInfo` | What the finished bytes are and what they are called. The base differs by source, since one project and a queue of pieces land in the same downloads folder. |
+| `GIF_MAX_EDGE` | The long edge a GIF is fitted to. |
+| `LONG_EXPORT_FRAMES` | Above this the export is worth warning about — a question of time and file size, not of surviving it. |
+
 ## `src/core/historyOps.js`
 
 Undo and redo, and the memory budget that bounds them.
