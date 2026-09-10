@@ -31,6 +31,7 @@ import { fetchAsset } from './core/api.js';
 import { PLAYBACK_RATES, RATE_DEFAULT, playbackRateCodec } from './core/playbackRate.js';
 import { scaleProjectTimes, bakePlan } from './core/timeScale.js';
 import { drawSwayed } from './canvas/swayRender.js';
+import { applyPartTransform, drawMaskedLayer } from './canvas/layerComposite.js';
 import { detachMedia, safeMediaSrc } from './core/mediaEl.js';
 import { useAutosave } from './hooks/useAutosave.js';
 import { useAudioTrack } from './hooks/useAudioTrack.js';
@@ -2760,17 +2761,12 @@ export default function App() {
                 const layerCanvas = flattenClipGroup(ac.id, group);
                 if (!layerCanvas) continue; // frame still decoding (part-scoped memory); will repaint when ready
 
-                // Per-layer ("part") transform nests inside the cut transform.
+                // Per-layer ("part") transform nests inside the cut transform. The composition
+                // order - and why rotation happens about the pivot rather than the origin - is
+                // in canvas/layerComposite, where it is a matrix and can be checked.
                 const la = group.anim;
                 ctx.save();
-                if (la) {
-                    if (la.alpha != null && la.alpha < 1) ctx.globalAlpha *= la.alpha; // keyframe opacity
-                    ctx.translate(la.px + la.tx, la.py + la.ty);
-                    ctx.rotate(la.rot);
-                    ctx.scale(la.sc, la.sc);
-                    ctx.translate(-la.px, -la.py);
-                    if (la.shear) ctx.transform(1, 0, la.shear, 1, -la.shear * la.py, 0); // hair/cloth sway
-                }
+                applyPartTransform(ctx, la);
 
                 const shouldMask = selection?.maskBitmapId && selection.cutId === ac.id && selection.sourceLayerId === l.id;
                 const maskEntry = shouldMask ? bitmapStoreRef.current.get(selection.maskBitmapId) : null;
@@ -2789,22 +2785,11 @@ export default function App() {
                 } else if (!shouldMask || (!mb && !mi)) {
                     ctx.drawImage(layerCanvas, 0, 0);
                 } else {
-                    const mx = Math.round(selection.x);
-                    const my = Math.round(selection.y);
-                    // Reused rather than allocated. This runs inside the composite loop, so a
-                    // fresh canvas here is 8MB per masked layer per frame - sixty times a second
-                    // while playing, which is the shape of allocation that took a tab out once.
-                    const { canvas: tmp, ctx: tctx } = scratchCanvas(maskScratchRef, CANVAS_W, CANVAS_H);
-                    tctx.setTransform(1, 0, 0, 1, 0, 0);
-                    tctx.globalAlpha = 1.0;
-                    tctx.globalCompositeOperation = 'source-over';
-                    tctx.drawImage(layerCanvas, 0, 0);
-                    tctx.globalCompositeOperation = 'destination-out';
-                    // imageDataCanvas is a different shared canvas from this one, so nesting them
-                    // is safe - which is why they are separate helpers rather than slots of one.
-                    tctx.drawImage(mb || imageDataCanvas(mi), mx, my);
-                    tctx.globalCompositeOperation = 'source-over';
-                    ctx.drawImage(tmp, 0, 0);
+                    // imageDataCanvas is a different shared canvas from the mask scratch, so
+                    // nesting them is safe - which is why they are separate helpers rather than
+                    // two slots of one.
+                    drawMaskedLayer(ctx, layerCanvas, mb || imageDataCanvas(mi), selection,
+                        scratchCanvas(maskScratchRef, CANVAS_W, CANVAS_H));
                 }
                 ctx.restore();
             }
