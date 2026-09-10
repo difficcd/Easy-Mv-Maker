@@ -21,6 +21,7 @@ import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, pat
 import { closeLassoPath, lassoBounds, applyResize } from './core/lassoOps.js';
 import { useTimelineGestures } from './hooks/useTimelineGestures.js';
 import { fmt, parseClock } from './core/timeCode.js';
+import { textFromEdit, editFromText, blankTextEdit } from './core/textEdit.js';
 import { useHistory } from './hooks/useHistory.js';
 import { usePlayback } from './hooks/usePlayback.js';
 import { useServerProbe } from './hooks/useServerProbe.js';
@@ -1997,17 +1998,9 @@ export default function App() {
         setTextEdit({
             cutId: currentCutId,
             layerId: currentCut.activeLayerId,
-            textId: null,
-            x: pos.x,
-            y: pos.y,
+            ...blankTextEdit(pos, { color, opacity }),
             cssX: (pos.x * sx / view.zoom),
             cssY: (pos.y * sy / view.zoom),
-            text: '',
-            fontSize: 36,
-            fontFamily: 'sans-serif',
-            color,
-            opacity,
-            visible: true,
         });
     };
 
@@ -2455,40 +2448,9 @@ export default function App() {
     const cancelText = () => setTextEdit(null);
     const commitText = () => {
         if (!textEdit) return;
-        const t = String(textEdit.text ?? '');
-        if (!t.trim()) { setTextEdit(null); return; }
+        if (!String(textEdit.text ?? '').trim()) { setTextEdit(null); return; }
         const id = textEdit.textId ?? nextId();
-        const obj = {
-            id,
-            x: Math.round(textEdit.x),
-            y: Math.round(textEdit.y),
-            text: t,
-            // Ctrl+Enter commits without the size field ever losing focus, so the range that the
-            // field would have applied on blur is applied here too.
-            fontSize: clampNum(Number(textEdit.fontSize) || 36, 6, 400),
-            fontFamily: textEdit.fontFamily,
-            color: textEdit.color,
-            opacity: textEdit.opacity,
-            visible: textEdit.visible ?? true,
-            outline: !!textEdit.outline,
-            outlineColor: textEdit.outlineColor || '#ffffff',
-            bold: !!textEdit.bold,
-            italic: !!textEdit.italic,
-            align: textEdit.align || 'left',
-            lineHeight: textEdit.lineHeight ?? 1.25,
-            letterSpacing: textEdit.letterSpacing ?? 0,
-            shadow: !!textEdit.shadow,
-            shadowColor: textEdit.shadowColor || 'rgba(0,0,0,0.5)',
-            shadowBlur: textEdit.shadowBlur ?? 6,
-            gradient: !!textEdit.gradient,
-            color2: textEdit.color2 || '#ffffff',
-            bgColor: textEdit.bgColor || '',
-            rotation: textEdit.rotation ?? 0,
-            curve: textEdit.curve ?? 0,
-            flipX: !!textEdit.flipX,
-            flipY: !!textEdit.flipY,
-            anim: textEdit.anim || null,
-        };
+        const obj = textFromEdit(textEdit, id);
         dispatchCuts(upsertText(textEdit.cutId, obj));
         setSelectedText({ cutId: textEdit.cutId, textId: id });
         setTextEdit(null);
@@ -2506,34 +2468,11 @@ export default function App() {
         setTextEdit({
             cutId,
             textId,
-            x: t.x ?? 0,
-            y: t.y ?? 0,
+            ...editFromText(t, { color, opacity }),
+            // Where the textarea sits on screen, which is the editor's business and not the
+            // document's - so it is added here rather than in the shared shape.
             cssX: ((t.x ?? 0) * sx / view.zoom),
             cssY: ((t.y ?? 0) * sy / view.zoom),
-            text: t.text ?? '',
-            fontSize: t.fontSize ?? 36,
-            fontFamily: t.fontFamily ?? 'sans-serif',
-            color: t.color ?? color,
-            opacity: t.opacity ?? opacity,
-            visible: t.visible !== false,
-            outline: !!t.outline,
-            outlineColor: t.outlineColor || '#ffffff',
-            bold: !!t.bold,
-            italic: !!t.italic,
-            align: t.align || 'left',
-            lineHeight: t.lineHeight ?? 1.25,
-            letterSpacing: t.letterSpacing ?? 0,
-            shadow: !!t.shadow,
-            shadowColor: t.shadowColor || 'rgba(0,0,0,0.5)',
-            shadowBlur: t.shadowBlur ?? 6,
-            gradient: !!t.gradient,
-            color2: t.color2 || '#ffffff',
-            bgColor: t.bgColor || '',
-            rotation: t.rotation ?? 0,
-            curve: t.curve ?? 0,
-            flipX: !!t.flipX,
-            flipY: !!t.flipY,
-            anim: t.anim || null,
         });
     };
 
