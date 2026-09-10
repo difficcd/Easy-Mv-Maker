@@ -1,6 +1,8 @@
 import { useRef } from 'react';
 import { loadAudio, setAudioDuration, setAudioClip, clearAudio } from '../core/mediaReducer.js';
-import { detachMedia } from '../core/mediaEl.js';
+import { detachMedia, safeMediaSrc } from '../core/mediaEl.js';
+import { fetchAsset } from '../core/api.js';
+import { blobToDataURL } from '../core/projectAssets.js';
 import { tr } from '../i18n';
 
 /**
@@ -71,6 +73,53 @@ export function useAudioTrack({ audioUrl, dispatchMedia, setLinkPrompt }) {
         else { fetch(url).then(r => r.blob()).then(b => { const fr = new FileReader(); fr.onload = () => { audioB64Ref.current = /** @type {string} */(fr.result); }; fr.readAsDataURL(b); }).catch(() => { }); }
     };
 
+
+    /**
+     * Put a saved project's audio back, or clear the track when it has none.
+     *
+     * Here rather than in `restore` because everything it touches is this hook's: the element,
+     * the base64 copy, and the reducer actions. What it needed from App was a fetch and a
+     * counter, and both are smaller than the eighteen lines they were holding.
+     *
+     * A track can be stored three ways and this is the one place that knows all three - embedded
+     * as a dataURL in an `.emv`, as a Blob in an IndexedDB autosave, or as a separate asset on
+     * the server. All three end as a dataURL in `audioB64Ref`, because everything downstream
+     * wants one: the element's src, and a later local save that has to stay self-contained.
+     *
+     * @param {any} data the document
+     * @param {string | null} assetBase project asset path, when the document came from the server
+     * @returns {Promise<number>} how many assets could not be fetched, for the caller's tally
+     */
+    const restoreAudio = async (data, assetBase = null) => {
+        let missing = 0;
+        let url = data.audio?.dataUrl || null;
+        if (!url && data.audio?.blob instanceof Blob) {
+            try { url = await blobToDataURL(data.audio.blob); } catch { }
+        }
+        if (!url && data.audio?.asset && assetBase) {
+            try { url = await blobToDataURL(await fetchAsset(`${assetBase}/asset/__audio__`)); }
+            catch { missing++; }
+        }
+        if (!url) {
+            audioB64Ref.current = null;
+            detachMedia(audioRef.current);
+            dispatchMedia(clearAudio());
+            return missing;
+        }
+        audioB64Ref.current = url;
+        dispatchMedia(loadAudio(data.audio.name || tr('오디오'), url));
+        dispatchMedia(setAudioDuration(data.audio.duration || 30));
+        dispatchMedia(setAudioClip({
+            startTime: data.audio.startTime ?? 0,
+            endTime: data.audio.endTime ?? (data.audio.duration || 30),
+            offset: data.audio.offset ?? 0,
+        }));
+        // Checked, not trusted: this URL came out of a project file. See core/mediaEl.
+        const src = safeMediaSrc(url, 'audio');
+        if (audioRef.current && src) audioRef.current.src = src;
+        return missing;
+    };
+
     const handleAudioUpload = (e) => {
         const file = e.target.files[0]; if (!file) return;
         loadAudioUrl(URL.createObjectURL(file), file.name);
@@ -98,6 +147,6 @@ export function useAudioTrack({ audioUrl, dispatchMedia, setLinkPrompt }) {
 
     return {
         audioRef, audioB64Ref, audioBlobRef, audioCtxRef, audioSourceRef, audioDestRef,
-        audioAsBlob, loadAudioUrl, handleAudioUpload, handleDeleteAudio, loadYoutubeAudio,
+        audioAsBlob, restoreAudio, loadAudioUrl, handleAudioUpload, handleDeleteAudio, loadYoutubeAudio,
     };
 }

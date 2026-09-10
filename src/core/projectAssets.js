@@ -231,3 +231,25 @@ export async function loadBitmapStore(data, { dataURLToImageData, createBitmap, 
     }
     return { store, failed };
 }
+
+/**
+ * A Blob as a base64 dataURL.
+ *
+ * The conversion the "local .emv must stand alone" rule above rests on: bytes held as a Blob
+ * have to become text before they can go into a JSON file. Also the way back for a Blob that has
+ * to reach an <audio> or <video> element and then be saved again.
+ *
+ * `readAsDataURL` rather than a manual base64: it sets the media type from the Blob itself, and
+ * the type is what tells the element what it is being given.
+ *
+ * @param {Blob} blob
+ * @returns {Promise<string>}
+ */
+export function blobToDataURL(blob) {
+    return new Promise((res, rej) => {
+        const fr = new FileReader();
+        fr.onload = () => res(/** @type {string} */(fr.result));
+        fr.onerror = rej;
+        fr.readAsDataURL(blob);
+    });
+}

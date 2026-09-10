@@ -36,7 +36,7 @@ import { useAutosave } from './hooks/useAutosave.js';
 import { useAudioTrack } from './hooks/useAudioTrack.js';
 import { useToolSettings } from './hooks/useToolSettings.js';
 import {
-    mediaReducer, EMPTY_MEDIA, loadAudio, setAudioDuration, setAudioClip, clearAudio,
+    mediaReducer, EMPTY_MEDIA, setAudioClip, clearAudio,
     loadVideo, clearVideo, setVideoCuts, setVideoOpacity, clearVideoCuts, moveTrack, resizeAudio,
 } from './core/mediaReducer.js';
 import { cloneCutContents as cloneCutContentsPure } from './core/cutClone.js';
@@ -55,7 +55,7 @@ import {
 } from './core/cutsReducer.js';
 import { measureTextBox as measureTextBoxPure, textNeedsBox, drawTextObject } from './canvas/textRender.js';
 import { migrateCuts, projectSettings, makeLoadProgress } from './core/projectFormat.js';
-import { imageExtFromType, audioExt, videoExt, collectBitmaps, loadBitmapStore } from './core/projectAssets.js';
+import { imageExtFromType, audioExt, videoExt, collectBitmaps, loadBitmapStore, blobToDataURL } from './core/projectAssets.js';
 import { xAtTime, timeAtX, zoomAnchored, pinchZoom } from './core/timelineZoom.js';
 import { preparePath } from './core/pathMotion.js';
 import { dragOnWindow } from './core/windowDrag.js';
@@ -276,7 +276,7 @@ export default function App() {
 
     const {
         audioRef, audioB64Ref, audioCtxRef, audioSourceRef, audioDestRef,
-        audioAsBlob, loadAudioUrl, handleAudioUpload, handleDeleteAudio, loadYoutubeAudio,
+        audioAsBlob, restoreAudio, loadAudioUrl, handleAudioUpload, handleDeleteAudio, loadYoutubeAudio,
     } = useAudioTrack({ audioUrl, dispatchMedia, setLinkPrompt });
     // Make failures visible. Once the browser blocks dialogs, alert is swallowed and the app
     // looks like it simply did nothing - which is exactly why one bug here took so long to find.
@@ -556,7 +556,6 @@ export default function App() {
         }
         setLayerCanvasCache(prev => { const n = { ...prev }; for (const k of affected) delete n[k]; return n; });
     };
-    const blobToDataURL = (blob) => new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(blob); });
 
     // Duplicate a stored bitmap under a fresh id so a pasted/duplicated cut owns its
     // own pixels instead of aliasing the source's. `cache` dedups within one operation.
@@ -1171,35 +1170,9 @@ export default function App() {
         setOnionPrev(s.onionPrev); setOnionNext(s.onionNext); setPps(s.pps); setExpandedCuts(new Set());
         setCopiedCut(null); // clipboard may reference bitmaps from the old project
         setLayerCanvasCache({}); // Clear cache on new project
-        // Restore audio: embedded (dataUrl) or externalized as a server asset. Either way we end
-        // up with a dataURL in audioB64Ref so a later LOCAL save stays self-contained.
-        let audioDataUrl = data.audio?.dataUrl || null;
-        if (!audioDataUrl && data.audio?.blob instanceof Blob) {
-            // Back to a dataURL, because everything downstream - the <audio> src, a later local
-            // save - wants one, and this keeps that invariant in the one place that states it.
-            try {
-                audioDataUrl = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(data.audio.blob); });
-            } catch { }
-        }
-        if (!audioDataUrl && data.audio?.asset && assetBase) {
-            try {
-                const blob = await fetchAsset(`${assetBase}/asset/__audio__`);
-                audioDataUrl = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(blob); });
-            } catch { missingAssets++; }
-        }
-        if (audioDataUrl) {
-            audioB64Ref.current = audioDataUrl;
-            dispatchMedia(loadAudio(data.audio.name || tr('오디오'), audioDataUrl));
-            dispatchMedia(setAudioDuration(data.audio.duration || 30));
-            dispatchMedia(setAudioClip({ startTime: data.audio.startTime ?? 0, endTime: data.audio.endTime ?? (data.audio.duration || 30), offset: data.audio.offset ?? 0 }));
-            // Checked, not trusted: this URL came out of a project file. See core/mediaEl.
-            const audioSrc = safeMediaSrc(audioDataUrl, 'audio');
-            if (audioRef.current && audioSrc) audioRef.current.src = audioSrc;
-        } else {
-            audioB64Ref.current = null;
-            detachMedia(audioRef.current);
-            dispatchMedia(clearAudio());
-        }
+        // The audio lives in useAudioTrack, and so does putting it back: the element, the
+        // base64 copy a local save needs, and the three shapes a stored track can arrive in.
+        missingAssets += await restoreAudio(data, assetBase);
         // Restore the video overlay track (Blob from IDB / server asset / embedded dataURL).
         let videoBlob = null;
         if (data.video?.blob instanceof Blob) videoBlob = data.video.blob;
