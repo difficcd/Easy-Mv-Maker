@@ -27,7 +27,8 @@ import { useServerStorage } from './hooks/useServerStorage.js';
 import { usePanelLayout } from './hooks/usePanelLayout.js';
 import { useLocalDocuments } from './hooks/useLocalDocuments.js';
 import { fetchAsset } from './core/api.js';
-import { RATE_DEFAULT, playbackRateCodec } from './core/playbackRate.js';
+import { PLAYBACK_RATES, RATE_DEFAULT, playbackRateCodec } from './core/playbackRate.js';
+import { scaleProjectTimes, bakePlan } from './core/timeScale.js';
 import { drawSwayed } from './canvas/swayRender.js';
 import { detachMedia } from './core/mediaEl.js';
 import { useAutosave } from './hooks/useAutosave.js';
@@ -840,6 +841,28 @@ export default function App() {
         }
     }, [currentTime, isPlaying, videoOverlay]);
 
+
+    // Make the speed being previewed at the film's real speed.
+    //
+    // The selector slows the preview; the export comes out at whatever the cuts say. So a project
+    // that only reads right at 0.25x is a project whose cuts are four times too short, and
+    // watching it slowly is a workaround rather than a setting. This writes the workaround into
+    // the cuts and puts the selector back to normal, so what is exported is what was on screen.
+    //
+    // No confirmation dialog: it is one dispatch, the history entry is recorded first, and Ctrl+Z
+    // puts it back. A dialog before an undoable action buys nothing and gets clicked through.
+    const bakeInfo = bakePlan(cuts, playbackRate, { audio: !!audioUrl, video: !!videoOverlay });
+    const bakePlaybackSpeed = () => {
+        const plan = bakeInfo;
+        if (plan.noop) return;
+        const lv = liveRef.current;
+        recordHistory({ cuts: lv.cuts, audioData: lv.audioData, numTracks: lv.numTracks });
+        dispatchCuts(replaceCuts(scaleProjectTimes(cuts, plan.factor)));
+        setPlaybackRate(RATE_DEFAULT);
+        setToast(plan.stranded.length
+            ? tr('{0}배 길이로 굳혔습니다 · 음원/영상 트랙은 늘어나지 않으니 위치를 다시 맞춰주세요 · Ctrl+Z로 취소', plan.factor.toFixed(2).replace(/\.?0+$/, ''))
+            : tr('{0}배 길이로 굳혔습니다 · Ctrl+Z로 취소', plan.factor.toFixed(2).replace(/\.?0+$/, '')));
+    };
 
     // Zoom the timeline about a screen x (cursor), keeping the time under it fixed. The scroll
     // adjustment is deferred to a layout effect so it runs after the new width is laid out.
@@ -3467,6 +3490,8 @@ export default function App() {
                     videoOpacity={videoOverlay ? (videoOverlay.opacity ?? 1) : null} setVideoOpacity={v => dispatchMedia(setVideoOpacity(v))}
                     setShowToolKeys={setShowToolKeys}
                     lang={lang} changeLang={changeLang}
+                    playbackRate={playbackRate} setPlaybackRate={setPlaybackRate} playbackRates={PLAYBACK_RATES}
+                    bakeInfo={bakeInfo} bakePlaybackSpeed={bakePlaybackSpeed}
                     rebinding={rebinding} setRebinding={setRebinding} />
             )}
             {serverProjects !== null && <ProjectPicker title={tr('서버에서 열기')} items={serverProjects} onOpen={doServerOpen} onDelete={doServerDelete} onClose={() => setServerProjects(null)} />}
@@ -3709,6 +3734,7 @@ export default function App() {
                 numTracks={numTracks} onTimelinePointerDown={onTimelinePointerDown}
                 onTimelinePointerMove={onTimelinePointerMove} onTimelinePointerUp={onTimelinePointerUp} parts={parts}
                 playbackRate={playbackRate} playheadRef={playheadRef} pps={pps}
+                openPlaybackSettings={() => { setSettingsTab('play'); setShowSettings(true); }}
                 removeVideoOverlay={removeVideoOverlay} renamePart={renamePart} sceneDetect={sceneDetect}
                 hiddenTracks={hiddenTracks} toggleTrackHidden={toggleTrackHidden}
                 openVideoSettings={() => setSceneCfg(c => c || { threshold: 14, rangeOn: false, startText: '0:00', endText: '' })}
