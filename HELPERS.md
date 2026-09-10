@@ -235,6 +235,14 @@ Layers: moving, merging, resolving which one a stroke lands on.
 | `offsetLayers` | Shift whole layers, and optionally the cut's texts, by a pixel offset. This is what a move-everything drag commits. |
 | `resolveDrawLayer` | Which layer a stroke should actually go into. The active layer is not always usable: it can be a folder, or point at something that no longer exists. |
 
+## `src/core/mediaEl.js`
+
+The DOM side of the media tracks: `mediaReducer` says what the audio and video are, this says what to do to the elements playing them.
+
+| | |
+|---|---|
+| `detachMedia` | Let go of an `<audio>`/`<video>` element's source. Pause, remove the attribute, then `load()` — without the last one the bytes stay held, and a revoked blob: URL never gives its memory back. |
+
 ## `src/core/mediaReducer.js`
 
 The audio and video tracks, as named actions.
@@ -564,6 +572,14 @@ thumbnails and onion skin should all describe a frame the same way.
 | `visibleCutsAt` | What to draw, which is not the same question: while paused it also includes the cut being edited, or clicking a cut and finding a blank canvas becomes normal. |
 | `onionNeighbours` | The cuts either side on the **same** track. `next` starts at `endTime`, because cuts abut and a strict comparison would find nothing in the common case. |
 | `topCutAt` | The cut the playhead selects: topmost of those it is over, since the upper tracks are what a click would land on. |
+
+## `src/hooks/useAudioTrack.js`
+
+The music track: the element that plays it, the copies of it a save needs, and the four ways one gets loaded or dropped.
+
+| | |
+|---|---|
+| `useAudioTrack` | Owns `audioRef` and the AudioContext the export recorder taps, plus the two extra shapes of the same sound — a base64 dataURL so an `.emv` is self-contained, and a Blob (cached by the dataURL it came from) because IndexedDB can hold one and autosave cannot afford base64. |
 
 ## `src/hooks/useAutosave.js`
 
