@@ -45,6 +45,7 @@ import { derivePartsFrom, deriveVideoBatches } from './core/partOps.js';
 import { importPlacement, buildImportedCuts } from './core/videoCuts.js';
 import { playRange } from './core/playRange.js';
 import { pieceRange } from './core/exportQueue.js';
+import { frameExportPlan, exportFileInfo, LONG_EXPORT_FRAMES } from './core/frameExport.js';
 import { brushUp, brushDown } from './core/brushSize.js';
 import {
     cutsReducer, replaceCuts, addCuts, updateCut, setCutAnim, setCutCamera, clearCut,
@@ -174,9 +175,6 @@ const PANEL_W = {
 const PANEL_IDS = Object.keys(PANEL_W);
 
 const DEFAULT_THEME = '#36354b';
-// The long edge a GIF is scaled to fit. Every pixel of a GIF is a palette index with no
-// inter-frame compression, so full size is tens of megabytes a second and as slow again to write.
-const GIF_MAX_EDGE = 720;
 // The language lives in a module variable rather than a hook: over forty of these strings sit
 // in alert, confirm and thrown errors, which no hook can reach. Set before the first render.
 setLangValue(loadLang());
@@ -3352,11 +3350,10 @@ export default function App() {
         const files = await pickFiles('.emv', true);
         if (!files.length) return;
 
-        const gif = transparentFormat === 'gif';
-        const fps = gif ? 12 : 30;
-        const scale = gif ? Math.min(1, GIF_MAX_EDGE / Math.max(CANVAS_W, CANVAS_H)) : 1;
-        const gw = Math.max(1, Math.round(CANVAS_W * scale));
-        const gh = Math.max(1, Math.round(CANVAS_H * scale));
+        // Planned once, from the document that is open: a file has one frame size and each
+        // piece has its own canvas. Planning per piece would give a 16:9 piece the same answer
+        // and a square one a different one, which is a file no decoder opens.
+        const { gif, fps, gw, gh, delayMs } = frameExportPlan({ format: transparentFormat, cw: CANVAS_W, ch: CANVAS_H });
         const scratch = { current: null };
         // Frame names are padded to a fixed width rather than to the real total, because the total
         // is not known until every piece has been opened - and opening them twice, once to measure
@@ -3375,9 +3372,7 @@ export default function App() {
         const label = tr('조각 내보내는 중');
         isExporting.current = true;
         videoStopRef.current = false;
-        const writer = gif
-            ? new GifWriter({ width: gw, height: gh, delayMs: Math.round(1000 / fps) })
-            : new ZipWriter();
+        const writer = gif ? new GifWriter({ width: gw, height: gh, delayMs }) : new ZipWriter();
         let written = 0;
         let opened = 0;
         try {
@@ -3404,9 +3399,8 @@ export default function App() {
                 });
             }
             if (!written) throw new Error(tr('내보낼 콘텐츠가 없습니다.'));
-            const { bytes, type, name } = gif
-                ? { bytes: /** @type {GifWriter} */(writer).finish(), type: 'image/gif', name: 'mv_pieces.gif' }
-                : { bytes: /** @type {ZipWriter} */(writer).finish(), type: 'application/zip', name: 'mv_pieces.zip' };
+            const bytes = gif ? /** @type {GifWriter} */(writer).finish() : /** @type {ZipWriter} */(writer).finish();
+            const { type, name } = exportFileInfo(gif, { gif: 'mv_pieces', zip: 'mv_pieces' });
             downloadBlob(new Blob([bytes], { type }), name);
             alert(tr('완료!'));
         } catch (e) {
@@ -3432,42 +3426,26 @@ export default function App() {
         // and the dimming already do. Exporting from zero meant a project whose first cut sits at
         // three seconds began with three seconds of nothing.
         const from = playStart, to = playEnd;
-        if (to <= from) { alert(tr('내보낼 콘텐츠가 없습니다.')); return; }
-        // A GIF at 30fps is enormous and plays no better; twelve is what hand-drawn animation
-        // usually runs at anyway. A PNG sequence is going into an editor, so it keeps the full
-        // rate.
-        const gif = transparentFormat === 'gif';
-        const fps = gif ? 12 : 30;
-        // A GIF at the project's full size is not a thing anyone wants: every pixel is a palette
-        // index and none of it is inter-frame compressed, so a second of 1920x1080 runs to tens
-        // of megabytes and takes as long again to encode. Scaled to fit 720 on the long edge it
-        // is a file that can be posted. A PNG sequence keeps the full size.
-        const gifScale = gif ? Math.min(1, GIF_MAX_EDGE / Math.max(CANVAS_W, CANVAS_H)) : 1;
-        const gw = Math.max(1, Math.round(CANVAS_W * gifScale));
-        const gh = Math.max(1, Math.round(CANVAS_H * gifScale));
+        // The rates, the scale and the frame count are all in core/frameExport, with the
+        // reasoning behind each. The queue above plans through the same function.
+        const { gif, fps, gw, gh, delayMs, total, empty } = frameExportPlan({ format: transparentFormat, cw: CANVAS_W, ch: CANVAS_H, from, to });
+        if (empty) { alert(tr('내보낼 콘텐츠가 없습니다.')); return; }
         // One scratch canvas for the whole export rather than one a frame.
         const gifScratch = { current: null };
-        const total = Math.max(1, Math.round((to - from) * fps));
-        // Each frame is encoded as it is painted now, rather than every frame being held until
-        // the end, so this is about how long it takes and how big the file gets rather than
-        // whether the tab survives it.
-        if (total > 1000 && !confirm(tr('{0}프레임을 내보냅니다. 오래 걸립니다. 계속할까요?').replace('{0}', String(total)))) return;
+        if (total > LONG_EXPORT_FRAMES && !confirm(tr('{0}프레임을 내보냅니다. 오래 걸립니다. 계속할까요?').replace('{0}', String(total)))) return;
 
         const label = tr('프레임 내보내는 중');
         setLoadProgress({ label, done: 0, total });
         isExporting.current = true;
-        const writer = gif
-            ? new GifWriter({ width: gw, height: gh, delayMs: Math.round(1000 / fps) })
-            : new ZipWriter();
+        const writer = gif ? new GifWriter({ width: gw, height: gh, delayMs }) : new ZipWriter();
         try {
             await renderFrameRange({
                 from, to, fps,
                 capture: (src, i) => captureFrame(writer, src, i, { gif, gw, gh, scratch: gifScratch, total }),
                 onProgress: (done) => setLoadProgress({ label, done, total }),
             });
-            const { bytes, type, name } = gif
-                ? { bytes: /** @type {GifWriter} */(writer).finish(), type: 'image/gif', name: 'mv_export.gif' }
-                : { bytes: /** @type {ZipWriter} */(writer).finish(), type: 'application/zip', name: 'mv_frames.zip' };
+            const bytes = gif ? /** @type {GifWriter} */(writer).finish() : /** @type {ZipWriter} */(writer).finish();
+            const { type, name } = exportFileInfo(gif);
             downloadBlob(new Blob([bytes], { type }), name);
             alert(tr('완료!'));
         } catch (e) {
