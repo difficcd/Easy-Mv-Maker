@@ -46,6 +46,7 @@ import { importPlacement, buildImportedCuts } from './core/videoCuts.js';
 import { playRange } from './core/playRange.js';
 import { pieceRange } from './core/exportQueue.js';
 import { frameExportPlan, exportFileInfo, LONG_EXPORT_FRAMES } from './core/frameExport.js';
+import { DECODED_CAP, framesToRelease, layerKeysUsingBitmaps, keysWithPhases } from './core/decodeBudget.js';
 import { brushUp, brushDown } from './core/brushSize.js';
 import {
     cutsReducer, replaceCuts, addCuts, updateCut, setCutAnim, setCutCamera, clearCut,
@@ -520,7 +521,6 @@ export default function App() {
     };
     // LRU cap on how many frame ImageBitmaps stay decoded at once (bounds memory regardless of
     // import size or which mode you're in). Released frames keep their Blob and re-decode on view.
-    const DECODED_CAP = 120; // must exceed the prefetch window (~50) so prefetched frames aren't evicted
     const decodeOrderRef = useRef(new Map()); // id -> monotonically increasing use counter
     const decodeSeqRef = useRef(0);
     const [frameDecodeTick, setFrameDecodeTick] = useState(0); // bumped when a frame finishes decoding → forces cache rebuild
@@ -529,30 +529,25 @@ export default function App() {
         const store = bitmapStoreRef.current;
         const decoded = [];
         for (const [id, e] of store) if (e.blob && e.imageBitmap) decoded.push(id);
-        if (decoded.length <= DECODED_CAP) return;
-        const order = decodeOrderRef.current;
-        const hot = hotWindowRef.current; // the on-screen / prefetch window is never evicted
-        decoded.sort((a, b) => (order.get(a) || 0) - (order.get(b) || 0)); // oldest first
-        let toRelease = decoded.length - DECODED_CAP;
-        for (const id of decoded) {
-            if (toRelease <= 0) break;
-            if ((protect && protect.has(id)) || hot.has(id)) continue;
+        // Which to let go of is decided in core/decodeBudget, where the reason the cap has to
+        // stay above the prefetch window is written down and tested. Here is only the letting go.
+        const release = framesToRelease({
+            decoded, order: decodeOrderRef.current, cap: DECODED_CAP,
+            protect, hot: hotWindowRef.current,
+        });
+        for (const id of release) {
             const e = store.get(id); try { e.imageBitmap.close?.(); } catch { } e.imageBitmap = null;
-            order.delete(id); toRelease--;
+            decodeOrderRef.current.delete(id);
         }
     };
     // Invalidate ONLY the cached layer canvases of cuts that use the given (just-decoded) frames,
     // instead of nuking the whole cache — nuking made on-screen frames flicker while playing.
     const invalidateCutsUsing = (ids) => {
-        const idset = new Set(ids);
-        const affected = new Set();
-        for (const c of cuts) for (const l of safeArray(c.layers)) if (safeArray(l.strokes).some(s => s.tool === 'paste' && idset.has(s.bitmapId))) affected.add(layerKey(c.id, l.id));
+        const affected = layerKeysUsingBitmaps(cuts, ids, layerKey);
         if (!affected.size) return;
-        // A boiling layer holds one canvas per phase, keyed "cut:layer#phase", so dropping the
-        // plain key alone would leave its phases behind holding the stale bitmap.
-        for (const k of [...fallbackCanvasRef.current.keys()]) {
-            const base = k.includes('#') ? k.slice(0, k.indexOf('#')) : k;
-            if (affected.has(base)) fallbackCanvasRef.current.delete(k);
+        // The phase keys of a boiling layer go with the plain one; core/decodeBudget says why.
+        for (const k of keysWithPhases([...fallbackCanvasRef.current.keys()], affected)) {
+            fallbackCanvasRef.current.delete(k);
         }
         setLayerCanvasCache(prev => { const n = { ...prev }; for (const k of affected) delete n[k]; return n; });
     };
