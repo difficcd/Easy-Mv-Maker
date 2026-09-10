@@ -29,6 +29,7 @@ import { useServerStorage } from './hooks/useServerStorage.js';
 import { usePanelLayout } from './hooks/usePanelLayout.js';
 import { useLocalDocuments } from './hooks/useLocalDocuments.js';
 import { fetchAsset } from './core/api.js';
+import { drawSwayed } from './canvas/swayRender.js';
 import { useAutosave } from './hooks/useAutosave.js';
 import { nextProbeDelay } from './core/probeBackoff.js';
 import { playbackStartFrom } from './core/playbackStart.js';
@@ -73,7 +74,7 @@ import {
     DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT, FONT_PRESETS, fontGroups,
     pointInPolygon, dist, safeArray, hexToRgb, bucketFillTransparentRegion,
     layerKey, imageDataToDataURL, dataURLToImageData, drawStrokesOnCtx, sizeCanvas, scratchCanvas,
-    flattenForCanvas, flattenLayersInUiOrder, layerSig, applyCutAnim, extractVideoFrames, fitRect, detectSceneCuts, curveToWave, swayWeightAt, morphPrepare,
+    flattenForCanvas, flattenLayersInUiOrder, layerSig, applyCutAnim, extractVideoFrames, fitRect, detectSceneCuts, curveToWave, morphPrepare,
     accentSoft, computeCutAnim, computeLayerAnim, TEXT_ANIM_DEFAULT, computeTextAnim,
     targetCanvasFor, imageDataCanvas, cutProgress, seekTarget,
 } from './canvas/canvasUtils';
@@ -116,6 +117,8 @@ const PEN_TYPES = [
     { id: 'fill', label: 'Fill', Icon: PaintBucket },
 ];
 const BOIL_FPS = 10; // how many times a second the boiling-line motion advances
+/** How faint a neighbouring drawing is under the one being worked on. */
+const ONION_ALPHA = 0.35;
 const TIMELINE_MIN_SPAN = 240; // seconds of ruler even with nothing in the project
 const TIMELINE_TAIL_PAD = 60;  // empty room past the end, to drag into
 // How many distinct wobbles the boiling line cycles through. A hand-drawn boiling line is a
@@ -2786,25 +2789,16 @@ export default function App() {
             }
         }
 
-        if (!playing && primary) {
-            if (onionPrev) {
-                const prevCut = onionNeighbours(cuts, primary).prev;
-                if (prevCut) {
-                    const order = flattenLayersInUiOrder(prevCut.layers || []).filter(l => l.type === 'layer' && l.visible !== false);
-                    for (let i = order.length - 1; i >= 0; i--) {
-                        const lc = ensureLayerCanvas(prevCut.id, order[i]);
-                        if (lc) { ctx.globalAlpha = 0.35; ctx.drawImage(lc, 0, 0); ctx.globalAlpha = 1.0; }
-                    }
-                }
-            }
-            if (onionNext) {
-                const nextCut = onionNeighbours(cuts, primary).next;
-                if (nextCut) {
-                    const order = flattenLayersInUiOrder(nextCut.layers || []).filter(l => l.type === 'layer' && l.visible !== false);
-                    for (let i = order.length - 1; i >= 0; i--) {
-                        const lc = ensureLayerCanvas(nextCut.id, order[i]);
-                        if (lc) { ctx.globalAlpha = 0.35; ctx.drawImage(lc, 0, 0); ctx.globalAlpha = 1.0; }
-                    }
+        // Onion skin: the neighbouring drawings, faint, so a new one can be lined up against
+        // them. Paused only - during playback the next frame is about to be shown anyway.
+        if (!playing && primary && (onionPrev || onionNext)) {
+            const { prev, next } = onionNeighbours(cuts, primary);
+            for (const cut of [onionPrev ? prev : null, onionNext ? next : null]) {
+                if (!cut) continue;
+                const order = flattenLayersInUiOrder(cut.layers || []).filter(l => l.type === 'layer' && l.visible !== false);
+                for (let i = order.length - 1; i >= 0; i--) {
+                    const lc = ensureLayerCanvas(cut.id, order[i]);
+                    if (lc) { ctx.globalAlpha = ONION_ALPHA; ctx.drawImage(lc, 0, 0); ctx.globalAlpha = 1.0; }
                 }
             }
         }
@@ -2844,30 +2838,10 @@ export default function App() {
                 if (layerDragRef.current && layerDragRef.current.cutId === ac.id
                     && layerDragRef.current.layerIds.includes(l.id)) { ctx.restore(); continue; }
                 if (la?.swayProfile && (!shouldMask || (!mb && !mi))) {
-                    // Per-point sway: the layer is sliced along the axis and each slice bends by a
-                    // different amount. That is non-affine, so a single shear cannot express it.
-                    // The key is that translating each slice as a rigid block makes the edges
-                    // mismatch and the image tear. Giving each slice a shear instead makes the
-                    // displacement vary continuously within it, and matching the boundary value to
-                    // the neighbour exactly leaves no seam.
-                    const SLICES = 64;
-                    const vertical = la.swayAxis === 'y';
-                    const span = vertical ? CANVAS_H : CANVAS_W;
-                    const dispAt = (pos) => la.swayDisp * swayWeightAt(la.swayProfile, pos / span);
-                    for (let sIdx = 0; sIdx < SLICES; sIdx++) {
-                        const a0 = Math.round(sIdx * span / SLICES);
-                        const a1 = Math.round((sIdx + 1) * span / SLICES);
-                        const len = a1 - a0; if (len <= 0) continue;
-                        const d0 = dispAt(a0), d1 = dispAt(a1);
-                        const k = (d1 - d0) / len;  // gradient within the slice
-                        const m = d0 - k * a0;      // so that it equals d0 exactly at a0
-                        ctx.save();
-                        // The coordinate along the axis is left untouched (diagonal term 1, that
-                        // off-diagonal 0), so the slices butt together without gaps.
-                        if (vertical) { ctx.transform(1, 0, k, 1, m, 0); ctx.drawImage(layerCanvas, 0, a0, CANVAS_W, len, 0, a0, CANVAS_W, len); }
-                        else { ctx.transform(1, k, 0, 1, 0, m); ctx.drawImage(layerCanvas, a0, 0, len, CANVAS_H, a0, 0, len, CANVAS_H); }
-                        ctx.restore();
-                    }
+                    drawSwayed(ctx, layerCanvas, {
+                        profile: la.swayProfile, axis: la.swayAxis, disp: la.swayDisp,
+                        cw: CANVAS_W, ch: CANVAS_H,
+                    });
                 } else if (!shouldMask || (!mb && !mi)) {
                     ctx.drawImage(layerCanvas, 0, 0);
                 } else {

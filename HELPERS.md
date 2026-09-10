@@ -496,6 +496,16 @@ The drawing engine: strokes, canvases, animation, video frames. The big one.
 | `SWING` | The three shapes a return animation can take. `through` passes the resting position and goes out the other side, which is what the layer presets are made of - 둥실둥실 bobs above and below. `there` and `along` go out to the target and back and never past the start. One cycle is one whole trip in all three, so speed means the same thing to each. |
 | `swing` | A return animation's progress for one of those shapes, or 0 once it has run out of repeats. Settling at 0 rather than mid-wave is where a whole trip would have ended anyway. |
 
+## `src/canvas/swayRender.js`
+
+Bending a layer along an axis - hair swinging from its roots, a ribbon trailing from where it is held.
+
+| | |
+|---|---|
+| `drawSwayed` | Draw a layer canvas bent by its profile, in slices, respecting the caller's transform. |
+| `swaySlices` | The shear each slice gets, as `offset(a) = k*a + m`. Separate from the drawing because this is where the correctness lives: a slice that translates rigidly instead of shearing tears the image into visible bands. |
+| `SWAY_SLICES` | How many slices. More only fits the curve better — it is the shear, not the count, that removes the seams. |
+
 ## `src/canvas/textLayout.js`
 
 Where each character of a line goes, for curving and for animating characters separately.
