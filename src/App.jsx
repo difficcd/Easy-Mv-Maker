@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useLayoutEffect, useMe
 import { Plus, PenLine, Pen, Feather, Eraser, Undo, Layers, ChevronRight, Folder, GitBranch, Move, Type, Cloud, Minus, Grid3x3, Palette, Menu, PaintBucket, RotateCcw } from 'lucide-react';
 import './App.css';
 import { saveAutosave } from './db';
-import ColorPanel, { RECENT_SLOTS } from './ui/ColorPanel';
+import ColorPanel from './ui/ColorPanel';
 import { TopBar } from './ui/TopBar';
 import { CutLayerPanel } from './ui/CutLayerPanel';
 import { useStored } from './hooks/useStored.js';
@@ -31,6 +31,7 @@ import { drawSwayed } from './canvas/swayRender.js';
 import { detachMedia } from './core/mediaEl.js';
 import { useAutosave } from './hooks/useAutosave.js';
 import { useAudioTrack } from './hooks/useAudioTrack.js';
+import { useToolSettings } from './hooks/useToolSettings.js';
 import {
     mediaReducer, EMPTY_MEDIA, loadAudio, setAudioDuration, setAudioClip, clearAudio,
     loadVideo, clearVideo, setVideoCuts, setVideoOpacity, clearVideoCuts, moveTrack, resizeAudio,
@@ -40,7 +41,7 @@ import { DEFAULT_KEYS, KEY_LABELS, keyOf, matchShortcut, keymapFrom, toolFromAct
 import { derivePartsFrom, deriveVideoBatches } from './core/partOps.js';
 import { importPlacement, buildImportedCuts } from './core/videoCuts.js';
 import { playRange } from './core/playRange.js';
-import { clampBrush, brushUp, brushDown } from './core/brushSize.js';
+import { brushUp, brushDown } from './core/brushSize.js';
 import {
     cutsReducer, replaceCuts, addCuts, updateCut, setCutAnim, setCutCamera, clearCut,
     updateLayer, setLayerAnim, moveLayers, upsertText, moveText, deleteText, toggleTextVisible as toggleTextVisibleAction,
@@ -282,42 +283,19 @@ export default function App() {
     const isExporting = useRef(false);
     const mediaRecorderRef = useRef(null);
     const exportEndRef = useRef(0);
-    const [tool, setTool] = useState('pen');
-    const [rulerMode, setRulerMode] = useState('line'); // the Ruler tool's two options: line and curve
-    const [softMode, setSoftMode] = useState('soft');   // the Air tool's two options: airbrush and blur
-    // The logic below still works in terms of "line" and "curve"; the Ruler tool just picks
-    // between them by mode.
-    const etool = tool === 'ruler' ? rulerMode : tool === 'soft' ? softMode : tool;
-    const [color, setColor] = useState('#000000');
-    // Recent colours only collect colours actually used, not ones merely selected.
-    // See noteColorUsed below.
-    const [recentColors, setRecentColors] = useStored('mv_recent_colors', [], arrayCodec);
-    const [pickingColor, setPickingColor] = useState(false); // eyedropper: next canvas click samples a pixel
-    const applyColor = (c) => { if (!c) return; setColor(c); };
-    // "Used" means something was actually drawn in that colour; only then does it join Recent.
-    const noteColorUsed = (c) => {
-        if (!c) return;
-        setRecentColors(p => (p[0] && p[0].toLowerCase() === c.toLowerCase())
-            ? p
-            : [c, ...p.filter(x => x.toLowerCase() !== c.toLowerCase())].slice(0, RECENT_SLOTS));
-    };
-    // Eyedropper: native picker where available, else sample the canvas on the next click.
-    const pickColor = async () => {
-        if (window.EyeDropper) { try { const r = await new window.EyeDropper().open(); applyColor(r.sRGBHex); } catch { } }
-        else setPickingColor(true);
-    };
-    const [brushSize, setBrushSize] = useState(5);
-    // Pen pressure. Off means an even line however hard the pen is pressed - wanted for lineart,
-    // and for pens that report pressure unevenly.
-    const [pressureOn, setPressureOn] = useStored('mv_pressure', true, onOffCodec);
-    const [eraserSize, setEraserSize] = useState(20);
-    const [opacity, setOpacity] = useState(1.0);
-    // The width the current tool draws with. The eraser keeps its own, so switching to it and
-    // back does not lose the size you were drawing with - which is why every caller has to ask
-    // which tool it is before reading or writing a size, and why that question is asked here
-    // once rather than at each of them.
-    const toolSize = tool === 'eraser' ? eraserSize : brushSize;
-    const setToolSize = (n) => { const v = clampBrush(n); if (tool === 'eraser') setEraserSize(v); else setBrushSize(v); };
+
+    const {
+        tool, setTool, etool, rulerMode, setRulerMode, softMode, setSoftMode, handleSetTool,
+        color, setColor, applyColor, recentColors, noteColorUsed, pickColor, pickingColor, setPickingColor,
+        brushSize, setBrushSize, eraserSize, setEraserSize, toolSize, setToolSize,
+        opacity, setOpacity, pressureOn, setPressureOn, mosaicBlock, setMosaicBlock,
+    } = useToolSettings({
+        // A tool change is refused outright while a selection is floating or a text is being
+        // edited: both are modes of their own, and leaving them by picking up another tool
+        // would silently discard what is in them.
+        busy: () => !!selection || !!textEdit,
+        leaveCurve: () => { if (curveAnchorsRef.current) commitCurve(); },
+    });
     const [expandedCuts, setExpandedCuts] = useState(new Set());
     const [collapsedCutIds, setCollapsedCutIds] = useState(new Set());
     const [renamingCutId, setRenamingCutId] = useState(null);
@@ -352,7 +330,6 @@ export default function App() {
     const curveDraggingRef = useRef(false); // an anchor was just placed and is being fine-tuned by dragging
     const [curvePts, setCurvePts] = useState(0); // anchor count, for the done/cancel bar
     const mosaicRectRef = useRef(null);   // mosaic drag rectangle
-    const [mosaicBlock, setMosaicBlock] = useState(14); // mosaic block size (px)
     const isDrawing = useRef(false);
     const fileMenuRef = useRef(null);
     const mediaMenuRef = useRef(null);
@@ -695,13 +672,6 @@ export default function App() {
         }));
     };
 
-    const handleSetTool = (newTool) => {
-        if (selection) return;
-        if (textEdit) return;
-        // Switching tools mid-curve commits it automatically.
-        if (curveAnchorsRef.current && newTool !== 'ruler') commitCurve();
-        setTool(newTool);
-    };
 
     // Undo/redo lives in useHistory. What stays here is the two things only this component can
     // answer: what the document currently is, and whether a gesture is in progress - drawing,
