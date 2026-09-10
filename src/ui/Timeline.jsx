@@ -1,4 +1,3 @@
-import React from 'react';
 import { ChevronDown, ChevronUp, Grid3x3, Pause, Play, Plus, Repeat, Square, Trash2, Eye, EyeOff, Settings } from 'lucide-react';
 import { safeArray, accentSoft } from '../canvas/canvasUtils';
 import { tr } from '../i18n';
