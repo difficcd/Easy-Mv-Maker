@@ -169,6 +169,17 @@ Every change the document can undergo, as named actions. Build them with these c
 | `updateLayer` | Change fields on one layer. |
 | `upsertText` | Add a text if it is new, otherwise update it in place. |
 
+## `src/core/decodeBudget.js`
+
+How many decoded frames to hold, which to let go of, and which cached layers a decode invalidates. Both answers fail quietly when wrong.
+
+| | |
+|---|---|
+| `DECODED_CAP` | How many decoded frames may be held. **Must stay above the prefetch window (~50)** — below it, the trim evicts what the prefetcher just decoded and the two fight each other, which reads as stutter rather than as a memory problem. |
+| `framesToRelease` | Oldest use first, never the prefetch window or the caller's protected set. A skipped id is not counted against the quota, or the trim stops early and leaves the store over cap. |
+| `layerKeysUsingBitmaps` | The layer-canvas keys holding pixels from given frames. Only these are dropped — clearing everything made on-screen frames flicker while playing. |
+| `keysWithPhases` | Includes a boiling layer's `cut:layer#phase` variants. Dropping the plain key alone leaves the phases holding the replaced bitmap. |
+
 ## `src/core/frameExport.js`
 
 What a frame export is going to be, before any of it happens — the arithmetic three exports were each working out again from the same constants.
