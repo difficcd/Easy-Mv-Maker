@@ -1,4 +1,3 @@
-import React from 'react';
 import { ChevronDown, Download, Upload, Film, Settings, AlertTriangle, DatabaseBackup } from 'lucide-react';
 import { tr } from '../i18n';
 import { Logo } from './Logo.jsx';
@@ -13,7 +12,7 @@ export function TopBar({
     showFileMenu, setShowFileMenu, showMediaMenu, setShowMediaMenu, fileMenuRef,
     mediaMenuRef, canvasW, canvasH, setCanvasSize, setShowHelp,
     setShowSettings, keymap, view, zoomCanvas, resetView,
-    autoSavedAt, autosaveErr, backupAt, storageInfo, handleExport, handleExportPieces,
+    autoSavedAt, autosaveErr, backupAt, storageInfo, handleExport, doSplitSave, handleExportPieces,
 }) {
     return (
         <div className="top-bar">
@@ -32,6 +31,10 @@ export function TopBar({
                         <button className="file-menu-item" onClick={() => { doSave(true); setShowFileMenu(false); }}>{tr('다른 이름으로 저장...')}</button>
                         <div className="file-menu-sep" />
                         <button className="file-menu-item" onClick={() => { doOpen(); setShowFileMenu(false); }}>{tr('로컬 파일 열기...')}</button>
+                        <button className="file-menu-item" onClick={() => { doSplitSave(); setShowFileMenu(false); }}
+                            title={tr('파트마다 하나씩, 따로 열 수 있는 .emv 파일로 나눠 zip으로 받습니다. 컷이 많아 무거워졌을 때 나눠서 작업하고 나중에 합치기 위한 것입니다.')}>
+                            {tr('파트별로 나눠 저장...')}
+                        </button>
                         <div className="file-menu-sep" />
                         {/* Sits under the file actions rather than beside Export, because what it
                             asks for is files: the thing being exported is not what is open. */}

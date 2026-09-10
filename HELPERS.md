@@ -235,6 +235,14 @@ Layers: moving, merging, resolving which one a stroke lands on.
 | `offsetLayers` | Shift whole layers, and optionally the cut's texts, by a pixel offset. This is what a move-everything drag commits. |
 | `resolveDrawLayer` | Which layer a stroke should actually go into. The active layer is not always usable: it can be a folder, or point at something that no longer exists. |
 
+## `src/core/mediaEl.js`
+
+The DOM side of the media tracks: `mediaReducer` says what the audio and video are, this says what to do to the elements playing them.
+
+| | |
+|---|---|
+| `detachMedia` | Let go of an `<audio>`/`<video>` element's source. Pause, remove the attribute, then `load()` — without the last one the bytes stay held, and a revoked blob: URL never gives its memory back. |
+
 ## `src/core/mediaReducer.js`
 
 The audio and video tracks, as named actions.
@@ -323,6 +331,18 @@ Turning a drawn line into something that can be moved along smoothly.
 | `smoothPath` | Chaikin corner cutting: replace each point with two points a quarter in from its neighbours. |
 | `spacingRatio` | How evenly spaced a path is: the longest gap between consecutive points divided by the mean. 1 is perfect. A raw hand-drawn path is usually somewhere past 5, which is the same thing as saying it would stutter. |
 
+## `src/core/playbackRate.js`
+
+How fast preview playback runs, and the fact that the choice is remembered between sessions.
+
+| | |
+|---|---|
+| `PLAYBACK_RATES` | The speeds the selector offers, slowest first. The low end goes below what audio can follow on purpose — at 0.1x the point is to watch the drawing. |
+| `RATE_DEFAULT` | Normal speed, and what an unusable stored value comes back as. |
+| `RATE_MIN` / `RATE_MAX` | The bounds of a usable rate. Outside them is a frozen clock or a film run backwards, not a speed. |
+| `safePlaybackRate` | A usable rate, or the default. Falls back rather than clamping: a rate nobody chose should not be one they have to notice and undo. |
+| `playbackRateCodec` | For `useStored`. A stored `0` would freeze the playhead with nothing on screen to explain why. |
+
 ## `src/core/playbackStart.js`
 
 Where playback begins when play is pressed.
@@ -385,6 +405,44 @@ Key bindings, and what a key event means.
 | `matchShortcut` | Which binding, if any, a combo triggers. Compared case-insensitively so a binding stored as "Ctrl+[" still matches; they are written lowercase now, but a shortcut saved by an older version is not going to be rewritten. |
 | `TOOL_PREFIX` | Selecting a tool is a binding like any other, distinguished by this prefix so the handler can route it without a list of tool ids to keep in step with the toolbar. |
 | `toolFromAction` | The tool a binding selects, or null if it is not a tool binding. |
+
+## `src/core/splitProject.js`
+
+Cutting one long project into pieces that can be worked on separately - the other half of #123,
+where the export queue is the combining. Advice to work in pieces is only followable if both
+halves exist, and until this the pieces had to be made by hand.
+
+| | |
+|---|---|
+| `splitProject` | One piece per part, each carrying only the pixels its own cuts reference - which is the whole point, since a piece that dragged every frame along would be the size of the project it came from. Times are left alone, so a split and a recombine come back to the same film. **No cut may be lost:** cuts belonging to no part become a piece rather than being dropped. |
+| `piecesAreSequential` | Whether the pieces lie end to end or overlap in time. A part is any group of cuts, adjacent or not, so grouping every other cut gives two pieces that both span the whole stretch - laying those end to end afterwards makes a longer film with the gaps blank. True of the grouping, not a fault, and worth asking about before the files are written. |
+| `pieceFileName` | `01_Chorus.emv` - padded so a directory listing is the running order, and stripped of the characters a file name cannot hold. |
+
+## `src/core/textEdit.js`
+
+A text object's twenty-odd fields, in one place instead of three. The app moved them across by
+hand twice - opening a text into the editor, writing the editor back out - with a third, shorter
+list for a new one. Adding a property meant editing all three, and forgetting one is silent: the
+property simply does not survive being edited, which reads as the editor losing it.
+
+| | |
+|---|---|
+| `textFromEdit` | The text to store, from what the editor holds. Rounds the position, and clamps the size on the way out because Ctrl+Enter commits without the size field ever losing focus. |
+| `editFromText` | What the editor should hold, from a stored text. A text missing a colour opens in the colour being drawn with, which is what someone editing it expects. |
+| `blankTextEdit` | A text that does not exist yet. Short on purpose - what it leaves out, `textFromEdit` fills in, and listing them here would be the third copy this file exists to stop. |
+
+Having both directions in one place is what lets the round trip be tested: open a text, write it
+straight back, and it must be the text you started with.
+
+## `src/core/timeScale.js`
+
+Making a preview speed the film's real speed — the other half of the playback selector.
+
+| | |
+|---|---|
+| `bakeFactor` | How much longer everything gets. Returns 1 for an unusable rate, because `1/0` is Infinity and every cut would end there. |
+| `scaleProjectTimes` | The cuts stretched about time zero, **and every per-second rate slowed to match** — cut/text in-out durations, `typeSpeed`, `emSpeed`, `swaySpeed`, `roughSpeed`. Rates measured against the cut (`speed`, `deformSpeed`, `moveSpeed`, keyframes, paths) are deliberately untouched. |
+| `bakePlan` | What baking will do — the factor, the running time before and after, and which media tracks will be left behind, since a sound cannot be stretched. |
 
 ## `src/core/timeCode.js`
 
@@ -462,12 +520,24 @@ The drawing engine: strokes, canvases, animation, video frames. The big one.
 | `scratchCanvas` | A full-size scratch canvas kept in a ref: allocated once, then sized and cleared for reuse. Three places in the composite path did this by hand and disagreed about the clear - two cleared after a resize, which the resize had already done. Reuse is not a micro-optimisation here: a fresh canvas is 8MB per masked layer per frame. |
 | `strokeSig` | A cheap change signature for a layer's strokes, used to invalidate the layer canvas cache without stringifying the whole array. Sound because strokes here are only ever appended or replaced. |
 | `layerSig` | The cache key for one baked layer canvas. Two caches use it and compare their keys against each other, so for a layer that is not boiling both forms must come out byte-identical - otherwise every such layer misses the cache and is redrawn every frame, with no visible symptom. |
+| `swayPointAt` | How to read one entry of a sway profile, whichever shape it is in. Weights used to be spaced evenly - three meant top, middle, bottom, which suits hair and is useless for an arm where the point that matters is wherever the elbow is. A point may carry its own position now; both shapes are read rather than one migrated, so a project saved before this still moves exactly as it did. |
+| `sortSwayProfile` | A profile as positioned points, in order. Always the positioned shape, because that is what an edit produces. Sorted because dragging a point past its neighbour is a thing people do, and the alternative is an interpolation that runs backwards through the middle of the drag. |
 | `swayWeightAt` | How much a point along the axis sways, interpolated smoothly between the control weights. Zero holds a point still; a negative weight bends it the other way, so one stretch can bend one direction while the next bends back. |
 | `targetCanvasFor` | Which canvas a video import should land in. A vertical clip dropped into a landscape canvas is mostly empty margin, so the import can match the source instead, or be pinned to one of the two shapes people actually publish. |
 | `TEXT_ANIM_DEFAULT` | - emphasis: a looping accent (pulse/shake/wave) |
 | `triwave` | Triangle wave 0->1->0 (period 2); used for ping-pong path following. |
 | `SWING` | The three shapes a return animation can take. `through` passes the resting position and goes out the other side, which is what the layer presets are made of - 둥실둥실 bobs above and below. `there` and `along` go out to the target and back and never past the start. One cycle is one whole trip in all three, so speed means the same thing to each. |
 | `swing` | A return animation's progress for one of those shapes, or 0 once it has run out of repeats. Settling at 0 rather than mid-wave is where a whole trip would have ended anyway. |
+
+## `src/canvas/swayRender.js`
+
+Bending a layer along an axis - hair swinging from its roots, a ribbon trailing from where it is held.
+
+| | |
+|---|---|
+| `drawSwayed` | Draw a layer canvas bent by its profile, in slices, respecting the caller's transform. |
+| `swaySlices` | The shear each slice gets, as `offset(a) = k*a + m`. Separate from the drawing because this is where the correctness lives: a slice that translates rigidly instead of shearing tears the image into visible bands. |
+| `SWAY_SLICES` | How many slices. More only fits the curve better — it is the shear, not the count, that removes the seams. |
 
 ## `src/canvas/textLayout.js`
 
@@ -538,6 +608,14 @@ thumbnails and onion skin should all describe a frame the same way.
 | `onionNeighbours` | The cuts either side on the **same** track. `next` starts at `endTime`, because cuts abut and a strict comparison would find nothing in the common case. |
 | `topCutAt` | The cut the playhead selects: topmost of those it is over, since the upper tracks are what a click would land on. |
 
+## `src/hooks/useAudioTrack.js`
+
+The music track: the element that plays it, the copies of it a save needs, and the four ways one gets loaded or dropped.
+
+| | |
+|---|---|
+| `useAudioTrack` | Owns `audioRef` and the AudioContext the export recorder taps, plus the two extra shapes of the same sound — a base64 dataURL so an `.emv` is self-contained, and a Blob (cached by the dataURL it came from) because IndexedDB can hold one and autosave cannot afford base64. |
+
 ## `src/hooks/useAutosave.js`
 
 Debounced background saving, so a refresh or a crash never costs work.
@@ -557,6 +635,17 @@ the narrowest.
 |---|---|
 | `useServerStorage` | Save, open and delete server projects; snapshot every five minutes and rotate. Takes `buildData` and `restore` as functions rather than reaching for the document itself, because building one reads most of App's state and restoring one writes most of it - threading either in would make the seam wider than the thing it separates. |
 
+## `src/hooks/useLocalDocuments.js`
+
+The document on this machine: `.emv` files, IndexedDB projects, the autosave crash recovery offers,
+and the tabs that hold several documents at once. The mirror of `useServerStorage`, split along the
+same line - three things that look separate and are one concern, because all three are "a document
+that lives here rather than on a server" and all three go through `buildData` and `restore`.
+
+| | |
+|---|---|
+| `useLocalDocuments` | Owns the local pickers, the tab list and their in-memory snapshots. Takes `buildData`, `restore` and `resetToEmpty` as functions: the first two because building a document reads most of App's state and restoring one writes most of it, the third for the same reason from the other end - emptying the document is App's business. |
+
 ## `src/hooks/usePanelLayout.js`
 
 Where the panels are and how wide they are: three panels that each dock left, dock right or float,
@@ -574,6 +663,14 @@ Whether the project-storage API is reachable, re-checked with a backoff.
 | | |
 |---|---|
 | `useServerProbe` | Polls with `nextProbeDelay` backoff and resets on window focus. Checking only once was the original bug: a server that was down at load stayed "down" all session, so the menus never rendered and clicking did nothing. |
+
+## `src/hooks/useToolSettings.js`
+
+What the pen is set to: which tool, what colour, how wide, how hard.
+
+| | |
+|---|---|
+| `useToolSettings` | Twenty-eight names that are read everywhere and written almost nowhere — the opposite shape from the drawing code that consumes them. Owns `etool` (Ruler and Air are each two tools behind one button) and `toolSize` (the eraser keeps its own width), so no caller has to work either out again. |
 
 ## `src/hooks/useTimelineGestures.js`
 
