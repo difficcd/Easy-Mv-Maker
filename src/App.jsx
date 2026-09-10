@@ -28,7 +28,7 @@ import { usePanelLayout } from './hooks/usePanelLayout.js';
 import { useLocalDocuments } from './hooks/useLocalDocuments.js';
 import { fetchAsset } from './core/api.js';
 import { RATE_DEFAULT, playbackRateCodec } from './core/playbackRate.js';
-import { scaleCutTimes, bakePlan } from './core/timeScale.js';
+import { scaleProjectTimes, bakePlan } from './core/timeScale.js';
 import { drawSwayed } from './canvas/swayRender.js';
 import { detachMedia } from './core/mediaEl.js';
 import { useAutosave } from './hooks/useAutosave.js';
@@ -872,12 +872,13 @@ export default function App() {
     //
     // No confirmation dialog: it is one dispatch, the history entry is recorded first, and Ctrl+Z
     // puts it back. A dialog before an undoable action buys nothing and gets clicked through.
+    const bakeInfo = bakePlan(cuts, playbackRate, { audio: !!audioUrl, video: !!videoOverlay });
     const bakePlaybackSpeed = () => {
-        const plan = bakePlan(cuts, playbackRate, { audio: !!audioUrl, video: !!videoOverlay });
+        const plan = bakeInfo;
         if (plan.noop) return;
         const lv = liveRef.current;
         recordHistory({ cuts: lv.cuts, audioData: lv.audioData, numTracks: lv.numTracks });
-        dispatchCuts(replaceCuts(scaleCutTimes(cuts, plan.factor)));
+        dispatchCuts(replaceCuts(scaleProjectTimes(cuts, plan.factor)));
         setPlaybackRate(RATE_DEFAULT);
         setToast(plan.stranded.length
             ? tr('{0}배 길이로 굳혔습니다 · 음원/영상 트랙은 늘어나지 않으니 위치를 다시 맞춰주세요 · Ctrl+Z로 취소', plan.factor.toFixed(2).replace(/\.?0+$/, ''))
@@ -3494,6 +3495,7 @@ export default function App() {
                     videoOpacity={videoOverlay ? (videoOverlay.opacity ?? 1) : null} setVideoOpacity={v => dispatchMedia(setVideoOpacity(v))}
                     setShowToolKeys={setShowToolKeys}
                     lang={lang} changeLang={changeLang}
+                    playbackRate={playbackRate} bakeInfo={bakeInfo} bakePlaybackSpeed={bakePlaybackSpeed}
                     rebinding={rebinding} setRebinding={setRebinding} />
             )}
             {serverProjects !== null && <ProjectPicker title={tr('서버에서 열기')} items={serverProjects} onOpen={doServerOpen} onDelete={doServerDelete} onClose={() => setServerProjects(null)} />}
@@ -3705,7 +3707,6 @@ export default function App() {
                 seekToTime={seekToTime} selectPart={selectPart} selectedCutIds={selectedCutIds}
                 setCurrentCutId={setCurrentCutId} setCurrentTime={setCurrentTime} addCuts={cs => dispatchCuts(addCuts(cs))}
                 setDraggingCutData={setDraggingCutData} setLoopPlay={setLoopPlay} setPlaybackRate={setPlaybackRate}
-                bakePlaybackSpeed={bakePlaybackSpeed}
                 setResizingData={setResizingData} setSceneCfg={setSceneCfg} setSelectedCutIds={setSelectedCutIds}
                 setShowBottom={setShowBottom} showBottom={showBottom} snapLinePos={snapLinePos}
                 startTimelinePan={startTimelinePan} timelineH={timelineH} timelineRef={timelineRef} tlWin={tlWin}

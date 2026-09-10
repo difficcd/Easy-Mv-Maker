@@ -718,4 +718,10 @@ const EN = {
     '{0}배 길이로 굳혔습니다 · Ctrl+Z로 취소': 'Baked to {0}x the length. Ctrl+Z to undo.',
     '컷 길이를 이 속도에 맞춰 늘려 실제 속도로 만듭니다 · 되돌리기 가능': "Stretch the cuts to match this speed, making it the film's real speed. Undoable.",
     '이 속도로 굳히기': 'Bake this speed',
+    '재생 속도를 실제 속도로': 'Make the preview speed real',
+    '지금은 정상 속도({0}x)입니다. 타임라인에서 속도를 바꾼 뒤 여기로 오세요.': 'Currently at normal speed ({0}x). Change the speed on the timeline, then come back here.',
+    '지금 {0}x로 보고 있습니다. 굳히면 컷 길이가 {1}배로 늘어나 ({2} → {3}) 내보낸 영상도 지금 보는 속도가 됩니다. 흔들림·자글자글·글자 애니메이션 속도도 함께 맞춰집니다.': 'You are watching at {0}x. Baking makes every cut {1}x longer ({2} → {3}), so the exported film runs at the speed you see now. Sway, boil and text animation are slowed to match.',
+    '음원과 영상은 늘릴 수 없어 제자리에 남습니다. 굳힌 뒤 위치를 다시 맞춰주세요.': 'Audio and video cannot be stretched and stay where they are. Reposition them after baking.',
+    '{0}배로 굳히기': 'Bake at {0}x',
+    '되돌리기(Ctrl+Z)로 취소할 수 있습니다.': 'Ctrl+Z undoes this.',
 };

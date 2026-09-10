@@ -5,6 +5,10 @@ import { TOOL_PREFIX } from '../core/shortcuts.js';
 import { targetCanvasFor } from '../canvas/canvasUtils';
 import { Modal } from './Modal.jsx';
 import { NumField, clampNum } from './NumField.jsx';
+import { fmt } from '../core/timeCode.js';
+
+/** A factor as short text: 4 rather than 4.00, 1.5 rather than 1.50. */
+const trim = (n) => String(Math.round(n * 100) / 100);
 
 // Overlays and dialogs split out of App.jsx. All state arrives as props; these only display.
 // (App.jsx had grown to 4,800 lines, so the screens moved into files you can actually read.)
@@ -59,6 +63,7 @@ export function SettingsModal({
     uiSat, setUiSat,
     keymap, setKeymap, defaultKeys, keyLabels, conflicts, rebinding, setRebinding,
     lang, changeLang, videoOpacity, setVideoOpacity, setShowToolKeys,
+    playbackRate, bakeInfo, bakePlaybackSpeed,
 }) {
     return (
         <Modal title={tr('설정')} onClose={onClose} width={520} maxHeight="80vh" className="settings-modal"
@@ -123,6 +128,32 @@ export function SettingsModal({
                                         onChange={v => setVideoOpacity(clampNum(v, 0, 100) / 100)} />
                                     <span style={{ fontSize: 11, color: '#888' }}>%</span>
                                 </div>
+                            )}
+                    </div>
+                    {/* Here rather than beside the speed selector. The selector is a thing you
+                        reach for constantly while working; this rewrites every cut in the
+                        project, and the two should not sit a few pixels apart. */}
+                    <div>
+                        <div className="color-section-label" style={{ marginBottom: 6 }}>{tr('재생 속도를 실제 속도로')}</div>
+                        {bakeInfo.noop
+                            ? <div style={{ fontSize: 11, color: '#777' }}>{tr('지금은 정상 속도({0}x)입니다. 타임라인에서 속도를 바꾼 뒤 여기로 오세요.', playbackRate)}</div>
+                            : (
+                                <>
+                                    <div style={{ fontSize: 11, color: '#aaa', lineHeight: 1.6, marginBottom: 8 }}>
+                                        {tr('지금 {0}x로 보고 있습니다. 굳히면 컷 길이가 {1}배로 늘어나 ({2} → {3}) 내보낸 영상도 지금 보는 속도가 됩니다. 흔들림·자글자글·글자 애니메이션 속도도 함께 맞춰집니다.',
+                                            playbackRate, trim(bakeInfo.factor), fmt(bakeInfo.before), fmt(bakeInfo.after))}
+                                    </div>
+                                    {bakeInfo.stranded.length > 0 && (
+                                        <div style={{ fontSize: 11, color: 'var(--accent-pale)', lineHeight: 1.6, marginBottom: 8 }}>
+                                            {tr('음원과 영상은 늘릴 수 없어 제자리에 남습니다. 굳힌 뒤 위치를 다시 맞춰주세요.')}
+                                        </div>
+                                    )}
+                                    <button className="button" onClick={() => { bakePlaybackSpeed(); onClose(); }}
+                                        style={{ height: 30, padding: '0 12px', borderColor: 'color-mix(in srgb, var(--accent-soft) 55%, transparent)', color: 'var(--accent-pale)' }}>
+                                        {tr('{0}배로 굳히기', trim(bakeInfo.factor))}
+                                    </button>
+                                    <div style={{ fontSize: 10, color: '#777', marginTop: 6 }}>{tr('되돌리기(Ctrl+Z)로 취소할 수 있습니다.')}</div>
+                                </>
                             )}
                     </div>
                 </div>

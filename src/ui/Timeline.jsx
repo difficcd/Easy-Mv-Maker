@@ -14,7 +14,7 @@ export function Timeline({
     draggingCutData, fmt, goToScene, handleAddTrack, handleDeleteAudio,
     handleDeleteTrack, handlePlayPause, handleStop, isPlaying, loopPlay,
     makePartFromSelection, marquee, maxTime, mkLayer, numTracks,
-    onTimelinePointerDown, onTimelinePointerMove, onTimelinePointerUp, parts, playbackRate, bakePlaybackSpeed,
+    onTimelinePointerDown, onTimelinePointerMove, onTimelinePointerUp, parts, playbackRate,
     playheadRef, pps, removeVideoOverlay, renamePart, sceneDetect,
     seekToTime, selectPart, selectedCutIds, setCurrentCutId, setCurrentTime,
     addCuts, setDraggingCutData, setLoopPlay, setPlaybackRate, setResizingData,
@@ -54,16 +54,6 @@ export function Timeline({
                     value={playbackRate} onChange={e => setPlaybackRate(+e.target.value)}>
                     {PLAYBACK_RATES.map(v => <option key={v} value={v}>{v}x</option>)}
                 </select>
-                {/* Only while a speed is selected, and right beside the selector, because this is
-                    the answer to the question the selector just raised: the film only reads right
-                    at this speed, so make it the speed. */}
-                {playbackRate !== RATE_DEFAULT && (
-                    <button className="button" onClick={bakePlaybackSpeed}
-                        style={{ marginLeft: 4, padding: '0 8px', fontSize: 11, borderColor: 'color-mix(in srgb, var(--accent-soft) 55%, transparent)', color: 'var(--accent-pale)' }}
-                        title={tr('컷 길이를 이 속도에 맞춰 늘려 실제 속도로 만듭니다 · 되돌리기 가능')}>
-                        {tr('이 속도로 굳히기')}
-                    </button>
-                )}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 2, marginLeft: 12 }} title={tr('타임라인 확대/축소 (마우스 휠은 커서 기준)')}>
                     <button className="icon-btn" onClick={() => { const el = timelineRef.current; const r = el?.getBoundingClientRect(); zoomTimelineAt(r ? r.left + el.clientWidth / 2 : 0, 1 / 1.25); }}>−</button>
                     <span style={{ fontSize: 11, color: '#888', minWidth: 30, textAlign: 'center' }}>{Math.round(pps)}</span>

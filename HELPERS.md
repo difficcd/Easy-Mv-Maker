@@ -440,7 +440,7 @@ Making a preview speed the film's real speed — the other half of the playback 
 | | |
 |---|---|
 | `bakeFactor` | How much longer everything gets. Returns 1 for an unusable rate, because `1/0` is Infinity and every cut would end there. |
-| `scaleCutTimes` | The cuts stretched about time zero. One factor for all of them, so they still abut exactly; a cut with junk times is left alone rather than moved to the start. |
+| `scaleProjectTimes` | The cuts stretched about time zero, **and every per-second rate slowed to match** — cut/text in-out durations, `typeSpeed`, `emSpeed`, `swaySpeed`, `roughSpeed`. Rates measured against the cut (`speed`, `deformSpeed`, `moveSpeed`, keyframes, paths) are deliberately untouched. |
 | `bakePlan` | What baking will do — the factor, the running time before and after, and which media tracks will be left behind, since a sound cannot be stretched. |
 
 ## `src/core/timeCode.js`
