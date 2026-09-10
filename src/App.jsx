@@ -1,16 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo } from 'react';
-import { X, Plus, Trash2, PenLine, Pen, Feather, Eraser, Undo, Redo, Layers, Trash, ChevronRight, ChevronDown, Folder, FolderOpen, Eye, EyeOff, ClipboardPaste, GitBranch, Move, Type, Cloud, Film, Repeat, Minus, Waves, Grid3x3, Palette, Menu, PaintBucket, Pipette, RotateCcw, ArrowDownToLine, CornerDownRight } from 'lucide-react';
+import { Plus, PenLine, Pen, Feather, Eraser, Undo, Layers, ChevronRight, Folder, GitBranch, Move, Type, Cloud, Minus, Grid3x3, Palette, Menu, PaintBucket, RotateCcw } from 'lucide-react';
 import './App.css';
-import { saveAutosave, loadAutosave, saveProject, loadProject, listProjects, deleteProject, autosaveKey } from './db';
-import { CutAnimPanel, LayerAnimPanel, JitterPanel } from './ui/AnimPanels';
-import { NumField, clampNum } from './ui/NumField';
+import { saveAutosave } from './db';
 import ColorPanel, { RECENT_SLOTS } from './ui/ColorPanel';
 import { TopBar } from './ui/TopBar';
 import { CutLayerPanel } from './ui/CutLayerPanel';
 import { useStored } from './hooks/useStored.js';
 import { nextId, randomId } from './core/ids.js';
 import { clampZoom } from './core/viewZoom.js';
-import { readStored, writeStored, arrayCodec, onOffCodec, oneZeroCodec, numberCodec } from './core/persist.js';
+import { arrayCodec, onOffCodec, oneZeroCodec, numberCodec } from './core/persist.js';
 import { TextEditor } from './ui/TextEditor';
 import { ToolsPanel } from './ui/ToolsPanel';
 import { Timeline } from './ui/Timeline';
@@ -21,6 +19,7 @@ import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, pat
 import { closeLassoPath, lassoBounds, applyResize } from './core/lassoOps.js';
 import { useTimelineGestures } from './hooks/useTimelineGestures.js';
 import { fmt, parseClock } from './core/timeCode.js';
+import { textFromEdit, editFromText, blankTextEdit } from './core/textEdit.js';
 import { useHistory } from './hooks/useHistory.js';
 import { usePlayback } from './hooks/usePlayback.js';
 import { useServerProbe } from './hooks/useServerProbe.js';
@@ -28,9 +27,11 @@ import { useServerStorage } from './hooks/useServerStorage.js';
 import { usePanelLayout } from './hooks/usePanelLayout.js';
 import { useLocalDocuments } from './hooks/useLocalDocuments.js';
 import { fetchAsset } from './core/api.js';
+import { RATE_DEFAULT, playbackRateCodec } from './core/playbackRate.js';
+import { drawSwayed } from './canvas/swayRender.js';
+import { detachMedia } from './core/mediaEl.js';
 import { useAutosave } from './hooks/useAutosave.js';
-import { nextProbeDelay } from './core/probeBackoff.js';
-import { playbackStartFrom } from './core/playbackStart.js';
+import { useAudioTrack } from './hooks/useAudioTrack.js';
 import {
     mediaReducer, EMPTY_MEDIA, loadAudio, setAudioDuration, setAudioClip, clearAudio,
     loadVideo, clearVideo, setVideoCuts, setVideoOpacity, clearVideoCuts, moveTrack, resizeAudio,
@@ -45,7 +46,7 @@ import {
     cutsReducer, replaceCuts, addCuts, updateCut, setCutAnim, setCutCamera, clearCut,
     updateLayer, setLayerAnim, moveLayers, upsertText, moveText, deleteText, toggleTextVisible as toggleTextVisibleAction,
     assignPartTo, renamePart as renamePartAction, ungroupPart as ungroupPartAction, removeBatch,
-    insertCutsShifting, deleteTrack, moveCutGroup, replaceBatchCuts, mergeLayerDown, patchCut, patchCuts,
+    insertCutsShifting, deleteTrack, moveCutGroup, replaceBatchCuts, patchCut, patchCuts,
 } from './core/cutsReducer.js';
 import { measureTextBox as measureTextBoxPure, textNeedsBox, drawTextObject } from './canvas/textRender.js';
 import { migrateCuts, projectSettings, makeLoadProgress } from './core/projectFormat.js';
@@ -57,9 +58,7 @@ import { dragOnWindow } from './core/windowDrag.js';
 // active at once, and startDraw checks this one first because a camera is a property of the cut
 // rather than of whichever layer happens to be selected.
 
-import { computeCamera, applyCamera } from './core/camera.js';
-import { clipGroups, canClip } from './core/clipping.js';
-import { setLayerClipped } from './core/cutsReducer.js';
+import { applyCamera } from './core/camera.js';
 import { onionNeighbours, topCutAt } from './engine/selectCuts.js';
 import { evaluateFrame } from './engine/evaluateFrame.js';
 import { pendingBitmapIds, scanLayerBitmaps } from './engine/pendingBitmaps.js';
@@ -69,37 +68,13 @@ import { downloadBlob } from './export/download.js';
 import { unusedBitmapIds } from './core/bitmapRefs.js';
 import { dragCut, resizeCut } from './core/cutOps.js';
 import {
-    DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT, FONT_PRESETS, fontGroups,
+    DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT,
     pointInPolygon, dist, safeArray, hexToRgb, bucketFillTransparentRegion,
-    layerKey, imageDataToDataURL, dataURLToImageData, drawStrokesOnCtx, sizeCanvas, scratchCanvas,
-    flattenForCanvas, flattenLayersInUiOrder, layerSig, applyCutAnim, extractVideoFrames, fitRect, detectSceneCuts, curveToWave, swayWeightAt, morphPrepare,
-    accentSoft, computeCutAnim, computeLayerAnim, TEXT_ANIM_DEFAULT, computeTextAnim,
-    targetCanvasFor, imageDataCanvas, cutProgress, seekTarget,
+    layerKey, imageDataToDataURL, dataURLToImageData, drawStrokesOnCtx, sizeCanvas, scratchCanvas, flattenLayersInUiOrder, layerSig, applyCutAnim, extractVideoFrames, fitRect, detectSceneCuts, curveToWave, morphPrepare,
+    accentSoft,
+    targetCanvasFor, imageDataCanvas, seekTarget,
 } from './canvas/canvasUtils';
 
-/**
- * Let go of a media element's source.
- *
- * Three steps, and the order is the point: pause first or the browser keeps decoding a source
- * that is being taken away; remove the attribute rather than setting src to '' or the element
- * reloads the page URL as media and logs a failure; then load(), which is what actually drops
- * the buffered data - without it the bytes stay held and a project with a big import never
- * gives them back.
- *
- * Written out six times, three for audio and three for video, and they had drifted: the audio
- * copies left pause() outside the try, so a detached element would throw where the video
- * copies would not.
- *
- * @param {HTMLMediaElement | null | undefined} el
- */
-const detachMedia = (el) => {
-    if (!el) return;
-    try {
-        el.pause();
-        el.removeAttribute('src');
-        el.load();
-    } catch { }
-};
 
 
 const PEN_TYPES = [
@@ -115,6 +90,8 @@ const PEN_TYPES = [
     { id: 'fill', label: 'Fill', Icon: PaintBucket },
 ];
 const BOIL_FPS = 10; // how many times a second the boiling-line motion advances
+/** How faint a neighbouring drawing is under the one being worked on. */
+const ONION_ALPHA = 0.35;
 const TIMELINE_MIN_SPAN = 240; // seconds of ruler even with nothing in the project
 const TIMELINE_TAIL_PAD = 60;  // empty room past the end, to drag into
 // How many distinct wobbles the boiling line cycles through. A hand-drawn boiling line is a
@@ -215,22 +192,6 @@ const TOOL_TYPES = [
     ...PEN_TYPES,
 ];
 
-function LayerThumbnail({ layer, cutId, layerCanvasCache }) {
-    const ref = useRef(null);
-    const key = layerKey(cutId, layer.id);
-    // Read outside the effect so the dependency is a value the linter can check, rather than an
-    // expression it has to give up on - which is what hid 'key' and the cache itself from it.
-    const layerCanvas = layerCanvasCache[key];
-    useEffect(() => {
-        const c = ref.current; if (!c) return;
-        const ctx = c.getContext('2d');
-        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, 56, 31);
-        if (layerCanvas) {
-            ctx.drawImage(layerCanvas, 0, 0, 56, 31);
-        }
-    }, [layer, layerCanvas]);
-    return <canvas ref={ref} width={56} height={31} style={{ width: 42, height: 23, borderRadius: 3, background: '#fff', flexShrink: 0, border: '1px solid hsl(var(--ui-h) var(--ui-s) 22%)' }} />;
-}
 
 
 export default function App() {
@@ -254,7 +215,9 @@ export default function App() {
      */
     const currentCut = cuts.find(c => c.id === currentCutId);
     const [loopPlay, setLoopPlay] = useState(false);
-    const [playbackRate, setPlaybackRate] = useState(1);
+    // Remembered, not per-session: someone working at half speed had to re-choose it on every
+    // reload. The codec is what makes a stored value safe - see core/playbackRate.
+    const [playbackRate, setPlaybackRate] = useStored('mv_playback_rate', RATE_DEFAULT, playbackRateCodec);
     // Which tab the cut panel is showing. It follows the editor rather than being chosen: a text
     // you have just opened is the thing you want to see.
     const [rightTab, setRightTab] = useState('cut');
@@ -284,29 +247,6 @@ export default function App() {
     // only the writes go through an action. See core/mediaReducer.
     const [media, dispatchMedia] = React.useReducer(mediaReducer, EMPTY_MEDIA);
     const { audioFile, audioUrl, audioDuration, audioData } = media;
-    const audioRef = useRef(null);
-    const audioB64Ref = useRef(null); // audio as base64 data URL, embedded into saves
-    // The same audio as a Blob, for the saves that can hold one.
-    //
-    // The video overlay has had three shapes for a while - a server asset, a Blob, or a base64
-    // dataURL - and the audio only ever had two, no Blob. That gap is why autosave was built with
-    // includeAudio false: writing a whole song into IndexedDB as a base64 string on every
-    // debounce is not something to do. The cost of the workaround was that crash recovery brought
-    // the video overlay back and left the music behind.
-    //
-    // Keyed by the dataURL it came from, so switching tracks or clearing the audio invalidates it
-    // on its own rather than needing every site that touches audioB64Ref to remember to.
-    const audioBlobRef = useRef(/** @type {{src: string|null, blob: Blob|null}} */({ src: null, blob: null }));
-    const audioAsBlob = async () => {
-        const src = audioB64Ref.current;
-        if (!src) return null;
-        if (audioBlobRef.current.src === src) return audioBlobRef.current.blob;
-        try {
-            const blob = await (await fetch(src)).blob();
-            audioBlobRef.current = { src, blob };
-            return blob;
-        } catch { return null; }
-    };
     // Video overlay track: play the original video underneath the drawing layers (no per-frame
     // cuts) - for drawing over a video. Like audio, but painted onto the canvas each frame.
     const { videoOverlay } = media; // { name, startTime, endTime, offset, duration, w, h, cuts? }
@@ -331,6 +271,11 @@ export default function App() {
     const [videoBusyBg, setVideoBusyBg] = useState(false); // extraction moved to a background chip
     // YouTube link input. A native prompt fails silently once blocked, so this asks in-app.
     const [linkPrompt, setLinkPrompt] = useState(null); // {kind:'video'|'audio'}
+
+    const {
+        audioRef, audioB64Ref, audioCtxRef, audioSourceRef, audioDestRef,
+        audioAsBlob, loadAudioUrl, handleAudioUpload, handleDeleteAudio, loadYoutubeAudio,
+    } = useAudioTrack({ audioUrl, dispatchMedia, setLinkPrompt });
     // Make failures visible. Once the browser blocks dialogs, alert is swallowed and the app
     // looks like it simply did nothing - which is exactly why one bug here took so long to find.
     const [appError, setAppError] = useState(null);
@@ -339,9 +284,6 @@ export default function App() {
     const videoStopRef = useRef(false);
     const isExporting = useRef(false);
     const mediaRecorderRef = useRef(null);
-    const audioCtxRef = useRef(null);
-    const audioSourceRef = useRef(null);
-    const audioDestRef = useRef(null);
     const exportEndRef = useRef(0);
     const [tool, setTool] = useState('pen');
     const [rulerMode, setRulerMode] = useState('line'); // the Ruler tool's two options: line and curve
@@ -905,7 +847,9 @@ export default function App() {
     useEffect(() => {
         if (!isPlaying && audioRef.current && audioUrl && Math.abs(audioRef.current.currentTime - currentTime) > 0.1)
             audioRef.current.currentTime = currentTime;
-    }, [currentTime, isPlaying, audioUrl]);
+        // audioRef is listed because the linter can no longer see it is a ref: it comes from
+        // useAudioTrack now, and a ref object's identity never changes, so this costs nothing.
+    }, [currentTime, isPlaying, audioUrl, audioRef]);
     // Paused: seek the overlay video to the scrubbed time so the canvas shows that frame (onseeked repaints).
     useEffect(() => {
         if (isPlaying) return;
@@ -1997,17 +1941,9 @@ export default function App() {
         setTextEdit({
             cutId: currentCutId,
             layerId: currentCut.activeLayerId,
-            textId: null,
-            x: pos.x,
-            y: pos.y,
+            ...blankTextEdit(pos, { color, opacity }),
             cssX: (pos.x * sx / view.zoom),
             cssY: (pos.y * sy / view.zoom),
-            text: '',
-            fontSize: 36,
-            fontFamily: 'sans-serif',
-            color,
-            opacity,
-            visible: true,
         });
     };
 
@@ -2455,40 +2391,9 @@ export default function App() {
     const cancelText = () => setTextEdit(null);
     const commitText = () => {
         if (!textEdit) return;
-        const t = String(textEdit.text ?? '');
-        if (!t.trim()) { setTextEdit(null); return; }
+        if (!String(textEdit.text ?? '').trim()) { setTextEdit(null); return; }
         const id = textEdit.textId ?? nextId();
-        const obj = {
-            id,
-            x: Math.round(textEdit.x),
-            y: Math.round(textEdit.y),
-            text: t,
-            // Ctrl+Enter commits without the size field ever losing focus, so the range that the
-            // field would have applied on blur is applied here too.
-            fontSize: clampNum(Number(textEdit.fontSize) || 36, 6, 400),
-            fontFamily: textEdit.fontFamily,
-            color: textEdit.color,
-            opacity: textEdit.opacity,
-            visible: textEdit.visible ?? true,
-            outline: !!textEdit.outline,
-            outlineColor: textEdit.outlineColor || '#ffffff',
-            bold: !!textEdit.bold,
-            italic: !!textEdit.italic,
-            align: textEdit.align || 'left',
-            lineHeight: textEdit.lineHeight ?? 1.25,
-            letterSpacing: textEdit.letterSpacing ?? 0,
-            shadow: !!textEdit.shadow,
-            shadowColor: textEdit.shadowColor || 'rgba(0,0,0,0.5)',
-            shadowBlur: textEdit.shadowBlur ?? 6,
-            gradient: !!textEdit.gradient,
-            color2: textEdit.color2 || '#ffffff',
-            bgColor: textEdit.bgColor || '',
-            rotation: textEdit.rotation ?? 0,
-            curve: textEdit.curve ?? 0,
-            flipX: !!textEdit.flipX,
-            flipY: !!textEdit.flipY,
-            anim: textEdit.anim || null,
-        };
+        const obj = textFromEdit(textEdit, id);
         dispatchCuts(upsertText(textEdit.cutId, obj));
         setSelectedText({ cutId: textEdit.cutId, textId: id });
         setTextEdit(null);
@@ -2506,34 +2411,11 @@ export default function App() {
         setTextEdit({
             cutId,
             textId,
-            x: t.x ?? 0,
-            y: t.y ?? 0,
+            ...editFromText(t, { color, opacity }),
+            // Where the textarea sits on screen, which is the editor's business and not the
+            // document's - so it is added here rather than in the shared shape.
             cssX: ((t.x ?? 0) * sx / view.zoom),
             cssY: ((t.y ?? 0) * sy / view.zoom),
-            text: t.text ?? '',
-            fontSize: t.fontSize ?? 36,
-            fontFamily: t.fontFamily ?? 'sans-serif',
-            color: t.color ?? color,
-            opacity: t.opacity ?? opacity,
-            visible: t.visible !== false,
-            outline: !!t.outline,
-            outlineColor: t.outlineColor || '#ffffff',
-            bold: !!t.bold,
-            italic: !!t.italic,
-            align: t.align || 'left',
-            lineHeight: t.lineHeight ?? 1.25,
-            letterSpacing: t.letterSpacing ?? 0,
-            shadow: !!t.shadow,
-            shadowColor: t.shadowColor || 'rgba(0,0,0,0.5)',
-            shadowBlur: t.shadowBlur ?? 6,
-            gradient: !!t.gradient,
-            color2: t.color2 || '#ffffff',
-            bgColor: t.bgColor || '',
-            rotation: t.rotation ?? 0,
-            curve: t.curve ?? 0,
-            flipX: !!t.flipX,
-            flipY: !!t.flipY,
-            anim: t.anim || null,
         });
     };
 
@@ -2847,25 +2729,16 @@ export default function App() {
             }
         }
 
-        if (!playing && primary) {
-            if (onionPrev) {
-                const prevCut = onionNeighbours(cuts, primary).prev;
-                if (prevCut) {
-                    const order = flattenLayersInUiOrder(prevCut.layers || []).filter(l => l.type === 'layer' && l.visible !== false);
-                    for (let i = order.length - 1; i >= 0; i--) {
-                        const lc = ensureLayerCanvas(prevCut.id, order[i]);
-                        if (lc) { ctx.globalAlpha = 0.35; ctx.drawImage(lc, 0, 0); ctx.globalAlpha = 1.0; }
-                    }
-                }
-            }
-            if (onionNext) {
-                const nextCut = onionNeighbours(cuts, primary).next;
-                if (nextCut) {
-                    const order = flattenLayersInUiOrder(nextCut.layers || []).filter(l => l.type === 'layer' && l.visible !== false);
-                    for (let i = order.length - 1; i >= 0; i--) {
-                        const lc = ensureLayerCanvas(nextCut.id, order[i]);
-                        if (lc) { ctx.globalAlpha = 0.35; ctx.drawImage(lc, 0, 0); ctx.globalAlpha = 1.0; }
-                    }
+        // Onion skin: the neighbouring drawings, faint, so a new one can be lined up against
+        // them. Paused only - during playback the next frame is about to be shown anyway.
+        if (!playing && primary && (onionPrev || onionNext)) {
+            const { prev, next } = onionNeighbours(cuts, primary);
+            for (const cut of [onionPrev ? prev : null, onionNext ? next : null]) {
+                if (!cut) continue;
+                const order = flattenLayersInUiOrder(cut.layers || []).filter(l => l.type === 'layer' && l.visible !== false);
+                for (let i = order.length - 1; i >= 0; i--) {
+                    const lc = ensureLayerCanvas(cut.id, order[i]);
+                    if (lc) { ctx.globalAlpha = ONION_ALPHA; ctx.drawImage(lc, 0, 0); ctx.globalAlpha = 1.0; }
                 }
             }
         }
@@ -2905,30 +2778,10 @@ export default function App() {
                 if (layerDragRef.current && layerDragRef.current.cutId === ac.id
                     && layerDragRef.current.layerIds.includes(l.id)) { ctx.restore(); continue; }
                 if (la?.swayProfile && (!shouldMask || (!mb && !mi))) {
-                    // Per-point sway: the layer is sliced along the axis and each slice bends by a
-                    // different amount. That is non-affine, so a single shear cannot express it.
-                    // The key is that translating each slice as a rigid block makes the edges
-                    // mismatch and the image tear. Giving each slice a shear instead makes the
-                    // displacement vary continuously within it, and matching the boundary value to
-                    // the neighbour exactly leaves no seam.
-                    const SLICES = 64;
-                    const vertical = la.swayAxis === 'y';
-                    const span = vertical ? CANVAS_H : CANVAS_W;
-                    const dispAt = (pos) => la.swayDisp * swayWeightAt(la.swayProfile, pos / span);
-                    for (let sIdx = 0; sIdx < SLICES; sIdx++) {
-                        const a0 = Math.round(sIdx * span / SLICES);
-                        const a1 = Math.round((sIdx + 1) * span / SLICES);
-                        const len = a1 - a0; if (len <= 0) continue;
-                        const d0 = dispAt(a0), d1 = dispAt(a1);
-                        const k = (d1 - d0) / len;  // gradient within the slice
-                        const m = d0 - k * a0;      // so that it equals d0 exactly at a0
-                        ctx.save();
-                        // The coordinate along the axis is left untouched (diagonal term 1, that
-                        // off-diagonal 0), so the slices butt together without gaps.
-                        if (vertical) { ctx.transform(1, 0, k, 1, m, 0); ctx.drawImage(layerCanvas, 0, a0, CANVAS_W, len, 0, a0, CANVAS_W, len); }
-                        else { ctx.transform(1, k, 0, 1, 0, m); ctx.drawImage(layerCanvas, a0, 0, len, CANVAS_H, a0, 0, len, CANVAS_H); }
-                        ctx.restore();
-                    }
+                    drawSwayed(ctx, layerCanvas, {
+                        profile: la.swayProfile, axis: la.swayAxis, disp: la.swayDisp,
+                        cw: CANVAS_W, ch: CANVAS_H,
+                    });
                 } else if (!shouldMask || (!mb && !mi)) {
                     ctx.drawImage(layerCanvas, 0, 0);
                 } else {
@@ -3111,26 +2964,6 @@ export default function App() {
         videoOverlay,
     });
 
-    const loadAudioUrl = (url, name, startAt = 0, offset = 0, clipDur = null) => {
-        dispatchMedia(loadAudio(name, url));
-        const audio = new Audio(url);
-        // startAt aligns the track to a given timeline position (e.g. the first imported video frame);
-        // offset/clipDur select a sub-range of the source audio (used when only a video segment is
-        // imported), so audio + frames extracted together stay mechanically in sync.
-        audio.onloadedmetadata = () => {
-            dispatchMedia(setAudioDuration(audio.duration));
-            const dur = clipDur != null ? Math.min(clipDur, Math.max(0, audio.duration - offset)) : Math.max(0, audio.duration - offset);
-            dispatchMedia(setAudioClip({ startTime: startAt, endTime: startAt + dur, offset }));
-            if (audioRef.current) audioRef.current.src = url;
-        };
-        // Capture base64 once so the project can be saved "with the music".
-        if (url.startsWith('data:')) { audioB64Ref.current = url; }
-        else { fetch(url).then(r => r.blob()).then(b => { const fr = new FileReader(); fr.onload = () => { audioB64Ref.current = fr.result; }; fr.readAsDataURL(b); }).catch(() => { }); }
-    };
-    const handleAudioUpload = (e) => {
-        const file = e.target.files[0]; if (!file) return;
-        loadAudioUrl(URL.createObjectURL(file), file.name);
-    };
     // Lay a whole video under the drawing layers (overlay/rotoscope use). No frame cuts.
     const loadVideoOverlay = (blob, name, startAt = 0, offset = 0, clipDur = null) => {
         videoBlobRef.current = blob;
@@ -3350,22 +3183,6 @@ export default function App() {
             setVideoBusyBg(false);
         }
     };
-    const handleDeleteAudio = () => {
-        detachMedia(audioRef.current);
-        if (audioUrl && audioUrl.startsWith('blob:')) { try { URL.revokeObjectURL(audioUrl); } catch { } }
-        audioB64Ref.current = null;
-        dispatchMedia(clearAudio());
-    };
-    const loadYoutubeAudio = async (presetUrl) => {
-        const url = typeof presetUrl === 'string' ? presetUrl : null;
-        if (!url) { setLinkPrompt({ kind: 'audio' }); return; }
-        try {
-            const res = await fetch('/api/youtube-audio?url=' + encodeURIComponent(url));
-            if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || ('HTTP ' + res.status)); }
-            const blob = await res.blob();
-            loadAudioUrl(URL.createObjectURL(blob), tr('유튜브 음원'));
-        } catch (e) { alert(tr('음원 추출 실패: ') + e.message); }
-    };
     // Transparency cannot survive the recorder. Chrome hands VP9 to the hardware encoder above
     // roughly 480p, and that encoder has no alpha channel - measured here, the background came back
     // solid black at 1920x1080 while the same code kept it transparent at 640x360. WebCodecs is no
@@ -3524,86 +3341,17 @@ export default function App() {
         exportEndRef.current = playEnd; isExporting.current = true; mediaRecorderRef.current = mr; mr.start(); setIsPlaying(true);
     };
 
-    const renderLayers = (cut, parentId = null, depth = 0) => {
-        return cut.layers.filter(l => (l.parentId ?? null) === parentId).map(layer => {
-            const isFolder = layer.type === 'folder';
-            const isDragging = dragLayerInfo?.layerId === layer.id;
-            const dt = dropInfo?.layerId === layer.id ? dropInfo.position : null;
-            return (
-                <div key={layer.id} style={{ opacity: isDragging ? 0.4 : 1 }}>
-                    {dt === 'before' && <div className="drop-line" />}
-                    <div
-                        className={`layer-row${!isFolder && cut.activeLayerId === layer.id ? ' layer-active' : ''}${isFolder ? ' layer-folder' : ''}${dt === 'inside' ? ' drop-inside' : ''}`}
-                        style={{ paddingLeft: depth * 14 + 6 }}
-                        draggable
-                        onDragStart={e => onLayerDragStart(e, cut.id, layer.id)}
-                        onDragOver={e => onLayerDragOver(e, layer.id, layer.type)}
-                        onDrop={e => onLayerDrop(e, cut.id, layer.id)}
-                        onDragEnd={onLayerDragEnd}
-                        onClick={e => !isFolder && handleSetActive(e, cut.id, layer.id)}
-                    >
-                        {isFolder
-                            ? <button className="icon-btn" onClick={e => handleToggleFolder(e, cut.id, layer.id)}>{layer.collapsed ? <ChevronRight size={11} /> : <ChevronDown size={11} />}</button>
-                            : <span style={{ width: 11, flexShrink: 0, display: 'inline-block' }} />}
-                        {isFolder
-                            ? (layer.collapsed ? <Folder size={13} style={{ color: '#888', marginRight: 4, flexShrink: 0 }} /> : <FolderOpen size={13} style={{ color: '#aaa', marginRight: 4, flexShrink: 0 }} />)
-                            : <LayerThumbnail layer={layer} cutId={cut.id} layerCanvasCache={layerCanvasCache} />}
-                        <button className="icon-btn" style={{ marginLeft: 4 }} onClick={e => handleToggleVisible(e, cut.id, layer.id)}>
-                            {layer.visible ? <Eye size={10} /> : <EyeOff size={10} style={{ color: '#555' }} />}
-                        </button>
-                        <span className="layer-name">{layer.name}</span>
-                        {!isFolder && (
-                            <button className="icon-btn" style={{ color: layer.roughen ? '#e0a84e' : undefined }}
-                                title={layer.roughen ? tr('자글자글 모션 (강도 {0}) — 클릭: 설정 열기', layer.roughen) : tr('자글자글 모션 설정 (이미 그린 선이 제자리에서 부글거림)')}
-                                onClick={e => toggleJitterPanel(e, cut.id, layer.id)}>
-                                <Waves size={11} />
-                            </button>
-                        )}
-                        {!isFolder && (() => {
-                            // Shown even where it cannot apply, greyed out: hiding it would make
-                            // the row's controls shift position as layers are reordered, which is
-                            // worse than a disabled button.
-                            const clippable = canClip(flattenLayersInUiOrder(cut.layers || []).filter(l => l.type === 'layer'), layer.id);
-                            return (
-                                <button className="icon-btn" disabled={!clippable && !layer.clipped}
-                                    style={{ color: layer.clipped ? 'var(--accent-pale)' : undefined, opacity: (clippable || layer.clipped) ? 1 : 0.3 }}
-                                    title={layer.clipped
-                                        ? tr('클리핑 해제 (지금은 아래 레이어가 그려진 곳에만 보입니다)')
-                                        : clippable
-                                            ? tr('아래 레이어에 클리핑 — 아래 레이어가 그려진 곳에만 보이게 합니다')
-                                            : tr('맨 아래 레이어는 클리핑할 대상이 없습니다')}
-                                    onClick={e => { e.stopPropagation(); dispatchCuts(setLayerClipped(cut.id, layer.id, !layer.clipped)); }}>
-                                    <CornerDownRight size={11} />
-                                </button>
-                            );
-                        })()}
-                        {!isFolder && (
-                            <button className="icon-btn" title={tr('아래 레이어와 병합')}
-                                onClick={e => { e.stopPropagation(); dispatchCuts(mergeLayerDown(cut.id, layer.id, flattenLayersInUiOrder)); }}>
-                                <ArrowDownToLine size={11} />
-                            </button>
-                        )}
-                        {!isFolder && (
-                            <button className="icon-btn" style={{ color: layer.anim ? 'var(--accent-soft)' : undefined }} title={tr('파츠 애니메이션')}
-                                onClick={e => { e.stopPropagation(); setAnimLayer(a => (a && a.cutId === cut.id && a.layerId === layer.id) ? null : { cutId: cut.id, layerId: layer.id }); }}>
-                                <Film size={11} />
-                            </button>
-                        )}
-                        <button className="icon-btn del-btn" onClick={e => handleDeleteLayer(e, cut.id, layer.id)}><Trash2 size={11} /></button>
-                    </div>
-                    {!isFolder && jitterLayer && jitterLayer.cutId === cut.id && jitterLayer.layerId === layer.id && (
-                        <JitterPanel cut={cut} layer={layer} updLayer={updLayerProps} />
-                    )}
-                    {!isFolder && animLayer && animLayer.cutId === cut.id && animLayer.layerId === layer.id && (
-                        <LayerAnimPanel cut={cut} layer={layer} updLayerAnim={updLayerAnim} updLayers={updLayers} pathCapture={pathCapture} setPathCapture={setPathCapture}
-                            cutProgress={cutProgress(cut, currentTime)} />
-                    )}
-                    {dt === 'after' && <div className="drop-line" />}
-                    {isFolder && !layer.collapsed && renderLayers(cut, layer.id, depth + 1)}
-                </div>
-            );
-        });
+    // Everything a layer row needs, as against everything the panel around it needs. Grouped
+    // rather than listed flat for the same reason usePlayback groups its inputs: twenty names
+    // threaded one by one through a panel that uses none of them is not clearer than one that
+    // says what the bundle is.
+    const layerRows = {
+        animLayer, currentTime, dispatchCuts, dragLayerInfo, dropInfo, handleDeleteLayer,
+        handleSetActive, handleToggleFolder, handleToggleVisible, jitterLayer, layerCanvasCache,
+        onLayerDragEnd, onLayerDragOver, onLayerDragStart, onLayerDrop, pathCapture,
+        setAnimLayer, setPathCapture, toggleJitterPanel, updLayerAnim, updLayerProps, updLayers,
     };
+
 
     // Tool panel: the buttons keep a comfortable size and the column count follows the width.
     // Named rather than inlined as [!!textEdit]: a dependency the linter cannot read is a
@@ -3670,7 +3418,7 @@ export default function App() {
                     handleCutClick={handleCutClick} handleDeleteCut={handleDeleteCut}
                     handleDuplicateCut={handleDuplicateCut} handlePasteCut={handlePasteCut}
                     handleSetTool={handleSetTool} openEditText={openEditText} renameCut={renameCut}
-                    renamingCutId={renamingCutId} renderLayers={renderLayers} rightW={rightW}
+                    renamingCutId={renamingCutId} layerRows={layerRows} rightW={rightW}
                     selectedCutIds={selectedCutIds} selectedText={selectedText} setDragLayerInfo={setDragLayerInfo}
                     setDropInfo={setDropInfo} setRenamingCutId={setRenamingCutId} setSelectedText={setSelectedText}
                     setShowRight={setShowRight} showRight={showRight} toggleCutCollapse={toggleCutCollapse}
@@ -3917,7 +3665,7 @@ export default function App() {
             {showBottom && <div className="splitter-h" style={{ touchAction: 'none' }} onPointerDown={e => { try { e.currentTarget.setPointerCapture(e.pointerId); } catch { } startBottomResize(e.clientY); }} />}
 
             <Timeline
-                activePartId={activePartId} audioData={audioData} audioFile={audioFile} audioRef={audioRef}
+                activePartId={activePartId} audioData={audioData} audioFile={audioFile}
                 currentCutId={currentCutId} currentTime={currentTime} cutDragArmedRef={cutDragArmedRef}
                 cutDragMovedRef={cutDragMovedRef} cutDragTimerRef={cutDragTimerRef} cuts={cuts}
                 draggingCutData={draggingCutData} fmt={fmt} goToScene={goToScene} handleAddTrack={handleAddTrack}

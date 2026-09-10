@@ -235,6 +235,14 @@ Layers: moving, merging, resolving which one a stroke lands on.
 | `offsetLayers` | Shift whole layers, and optionally the cut's texts, by a pixel offset. This is what a move-everything drag commits. |
 | `resolveDrawLayer` | Which layer a stroke should actually go into. The active layer is not always usable: it can be a folder, or point at something that no longer exists. |
 
+## `src/core/mediaEl.js`
+
+The DOM side of the media tracks: `mediaReducer` says what the audio and video are, this says what to do to the elements playing them.
+
+| | |
+|---|---|
+| `detachMedia` | Let go of an `<audio>`/`<video>` element's source. Pause, remove the attribute, then `load()` — without the last one the bytes stay held, and a revoked blob: URL never gives its memory back. |
+
 ## `src/core/mediaReducer.js`
 
 The audio and video tracks, as named actions.
@@ -323,6 +331,18 @@ Turning a drawn line into something that can be moved along smoothly.
 | `smoothPath` | Chaikin corner cutting: replace each point with two points a quarter in from its neighbours. |
 | `spacingRatio` | How evenly spaced a path is: the longest gap between consecutive points divided by the mean. 1 is perfect. A raw hand-drawn path is usually somewhere past 5, which is the same thing as saying it would stutter. |
 
+## `src/core/playbackRate.js`
+
+How fast preview playback runs, and the fact that the choice is remembered between sessions.
+
+| | |
+|---|---|
+| `PLAYBACK_RATES` | The speeds the selector offers, slowest first. The low end goes below what audio can follow on purpose — at 0.1x the point is to watch the drawing. |
+| `RATE_DEFAULT` | Normal speed, and what an unusable stored value comes back as. |
+| `RATE_MIN` / `RATE_MAX` | The bounds of a usable rate. Outside them is a frozen clock or a film run backwards, not a speed. |
+| `safePlaybackRate` | A usable rate, or the default. Falls back rather than clamping: a rate nobody chose should not be one they have to notice and undo. |
+| `playbackRateCodec` | For `useStored`. A stored `0` would freeze the playhead with nothing on screen to explain why. |
+
 ## `src/core/playbackStart.js`
 
 Where playback begins when play is pressed.
@@ -397,6 +417,22 @@ halves exist, and until this the pieces had to be made by hand.
 | `splitProject` | One piece per part, each carrying only the pixels its own cuts reference - which is the whole point, since a piece that dragged every frame along would be the size of the project it came from. Times are left alone, so a split and a recombine come back to the same film. **No cut may be lost:** cuts belonging to no part become a piece rather than being dropped. |
 | `piecesAreSequential` | Whether the pieces lie end to end or overlap in time. A part is any group of cuts, adjacent or not, so grouping every other cut gives two pieces that both span the whole stretch - laying those end to end afterwards makes a longer film with the gaps blank. True of the grouping, not a fault, and worth asking about before the files are written. |
 | `pieceFileName` | `01_Chorus.emv` - padded so a directory listing is the running order, and stripped of the characters a file name cannot hold. |
+
+## `src/core/textEdit.js`
+
+A text object's twenty-odd fields, in one place instead of three. The app moved them across by
+hand twice - opening a text into the editor, writing the editor back out - with a third, shorter
+list for a new one. Adding a property meant editing all three, and forgetting one is silent: the
+property simply does not survive being edited, which reads as the editor losing it.
+
+| | |
+|---|---|
+| `textFromEdit` | The text to store, from what the editor holds. Rounds the position, and clamps the size on the way out because Ctrl+Enter commits without the size field ever losing focus. |
+| `editFromText` | What the editor should hold, from a stored text. A text missing a colour opens in the colour being drawn with, which is what someone editing it expects. |
+| `blankTextEdit` | A text that does not exist yet. Short on purpose - what it leaves out, `textFromEdit` fills in, and listing them here would be the third copy this file exists to stop. |
+
+Having both directions in one place is what lets the round trip be tested: open a text, write it
+straight back, and it must be the text you started with.
 
 ## `src/core/timeCode.js`
 
@@ -481,6 +517,16 @@ The drawing engine: strokes, canvases, animation, video frames. The big one.
 | `SWING` | The three shapes a return animation can take. `through` passes the resting position and goes out the other side, which is what the layer presets are made of - 둥실둥실 bobs above and below. `there` and `along` go out to the target and back and never past the start. One cycle is one whole trip in all three, so speed means the same thing to each. |
 | `swing` | A return animation's progress for one of those shapes, or 0 once it has run out of repeats. Settling at 0 rather than mid-wave is where a whole trip would have ended anyway. |
 
+## `src/canvas/swayRender.js`
+
+Bending a layer along an axis - hair swinging from its roots, a ribbon trailing from where it is held.
+
+| | |
+|---|---|
+| `drawSwayed` | Draw a layer canvas bent by its profile, in slices, respecting the caller's transform. |
+| `swaySlices` | The shear each slice gets, as `offset(a) = k*a + m`. Separate from the drawing because this is where the correctness lives: a slice that translates rigidly instead of shearing tears the image into visible bands. |
+| `SWAY_SLICES` | How many slices. More only fits the curve better — it is the shear, not the count, that removes the seams. |
+
 ## `src/canvas/textLayout.js`
 
 Where each character of a line goes, for curving and for animating characters separately.
@@ -549,6 +595,14 @@ thumbnails and onion skin should all describe a frame the same way.
 | `visibleCutsAt` | What to draw, which is not the same question: while paused it also includes the cut being edited, or clicking a cut and finding a blank canvas becomes normal. |
 | `onionNeighbours` | The cuts either side on the **same** track. `next` starts at `endTime`, because cuts abut and a strict comparison would find nothing in the common case. |
 | `topCutAt` | The cut the playhead selects: topmost of those it is over, since the upper tracks are what a click would land on. |
+
+## `src/hooks/useAudioTrack.js`
+
+The music track: the element that plays it, the copies of it a save needs, and the four ways one gets loaded or dropped.
+
+| | |
+|---|---|
+| `useAudioTrack` | Owns `audioRef` and the AudioContext the export recorder taps, plus the two extra shapes of the same sound — a base64 dataURL so an `.emv` is self-contained, and a Blob (cached by the dataURL it came from) because IndexedDB can hold one and autosave cannot afford base64. |
 
 ## `src/hooks/useAutosave.js`
 
