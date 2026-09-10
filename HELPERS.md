@@ -553,6 +553,16 @@ The drawing engine: strokes, canvases, animation, video frames. The big one.
 | `SWING` | The three shapes a return animation can take. `through` passes the resting position and goes out the other side, which is what the layer presets are made of - 둥실둥실 bobs above and below. `there` and `along` go out to the target and back and never past the start. One cycle is one whole trip in all three, so speed means the same thing to each. |
 | `swing` | A return animation's progress for one of those shapes, or 0 once it has run out of repeats. Settling at 0 rather than mid-wave is where a whole trip would have ended anyway. |
 
+## `src/canvas/layerComposite.js`
+
+Putting one layer onto the frame: where it sits, and how a floating selection is cut out of it. Both came out of the composite loop, which runs for every layer of every visible cut, sixty times a second.
+
+| | |
+|---|---|
+| `partMatrix` | A part's placement as a 2x3 affine. A matrix rather than context calls, because the whole of the reasoning is the composition order — rotate and scale about the pivot, and a shear that pivots at `py` — and that can then be checked without a canvas. |
+| `applyPartTransform` | The same, applied to a context, with keyframe opacity multiplied rather than replaced (a part inside a fading cut has to fade with it). |
+| `drawMaskedLayer` | Layer minus the lifted region. `destination-out` on a **shared scratch**, never on the frame — erasing on the frame would take the artwork already there, and a fresh canvas per masked layer per frame is 8MB sixty times a second. |
+
 ## `src/canvas/swayRender.js`
 
 Bending a layer along an axis - hair swinging from its roots, a ribbon trailing from where it is held.
