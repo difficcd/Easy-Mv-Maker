@@ -2,18 +2,19 @@ import React from 'react';
 import { Plus, FolderPlus, Trash2, Copy, CopyPlus, ClipboardPaste, Eye, EyeOff, Settings, ChevronDown, ChevronRight } from 'lucide-react';
 import { safeArray } from '../canvas/canvasUtils';
 import { CutAnimPanel, CameraPanel } from './AnimPanels';
+import { LayerRows } from './LayerRows';
 import { tr } from '../i18n';
 
 // CUT / LAYER panel: the cut list, each cut's layer tree, cut animation and text list.
-// The layer rows themselves are drawn by App's renderLayers - the drag state lives in App,
-// so that part stays delegated.
+// The rows of each tree are LayerRows; everything they need arrives as the `layerRows` bundle
+// and is passed straight through, because none of it is this panel's business.
 export function CutLayerPanel({
     collapsedCutIds, copiedCut, currentCutId, cuts, deleteTextObject,
     deleteVideoBatch, dragLayerInfo, expandedCuts, handleAddCut, handleAddFolder,
     handleAddLayer, handleCopyCut, handleCutClick, handleDeleteCut, handleDuplicateCut,
     handlePasteCut, handleSetTool, openEditText, renameCut, renamingCutId,
     updCutCamera, cameraCapture, setCameraCapture, canvasW, canvasH,
-    renderLayers, rightW, selectedCutIds, selectedText, setDragLayerInfo,
+    layerRows, rightW, selectedCutIds, selectedText, setDragLayerInfo,
     setDropInfo, setRenamingCutId, setSelectedText, setShowRight, showRight,
     toggleCutCollapse, toggleCutSettings, toggleTextVisible, updCutAnim, updCutTime,
     updLayers, videoBatches, rightTab, setRightTab, textEditorBody, cancelText,
@@ -91,7 +92,7 @@ export function CutLayerPanel({
                                 </div>
                             )}
                             <div className="layer-list" onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); if (dragLayerInfo && dragLayerInfo.cutId === cut.id) { updLayers(cut.id, c => { const layers = [...c.layers], di = layers.findIndex(l => l.id === dragLayerInfo.layerId), dragged = { ...layers[di], parentId: null }; layers.splice(di, 1); layers.push(dragged); return { layers }; }); setDragLayerInfo(null); setDropInfo(null); } }}>
-                                {renderLayers(cut)}
+                                <LayerRows cut={cut} rows={layerRows} />
                             </div>
                             {cut.id === currentCutId && (
                                 <div className="text-panel">
