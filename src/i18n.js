@@ -713,4 +713,5 @@ const EN = {
     '나누기 실패: ': 'Split failed: ',
     '파트마다 하나씩, 따로 열 수 있는 .emv 파일로 나눠 zip으로 받습니다. 컷이 많아 무거워졌을 때 나눠서 작업하고 나중에 합치기 위한 것입니다.': 'One .emv per part, each openable on its own, delivered as a zip. For working in pieces when a project has grown heavy, and combining them later.',
     '파트별로 나눠 저장...': 'Split by part...',
+    '재생 속도 (기억됩니다 · 내보내기는 항상 정상 속도)': 'Playback speed (remembered; exports always run at normal speed)',
 };

@@ -2,6 +2,7 @@ import React from 'react';
 import { ChevronDown, ChevronUp, Grid3x3, Pause, Play, Plus, Repeat, Square, Trash2, Eye, EyeOff, Settings } from 'lucide-react';
 import { safeArray, accentSoft } from '../canvas/canvasUtils';
 import { tr } from '../i18n';
+import { PLAYBACK_RATES, RATE_DEFAULT } from '../core/playbackRate.js';
 import { TRACK_GUTTER } from '../core/timelineZoom.js';
 
 // Bottom timeline: playback controls, the parts bar, the ruler, track and cut blocks,
@@ -9,7 +10,7 @@ import { TRACK_GUTTER } from '../core/timelineZoom.js';
 // Scrubbing, cut dragging and pinch zoom touch App state directly, so those handlers stay
 // in App and arrive as props - moving them here would change behaviour, not just location.
 export function Timeline({
-    activePartId, audioData, audioFile, audioRef, currentCutId,
+    activePartId, audioData, audioFile, currentCutId,
     currentTime, cutDragArmedRef, cutDragMovedRef, cutDragTimerRef, cuts,
     draggingCutData, fmt, goToScene, handleAddTrack, handleDeleteAudio,
     handleDeleteTrack, handlePlayPause, handleStop, isPlaying, loopPlay,
@@ -37,8 +38,22 @@ export function Timeline({
                     <button className="button" onClick={() => goToScene(-1)} title={tr('이전 장면(컷)')}>{tr('◀컷')}</button>
                     <button className="button" onClick={() => goToScene(1)} title={tr('다음 장면(컷)')}>{tr('컷▶')}</button>
                 </>}
-                <select className="time-input" style={{ width: 60, marginLeft: 8 }} value={playbackRate} onChange={e => { const r = +e.target.value; setPlaybackRate(r); if (audioRef.current) audioRef.current.playbackRate = r; }} title={tr('재생 속도')}>
-                    {[0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4].map(v => <option key={v} value={v}>{v}x</option>)}
+                {/* The speed is remembered between sessions, so it has to be visible that it is
+                    set: an accent border when it is not 1x, or a project someone left at 0.25x
+                    weeks ago reads as an app that got slow.
+
+                    Only the playback effect sets the audio element's rate. This handler set it
+                    too, which was harmless while the speed reset every session and is not now:
+                    a video export deliberately runs the loop at 1x, and a change made here
+                    during one would have put the audio alone at the chosen speed. */}
+                <select className="time-input" title={tr('재생 속도 (기억됩니다 · 내보내기는 항상 정상 속도)')}
+                    style={{
+                        width: 60, marginLeft: 8,
+                        borderColor: playbackRate === RATE_DEFAULT ? undefined : 'color-mix(in srgb, var(--accent-soft) 55%, transparent)',
+                        color: playbackRate === RATE_DEFAULT ? undefined : 'var(--accent-pale)',
+                    }}
+                    value={playbackRate} onChange={e => setPlaybackRate(+e.target.value)}>
+                    {PLAYBACK_RATES.map(v => <option key={v} value={v}>{v}x</option>)}
                 </select>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 2, marginLeft: 12 }} title={tr('타임라인 확대/축소 (마우스 휠은 커서 기준)')}>
                     <button className="icon-btn" onClick={() => { const el = timelineRef.current; const r = el?.getBoundingClientRect(); zoomTimelineAt(r ? r.left + el.clientWidth / 2 : 0, 1 / 1.25); }}>−</button>

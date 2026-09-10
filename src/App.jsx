@@ -29,6 +29,7 @@ import { useServerStorage } from './hooks/useServerStorage.js';
 import { usePanelLayout } from './hooks/usePanelLayout.js';
 import { useLocalDocuments } from './hooks/useLocalDocuments.js';
 import { fetchAsset } from './core/api.js';
+import { RATE_DEFAULT, playbackRateCodec } from './core/playbackRate.js';
 import { detachMedia } from './core/mediaEl.js';
 import { useAutosave } from './hooks/useAutosave.js';
 import { useAudioTrack } from './hooks/useAudioTrack.js';
@@ -234,7 +235,9 @@ export default function App() {
      */
     const currentCut = cuts.find(c => c.id === currentCutId);
     const [loopPlay, setLoopPlay] = useState(false);
-    const [playbackRate, setPlaybackRate] = useState(1);
+    // Remembered, not per-session: someone working at half speed had to re-choose it on every
+    // reload. The codec is what makes a stored value safe - see core/playbackRate.
+    const [playbackRate, setPlaybackRate] = useStored('mv_playback_rate', RATE_DEFAULT, playbackRateCodec);
     // Which tab the cut panel is showing. It follows the editor rather than being chosen: a text
     // you have just opened is the thing you want to see.
     const [rightTab, setRightTab] = useState('cut');
@@ -3780,7 +3783,7 @@ export default function App() {
             {showBottom && <div className="splitter-h" style={{ touchAction: 'none' }} onPointerDown={e => { try { e.currentTarget.setPointerCapture(e.pointerId); } catch { } startBottomResize(e.clientY); }} />}
 
             <Timeline
-                activePartId={activePartId} audioData={audioData} audioFile={audioFile} audioRef={audioRef}
+                activePartId={activePartId} audioData={audioData} audioFile={audioFile}
                 currentCutId={currentCutId} currentTime={currentTime} cutDragArmedRef={cutDragArmedRef}
                 cutDragMovedRef={cutDragMovedRef} cutDragTimerRef={cutDragTimerRef} cuts={cuts}
                 draggingCutData={draggingCutData} fmt={fmt} goToScene={goToScene} handleAddTrack={handleAddTrack}

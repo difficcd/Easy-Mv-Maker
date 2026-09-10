@@ -331,6 +331,18 @@ Turning a drawn line into something that can be moved along smoothly.
 | `smoothPath` | Chaikin corner cutting: replace each point with two points a quarter in from its neighbours. |
 | `spacingRatio` | How evenly spaced a path is: the longest gap between consecutive points divided by the mean. 1 is perfect. A raw hand-drawn path is usually somewhere past 5, which is the same thing as saying it would stutter. |
 
+## `src/core/playbackRate.js`
+
+How fast preview playback runs, and the fact that the choice is remembered between sessions.
+
+| | |
+|---|---|
+| `PLAYBACK_RATES` | The speeds the selector offers, slowest first. The low end goes below what audio can follow on purpose — at 0.1x the point is to watch the drawing. |
+| `RATE_DEFAULT` | Normal speed, and what an unusable stored value comes back as. |
+| `RATE_MIN` / `RATE_MAX` | The bounds of a usable rate. Outside them is a frozen clock or a film run backwards, not a speed. |
+| `safePlaybackRate` | A usable rate, or the default. Falls back rather than clamping: a rate nobody chose should not be one they have to notice and undo. |
+| `playbackRateCodec` | For `useStored`. A stored `0` would freeze the playhead with nothing on screen to explain why. |
+
 ## `src/core/playbackStart.js`
 
 Where playback begins when play is pressed.
