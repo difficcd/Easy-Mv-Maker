@@ -2083,9 +2083,7 @@ export default function App() {
             case 'pencil':
             case 'soft':
             case 'blur':
-            case 'marker':
-            case 'rough':
-            case 'calligraphy': {
+            case 'marker': {
                 // Draw on the live overlay only — no layer-state writes per move (that was the lag).
                 liveStrokeRef.current = { id: nextId(), tool: etool, color, opacity, size: brushSize, points: [pos], pen: pressureOn && e.pointerType === 'pen' };
                 liveDrawnRef.current = 0; renderLiveStroke(true);
@@ -2209,8 +2207,6 @@ export default function App() {
             case 'soft':
             case 'blur':
             case 'marker':
-            case 'rough':
-            case 'calligraphy':
             case 'eraser': {
                 // Fast strokes get coalesced by the browser into one event; recover every
                 // intermediate sample so quick curves stay curved instead of going polygonal.
