@@ -415,6 +415,7 @@ halves exist, and until this the pieces had to be made by hand.
 | | |
 |---|---|
 | `splitProject` | One piece per part, each carrying only the pixels its own cuts reference - which is the whole point, since a piece that dragged every frame along would be the size of the project it came from. Times are left alone, so a split and a recombine come back to the same film. **No cut may be lost:** cuts belonging to no part become a piece rather than being dropped. |
+| `piecesAreSequential` | Whether the pieces lie end to end or overlap in time. A part is any group of cuts, adjacent or not, so grouping every other cut gives two pieces that both span the whole stretch - laying those end to end afterwards makes a longer film with the gaps blank. True of the grouping, not a fault, and worth asking about before the files are written. |
 | `pieceFileName` | `01_Chorus.emv` - padded so a directory listing is the running order, and stripped of the characters a file name cannot hold. |
 
 ## `src/core/textEdit.js`
@@ -660,6 +661,14 @@ Whether the project-storage API is reachable, re-checked with a backoff.
 | | |
 |---|---|
 | `useServerProbe` | Polls with `nextProbeDelay` backoff and resets on window focus. Checking only once was the original bug: a server that was down at load stayed "down" all session, so the menus never rendered and clicking did nothing. |
+
+## `src/hooks/useToolSettings.js`
+
+What the pen is set to: which tool, what colour, how wide, how hard.
+
+| | |
+|---|---|
+| `useToolSettings` | Twenty-eight names that are read everywhere and written almost nowhere — the opposite shape from the drawing code that consumes them. Owns `etool` (Ruler and Air are each two tools behind one button) and `toolSize` (the eraser keeps its own width), so no caller has to work either out again. |
 
 ## `src/hooks/useTimelineGestures.js`
 

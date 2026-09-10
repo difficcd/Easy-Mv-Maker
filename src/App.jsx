@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useLayoutEffect, useMe
 import { Plus, PenLine, Pen, Feather, Eraser, Undo, Layers, ChevronRight, Folder, GitBranch, Move, Type, Cloud, Minus, Grid3x3, Palette, Menu, PaintBucket, RotateCcw } from 'lucide-react';
 import './App.css';
 import { saveAutosave } from './db';
-import ColorPanel, { RECENT_SLOTS } from './ui/ColorPanel';
+import ColorPanel from './ui/ColorPanel';
 import { TopBar } from './ui/TopBar';
 import { CutLayerPanel } from './ui/CutLayerPanel';
 import { useStored } from './hooks/useStored.js';
@@ -33,6 +33,7 @@ import { drawSwayed } from './canvas/swayRender.js';
 import { detachMedia } from './core/mediaEl.js';
 import { useAutosave } from './hooks/useAutosave.js';
 import { useAudioTrack } from './hooks/useAudioTrack.js';
+import { useToolSettings } from './hooks/useToolSettings.js';
 import {
     mediaReducer, EMPTY_MEDIA, loadAudio, setAudioDuration, setAudioClip, clearAudio,
     loadVideo, clearVideo, setVideoCuts, setVideoOpacity, clearVideoCuts, moveTrack, resizeAudio,
@@ -42,7 +43,7 @@ import { DEFAULT_KEYS, KEY_LABELS, keyOf, matchShortcut, keymapFrom, toolFromAct
 import { derivePartsFrom, deriveVideoBatches } from './core/partOps.js';
 import { importPlacement, buildImportedCuts } from './core/videoCuts.js';
 import { playRange } from './core/playRange.js';
-import { clampBrush, brushUp, brushDown } from './core/brushSize.js';
+import { brushUp, brushDown } from './core/brushSize.js';
 import {
     cutsReducer, replaceCuts, addCuts, updateCut, setCutAnim, setCutCamera, clearCut,
     updateLayer, setLayerAnim, moveLayers, upsertText, moveText, deleteText, toggleTextVisible as toggleTextVisibleAction,
@@ -286,42 +287,19 @@ export default function App() {
     const isExporting = useRef(false);
     const mediaRecorderRef = useRef(null);
     const exportEndRef = useRef(0);
-    const [tool, setTool] = useState('pen');
-    const [rulerMode, setRulerMode] = useState('line'); // the Ruler tool's two options: line and curve
-    const [softMode, setSoftMode] = useState('soft');   // the Air tool's two options: airbrush and blur
-    // The logic below still works in terms of "line" and "curve"; the Ruler tool just picks
-    // between them by mode.
-    const etool = tool === 'ruler' ? rulerMode : tool === 'soft' ? softMode : tool;
-    const [color, setColor] = useState('#000000');
-    // Recent colours only collect colours actually used, not ones merely selected.
-    // See noteColorUsed below.
-    const [recentColors, setRecentColors] = useStored('mv_recent_colors', [], arrayCodec);
-    const [pickingColor, setPickingColor] = useState(false); // eyedropper: next canvas click samples a pixel
-    const applyColor = (c) => { if (!c) return; setColor(c); };
-    // "Used" means something was actually drawn in that colour; only then does it join Recent.
-    const noteColorUsed = (c) => {
-        if (!c) return;
-        setRecentColors(p => (p[0] && p[0].toLowerCase() === c.toLowerCase())
-            ? p
-            : [c, ...p.filter(x => x.toLowerCase() !== c.toLowerCase())].slice(0, RECENT_SLOTS));
-    };
-    // Eyedropper: native picker where available, else sample the canvas on the next click.
-    const pickColor = async () => {
-        if (window.EyeDropper) { try { const r = await new window.EyeDropper().open(); applyColor(r.sRGBHex); } catch { } }
-        else setPickingColor(true);
-    };
-    const [brushSize, setBrushSize] = useState(5);
-    // Pen pressure. Off means an even line however hard the pen is pressed - wanted for lineart,
-    // and for pens that report pressure unevenly.
-    const [pressureOn, setPressureOn] = useStored('mv_pressure', true, onOffCodec);
-    const [eraserSize, setEraserSize] = useState(20);
-    const [opacity, setOpacity] = useState(1.0);
-    // The width the current tool draws with. The eraser keeps its own, so switching to it and
-    // back does not lose the size you were drawing with - which is why every caller has to ask
-    // which tool it is before reading or writing a size, and why that question is asked here
-    // once rather than at each of them.
-    const toolSize = tool === 'eraser' ? eraserSize : brushSize;
-    const setToolSize = (n) => { const v = clampBrush(n); if (tool === 'eraser') setEraserSize(v); else setBrushSize(v); };
+
+    const {
+        tool, setTool, etool, rulerMode, setRulerMode, softMode, setSoftMode, handleSetTool,
+        color, setColor, applyColor, recentColors, noteColorUsed, pickColor, pickingColor, setPickingColor,
+        brushSize, setBrushSize, eraserSize, setEraserSize, toolSize, setToolSize,
+        opacity, setOpacity, pressureOn, setPressureOn, mosaicBlock, setMosaicBlock,
+    } = useToolSettings({
+        // A tool change is refused outright while a selection is floating or a text is being
+        // edited: both are modes of their own, and leaving them by picking up another tool
+        // would silently discard what is in them.
+        busy: () => !!selection || !!textEdit,
+        leaveCurve: () => { if (curveAnchorsRef.current) commitCurve(); },
+    });
     const [expandedCuts, setExpandedCuts] = useState(new Set());
     const [collapsedCutIds, setCollapsedCutIds] = useState(new Set());
     const [renamingCutId, setRenamingCutId] = useState(null);
@@ -356,7 +334,6 @@ export default function App() {
     const curveDraggingRef = useRef(false); // an anchor was just placed and is being fine-tuned by dragging
     const [curvePts, setCurvePts] = useState(0); // anchor count, for the done/cancel bar
     const mosaicRectRef = useRef(null);   // mosaic drag rectangle
-    const [mosaicBlock, setMosaicBlock] = useState(14); // mosaic block size (px)
     const isDrawing = useRef(false);
     const fileMenuRef = useRef(null);
     const mediaMenuRef = useRef(null);
@@ -689,23 +666,25 @@ export default function App() {
         const clip = lassoClipRef.current;
         const cut = currentCut;
         if (!clip || !cut) return;
-        const layerId = cut.activeLayerId;
+        // Through the same two guards a stroke goes through, because paste had neither and so
+        // had two ways to do nothing at all while reporting success:
+        //
+        //   - `cut.activeLayerId` can be a folder, or an id whose layer is gone. patchLayer then
+        //     matches nothing and the paste evaporates.
+        //   - the target layer, or a folder above it, can be hidden. The paste lands and is
+        //     invisible, which reads exactly the same from the outside.
+        //
+        // resolveDrawLayer answers the first, commitStroke reveals for the second - the pair
+        // drawing has used all along.
+        const layer = resolveDrawLayer(cut);
+        if (!layer) return;
         const bmpCache = new Map();
         const bitmapId = cloneBitmapId(clip.bitmapId, bmpCache); // independent copy per paste
         const x = Math.round(CANVAS_W / 2 - clip.w / 2), y = Math.round(CANVAS_H / 2 - clip.h / 2);
-        updLayers(currentCutId, c => ({
-            layers: patchLayer(c.layers, layerId,
-                l => ({ strokes: [...l.strokes, { id: nextId(), tool: 'paste', bitmapId, x, y, w: clip.w, h: clip.h }] }))
-        }));
+        commitStrokeToLayer(currentCutId, layer.id, { id: nextId(), tool: 'paste', bitmapId, x, y, w: clip.w, h: clip.h });
+        setToast(tr('붙여넣었습니다 — 캔버스 가운데'));
     };
 
-    const handleSetTool = (newTool) => {
-        if (selection) return;
-        if (textEdit) return;
-        // Switching tools mid-curve commits it automatically.
-        if (curveAnchorsRef.current && newTool !== 'ruler') commitCurve();
-        setTool(newTool);
-    };
 
     // Undo/redo lives in useHistory. What stays here is the two things only this component can
     // answer: what the document currently is, and whether a gesture is in progress - drawing,
@@ -2149,8 +2128,22 @@ export default function App() {
         }
     };
 
+    // Which resize handle the pointer is over, or null. Only used for the cursor, so it is set
+    // from the hover pass below and never read by anything that draws.
+    const [hoverHandle, setHoverHandle] = useState(/** @type {string|null} */(null));
+
     const onDraw = (e) => {
-        if (!isDrawing.current) return;
+        // Hovering, not drawing: the only thing to work out is what the cursor should say. A
+        // selection has eight handles and hitTestSelection already knows which one a point is
+        // over; without this the cursor said "move" over all of them, so the one gesture that
+        // resizes looked like the one that moves.
+        if (!isDrawing.current) {
+            if (!selection) { if (hoverHandle) setHoverHandle(null); return; }
+            const hit = hitTestSelection(getPos(e));
+            const next = hit?.type === 'resize' ? hit.handle : null;
+            if (next !== hoverHandle) setHoverHandle(next);   // guarded: this runs on every move
+            return;
+        }
         const pos = getPos(e);
 
         if (pathPtsRef.current) { pathPtsRef.current.push(pos); return; }
@@ -2405,6 +2398,8 @@ export default function App() {
     };
 
     const onPointerLeaveCanvas = () => {
+        setHoverHandle(null);   // the pointer is gone; the cursor it implied should go too
+
         // With pointer capture, we still receive move/up events outside the canvas.
         // Avoid auto-stopping lasso/selection transforms just because the pointer left the element.
         if (isDrawing.current && (tool === 'lasso' || selectionDragRef.current)) return;
@@ -3610,6 +3605,59 @@ export default function App() {
                 <button className="icon-btn" onClick={newTab} title={tr('새 탭(프로젝트)')} style={{ alignSelf: 'center', marginLeft: 2 }}><Plus size={14} /></button>
             </div>
 
+            {/* The mode bar.
+                
+                These four told you what mode you were in and how to leave it, and every one of
+                them was painted over the drawing - the selection menu inside the stage itself,
+                so it rode the zoom, and the other three floating above the canvas area. A menu
+                that covers the artwork is not a menu about the artwork; it is in the way.
+                
+                So they are chrome now: a row of the application, between the tabs and the
+                canvas, which takes its own height and hides again when no mode is active. One
+                row rather than four floats also settles what used to be an unanswered question -
+                what happens when two of them are up at once. They are laid out side by side. */}
+            {(selection || cameraCapture || pathCapture || etool === 'curve') && (
+                <div className="mode-bar">
+                    {selection && (
+                        <div className="mode-group">
+                            <span className="mode-label">{tr('선택 영역')}</span>
+                            <button className="button button-primary" onClick={extractSelectionToPart} style={{ height: 26, padding: '0 10px' }} title={tr('선택 영역을 별도 레이어(파츠)로 분리해 애니메이션')}>{tr('파츠로 분리')}</button>
+                            <button className="button" onClick={copyLassoSelection} style={{ height: 26, padding: '0 10px' }} title={tr('선택 영역 복사 (다른 컷/레이어에 붙여넣기)')}>{tr('복사')}</button>
+                            <button className="button" onClick={commitSelection} style={{ height: 26, padding: '0 10px' }} title={tr('제자리에 적용(이동/크기)')}>{tr('완료')}</button>
+                            <button className="button" onClick={cancelSelection} style={{ height: 26, padding: '0 10px' }}>{tr('취소')}</button>
+                        </div>
+                    )}
+                    {etool === 'curve' && (
+                        <div className="mode-group">
+                            <span className="mode-label">{tr('곡선 자')}</span>
+                            {/* No anchors yet means there is nothing to finish and nothing to
+                                cancel. These were rendered disabled, which on a tablet is a
+                                button that looks pressable and does nothing - the same reading
+                                as a broken app. */}
+                            <span className="mode-hint">{curvePts === 0 ? tr('점을 찍어 곡선을 만드세요') : tr('앵커 {0}개 (누른 채 끌어 미세조정)', curvePts)}</span>
+                            {curvePts > 0 && <>
+                                <button className="button button-primary" style={{ height: 26, padding: '0 10px' }} disabled={curvePts < 2} onClick={commitCurve}>{tr('완료')}</button>
+                                <button className="button" style={{ height: 26, padding: '0 10px' }} onClick={cancelCurve}>{tr('취소')}</button>
+                            </>}
+                        </div>
+                    )}
+                    {cameraCapture && (
+                        <div className="mode-group">
+                            <span className="mode-label">{tr('카메라 경로')}</span>
+                            <span className="mode-hint">{tr('카메라가 지나갈 길을 그리세요 — 재생하면 그 길을 따라갑니다')}</span>
+                            <button className="button" style={{ height: 26, padding: '0 10px' }} onClick={() => setCameraCapture(null)}>{tr('취소')}</button>
+                        </div>
+                    )}
+                    {pathCapture && (
+                        <div className="mode-group">
+                            <span className="mode-label">{pathCapture.mode === 'sway' ? tr('흔들림 곡선') : tr('이동 경로')}</span>
+                            <span className="mode-hint">{pathCapture.mode === 'sway' ? tr('물결치듯 곡선을 그리세요 — 그 모양·크기대로 흔들립니다') : tr('펜으로 이동 경로를 그리세요')}</span>
+                            <button className="button" style={{ height: 26, padding: '0 10px' }} onClick={() => setPathCapture(null)}>{tr('취소')}</button>
+                        </div>
+                    )}
+                </div>
+            )}
+
             <div className="main-content" onPointerDown={onDockPointerDown}>
                 {/* Far-left icon rail for switching panels, Clip Studio style: tools on top,
                     colour below. */}
@@ -3627,25 +3675,6 @@ export default function App() {
                     onMouseDown={e => { if (e.button === 1) e.preventDefault(); }} /* suppress middle-click auto-scroll */
                     onAuxClick={e => { if (e.button === 1) e.preventDefault(); }}
                     onPointerDown={onAreaPointerDown} onPointerMove={onAreaPointerMove} onPointerUp={onAreaPointerUp} onPointerCancel={onAreaPointerUp}>
-                    {cameraCapture && (
-                        <div style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', zIndex: 31, background: 'var(--accent-soft)', color: '#fff', fontSize: 12, padding: '6px 12px', borderRadius: 6, display: 'flex', gap: 8, alignItems: 'center' }}>
-                            {tr('카메라가 지나갈 길을 그리세요 — 재생하면 그 길을 따라갑니다')}
-                            <button className="button" style={{ height: 24, padding: '0 8px' }} onClick={() => setCameraCapture(null)}>{tr('취소')}</button>
-                        </div>
-                    )}
-                    {pathCapture && (
-                        <div style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', zIndex: 31, background: 'var(--accent-soft)', color: '#fff', fontSize: 12, padding: '6px 12px', borderRadius: 6, display: 'flex', gap: 8, alignItems: 'center' }}>
-                            {pathCapture.mode === 'sway' ? tr('물결치듯 곡선을 그리세요 — 그 모양·크기대로 흔들립니다') : tr('펜으로 이동 경로를 그리세요')}
-                            <button className="button" style={{ height: 24, padding: '0 8px' }} onClick={() => setPathCapture(null)}>{tr('취소')}</button>
-                        </div>
-                    )}
-                    {etool === 'curve' && (
-                        <div style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', zIndex: 31, background: 'hsl(var(--ui-h) var(--ui-s) 20%)', color: '#fff', fontSize: 12, padding: '6px 12px', borderRadius: 6, display: 'flex', gap: 8, alignItems: 'center', border: '1px solid #444' }}>
-                            {curvePts === 0 ? tr('점을 찍어 곡선을 만드세요') : tr('앵커 {0}개 (누른 채 끌어 미세조정)', curvePts)}
-                            <button className="button" style={{ height: 24, padding: '0 10px', background: '#4ea1ff' }} disabled={curvePts < 2} onClick={commitCurve}>{tr('완료')}</button>
-                            <button className="button" style={{ height: 24, padding: '0 8px' }} disabled={curvePts === 0} onClick={cancelCurve}>{tr('취소')}</button>
-                        </div>
-                    )}
                     {(view.zoom !== 1 || view.x !== 0 || view.y !== 0) && (
                         <button className="button" onClick={resetView} title={tr('줌 초기화')}
                             style={{ position: 'absolute', top: 8, right: 8, zIndex: 30, height: 28, padding: '0 10px' }}>
@@ -3658,20 +3687,23 @@ export default function App() {
                             drawing surface. */}
                         <canvas ref={canvasRef} width={CANVAS_W} height={CANVAS_H} tabIndex={-1}
                             onPointerDown={startDraw} onPointerMove={onDraw} onPointerUp={stopDraw} onPointerCancel={stopDraw} onPointerLeave={onPointerLeaveCanvas}
-                            style={{ cursor: spaceDown ? 'grab' : selection ? 'move' : tool === 'fill' ? 'cell' : tool === 'lasso' ? 'crosshair' : 'crosshair', touchAction: 'none' }} />
+                            style={{
+                                // `${handle}-resize` is the eight-way set - nw-resize, n-resize
+                                // and so on - so the arrow points the way that edge will travel.
+                                // `selection &&` first, so a handle the pointer was over when the
+                                // selection was committed cannot leave a resize arrow behind on a
+                                // canvas that has nothing to resize.
+                                cursor: spaceDown ? 'grab'
+                                    : (selection && hoverHandle) ? `${hoverHandle}-resize`
+                                        : selection ? 'move'
+                                            : tool === 'fill' ? 'cell' : 'crosshair',
+                                touchAction: 'none',
+                            }} />
                         {/* The live overlay must be transparent. Inheriting the global
                             `canvas { background:#fff }` rule paints white over the main canvas,
                             hiding the drawing and making committed strokes look as if they
                             vanished. */}
                         <canvas ref={liveCanvasRef} width={CANVAS_W} height={CANVAS_H} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', background: 'transparent', boxShadow: 'none' }} />
-                        {selection && (
-                            <div className="selection-actions">
-                                <button className="button button-primary" onClick={extractSelectionToPart} style={{ height: 30, padding: '0 10px' }} title={tr('선택 영역을 별도 레이어(파츠)로 분리해 애니메이션')}>{tr('파츠로 분리')}</button>
-                                <button className="button" onClick={copyLassoSelection} style={{ height: 30, padding: '0 10px' }} title={tr('선택 영역 복사 (다른 컷/레이어에 붙여넣기)')}>{tr('복사')}</button>
-                                <button className="button" onClick={commitSelection} style={{ height: 30, padding: '0 10px' }} title={tr('제자리에 적용(이동/크기)')}>{tr('완료')}</button>
-                                <button className="button" onClick={cancelSelection} style={{ height: 30, padding: '0 10px' }}>{tr('취소')}</button>
-                            </div>
-                        )}
                     </div>
                 </div>
 

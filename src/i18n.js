@@ -713,6 +713,7 @@ const EN = {
     '나누기 실패: ': 'Split failed: ',
     '파트마다 하나씩, 따로 열 수 있는 .emv 파일로 나눠 zip으로 받습니다. 컷이 많아 무거워졌을 때 나눠서 작업하고 나중에 합치기 위한 것입니다.': 'One .emv per part, each openable on its own, delivered as a zip. For working in pieces when a project has grown heavy, and combining them later.',
     '파트별로 나눠 저장...': 'Split by part...',
+    '파트들이 시간 순서로 나뉘어 있지 않습니다. 이대로 나누면 조각끼리 시간이 겹쳐서, 나중에 이어 붙일 때 빈 구간이 생깁니다. 계속할까요?': 'These parts are not in timeline order. Split like this and the pieces overlap in time, so joining them later leaves blank stretches. Continue?',
     '재생 속도 (기억됩니다 · 내보내기는 항상 정상 속도)': 'Playback speed (remembered; exports always run at normal speed)',
     '{0}배 길이로 굳혔습니다 · 음원/영상 트랙은 늘어나지 않으니 위치를 다시 맞춰주세요 · Ctrl+Z로 취소': 'Baked to {0}x the length. Audio and video tracks do not stretch, so reposition them. Ctrl+Z to undo.',
     '{0}배 길이로 굳혔습니다 · Ctrl+Z로 취소': 'Baked to {0}x the length. Ctrl+Z to undo.',
@@ -725,4 +726,10 @@ const EN = {
     '재생': 'Playback',
     '미리보기 속도입니다 · 내보내기는 항상 정상 속도': 'Preview speed only; exports always run at normal speed.',
     '재생 설정 — 이 속도를 실제 속도로 굳히기': "Playback settings — make this the film's real speed",
+    '붙여넣었습니다 — 캔버스 가운데': 'Pasted, in the middle of the canvas',
+    '선택 영역': 'Selection',
+    '곡선 자': 'Curve ruler',
+    '카메라 경로': 'Camera path',
+    '흔들림 곡선': 'Sway curve',
+    '이동 경로': 'Motion path',
 };
