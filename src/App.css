@@ -469,22 +469,51 @@ body {
     height: 100%;
 }
 
-/* Pinned to the canvas area, centred at the top with the other action bars - not to the stage,
-   which carries the zoom and pan transform and would take these buttons with it. */
-.selection-actions {
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-    top: 8px;
-    z-index: 31;
-    white-space: nowrap;
+/* The mode bar: a row of the application, not something painted over the drawing.
+   It sits between the document tabs and the canvas and takes its own height, so a mode never
+   costs you sight of the artwork it is about. Hidden entirely when no mode is active, so the
+   canvas gets the space back. */
+.mode-bar {
     display: flex;
-    gap: 8px;
-    padding: 8px;
-    border-radius: 10px;
-    background: rgba(20, 20, 42, 0.7);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    backdrop-filter: blur(8px);
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 14px;
+    flex-shrink: 0;
+    padding: 5px 10px;
+    background: hsl(var(--ui-h) var(--ui-s) 13%);
+    border-bottom: 1px solid color-mix(in srgb, var(--accent-soft) 30%, transparent);
+}
+
+.mode-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+/* Which mode this group belongs to. Named because two can be active at once now that they
+   share a row, and an unlabelled 취소 beside another 취소 is a coin toss.
+   A tinted chip rather than solid accent: --accent-soft is generated at 74% lightness from the
+   user's theme colour, so light text on it would be unreadable for some themes and there is no
+   contrast-computed token here to reach for. */
+.mode-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 2px 7px;
+    border-radius: 999px;
+    white-space: nowrap;
+    color: var(--accent-pale);
+    background: color-mix(in srgb, var(--accent-soft) 16%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent-soft) 34%, transparent);
+}
+
+.mode-hint {
+    font-size: 11px;
+    color: #aaa;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* The text editor is a docked panel now, not a window over the canvas: it had grown enough

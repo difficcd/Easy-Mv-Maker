@@ -715,4 +715,9 @@ const EN = {
     '파트별로 나눠 저장...': 'Split by part...',
     '재생 속도 (기억됩니다 · 내보내기는 항상 정상 속도)': 'Playback speed (remembered; exports always run at normal speed)',
     '붙여넣었습니다 — 캔버스 가운데': 'Pasted, in the middle of the canvas',
+    '선택 영역': 'Selection',
+    '곡선 자': 'Curve ruler',
+    '카메라 경로': 'Camera path',
+    '흔들림 곡선': 'Sway curve',
+    '이동 경로': 'Motion path',
 };
