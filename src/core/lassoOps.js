@@ -103,3 +103,54 @@ export function applyResize(handle, startSel, dx, dy) {
 
     return { tx: left, ty: top, tw: Math.max(min, right - left), th: Math.max(min, bottom - top) };
 }
+
+/**
+ * Split a rectangle of layer pixels into the part inside a polygon and a mask of where it was.
+ *
+ * Two images out of one pass, because they describe the same set of pixels from both sides: the
+ * selection is what now floats, and the mask is the hole it leaves behind. Building them
+ * separately is how they drift, and a mask that does not match its selection shows as a ghost of
+ * the lifted artwork left in the layer.
+ *
+ * Only pixels that are **both** inside the polygon and not fully transparent are taken. Lifting
+ * empty pixels would make the selection box larger than the artwork in it, and erase a
+ * rectangle's worth of nothing from the layer underneath.
+ *
+ * `makeImageData` is injected rather than `new ImageData(...)` being called here, the same way
+ * the rest of `core/` takes its browser functions - so the awkward cases can be checked without
+ * a canvas.
+ *
+ * @param {object} args
+ * @param {{data: Uint8ClampedArray}} args.layer pixels already cropped to the bounds
+ * @param {number[][]} args.poly a closed ring, in canvas coordinates
+ * @param {number} args.minX left edge of the bounds, in canvas coordinates
+ * @param {number} args.minY top edge
+ * @param {number} args.w
+ * @param {number} args.h
+ * @param {(w: number, h: number) => {data: Uint8ClampedArray}} args.makeImageData
+ * @param {(pt: number[], poly: number[][]) => boolean} args.inside
+ * @returns {{selection: {data: Uint8ClampedArray}, eraseMask: {data: Uint8ClampedArray}, hasContent: boolean}}
+ */
+export function cutOutPolygon({ layer, poly, minX, minY, w, h, makeImageData, inside }) {
+    const selection = makeImageData(w, h);
+    const eraseMask = makeImageData(w, h);
+    let hasContent = false;
+    for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+            const i = (y * w + x) * 4;
+            // Tested at the pixel centre. On the boundary itself the crossing test could go
+            // either way, and the half-pixel offset makes the answer definite - otherwise which
+            // pixels come along depends on where the polygon happens to land on the grid.
+            if (!inside([minX + x + 0.5, minY + y + 0.5], poly)) continue;
+            const a = layer.data[i + 3];
+            if (a === 0) continue;
+            hasContent = true;
+            selection.data[i] = layer.data[i];
+            selection.data[i + 1] = layer.data[i + 1];
+            selection.data[i + 2] = layer.data[i + 2];
+            selection.data[i + 3] = a;
+            eraseMask.data[i + 3] = 255;
+        }
+    }
+    return { selection, eraseMask, hasContent };
+}

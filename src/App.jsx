@@ -17,7 +17,7 @@ import { ProjectPicker, ProgressOverlay, SettingsModal, HelpModal, VideoImportMo
 import { tr, loadLang, saveLang, setLangValue } from './i18n';
 import { moveLayer } from './core/layerOps.js';
 import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, patchLayer } from './core/layerOps.js';
-import { closeLassoPath, lassoBounds, applyResize } from './core/lassoOps.js';
+import { closeLassoPath, lassoBounds, applyResize, cutOutPolygon } from './core/lassoOps.js';
 import { useTimelineGestures } from './hooks/useTimelineGestures.js';
 import { fmt, parseClock } from './core/timeCode.js';
 import { textFromEdit, editFromText, blankTextEdit } from './core/textEdit.js';
@@ -2352,33 +2352,22 @@ export default function App() {
         const { x: minX, y: minY, w, h } = lassoBounds(points, CANVAS_W, CANVAS_H);
         if (w <= 0 || h <= 0) return;
 
-        const layerImageData = ctx.getImageData(minX, minY, w, h);
-        const selectionImageData = new ImageData(w, h);
-        const eraseMaskImageData = new ImageData(w, h);
-        let hasContent = false;
-        for (let y = 0; y < h; y++) {
-            for (let x = 0; x < w; x++) {
-                const i = (y * w + x) * 4;
-                // Tested at the pixel centre: on the boundary itself the crossing test could go
-                // either way, and a half-pixel offset makes the answer definite.
-                if (!pointInPolygon([minX + x + 0.5, minY + y + 0.5], poly)) continue;
-                const a = layerImageData.data[i + 3];
-                if (a === 0) continue;
-                hasContent = true;
-                selectionImageData.data[i] = layerImageData.data[i];
-                selectionImageData.data[i + 1] = layerImageData.data[i + 1];
-                selectionImageData.data[i + 2] = layerImageData.data[i + 2];
-                selectionImageData.data[i + 3] = a;
-                eraseMaskImageData.data[i + 3] = 255;
-            }
-        }
+        // Which pixels come along, and the hole they leave, are worked out in core/lassoOps -
+        // both from one pass, because a mask that drifts from its selection leaves a ghost of
+        // the lifted artwork behind in the layer.
+        const { selection: sel, eraseMask, hasContent } = cutOutPolygon({
+            layer: ctx.getImageData(minX, minY, w, h),
+            poly, minX, minY, w, h,
+            makeImageData: (iw, ih) => new ImageData(iw, ih),
+            inside: pointInPolygon,
+        });
         if (!hasContent) return;
 
         setSelection({
             cutId: currentCutId,
             sourceLayerId: activeLayer.id,
-            bitmapId: storeBitmap(selectionImageData),
-            maskBitmapId: storeBitmap(eraseMaskImageData),
+            bitmapId: storeBitmap(sel),
+            maskBitmapId: storeBitmap(eraseMask),
             x: minX, y: minY, w, h,
             tx: minX, ty: minY, tw: w, th: h,
         });
