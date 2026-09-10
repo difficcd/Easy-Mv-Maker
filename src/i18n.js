@@ -740,4 +740,6 @@ const EN = {
     '카메라 경로': 'Camera path',
     '흔들림 곡선': 'Sway curve',
     '이동 경로': 'Motion path',
+    '점은 {0}개까지입니다': 'Up to {0} points',
+    '흔들림 강도가 0이라 점을 움직여도 변화가 없습니다': 'Sway strength is 0, so moving a point changes nothing',
 };
