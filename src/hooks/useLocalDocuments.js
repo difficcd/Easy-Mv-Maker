@@ -21,7 +21,7 @@ import { useState, useRef, useEffect } from 'react';
 import { saveProject, loadProject, listProjects, deleteProject, loadAutosave, autosaveKey } from '../db.js';
 import { downloadBlob } from '../export/download.js';
 import { ZipWriter } from '../export/zip.js';
-import { splitProject, pieceFileName } from '../core/splitProject.js';
+import { splitProject, pieceFileName, piecesAreSequential } from '../core/splitProject.js';
 import { randomId, nextId } from '../core/ids.js';
 import { safeArray } from '../canvas/canvasUtils.js';
 import { tr } from '../i18n.js';
@@ -135,6 +135,14 @@ export function useLocalDocuments({ buildData, restore, resetToEmpty, setAppErro
             const pieces = splitProject(full, tr('파트'));
             if (pieces.length < 2) {
                 setAppError(tr('나눌 파트가 없습니다. 컷을 파트로 묶은 뒤 다시 시도하세요.'));
+                return;
+            }
+            // A part is any group of cuts, adjacent or not, so pieces can overlap in time. Laying
+            // those end to end afterwards gives a longer film with the gaps blank - a real
+            // consequence of grouping non-adjacent cuts, and not what "split my timeline into
+            // chunks" leads anyone to expect. Better asked here than discovered in the export.
+            if (!piecesAreSequential(pieces)
+                && !window.confirm(tr('파트들이 시간 순서로 나뉘어 있지 않습니다. 이대로 나누면 조각끼리 시간이 겹쳐서, 나중에 이어 붙일 때 빈 구간이 생깁니다. 계속할까요?'))) {
                 return;
             }
             const zip = new ZipWriter();
