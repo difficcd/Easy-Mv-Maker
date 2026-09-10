@@ -733,6 +733,12 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null,
         }
         if (!s.points?.length) return;
         // Boiling, from either the per-stroke "rough" pen or the layer effect (layerRough).
+        //
+        // The rough pen has had no button since the layer effect replaced it, so no new stroke
+        // can be made with it - but projects saved before that still contain some, and dropping
+        // this branch would redraw them as plain lines with nothing to say so. Read it as a file
+        // format rather than as a tool.
+        //
         // The dot pen uses this below, so it has to be computed before the pen branch.
         // Strokes under the minimum width are skipped: the thinner the line, the more violent
         // the same amplitude looks.
