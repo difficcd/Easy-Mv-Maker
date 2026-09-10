@@ -714,4 +714,8 @@ const EN = {
     '파트마다 하나씩, 따로 열 수 있는 .emv 파일로 나눠 zip으로 받습니다. 컷이 많아 무거워졌을 때 나눠서 작업하고 나중에 합치기 위한 것입니다.': 'One .emv per part, each openable on its own, delivered as a zip. For working in pieces when a project has grown heavy, and combining them later.',
     '파트별로 나눠 저장...': 'Split by part...',
     '재생 속도 (기억됩니다 · 내보내기는 항상 정상 속도)': 'Playback speed (remembered; exports always run at normal speed)',
+    '{0}배 길이로 굳혔습니다 · 음원/영상 트랙은 늘어나지 않으니 위치를 다시 맞춰주세요 · Ctrl+Z로 취소': 'Baked to {0}x the length. Audio and video tracks do not stretch, so reposition them. Ctrl+Z to undo.',
+    '{0}배 길이로 굳혔습니다 · Ctrl+Z로 취소': 'Baked to {0}x the length. Ctrl+Z to undo.',
+    '컷 길이를 이 속도에 맞춰 늘려 실제 속도로 만듭니다 · 되돌리기 가능': "Stretch the cuts to match this speed, making it the film's real speed. Undoable.",
+    '이 속도로 굳히기': 'Bake this speed',
 };

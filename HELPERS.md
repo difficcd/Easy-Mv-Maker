@@ -433,6 +433,16 @@ property simply does not survive being edited, which reads as the editor losing 
 Having both directions in one place is what lets the round trip be tested: open a text, write it
 straight back, and it must be the text you started with.
 
+## `src/core/timeScale.js`
+
+Making a preview speed the film's real speed — the other half of the playback selector.
+
+| | |
+|---|---|
+| `bakeFactor` | How much longer everything gets. Returns 1 for an unusable rate, because `1/0` is Infinity and every cut would end there. |
+| `scaleCutTimes` | The cuts stretched about time zero. One factor for all of them, so they still abut exactly; a cut with junk times is left alone rather than moved to the start. |
+| `bakePlan` | What baking will do — the factor, the running time before and after, and which media tracks will be left behind, since a sound cannot be stretched. |
+
 ## `src/core/timeCode.js`
 
 Formatting and parsing times.
