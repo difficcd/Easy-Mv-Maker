@@ -2135,8 +2135,22 @@ export default function App() {
         }
     };
 
+    // Which resize handle the pointer is over, or null. Only used for the cursor, so it is set
+    // from the hover pass below and never read by anything that draws.
+    const [hoverHandle, setHoverHandle] = useState(/** @type {string|null} */(null));
+
     const onDraw = (e) => {
-        if (!isDrawing.current) return;
+        // Hovering, not drawing: the only thing to work out is what the cursor should say. A
+        // selection has eight handles and hitTestSelection already knows which one a point is
+        // over; without this the cursor said "move" over all of them, so the one gesture that
+        // resizes looked like the one that moves.
+        if (!isDrawing.current) {
+            if (!selection) { if (hoverHandle) setHoverHandle(null); return; }
+            const hit = hitTestSelection(getPos(e));
+            const next = hit?.type === 'resize' ? hit.handle : null;
+            if (next !== hoverHandle) setHoverHandle(next);   // guarded: this runs on every move
+            return;
+        }
         const pos = getPos(e);
 
         if (pathPtsRef.current) { pathPtsRef.current.push(pos); return; }
@@ -2391,6 +2405,8 @@ export default function App() {
     };
 
     const onPointerLeaveCanvas = () => {
+        setHoverHandle(null);   // the pointer is gone; the cursor it implied should go too
+
         // With pointer capture, we still receive move/up events outside the canvas.
         // Avoid auto-stopping lasso/selection transforms just because the pointer left the element.
         if (isDrawing.current && (tool === 'lasso' || selectionDragRef.current)) return;
@@ -3676,7 +3692,18 @@ export default function App() {
                             drawing surface. */}
                         <canvas ref={canvasRef} width={CANVAS_W} height={CANVAS_H} tabIndex={-1}
                             onPointerDown={startDraw} onPointerMove={onDraw} onPointerUp={stopDraw} onPointerCancel={stopDraw} onPointerLeave={onPointerLeaveCanvas}
-                            style={{ cursor: spaceDown ? 'grab' : selection ? 'move' : tool === 'fill' ? 'cell' : tool === 'lasso' ? 'crosshair' : 'crosshair', touchAction: 'none' }} />
+                            style={{
+                                // `${handle}-resize` is the eight-way set - nw-resize, n-resize
+                                // and so on - so the arrow points the way that edge will travel.
+                                // `selection &&` first, so a handle the pointer was over when the
+                                // selection was committed cannot leave a resize arrow behind on a
+                                // canvas that has nothing to resize.
+                                cursor: spaceDown ? 'grab'
+                                    : (selection && hoverHandle) ? `${hoverHandle}-resize`
+                                        : selection ? 'move'
+                                            : tool === 'fill' ? 'cell' : 'crosshair',
+                                touchAction: 'none',
+                            }} />
                         {/* The live overlay must be transparent. Inheriting the global
                             `canvas { background:#fff }` rule paints white over the main canvas,
                             hiding the drawing and making committed strokes look as if they
