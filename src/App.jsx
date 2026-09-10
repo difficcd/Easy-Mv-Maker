@@ -30,7 +30,9 @@ import { usePanelLayout } from './hooks/usePanelLayout.js';
 import { useLocalDocuments } from './hooks/useLocalDocuments.js';
 import { fetchAsset } from './core/api.js';
 import { drawSwayed } from './canvas/swayRender.js';
+import { detachMedia } from './core/mediaEl.js';
 import { useAutosave } from './hooks/useAutosave.js';
+import { useAudioTrack } from './hooks/useAudioTrack.js';
 import { nextProbeDelay } from './core/probeBackoff.js';
 import { playbackStartFrom } from './core/playbackStart.js';
 import {
@@ -79,29 +81,6 @@ import {
     targetCanvasFor, imageDataCanvas, cutProgress, seekTarget,
 } from './canvas/canvasUtils';
 
-/**
- * Let go of a media element's source.
- *
- * Three steps, and the order is the point: pause first or the browser keeps decoding a source
- * that is being taken away; remove the attribute rather than setting src to '' or the element
- * reloads the page URL as media and logs a failure; then load(), which is what actually drops
- * the buffered data - without it the bytes stay held and a project with a big import never
- * gives them back.
- *
- * Written out six times, three for audio and three for video, and they had drifted: the audio
- * copies left pause() outside the try, so a detached element would throw where the video
- * copies would not.
- *
- * @param {HTMLMediaElement | null | undefined} el
- */
-const detachMedia = (el) => {
-    if (!el) return;
-    try {
-        el.pause();
-        el.removeAttribute('src');
-        el.load();
-    } catch { }
-};
 
 
 const PEN_TYPES = [
@@ -288,29 +267,6 @@ export default function App() {
     // only the writes go through an action. See core/mediaReducer.
     const [media, dispatchMedia] = React.useReducer(mediaReducer, EMPTY_MEDIA);
     const { audioFile, audioUrl, audioDuration, audioData } = media;
-    const audioRef = useRef(null);
-    const audioB64Ref = useRef(null); // audio as base64 data URL, embedded into saves
-    // The same audio as a Blob, for the saves that can hold one.
-    //
-    // The video overlay has had three shapes for a while - a server asset, a Blob, or a base64
-    // dataURL - and the audio only ever had two, no Blob. That gap is why autosave was built with
-    // includeAudio false: writing a whole song into IndexedDB as a base64 string on every
-    // debounce is not something to do. The cost of the workaround was that crash recovery brought
-    // the video overlay back and left the music behind.
-    //
-    // Keyed by the dataURL it came from, so switching tracks or clearing the audio invalidates it
-    // on its own rather than needing every site that touches audioB64Ref to remember to.
-    const audioBlobRef = useRef(/** @type {{src: string|null, blob: Blob|null}} */({ src: null, blob: null }));
-    const audioAsBlob = async () => {
-        const src = audioB64Ref.current;
-        if (!src) return null;
-        if (audioBlobRef.current.src === src) return audioBlobRef.current.blob;
-        try {
-            const blob = await (await fetch(src)).blob();
-            audioBlobRef.current = { src, blob };
-            return blob;
-        } catch { return null; }
-    };
     // Video overlay track: play the original video underneath the drawing layers (no per-frame
     // cuts) - for drawing over a video. Like audio, but painted onto the canvas each frame.
     const { videoOverlay } = media; // { name, startTime, endTime, offset, duration, w, h, cuts? }
@@ -335,6 +291,11 @@ export default function App() {
     const [videoBusyBg, setVideoBusyBg] = useState(false); // extraction moved to a background chip
     // YouTube link input. A native prompt fails silently once blocked, so this asks in-app.
     const [linkPrompt, setLinkPrompt] = useState(null); // {kind:'video'|'audio'}
+
+    const {
+        audioRef, audioB64Ref, audioCtxRef, audioSourceRef, audioDestRef,
+        audioAsBlob, loadAudioUrl, handleAudioUpload, handleDeleteAudio, loadYoutubeAudio,
+    } = useAudioTrack({ audioUrl, dispatchMedia, setLinkPrompt });
     // Make failures visible. Once the browser blocks dialogs, alert is swallowed and the app
     // looks like it simply did nothing - which is exactly why one bug here took so long to find.
     const [appError, setAppError] = useState(null);
@@ -343,9 +304,6 @@ export default function App() {
     const videoStopRef = useRef(false);
     const isExporting = useRef(false);
     const mediaRecorderRef = useRef(null);
-    const audioCtxRef = useRef(null);
-    const audioSourceRef = useRef(null);
-    const audioDestRef = useRef(null);
     const exportEndRef = useRef(0);
     const [tool, setTool] = useState('pen');
     const [rulerMode, setRulerMode] = useState('line'); // the Ruler tool's two options: line and curve
@@ -909,7 +867,9 @@ export default function App() {
     useEffect(() => {
         if (!isPlaying && audioRef.current && audioUrl && Math.abs(audioRef.current.currentTime - currentTime) > 0.1)
             audioRef.current.currentTime = currentTime;
-    }, [currentTime, isPlaying, audioUrl]);
+        // audioRef is listed because the linter can no longer see it is a ref: it comes from
+        // useAudioTrack now, and a ref object's identity never changes, so this costs nothing.
+    }, [currentTime, isPlaying, audioUrl, audioRef]);
     // Paused: seek the overlay video to the scrubbed time so the canvas shows that frame (onseeked repaints).
     useEffect(() => {
         if (isPlaying) return;
@@ -3024,26 +2984,6 @@ export default function App() {
         videoOverlay,
     });
 
-    const loadAudioUrl = (url, name, startAt = 0, offset = 0, clipDur = null) => {
-        dispatchMedia(loadAudio(name, url));
-        const audio = new Audio(url);
-        // startAt aligns the track to a given timeline position (e.g. the first imported video frame);
-        // offset/clipDur select a sub-range of the source audio (used when only a video segment is
-        // imported), so audio + frames extracted together stay mechanically in sync.
-        audio.onloadedmetadata = () => {
-            dispatchMedia(setAudioDuration(audio.duration));
-            const dur = clipDur != null ? Math.min(clipDur, Math.max(0, audio.duration - offset)) : Math.max(0, audio.duration - offset);
-            dispatchMedia(setAudioClip({ startTime: startAt, endTime: startAt + dur, offset }));
-            if (audioRef.current) audioRef.current.src = url;
-        };
-        // Capture base64 once so the project can be saved "with the music".
-        if (url.startsWith('data:')) { audioB64Ref.current = url; }
-        else { fetch(url).then(r => r.blob()).then(b => { const fr = new FileReader(); fr.onload = () => { audioB64Ref.current = fr.result; }; fr.readAsDataURL(b); }).catch(() => { }); }
-    };
-    const handleAudioUpload = (e) => {
-        const file = e.target.files[0]; if (!file) return;
-        loadAudioUrl(URL.createObjectURL(file), file.name);
-    };
     // Lay a whole video under the drawing layers (overlay/rotoscope use). No frame cuts.
     const loadVideoOverlay = (blob, name, startAt = 0, offset = 0, clipDur = null) => {
         videoBlobRef.current = blob;
@@ -3262,22 +3202,6 @@ export default function App() {
             setVideoBusy(null);
             setVideoBusyBg(false);
         }
-    };
-    const handleDeleteAudio = () => {
-        detachMedia(audioRef.current);
-        if (audioUrl && audioUrl.startsWith('blob:')) { try { URL.revokeObjectURL(audioUrl); } catch { } }
-        audioB64Ref.current = null;
-        dispatchMedia(clearAudio());
-    };
-    const loadYoutubeAudio = async (presetUrl) => {
-        const url = typeof presetUrl === 'string' ? presetUrl : null;
-        if (!url) { setLinkPrompt({ kind: 'audio' }); return; }
-        try {
-            const res = await fetch('/api/youtube-audio?url=' + encodeURIComponent(url));
-            if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || ('HTTP ' + res.status)); }
-            const blob = await res.blob();
-            loadAudioUrl(URL.createObjectURL(blob), tr('유튜브 음원'));
-        } catch (e) { alert(tr('음원 추출 실패: ') + e.message); }
     };
     // Transparency cannot survive the recorder. Chrome hands VP9 to the hardware encoder above
     // roughly 480p, and that encoder has no alpha channel - measured here, the background came back
