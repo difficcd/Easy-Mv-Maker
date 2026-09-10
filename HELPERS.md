@@ -405,6 +405,22 @@ halves exist, and until this the pieces had to be made by hand.
 | `splitProject` | One piece per part, each carrying only the pixels its own cuts reference - which is the whole point, since a piece that dragged every frame along would be the size of the project it came from. Times are left alone, so a split and a recombine come back to the same film. **No cut may be lost:** cuts belonging to no part become a piece rather than being dropped. |
 | `pieceFileName` | `01_Chorus.emv` - padded so a directory listing is the running order, and stripped of the characters a file name cannot hold. |
 
+## `src/core/textEdit.js`
+
+A text object's twenty-odd fields, in one place instead of three. The app moved them across by
+hand twice - opening a text into the editor, writing the editor back out - with a third, shorter
+list for a new one. Adding a property meant editing all three, and forgetting one is silent: the
+property simply does not survive being edited, which reads as the editor losing it.
+
+| | |
+|---|---|
+| `textFromEdit` | The text to store, from what the editor holds. Rounds the position, and clamps the size on the way out because Ctrl+Enter commits without the size field ever losing focus. |
+| `editFromText` | What the editor should hold, from a stored text. A text missing a colour opens in the colour being drawn with, which is what someone editing it expects. |
+| `blankTextEdit` | A text that does not exist yet. Short on purpose - what it leaves out, `textFromEdit` fills in, and listing them here would be the third copy this file exists to stop. |
+
+Having both directions in one place is what lets the round trip be tested: open a text, write it
+straight back, and it must be the text you started with.
+
 ## `src/core/timeCode.js`
 
 Formatting and parsing times.
