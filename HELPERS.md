@@ -652,6 +652,14 @@ Whether the project-storage API is reachable, re-checked with a backoff.
 |---|---|
 | `useServerProbe` | Polls with `nextProbeDelay` backoff and resets on window focus. Checking only once was the original bug: a server that was down at load stayed "down" all session, so the menus never rendered and clicking did nothing. |
 
+## `src/hooks/useToolSettings.js`
+
+What the pen is set to: which tool, what colour, how wide, how hard.
+
+| | |
+|---|---|
+| `useToolSettings` | Twenty-eight names that are read everywhere and written almost nowhere — the opposite shape from the drawing code that consumes them. Owns `etool` (Ruler and Air are each two tools behind one button) and `toolSize` (the eraser keeps its own width), so no caller has to work either out again. |
+
 ## `src/hooks/useTimelineGestures.js`
 
 Every way the timeline can be pointed at, in one place.
