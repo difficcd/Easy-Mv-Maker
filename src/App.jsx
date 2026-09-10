@@ -18,6 +18,7 @@ import { tr, loadLang, saveLang, setLangValue } from './i18n';
 import { moveLayer } from './core/layerOps.js';
 import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, patchLayer } from './core/layerOps.js';
 import { closeLassoPath, lassoBounds, applyResize, cutOutPolygon } from './core/lassoOps.js';
+import { shapePoints } from './core/shapeStroke.js';
 import { useTimelineGestures } from './hooks/useTimelineGestures.js';
 import { fmt, parseClock } from './core/timeCode.js';
 import { textFromEdit, editFromText, blankTextEdit } from './core/textEdit.js';
@@ -2089,10 +2090,15 @@ export default function App() {
                 liveDrawnRef.current = 0; renderLiveStroke(true);
                 break;
             }
-            case 'line': {
-                // Line ruler: the start is pinned and only the end follows, giving a two-point line.
+            case 'line':
+            case 'rect':
+            case 'ellipse': {
+                // Drag rulers: the start is pinned and only the end follows. The shape is rebuilt
+                // from those two corners on every move, so what gets stored is an ordinary stroke
+                // - it takes the brush, it boils with the layer, it erases and saves like any
+                // other line, and nothing downstream has to learn that a rectangle exists.
                 lineStartRef.current = pos;
-                liveStrokeRef.current = { id: nextId(), tool: 'brush', color, opacity, size: brushSize, points: [pos, { ...pos }], pen: pressureOn && e.pointerType === 'pen' };
+                liveStrokeRef.current = { id: nextId(), tool: 'brush', color, opacity, size: brushSize, points: shapePoints(etool, pos, pos) || [pos, { ...pos }], pen: pressureOn && e.pointerType === 'pen' };
                 liveDrawnRef.current = 0; renderLiveStroke(true);
                 break;
             }
@@ -2190,10 +2196,13 @@ export default function App() {
                 break;
             case 'move':
                 break;
-            case 'line': {
+            case 'line':
+            case 'rect':
+            case 'ellipse': {
                 if (liveStrokeRef.current && lineStartRef.current) {
-                    liveStrokeRef.current.points = [lineStartRef.current, pos];
-                    renderLiveStroke(true); // the end point moved, so redraw the whole thing
+                    liveStrokeRef.current.points = shapePoints(etool, lineStartRef.current, pos)
+                        || [lineStartRef.current, pos];
+                    renderLiveStroke(true); // the far corner moved, so redraw the whole thing
                 }
                 break;
             }
@@ -3490,7 +3499,7 @@ export default function App() {
             pickingColor={pickingColor} pickColor={pickColor} isSelectionTool={isSelectionTool}
             color={color} applyColor={applyColor} opacity={opacity} setOpacity={setOpacity}
             softMode={softMode} setSoftMode={setSoftMode}
-            rulerMode={rulerMode} setRulerMode={setRulerMode} commitCurve={commitCurve}
+            rulerMode={rulerMode} setRulerMode={setRulerMode}
             mosaicBlock={mosaicBlock} setMosaicBlock={setMosaicBlock}
             toolSize={toolSize} setToolSize={setToolSize}
             pressureOn={pressureOn} setPressureOn={setPressureOn} />
