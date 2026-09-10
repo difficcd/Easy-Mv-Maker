@@ -243,6 +243,16 @@ Lasso selection: closing the path, bounding it, lifting the pixels.
 | `lassoBounds` | The pixel rectangle a lasso covers, clamped to the canvas. Returned as integers because it indexes into image data: the left and top round down and the right and bottom round up, so a region is never clipped by a fraction of a pixel. |
 | `MIN_SELECTION_SIZE` | Smallest a selection may be dragged to, in pixels. Below this it is impossible to grab again. |
 
+## `src/core/shapeStroke.js`
+
+Ruler shapes as points, so a rectangle or an ellipse is an ordinary stroke.
+
+| | |
+|---|---|
+| `rectPoints` | A rectangle through the two dragged corners, as a closed polyline. Five points, not four — the last repeats the first, or a thick brush leaves a notch at the corner it started from. |
+| `ellipsePoints` | An ellipse inscribed in the two dragged corners, so it fills the same box the rectangle would. The segment count is solved from how far a chord may sag away from the curve (`c² / 8r`), not from a fixed segment length: the same chord on a bigger circle sags less, and holding the length constant put a thousand points into a full-canvas circle to fix a hundredth of a pixel. Rounded up to a multiple of four so points land on all four extremes. |
+| `shapePoints` | Points for whichever ruler shape is in effect, or null when the tool is not one. The single place that knows which tool names are shapes. |
+
 ## `src/core/layerOps.js`
 
 Layers: moving, merging, resolving which one a stroke lands on.

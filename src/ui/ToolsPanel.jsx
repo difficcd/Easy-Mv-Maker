@@ -16,7 +16,7 @@ function ToolSettings({
     tool, isSelectionTool,
     // Each block below reads only the settings of its own tool, so the rest are absent by design.
     softMode = undefined, setSoftMode = undefined,
-    rulerMode = undefined, setRulerMode = undefined, commitCurve = undefined,
+    rulerMode = undefined, setRulerMode = undefined,
     mosaicBlock = undefined, setMosaicBlock = undefined,
     toolSize = undefined, setToolSize = undefined,
     pressureOn = true, setPressureOn = undefined,
@@ -32,14 +32,28 @@ function ToolSettings({
         </>);
     }
     if (tool === 'ruler') {
+        // Two rows of two rather than one row of four: at four the labels are down to a couple of
+        // characters each, and on a tablet the buttons are through the 24px hit target this
+        // project holds itself to.
+        //
+        // Committing an open curve on the way out is setRulerMode's job now, not each button's.
+        const shapes = [
+            ['line', tr('직선'), tr('정확한 직선'), tr('드래그로 직선')],
+            ['curve', tr('곡선'), tr('점을 찍어 만드는 곡선'), tr('탭으로 점 찍기')],
+            ['rect', tr('네모'), tr('드래그한 사각형'), tr('드래그로 사각형')],
+            ['ellipse', tr('원'), tr('드래그한 타원'), tr('드래그로 원·타원')],
+        ];
         return (<>
             <span className="slider-label">{tr('자 모드')}</span>
-            <div style={{ display: 'flex', gap: 3, width: '100%' }}>
-                <button className={`pal-btn${rulerMode === 'line' ? ' active' : ''}`} onClick={() => setRulerMode('line')} title={tr('정확한 직선')}>{tr('직선')}</button>
-                {/* Leaving curve mode with anchors still placed would strand them, so commit first. */}
-                <button className={`pal-btn${rulerMode === 'curve' ? ' active' : ''}`} onClick={() => { commitCurve(); setRulerMode('curve'); }} title={tr('점을 찍어 만드는 곡선')}>{tr('곡선')}</button>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3, width: '100%' }}>
+                {shapes.map(([id, label, title]) => (
+                    <button key={id} className={`pal-btn${rulerMode === id ? ' active' : ''}`}
+                        onClick={() => setRulerMode(id)} title={title}>{label}</button>
+                ))}
             </div>
-            <span style={{ fontSize: 9, color: '#888', textAlign: 'center' }}>{rulerMode === 'line' ? tr('드래그로 직선') : tr('탭으로 점 찍기')}</span>
+            <span style={{ fontSize: 9, color: '#888', textAlign: 'center' }}>
+                {(shapes.find(s => s[0] === rulerMode) || shapes[0])[3]}
+            </span>
         </>);
     }
     if (tool === 'mosaic') {

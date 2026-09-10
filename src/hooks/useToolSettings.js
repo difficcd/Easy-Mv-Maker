@@ -31,9 +31,18 @@ import { RECENT_SLOTS } from '../ui/ColorPanel';
  */
 export function useToolSettings({ busy, leaveCurve }) {
     const [tool, setTool] = useState('pen');
-    const [rulerMode, setRulerMode] = useState('line'); // the Ruler tool's two options: line and curve
+    const [rulerMode, setRulerModeRaw] = useState('line'); // line, curve, rect, ellipse
+    // Changing the ruler's shape finishes an open curve, wherever the change comes from.
+    //
+    // That guard used to sit on one of the buttons in the tools panel, which left the *others*
+    // able to strand anchors: the curve bar is the only thing that can commit or cancel them and
+    // it disappears the moment the mode is no longer 'curve'. Two buttons was already one too
+    // many places to remember it; four shapes would have been four. Committing when no curve is
+    // open is a no-op, so this can be unconditional - and being unconditional is what makes it
+    // impossible to forget.
+    const setRulerMode = (m) => { leaveCurve(); setRulerModeRaw(m); };
     const [softMode, setSoftMode] = useState('soft');   // the Air tool's two options: airbrush and blur
-    // The logic downstream still works in terms of "line" and "curve"; the Ruler tool just picks
+    // The logic downstream still works in terms of the shape names; the Ruler tool just picks
     // between them by mode.
     const etool = tool === 'ruler' ? rulerMode : tool === 'soft' ? softMode : tool;
 
