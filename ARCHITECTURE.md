@@ -198,6 +198,9 @@ codebase for the least benefit.
     from the index someone would have checked before writing a second one.
   - `unreachable` — App-level names nothing reaches. Catches a feature cut from the UI and left
     behind: a group that only refers to itself is dead however busy it looks.
+  - `unused-imports` — a name imported and never used, or imported twice. The other checks
+    cannot see these: `unreachable` asks what App's own names reach and an import is not one of
+    them. Twenty-eight had piled up in App.jsx alone, left behind by the extractions.
   - `i18n-check` — every `tr()` string is translated, or the English UI shows Korean.
 - `npm test` alone runs the suite (Node's built-in runner, no test framework dependency).
 - Build: `npm run build`. Android: `npm run android:sync` then `android:open`.
