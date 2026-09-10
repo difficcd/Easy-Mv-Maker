@@ -10,6 +10,7 @@ import { nextId, randomId } from './core/ids.js';
 import { clampZoom } from './core/viewZoom.js';
 import { arrayCodec, onOffCodec, oneZeroCodec, numberCodec } from './core/persist.js';
 import { TextEditor } from './ui/TextEditor';
+import { SwaySpine } from './ui/SwaySpine';
 import { ToolsPanel } from './ui/ToolsPanel';
 import { Timeline } from './ui/Timeline';
 import { ProjectPicker, ProgressOverlay, SettingsModal, HelpModal, VideoImportModal, SceneDetectModal, LinkPromptModal, ToolKeysModal } from './ui/Modals';
@@ -478,6 +479,8 @@ export default function App() {
     const panningRef = useRef(false);
     const lastInteractRef = useRef(0); // time of the last zoom or pan, used to briefly yield the boiling preview
     const [pathCapture, setPathCapture] = useState(null); // {cutId, layerId} while recording a motion path
+    // {cutId, layerId} while the sway profile is being dragged on the canvas rather than typed.
+    const [spineEdit, setSpineEdit] = useState(null);
     const pathPtsRef = useRef(null);
     const [cameraCapture, setCameraCapture] = useState(null); // {cutId} while drawing a camera path
 
@@ -704,6 +707,16 @@ export default function App() {
     // The ruler runs to the content plus a tail of empty room to drag into, and never less than
     // TIMELINE_MIN_SPAN - a music video is three to five minutes, so a timeline that stops at two
     // leaves nowhere to place anything before the audio is loaded.
+    // The layer whose sway profile is on the canvas, or null. Resolved from ids rather than held
+    // as an object, so deleting the layer or switching cut simply ends the edit instead of leaving
+    // handles floating over something else.
+    const spineLayer = (() => {
+        if (!spineEdit) return null;
+        const cut = cuts.find(c => c.id === spineEdit.cutId);
+        const layer = cut?.layers?.find(l => l.id === spineEdit.layerId);
+        return Array.isArray(layer?.anim?.swayProfile) && layer.anim.swayProfile.length > 1 ? layer : null;
+    })();
+
     const maxTime = Math.max(TIMELINE_MIN_SPAN, audioData?.endTime ?? audioDuration, videoOverlay?.endTime ?? 0, ...cuts.map(c => c.endTime)) + TIMELINE_TAIL_PAD;
 
     // Content bounds - playback and loop run between these, not out to maxTime, which has empty
@@ -3359,6 +3372,7 @@ export default function App() {
         exportEndRef.current = playEnd; isExporting.current = true; mediaRecorderRef.current = mr; mr.start(); setIsPlaying(true);
     };
 
+
     // Everything a layer row needs, as against everything the panel around it needs. Grouped
     // rather than listed flat for the same reason usePlayback groups its inputs: twenty names
     // threaded one by one through a panel that uses none of them is not clearer than one that
@@ -3368,6 +3382,10 @@ export default function App() {
         handleSetActive, handleToggleFolder, handleToggleVisible, jitterLayer, layerCanvasCache,
         onLayerDragEnd, onLayerDragOver, onLayerDragStart, onLayerDrop, pathCapture,
         setAnimLayer, setPathCapture, toggleJitterPanel, updLayerAnim, updLayerProps, updLayers,
+        // The spine editor is opened from a layer row, so its two handles travel with the
+        // rest of what a row needs. #144 turned the rows into a component while this branch
+        // was adding them; neither is wrong alone, they only meet here.
+        spineEdit, setSpineEdit,
     };
 
 
@@ -3704,6 +3722,14 @@ export default function App() {
                             hiding the drawing and making committed strokes look as if they
                             vanished. */}
                         <canvas ref={liveCanvasRef} width={CANVAS_W} height={CANVAS_H} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', background: 'transparent', boxShadow: 'none' }} />
+
+                        {spineLayer && (
+                            <SwaySpine
+                                profile={spineLayer.anim.swayProfile} axis={spineLayer.anim.swayAxis === 'x' ? 'x' : 'y'}
+                                amount={spineLayer.anim.swayAmount || 0} cw={CANVAS_W} ch={CANVAS_H}
+                                onChange={(prof) => updLayerAnim(spineEdit.cutId, spineEdit.layerId, { swayProfile: prof })}
+                                onClose={() => setSpineEdit(null)} />
+                        )}
                     </div>
                 </div>
 

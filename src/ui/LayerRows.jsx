@@ -48,6 +48,7 @@ export function LayerRows({ cut, parentId = null, depth = 0, rows }) {
         handleSetActive, handleToggleFolder, handleToggleVisible, jitterLayer, layerCanvasCache,
         onLayerDragEnd, onLayerDragOver, onLayerDragStart, onLayerDrop, pathCapture,
         setAnimLayer, setPathCapture, toggleJitterPanel, updLayerAnim, updLayerProps, updLayers,
+        spineEdit, setSpineEdit,
     } = rows;
     return cut.layers.filter(l => (l.parentId ?? null) === parentId).map(layer => {
         const isFolder = layer.type === 'folder';
@@ -120,6 +121,7 @@ export function LayerRows({ cut, parentId = null, depth = 0, rows }) {
                 )}
                 {!isFolder && animLayer && animLayer.cutId === cut.id && animLayer.layerId === layer.id && (
                     <LayerAnimPanel cut={cut} layer={layer} updLayerAnim={updLayerAnim} updLayers={updLayers} pathCapture={pathCapture} setPathCapture={setPathCapture}
+                        spineEdit={spineEdit} setSpineEdit={setSpineEdit}
                         cutProgress={cutProgress(cut, currentTime)} />
                 )}
                 {dt === 'after' && <div className="drop-line" />}

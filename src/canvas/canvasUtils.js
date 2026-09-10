@@ -1329,12 +1329,67 @@ export function curveToWave(pts, samples = 64) {
 export function swayWeightAt(profile, p) {
     const n = profile?.length || 0;
     if (!n) return 1;
-    if (n === 1) return profile[0];
-    const x = Math.min(1, Math.max(0, p)) * (n - 1);
-    const i = Math.min(n - 2, Math.floor(x));
-    const f = x - i;
+    const at = swayPointAt(profile);
+    if (n === 1) return at(0).w;
+    const x = Math.min(1, Math.max(0, p));
+    // Find the pair the position falls between. Before the first point or after the last, the
+    // nearest one wins outright: a point placed at the elbow says nothing about the hand.
+    let i = 0;
+    while (i < n - 2 && at(i + 1).p < x) i++;
+    const a = at(i), b = at(i + 1);
+    const gap = b.p - a.p;
+    if (gap <= 0) return b.w;
+    const f = Math.min(1, Math.max(0, (x - a.p) / gap));
     const t = f * f * (3 - 2 * f); // smoothstep, so the gaps between control points do not turn into corners
-    return profile[i] + (profile[i + 1] - profile[i]) * t;
+    return a.w + (b.w - a.w) * t;
+}
+
+/**
+ * How to read one entry of a profile, whichever of the two shapes it is in.
+ *
+ * A profile used to be weights alone, spaced evenly along the axis - three of them meant top,
+ * middle and bottom. That is fine for hair and useless for an arm, where the point that matters
+ * is wherever the elbow happens to be. A point may carry its own position now: `{p, w}`, p being
+ * 0..1 along the axis.
+ *
+ * Both shapes are read here rather than one being migrated to the other, so a project saved
+ * before this still opens and still moves exactly as it did.
+ *
+ * @param {Array<number | {p: number, w: number}>} profile
+ * @returns {(i: number) => {p: number, w: number}}
+ */
+export function swayPointAt(profile) {
+    const n = profile.length;
+    return (i) => {
+        const v = profile[i];
+        // Number.isFinite rather than a clamp: Math.max(0, NaN) is NaN, so a clamp lets junk
+        // straight through and it comes out the far end as a canvas of NaN.
+        if (typeof v === 'number') return { p: n > 1 ? i / (n - 1) : 0, w: Number.isFinite(v) ? v : 0 };
+        const pv = Number(v?.p), wv = Number(v?.w);
+        return {
+            p: Number.isFinite(pv) ? Math.min(1, Math.max(0, pv)) : (n > 1 ? i / (n - 1) : 0),
+            w: Number.isFinite(wv) ? wv : 0,
+        };
+    };
+}
+
+/**
+ * A profile as positioned points, in order.
+ *
+ * Always the positioned shape, whichever way it came in, because this is what an edit produces:
+ * the moment someone moves a point, the profile has positions in it whether it did before or not.
+ * Reading still accepts both, so a project that is never edited is never rewritten.
+ *
+ * Sorted because dragging a point past its neighbour is a thing people do, and the alternative is
+ * an interpolation that runs backwards through the middle of the drag.
+ *
+ * @param {Array<number | {p: number, w: number}>} profile
+ * @returns {{p: number, w: number}[]}
+ */
+export function sortSwayProfile(profile) {
+    if (!Array.isArray(profile)) return [];
+    const at = swayPointAt(profile);
+    return profile.map((_, i) => at(i)).sort((a, b) => a.p - b.p);
 }
 // Samples the waveform cyclically over 0..1 with linear interpolation.
 export function sampleWave(wave, u) {
