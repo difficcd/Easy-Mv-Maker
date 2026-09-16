@@ -104,10 +104,10 @@ test('moveLayers: bumps rev, which is the invariant a call site used to have to 
     assert.deepEqual(out[0].layers[0].strokes[0].points, [{ x: 10, y: 5 }]);
 });
 
-test('moveLayers: carries the texts only when asked', () => {
+test('moveLayers: leaves the texts where they are', () => {
+    // A text is not part of a layer; moving the drawing must not carry the caption (#177).
     const d = [cut(1, { texts: [{ id: 't', x: 0, y: 0 }] })];
-    assert.deepEqual(cutsReducer(d, moveLayers(1, [], 10, 10, true))[0].texts, [{ id: 't', x: 10, y: 10 }]);
-    assert.deepEqual(cutsReducer(d, moveLayers(1, [], 10, 10, false))[0].texts, [{ id: 't', x: 0, y: 0 }]);
+    assert.deepEqual(cutsReducer(d, moveLayers(1, [], 10, 10))[0].texts, [{ id: 't', x: 0, y: 0 }]);
 });
 
 // ── texts ──────────────────────────────────────────────────────────────────

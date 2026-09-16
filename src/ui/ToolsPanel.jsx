@@ -16,7 +16,7 @@ const SIZE_PRESETS = [1, 2, 3, 5, 8, 12, 16, 24, 32, 48, 64, 90, 120, 160];
 // not what is selected reads as the wrong tool being active.
 const NO_SIZE_HINT = {
     lasso: () => tr('영역을 둘러 그리세요. 선택되면 위 바에서 이동·크기·회전·기울기·곡률'),
-    move: () => tr('드래그해 옮깁니다. 텍스트를 찍으면 그 텍스트만'),
+    move: () => tr('선택한 것만 옮깁니다: 텍스트를 찍으면 그 텍스트, 아니면 활성 레이어. Alt로 전체'),
     text: () => tr('탭해서 글을 놓습니다. 있는 글을 탭하면 편집'),
     fill: () => tr('닫힌 영역을 탭해 채웁니다'),
 };

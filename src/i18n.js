@@ -97,7 +97,7 @@ const EN = {
     '드래그한 타원': 'An ellipse from the drag',
     '드래그로 원·타원': 'Drag for a circle or ellipse',
     '영역을 둘러 그리세요. 선택되면 위 바에서 이동·크기·회전·기울기·곡률': 'Draw around an area. Once selected: move, resize, rotate, tilt and bend from the bar above',
-    '드래그해 옮깁니다. 텍스트를 찍으면 그 텍스트만': 'Drag to move. Tap a text to move just that text',
+    '선택한 것만 옮깁니다: 텍스트를 찍으면 그 텍스트, 아니면 활성 레이어. Alt로 전체': 'Moves what is selected: a tapped text, otherwise the active layer. Alt for every layer',
     '탭해서 글을 놓습니다. 있는 글을 탭하면 편집': 'Tap to place text. Tap existing text to edit it',
     '닫힌 영역을 탭해 채웁니다': 'Tap a closed area to fill it',
     '곡률': 'Bend',
