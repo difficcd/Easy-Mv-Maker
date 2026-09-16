@@ -44,7 +44,7 @@ function ToolSettings({
             ['ellipse', tr('원'), tr('드래그한 타원'), tr('드래그로 원·타원')],
         ];
         return (<>
-            <span className="slider-label">{tr('자 모드')}</span>
+            <span className="slider-label">{tr('도형 모드')}</span>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3, width: '100%' }}>
                 {shapes.map(([id, label, title]) => (
                     <button key={id} className={`pal-btn${rulerMode === id ? ' active' : ''}`}
