@@ -66,7 +66,7 @@ import {
 import { textNeedsBox, drawTextObject } from './canvas/textRender.js';
 import { migrateCuts, projectSettings, makeLoadProgress } from './core/projectFormat.js';
 import { imageExtFromType, audioExt, videoExt, collectBitmaps, loadBitmapStore, blobToDataURL, packMedia } from './core/projectAssets.js';
-import { xAtTime, timeAtX, zoomAnchored, pinchZoom } from './core/timelineZoom.js';
+import { xAtTime, zoomAnchored } from './core/timelineZoom.js';
 import { preparePath } from './core/pathMotion.js';
 import { dragOnWindow } from './core/windowDrag.js';
 // Recording a camera path reuses the pen the way a part's motion path does; the two cannot be
@@ -401,8 +401,6 @@ export default function App() {
     const [view, setView] = useState({ zoom: 1, x: 0, y: 0 });
     const touchPtsRef = useRef(new Map());
     const pinchRef = useRef(null);
-    const tlTouchRef = useRef(new Map());
-    const tlPinchRef = useRef(null);
     // Which document is loaded, as a number that changes whenever the whole thing is replaced.
     //
     // Long jobs - extracting frames from a video, detecting scenes - can be sent to the
@@ -918,50 +916,6 @@ export default function App() {
         // leave these listeners on the detached node and wheel zoom silently dead after a Tab.
     }, [showBottom]);
 
-    // Two-finger pinch-zoom on the timeline, intercepted in the CAPTURE phase so it works
-    // even over cut blocks (which stop propagation / capture the pointer for dragging).
-    useEffect(() => {
-        const el = timelineRef.current;
-        if (!el) return;
-        const pts = new Map();
-        let pinch = null;
-        const down = (e) => {
-            if (e.pointerType !== 'touch') return;
-            pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-            if (pts.size === 2) {
-                const [a, b] = [...pts.values()];
-                const rect = el.getBoundingClientRect();
-                const midX = (a.x + b.x) / 2 - rect.left;
-                pinch = { startDist: Math.hypot(a.x - b.x, a.y - b.y) || 1, startPps: ppsRef.current, anchorTime: Math.max(0, timeAtX(el.scrollLeft, midX, ppsRef.current)) };
-                e.preventDefault(); e.stopPropagation();
-            }
-        };
-        const move = (e) => {
-            if (e.pointerType !== 'touch' || !pts.has(e.pointerId)) return;
-            pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-            if (pts.size >= 2 && pinch) {
-                const [a, b] = [...pts.values()];
-                const rect = el.getBoundingClientRect();
-                const r = pinchZoom(pinch, Math.hypot(a.x - b.x, a.y - b.y), (a.x + b.x) / 2 - rect.left);
-                setPps(r.pps);
-                el.scrollLeft = r.scrollLeft;
-                e.preventDefault(); e.stopPropagation();
-            }
-        };
-        const up = (e) => { if (e.pointerType !== 'touch') return; pts.delete(e.pointerId); if (pts.size < 2) pinch = null; };
-        const opt = { capture: true, passive: false };
-        el.addEventListener('pointerdown', down, opt);
-        el.addEventListener('pointermove', move, opt);
-        el.addEventListener('pointerup', up, opt);
-        el.addEventListener('pointercancel', up, opt);
-        return () => {
-            el.removeEventListener('pointerdown', down, opt);
-            el.removeEventListener('pointermove', move, opt);
-            el.removeEventListener('pointerup', up, opt);
-            el.removeEventListener('pointercancel', up, opt);
-        };
-        // As above: the element is replaced whenever the timeline is hidden and shown.
-    }, [showBottom]);
 
     useEffect(() => {
         if (!resizingData && !draggingCutData) return;
@@ -2878,9 +2832,9 @@ export default function App() {
     const {
         seekToTime, seekToClientX, goToScene,
         startTimelinePan, startTimelineScrub,
-        onTimelinePointerDown, onTimelinePointerMove, onTimelinePointerUp,
+        onTimelinePointerDown,
     } = useTimelineGestures({
-        timelineRef, tlTouchRef, tlPinchRef,
+        timelineRef, timelineMounted: showBottom,
         cuts, currentCutId, setCurrentCutId, maxTime,
         pps, setPps,
         setCurrentTime, currentTimeRef, isPlayingRef, seekRef,
@@ -3792,7 +3746,7 @@ export default function App() {
                 transparentBg={transparentBg} setTransparentBg={setTransparentBg}
                 transparentFormat={transparentFormat} setTransparentFormat={setTransparentFormat}
                 numTracks={numTracks} onTimelinePointerDown={onTimelinePointerDown}
-                onTimelinePointerMove={onTimelinePointerMove} onTimelinePointerUp={onTimelinePointerUp} parts={parts}
+                parts={parts}
                 playbackRate={playbackRate} playheadRef={playheadRef} pps={pps}
                 openPlaybackSettings={() => { setSettingsTab('play'); setShowSettings(true); }}
                 removeVideoOverlay={removeVideoOverlay} renamePart={renamePart} sceneDetect={sceneDetect}

@@ -17,7 +17,7 @@ export function Timeline({
     draggingCutData, fmt, goToScene, handleAddTrack, handleDeleteAudio,
     handleDeleteTrack, handlePlayPause, handleStop, isPlaying, loopPlay,
     makePartFromSelection, marquee, maxTime, numTracks,
-    onTimelinePointerDown, onTimelinePointerMove, onTimelinePointerUp, parts, playbackRate, openPlaybackSettings,
+    onTimelinePointerDown, parts, playbackRate, openPlaybackSettings,
     playheadRef, pps, removeVideoOverlay, renamePart, sceneDetect,
     seekToTime, selectPart, selectedCutIds, setCurrentCutId, setCurrentTime,
     addCuts, setDraggingCutData, setLoopPlay, setPlaybackRate, setResizingData,
@@ -126,7 +126,7 @@ export function Timeline({
                 onPointerDownCapture={startTimelinePan}
                 onMouseDown={e => { if (e.button === 1) e.preventDefault(); }} /* 브라우저 가운데클릭 자동스크롤 방지 */
                 onAuxClick={e => { if (e.button === 1) e.preventDefault(); }}
-                onPointerDown={onTimelinePointerDown} onPointerMove={onTimelinePointerMove} onPointerUp={onTimelinePointerUp} onPointerCancel={onTimelinePointerUp} style={{ position: 'relative', touchAction: 'none' }}>
+                onPointerDown={onTimelinePointerDown} style={{ position: 'relative', touchAction: 'none' }}>
                 <div style={{ minWidth: '100%', width: `${Math.max(100, maxTime * pps + 150)}px`, position: 'relative' }}>
                     <div className="ruler" style={{ position: 'sticky', top: 0, left: 0, right: 0, height: 20, background: 'hsl(var(--ui-h) var(--ui-s) 14%)', borderBottom: '1px solid hsl(var(--ui-h) var(--ui-s) 24%)', zIndex: 20 }}>
                         <div style={{ position: 'sticky', left: 0, width: TRACK_GUTTER, height: '100%', background: 'hsl(var(--ui-h) var(--ui-s) 14%)', zIndex: 21, float: 'left' }} />

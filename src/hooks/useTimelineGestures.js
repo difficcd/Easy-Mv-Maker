@@ -14,7 +14,15 @@
 //
 // The drags listen on the window rather than the element, so a gesture that leaves the timeline
 // keeps working and still ends when the button comes up somewhere else.
+//
+// Touch is handled by native listeners in the capture phase rather than by React handlers on the
+// timeline root. A cut block stops propagation of its pointerdown so that it can be dragged, and
+// a bubbling handler on the root therefore never saw a finger that landed on a cut - a pinch
+// over the cuts, which is where the fingers usually are, did nothing. There used to be two
+// implementations because of that: React handlers here, and a capture listener in App that
+// stopped propagation first and so was the only one that ever ran. This is the one now.
 
+import { useEffect, useRef } from 'react';
 import { timeAtX, pinchZoom } from '../core/timelineZoom.js';
 import { dragOnWindow } from '../core/windowDrag.js';
 
@@ -22,7 +30,7 @@ const DRAG_SLOP = 5;   // mouse travel before a click becomes a marquee drag
 const TAP_SLOP = 4;    // finger travel before a tap becomes a pan
 
 export function useTimelineGestures({
-    timelineRef, tlTouchRef, tlPinchRef,
+    timelineRef, timelineMounted,
     cuts, currentCutId, setCurrentCutId, maxTime,
     pps, setPps,
     setCurrentTime, currentTimeRef, isPlayingRef, seekRef,
@@ -148,74 +156,96 @@ export function useTimelineGestures({
         );
     };
 
+    /** A mouse or pen press on the timeline root. Fingers never reach here; see the effect. */
     const onTimelinePointerDown = (e) => {
-        if (e.pointerType !== 'touch') {
-            if (e.target.closest?.('.ruler')) startTimelineScrub(e);
-            else startMarqueeOrSeek(e);
-            return;
-        }
-        const el = timelineRef.current;
-        tlTouchRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-        if (tlTouchRef.current.size === 2) {
-            const [a, b] = [...tlTouchRef.current.values()];
-            const midX = (a.x + b.x) / 2 - el.getBoundingClientRect().left;
-            // The time under the midpoint is remembered so the zoom can hold it in place.
-            tlPinchRef.current = {
-                mode: 'pinch',
-                startDist: Math.hypot(a.x - b.x, a.y - b.y) || 1,
-                startPps: pps,
-                anchorTime: Math.max(0, timeAtX(el.scrollLeft, midX, pps)),
-            };
-        } else if (tlTouchRef.current.size === 1) {
-            tlPinchRef.current = { mode: 'pan', startClientX: e.clientX, startClientY: e.clientY, startScroll: el ? el.scrollLeft : 0, moved: false };
-        }
+        if (e.pointerType === 'touch') return;
+        if (e.target.closest?.('.ruler')) startTimelineScrub(e);
+        else startMarqueeOrSeek(e);
     };
 
-    const onTimelinePointerMove = (e) => {
-        if (e.pointerType !== 'touch' || !tlTouchRef.current.has(e.pointerId)) return;
-        tlTouchRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    // Fingers: one pans, or seeks if it turns out to be a tap; two pinch-zoom about the point
+    // between them. Capture phase, so a finger that lands on a cut block is still seen - a
+    // block stops propagation for its own drag, which is right for a mouse and would otherwise
+    // hide every pinch that starts over the cuts. A single finger on a block is left to the
+    // block (it drags the cut), but still counts towards a pinch.
+    //
+    // Re-attached whenever the timeline is shown again: it is inside `showBottom &&`, so hiding
+    // it unmounts the element, and listeners on the old node would be silently dead.
+    // Read at event time through a ref, so the listeners see the current pps and seek without
+    // being re-attached on every render; only the element's identity decides that.
+    const latest = useRef(null);
+    latest.current = { pps, seekToClientX };
+    useEffect(() => {
         const el = timelineRef.current;
         if (!el) return;
-        const p = tlPinchRef.current;
-        if (tlTouchRef.current.size >= 2 && p?.mode === 'pinch') {
-            const [a, b] = [...tlTouchRef.current.values()];
-            const dist = Math.hypot(a.x - b.x, a.y - b.y);
-            // Scroll so the anchor time stays under the midpoint; without this the timeline slides
-            // away from the fingers as it zooms.
-            const midX = (a.x + b.x) / 2 - el.getBoundingClientRect().left;
-            const r = pinchZoom(p, dist, midX);
-            setPps(r.pps);
-            el.scrollLeft = r.scrollLeft;
-            e.preventDefault();
-        } else if (tlTouchRef.current.size === 1 && p?.mode === 'pan') {
-            const dx = e.clientX - p.startClientX;
-            if (Math.abs(dx) > TAP_SLOP || Math.abs(e.clientY - p.startClientY) > TAP_SLOP) p.moved = true;
-            el.scrollLeft = Math.max(0, p.startScroll - dx);
-            e.preventDefault();
-        }
-    };
-
-    const onTimelinePointerUp = (e) => {
-        if (e.pointerType !== 'touch') return;
-        const p = tlPinchRef.current;
-        const wasTap = tlTouchRef.current.size === 1 && p?.mode === 'pan' && !p.moved;
-        const upX = e.clientX;
-        tlTouchRef.current.delete(e.pointerId);
-        if (wasTap) seekToClientX(upX);
-        if (tlTouchRef.current.size === 1) {
-            // Lifting one finger of a pinch leaves the other one panning - starting from where it
-            // is now, and already counted as moved so the release is not mistaken for a tap.
-            const el = timelineRef.current;
-            const [a] = [...tlTouchRef.current.values()];
-            tlPinchRef.current = { mode: 'pan', startClientX: a.x, startClientY: a.y, startScroll: el ? el.scrollLeft : 0, moved: true };
-        } else if (tlTouchRef.current.size === 0) {
-            tlPinchRef.current = null;
-        }
-    };
+        const pts = new Map();          // pointerId -> {x, y, onBlock}
+        let gesture = null;             // {mode: 'pan', ...} | {mode: 'pinch', ...} | null
+        const fingers = () => [...pts.values()];
+        const down = (e) => {
+            if (e.pointerType !== 'touch') return;
+            const onBlock = !!e.target.closest?.('.cut-block, .rh, button');
+            pts.set(e.pointerId, { x: e.clientX, y: e.clientY, onBlock });
+            if (pts.size === 2) {
+                const [a, b] = fingers();
+                const midX = (a.x + b.x) / 2 - el.getBoundingClientRect().left;
+                // The time under the midpoint is remembered so the zoom can hold it in place.
+                gesture = { mode: 'pinch', startDist: Math.hypot(a.x - b.x, a.y - b.y) || 1, startPps: latest.current.pps, anchorTime: Math.max(0, timeAtX(el.scrollLeft, midX, latest.current.pps)) };
+                e.preventDefault(); e.stopPropagation();
+            } else if (pts.size === 1 && !onBlock) {
+                gesture = { mode: 'pan', startClientX: e.clientX, startClientY: e.clientY, startScroll: el.scrollLeft, moved: false };
+            }
+        };
+        const move = (e) => {
+            if (e.pointerType !== 'touch' || !pts.has(e.pointerId)) return;
+            const prev = pts.get(e.pointerId);
+            pts.set(e.pointerId, { ...prev, x: e.clientX, y: e.clientY });
+            if (pts.size >= 2 && gesture?.mode === 'pinch') {
+                const [a, b] = fingers();
+                // Scroll so the anchor time stays under the midpoint; without this the timeline
+                // slides away from the fingers as it zooms.
+                const r = pinchZoom(gesture, Math.hypot(a.x - b.x, a.y - b.y), (a.x + b.x) / 2 - el.getBoundingClientRect().left);
+                setPps(r.pps);
+                el.scrollLeft = r.scrollLeft;
+                e.preventDefault(); e.stopPropagation();
+            } else if (pts.size === 1 && gesture?.mode === 'pan') {
+                const dx = e.clientX - gesture.startClientX;
+                if (Math.abs(dx) > TAP_SLOP || Math.abs(e.clientY - gesture.startClientY) > TAP_SLOP) gesture.moved = true;
+                el.scrollLeft = Math.max(0, gesture.startScroll - dx);
+                e.preventDefault();
+            }
+        };
+        const up = (e) => {
+            if (e.pointerType !== 'touch' || !pts.has(e.pointerId)) return;
+            const wasTap = pts.size === 1 && gesture?.mode === 'pan' && !gesture.moved;
+            const upX = e.clientX;
+            pts.delete(e.pointerId);
+            if (wasTap) latest.current.seekToClientX(upX);
+            if (pts.size === 1) {
+                // Lifting one finger of a pinch leaves the other one panning - from where it is
+                // now, and already counted as moved so the release is not mistaken for a tap.
+                const [a] = fingers();
+                gesture = { mode: 'pan', startClientX: a.x, startClientY: a.y, startScroll: el.scrollLeft, moved: true };
+            } else if (pts.size === 0) {
+                gesture = null;
+            }
+        };
+        const opt = { capture: true, passive: false };
+        el.addEventListener('pointerdown', down, opt);
+        el.addEventListener('pointermove', move, opt);
+        el.addEventListener('pointerup', up, opt);
+        el.addEventListener('pointercancel', up, opt);
+        return () => {
+            el.removeEventListener('pointerdown', down, opt);
+            el.removeEventListener('pointermove', move, opt);
+            el.removeEventListener('pointerup', up, opt);
+            el.removeEventListener('pointercancel', up, opt);
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [timelineMounted]);
 
     return {
         seekToTime, seekToClientX, goToScene, sceneTimelineTimes,
         startTimelinePan, startTimelineScrub, startMarqueeOrSeek,
-        onTimelinePointerDown, onTimelinePointerMove, onTimelinePointerUp,
+        onTimelinePointerDown,
     };
 }
