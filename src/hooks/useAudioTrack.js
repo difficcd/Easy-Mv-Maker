@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import { loadAudio, setAudioDuration, setAudioClip, clearAudio } from '../core/mediaReducer.js';
 import { detachMedia, safeMediaSrc } from '../core/mediaEl.js';
 import { fetchAsset } from '../core/api.js';
-import { blobToDataURL } from '../core/projectAssets.js';
+import { blobToDataURL, unpackMedia } from '../core/projectAssets.js';
 import { tr } from '../i18n';
 
 /**
@@ -91,15 +91,12 @@ export function useAudioTrack({ audioUrl, dispatchMedia, setLinkPrompt }) {
      * @returns {Promise<number>} how many assets could not be fetched, for the caller's tally
      */
     const restoreAudio = async (data, assetBase = null) => {
-        let missing = 0;
-        let url = data.audio?.dataUrl || null;
-        if (!url && data.audio?.blob instanceof Blob) {
-            try { url = await blobToDataURL(data.audio.blob); } catch { }
-        }
-        if (!url && data.audio?.asset && assetBase) {
-            try { url = await blobToDataURL(await fetchAsset(`${assetBase}/asset/__audio__`)); }
-            catch { missing++; }
-        }
+        // The three shapes a stored track can arrive in are projectAssets' business; the element
+        // wants a URL, so a Blob is turned into one here.
+        const got = await unpackMedia(data.audio, '__audio__', { assetBase, fetchAsset });
+        const missing = got.missing;
+        let url = got.dataUrl;
+        if (!url && got.blob) { try { url = await blobToDataURL(got.blob); } catch { } }
         if (!url) {
             audioB64Ref.current = null;
             detachMedia(audioRef.current);

@@ -69,7 +69,7 @@ import {
 } from './core/cutsReducer.js';
 import { textNeedsBox, drawTextObject } from './canvas/textRender.js';
 import { migrateCuts, projectSettings, makeLoadProgress } from './core/projectFormat.js';
-import { imageExtFromType, audioExt, videoExt, collectBitmaps, loadBitmapStore, blobToDataURL, packMedia } from './core/projectAssets.js';
+import { imageExtFromType, audioExt, videoExt, collectBitmaps, loadBitmapStore, blobToDataURL, packMedia, unpackMedia } from './core/projectAssets.js';
 import { xAtTime } from './core/timelineZoom.js';
 import { preparePath } from './core/pathMotion.js';
 import { dragOnWindow } from './core/windowDrag.js';
@@ -980,10 +980,11 @@ export default function App() {
         // base64 copy a local save needs, and the three shapes a stored track can arrive in.
         missingAssets += await restoreAudio(data, assetBase);
         // Restore the video overlay track (Blob from IDB / server asset / embedded dataURL).
-        let videoBlob = null;
-        if (data.video?.blob instanceof Blob) videoBlob = data.video.blob;
-        else if (data.video?.asset && assetBase) { try { videoBlob = await fetchAsset(`${assetBase}/asset/__video__`); } catch { missingAssets++; } }
-        else if (data.video?.dataUrl) { try { videoBlob = await (await fetch(data.video.dataUrl)).blob(); } catch { } }
+        // Same three shapes as the audio, read by the same function; the track wants a Blob.
+        const gotVideo = await unpackMedia(data.video, '__video__', { assetBase, fetchAsset });
+        missingAssets += gotVideo.missing;
+        let videoBlob = gotVideo.blob;
+        if (!videoBlob && gotVideo.dataUrl) { try { videoBlob = await (await fetch(gotVideo.dataUrl)).blob(); } catch { } }
         if (videoBlob) {
             videoBlobRef.current = videoBlob;
             const url = URL.createObjectURL(videoBlob);
