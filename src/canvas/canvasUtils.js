@@ -718,7 +718,7 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null,
             // it. Only pastes that carry the fields take this path, so nothing older changes.
             if (isWarped(s)) {
                 const src = bmp || (img && imageDataCanvas(img));
-                if (src) drawWarped(ctx, src, src.width, src.height, { x: s.x, y: s.y, w: s.w ?? src.width, h: s.h ?? src.height, skew: s.skew, bend: s.bend });
+                if (src) drawWarped(ctx, src, src.width, src.height, { x: s.x, y: s.y, w: s.w ?? src.width, h: s.h ?? src.height, rot: s.rot, skew: s.skew, bend: s.bend });
                 return;
             }
             if (bmp) {
