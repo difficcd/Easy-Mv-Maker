@@ -536,6 +536,21 @@ body {
     border-radius: 4px;
     outline: none;
 }
+/* A two-way toggle in the mode bar: two pal-btns fused into one pill. */
+.mode-toggle {
+    display: inline-flex;
+    gap: 0;
+    border-radius: 999px;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--accent-soft) 34%, transparent);
+}
+.mode-toggle .pal-btn {
+    border-radius: 0;
+    border: none;
+    padding: 2px 9px;
+    font-size: 11px;
+    height: 22px;
+}
 .mode-slider input[type="range"]::-webkit-slider-thumb {
     -webkit-appearance: none;
     width: 14px;
