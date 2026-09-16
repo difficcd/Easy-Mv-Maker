@@ -267,13 +267,14 @@ test('offsetLayers: layers not being dragged are left exactly as they were', () 
     assert.equal(out.layers[1], other, 'the very same object, not a copy');
 });
 
-test('offsetLayers: texts move only when the drag includes them', () => {
-    const cut = { layers: [], texts: [{ id: 't', x: 10, y: 10 }] };
-    assert.deepEqual(offsetLayers(cut, [], 5, 5, true).texts, [{ id: 't', x: 15, y: 15 }]);
-    assert.deepEqual(offsetLayers(cut, [], 5, 5, false).texts, [{ id: 't', x: 10, y: 10 }]);
-    // A text with no position yet starts from the origin rather than becoming NaN.
-    const noPos = { layers: [], texts: [{ id: 't' }] };
-    assert.deepEqual(offsetLayers(noPos, [], 5, 5, true).texts, [{ id: 't', x: 5, y: 5 }]);
+test('offsetLayers: texts never move with a layer', () => {
+    // A text and a layer coexist in a cut; neither belongs to the other. Texts riding along with
+    // a layer move was reported as a bug (#177): the user moved the drawing and the caption went
+    // with it.
+    const cut = { layers: [{ id: 'a', strokes: [{ id: 1, points: [{ x: 0, y: 0 }] }] }], texts: [{ id: 't', x: 10, y: 10 }] };
+    const out = offsetLayers(cut, ['a'], 5, 5);
+    assert.equal('texts' in out, false, 'the cut keeps its own texts untouched');
+    assert.deepEqual(out.layers[0].strokes[0].points, [{ x: 5, y: 5 }]);
 });
 
 test('offsetLayers: does not mutate the cut it was given', () => {
@@ -284,8 +285,8 @@ test('offsetLayers: does not mutate the cut it was given', () => {
 });
 
 test('offsetLayers: a cut with nothing in it is not a special case for the caller', () => {
-    assert.deepEqual(offsetLayers({}, ['a'], 1, 1, true), { layers: [], texts: [] });
-    assert.deepEqual(offsetLayers(undefined, undefined, 1, 1, false), { layers: [], texts: [] });
+    assert.deepEqual(offsetLayers({}, ['a'], 1, 1), { layers: [] });
+    assert.deepEqual(offsetLayers(undefined, undefined, 1, 1), { layers: [] });
 });
 
 // ── merging a layer down ───────────────────────────────────────────────────

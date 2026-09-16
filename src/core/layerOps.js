@@ -175,13 +175,14 @@ export function insertFill(strokes, fill, overPaint) {
  * @param {any[]} layerIds ids of the layers to move
  * @param {number} dx
  * @param {number} dy
- * @param {boolean} [withTexts] move the cut's text objects too
- * @returns {{layers: Array, texts: Array}} the changed fields, for the caller to merge
+ * @returns {{layers: Array}} the changed field, for the caller to merge
  */
-export function offsetLayers(cut, layerIds, dx, dy, withTexts) {
+export function offsetLayers(cut, layerIds, dx, dy) {
     const ids = new Set(layerIds || []);
     const layers = Array.isArray(cut?.layers) ? cut.layers : [];
-    const texts = Array.isArray(cut?.texts) ? cut.texts : [];
+    // Texts are not touched. A text and a layer coexist in a cut without one belonging to the
+    // other, and a move applies to what is selected; texts riding along with a layer move was
+    // the bug (#177).
     return {
         layers: layers.map(l => !ids.has(l.id) ? l : ({
             ...l,
@@ -190,7 +191,6 @@ export function offsetLayers(cut, layerIds, dx, dy, withTexts) {
                 ? { ...st, points: st.points.map(p => ({ ...p, x: p.x + dx, y: p.y + dy })) }
                 : { ...st, x: (st.x || 0) + dx, y: (st.y || 0) + dy }),
         })),
-        texts: withTexts ? texts.map(t => ({ ...t, x: (t.x || 0) + dx, y: (t.y || 0) + dy })) : texts,
     };
 }
 

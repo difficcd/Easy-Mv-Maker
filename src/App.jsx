@@ -1418,6 +1418,9 @@ export default function App() {
         const cut = cuts.find(c => c.id === cutId); if (!cut) return;
         const layer = cut.layers.find(l => l.id === layerId); if (!layer || layer.type === 'folder') return;
         dispatchCuts(updateCut(cutId, { activeLayerId: layerId }));
+        // One thing is selected at a time. Picking a layer is what makes the move tool move that
+        // layer rather than a text picked earlier.
+        setSelectedText(null);
     };
     const handleToggleFolder = (e, cutId, fid) => { e.stopPropagation(); updLayers(cutId, c => ({ layers: patchLayer(c.layers, fid, l => ({ collapsed: !l.collapsed })) })); };
     // Boiling: wobbles the strokes already on the layer. Each click cycles off, light, strong,
@@ -2045,18 +2048,20 @@ export default function App() {
         }
 
         if (tool === 'move') {
+            // A move applies to what is selected (#177). A text under the pen selects itself;
+            // a text already selected moves even from a press beside it, so a small caption can
+            // be dragged without landing on it; otherwise the active layer moves, and every
+            // layer while Alt is held. Texts never move as a side effect of a layer move.
             const hit = hitTestText(pos, currentCut);
             if (hit) { startTextDrag(e, pos, hit, false); return; }
-            // With no text grabbed this becomes a move-everything drag; it has to work without
-            // a selection. By default that is every visible layer and text in this cut, or just
-            // the active layer while Alt is held.
+            const sel = selectedText?.cutId === currentCutId ? safeArray(currentCut?.texts).find(t => t.id === selectedText.textId && t.visible !== false) : null;
+            if (sel) { startTextDrag(e, pos, { text: sel }, false); return; }
             const drawable = flattenLayersInUiOrder(currentCut?.layers || []).filter(l => l.type === 'layer');
-            const onlyActive = e.altKey;
             const act = resolveDrawLayer(currentCut);
-            const ids = onlyActive ? (act ? [act.id] : []) : drawable.map(l => l.id);
+            const ids = e.altKey ? drawable.map(l => l.id) : (act ? [act.id] : []);
             if (ids.length) {
                 beginGesture(e);
-                layerDragRef.current = { cutId: currentCutId, layerIds: ids, withTexts: !onlyActive, startPos: { x: pos.x, y: pos.y }, dx: 0, dy: 0 };
+                layerDragRef.current = { cutId: currentCutId, layerIds: ids, startPos: { x: pos.x, y: pos.y }, dx: 0, dy: 0 };
                 renderLayerDragPreview();   // draw immediately on press so the screen does not flash empty
                 setDragTick(v => v + 1);    // hide the original
                 e.preventDefault();
@@ -2252,7 +2257,7 @@ export default function App() {
             endGesture();
             const dx = Math.round(d.dx), dy = Math.round(d.dy);
             clearLiveOverlay();
-            if (dx || dy) dispatchCuts(moveLayers(d.cutId, d.layerIds, dx, dy, d.withTexts));
+            if (dx || dy) dispatchCuts(moveLayers(d.cutId, d.layerIds, dx, dy));
             setDragTick(v => v + 1);
             return;
         }
