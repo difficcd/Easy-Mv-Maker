@@ -93,3 +93,42 @@ export function keysWithPhases(keys, bases) {
     }
     return out;
 }
+
+/** How far the prefetch looks ahead of and behind the playhead, in cuts. Playing looks further ahead. */
+export const PREFETCH_AHEAD = { playing: 48, paused: 10 };
+export const PREFETCH_BEHIND = { playing: 2, paused: 4 };
+
+/**
+ * The frame bitmaps to have decoded around a time: the cut under the playhead first - it shows
+ * immediately - then a window of cuts ahead of it and a few behind, so playback and scrubbing do
+ * not stall on lazy decoding. Only cuts that carry frames count, in time order; with the time
+ * on none of them the current cut anchors the window, and failing that the first.
+ *
+ * @param {Array<any>} cuts
+ * @param {number} time
+ * @param {any} currentCutId
+ * @param {boolean} playing
+ * @returns {string[]} bitmap ids, highest priority first
+ */
+export function prefetchWindow(cuts, time, currentCutId, playing) {
+    const frameIds = (c) => {
+        const ids = [];
+        for (const l of (Array.isArray(c?.layers) ? c.layers : [])) {
+            for (const s of (Array.isArray(l.strokes) ? l.strokes : [])) if (s.tool === 'paste' && s.bitmapId) ids.push(s.bitmapId);
+        }
+        return ids;
+    };
+    const ordered = cuts.filter(c => frameIds(c).length).sort((a, b) => a.startTime - b.startTime);
+    if (!ordered.length) return [];
+    let idx = ordered.findIndex(c => time >= c.startTime && time < c.endTime);
+    if (idx < 0) idx = ordered.findIndex(c => c.id === currentCutId);
+    if (idx < 0) idx = 0;
+    const ahead = playing ? PREFETCH_AHEAD.playing : PREFETCH_AHEAD.paused;
+    const behind = playing ? PREFETCH_BEHIND.playing : PREFETCH_BEHIND.paused;
+    const ids = [];
+    const push = (c) => { if (c) ids.push(...frameIds(c)); };
+    push(ordered[idx]);
+    for (let d = 1; d <= ahead; d++) push(ordered[idx + d]);
+    for (let d = 1; d <= behind; d++) push(ordered[idx - d]);
+    return ids;
+}
