@@ -1,10 +1,10 @@
-// Skew and bend for a pasted bitmap - the two adjustments a lasso selection can carry beyond
-// where it sits and how big it is.
+// Rotation, skew and bend for a pasted bitmap - the adjustments a lasso selection can carry
+// beyond where it sits and how big it is.
 //
-// Skew is one affine transform: an x-offset that grows with y. Bend is not - its offset varies
-// along x - so it is drawn in vertical slices the way sway is, each slice sheared so that
-// neighbours agree exactly at their shared edge. shearSlices is where that rule lives; this file
-// only supplies the curve.
+// Rotation and skew are each one affine transform. Bend is not - its offset varies along x - so
+// it is drawn in vertical slices the way sway is, each slice sheared so that neighbours agree
+// exactly at their shared edge. shearSlices is where that rule lives; this file only supplies the
+// curve.
 
 import { shearSlices } from './shearSlices.js';
 
@@ -40,30 +40,35 @@ export function bendSlices(box, slices = BEND_SLICES) {
 }
 
 /**
- * Whether a paste needs this renderer at all. Zero on both means the plain drawImage path, which
- * is what every paste made before these fields existed takes.
+ * Whether a paste needs this renderer at all. Zero on all three means the plain drawImage path,
+ * which is what every paste made before these fields existed takes.
  *
- * @param {{skew?: number, bend?: number}} s
+ * @param {{rot?: number, skew?: number, bend?: number}} s
  */
-export const isWarped = (s) => !!(s && (s.skew || s.bend));
+export const isWarped = (s) => !!(s && (s.rot || s.skew || s.bend));
 
 /**
- * Draw `src` into the box, skewed and bent.
+ * Draw `src` into the box, rotated, skewed and bent.
  *
- * Skew pivots on the box's middle row, so the middle stays put and the top and bottom lean
- * opposite ways - the same convention partMatrix uses, and the one that does not make the
- * selection jump sideways the moment the slider moves off zero.
+ * Rotation is about the box's centre and skew pivots on its middle row, so the middle stays put
+ * in both cases - the same convention partMatrix uses, and the one that does not make the
+ * selection jump the moment a slider moves off zero. Rotation is applied outermost, so the skew
+ * and bend are done in the box's own frame and turn with it.
  *
  * @param {CanvasRenderingContext2D} ctx
  * @param {CanvasImageSource} src
  * @param {number} sw source width in source pixels
  * @param {number} sh source height
- * @param {{x: number, y: number, w: number, h: number, skew?: number, bend?: number}} box
+ * @param {{x: number, y: number, w: number, h: number, rot?: number, skew?: number, bend?: number}} box rot in radians
  */
 export function drawWarped(ctx, src, sw, sh, box) {
     const { x, y, w, h } = box;
-    const skew = box.skew || 0, bend = box.bend || 0;
+    const rot = box.rot || 0, skew = box.skew || 0, bend = box.bend || 0;
     ctx.save();
+    if (rot) {
+        const cx = x + w / 2, cy = y + h / 2;
+        ctx.translate(cx, cy); ctx.rotate(rot); ctx.translate(-cx, -cy);
+    }
     if (skew) ctx.transform(1, 0, skew, 1, -skew * (y + h / 2), 0);
     if (!bend) {
         ctx.drawImage(src, x, y, w, h);

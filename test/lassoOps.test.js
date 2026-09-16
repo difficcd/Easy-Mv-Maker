@@ -172,3 +172,9 @@ test('selectionStrokes: skew and bend ride on the paste, and only when set', () 
     assert.equal(paste.skew, 0.3); assert.equal(paste.bend, -0.5);
     assert.equal('skew' in erase, false, 'the hole is where the pixels were: a plain rectangle');
 });
+
+test('selectionStrokes: rotation rides on the paste like the other two, only when set', () => {
+    const base = { x: 0, y: 0, tx: 0, ty: 0, tw: 10, th: 10, bitmapId: 1, maskBitmapId: 2 };
+    assert.equal('rot' in selectionStrokes({ ...base, rot: 0 }, 1, 2).paste, false);
+    assert.equal(selectionStrokes({ ...base, rot: 1.25 }, 1, 2).paste.rot, 1.25);
+});

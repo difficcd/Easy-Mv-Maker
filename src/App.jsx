@@ -2836,7 +2836,7 @@ export default function App() {
             // only feedback the sliders have. The dashed box and its handles stay on the unwarped
             // rectangle: that is what the drag moves and resizes, and the warp is applied to it.
             const src = bmp || (img && imageDataCanvas(img));
-            if (src) drawWarped(ctx, src, src.width, src.height, { x: tx, y: ty, w: tw, h: th, skew: selection.skew, bend: selection.bend });
+            if (src) drawWarped(ctx, src, src.width, src.height, { x: tx, y: ty, w: tw, h: th, rot: selection.rot, skew: selection.skew, bend: selection.bend });
 
             ctx.save();
             ctx.strokeStyle = accentSoft();
@@ -3697,13 +3697,14 @@ export default function App() {
                     {selection && (
                         <div className="mode-group">
                             <span className="mode-label">{tr('선택 영역')}</span>
-                            {/* Skew and bend, -100..100%. Sliders rather than number fields: the
-                                value means nothing in itself and the eye is on the canvas. */}
-                            {[['skew', tr('기울기')], ['bend', tr('곡률')]].map(([key, label]) => (
+                            {/* Rotation in degrees, skew and bend in -100..100%. Sliders rather than
+                                number fields: the value means nothing in itself and the eye is on
+                                the canvas. Rotation is stored in radians, as layer animation does. */}
+                            {[['rot', tr('회전'), 180, 180 / Math.PI], ['skew', tr('기울기'), 100, 100], ['bend', tr('곡률'), 100, 100]].map(([key, label, range, scale]) => (
                                 <label key={key} className="mode-slider" title={tr('드래그해 조정, 두 번 눌러 0으로')}>
                                     <span>{label}</span>
-                                    <input type="range" min="-100" max="100" value={Math.round((selection[key] || 0) * 100)}
-                                        onChange={e => setSelection(s => s && ({ ...s, [key]: +e.target.value / 100 }))}
+                                    <input type="range" min={-range} max={range} value={Math.round((selection[key] || 0) * scale)}
+                                        onChange={e => setSelection(s => s && ({ ...s, [key]: +e.target.value / scale }))}
                                         onDoubleClick={() => setSelection(s => s && ({ ...s, [key]: 0 }))} />
                                 </label>
                             ))}

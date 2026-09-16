@@ -90,3 +90,20 @@ test('bend draws the box in slices whose source strips tile the bitmap', () => {
     near(sx, sw, 'the strips use the whole bitmap');
     near(draws.reduce((s, d) => s + d[6], 0), 200, 'and fill the whole box');
 });
+
+test('rotation is about the centre of the box, and applied before skew', () => {
+    // A quarter turn must leave the centre where it was; get the pivot wrong and the selection
+    // orbits the canvas origin the moment the slider moves. Rotation comes first so skew and
+    // bend happen in the box's own frame and turn with it.
+    const log = [];
+    const ctx = fakeCtx(log);
+    ctx.translate = (x, y) => log.push(`tr(${x},${y})`);
+    ctx.rotate = (a) => log.push(`rot(${+a.toFixed(4)})`);
+    drawWarped(ctx, 'S', 40, 20, { x: 10, y: 20, w: 40, h: 20, rot: Math.PI / 2, skew: 0.5 });
+    assert.deepEqual(log.slice(0, 5), ['save', 'tr(30,30)', 'rot(1.5708)', 'tr(-30,-30)', 'T(1,0,0.5,1,-15,0)']);
+});
+
+test('isWarped counts a rotation too', () => {
+    assert.equal(isWarped({ rot: 0.1 }), true);
+    assert.equal(isWarped({ rot: 0 }), false);
+});
