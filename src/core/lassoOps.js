@@ -164,10 +164,10 @@ export function cutOutPolygon({ layer, poly, minX, minY, w, h, makeImageData, in
  * and the other not. The hole never carries them: it is where the pixels *were*, and that was a
  * plain rectangle.
  *
- * Skew and bend are written only when set. A paste made with neither is byte-identical to one
- * made before the fields existed, so old projects and old builds are unaffected.
+ * Rotation, skew and bend are written only when set. A paste made with none is byte-identical
+ * to one made before the fields existed, so old projects and old builds are unaffected.
  *
- * @param {{x:number,y:number,tx:number,ty:number,tw:number,th:number,bitmapId:string,maskBitmapId:string,skew?:number,bend?:number}} sel
+ * @param {{x:number,y:number,tx:number,ty:number,tw:number,th:number,bitmapId:string,maskBitmapId:string,rot?:number,skew?:number,bend?:number}} sel
  * @param {number} eraseId id for the hole
  * @param {number} pasteId id for the pixels
  * @returns {{erase: object, paste: object}}
@@ -179,6 +179,7 @@ export function selectionStrokes(sel, eraseId, pasteId) {
         x: Math.round(sel.tx), y: Math.round(sel.ty),
         w: Math.max(1, Math.round(sel.tw)), h: Math.max(1, Math.round(sel.th)),
     };
+    if (sel.rot) paste.rot = sel.rot;
     if (sel.skew) paste.skew = sel.skew;
     if (sel.bend) paste.bend = sel.bend;
     return { erase, paste };
