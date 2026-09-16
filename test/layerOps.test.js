@@ -408,3 +408,12 @@ test('patchLayer survives being handed nothing', () => {
     assert.deepEqual(patchLayer(null, 1, () => ({})), []);
     assert.deepEqual(patchLayer(undefined, 1, () => ({})), []);
 });
+
+test('commitStroke: several strokes land as one change, in order', () => {
+    // An erase-hole plus a paste is one edit. Committed separately they would be two history
+    // entries, and undo would put the hole back without the pixels.
+    const layers = [{ id: 1, type: 'layer', parentId: null, visible: false, strokes: [{ id: 0 }] }];
+    const r = commitStroke(layers, 1, [{ id: 'hole' }, { id: 'pixels' }]);
+    assert.deepEqual(r.layers[0].strokes.map(s => s.id), [0, 'hole', 'pixels']);
+    assert.equal(r.layers[0].visible, true, 'and the layer is revealed the same way');
+});

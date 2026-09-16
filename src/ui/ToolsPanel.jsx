@@ -72,6 +72,9 @@ function ToolSettings({
     // second copy of the range to go with it.
     const curSize = toolSize, setSize = setToolSize;
     return (<>
+        {/* Liquify is a brush too - the size is its radius - but what it does is not obvious
+            from a wave icon, and the opacity slider doubling as its strength even less so. */}
+        {tool === 'liquify' && <span style={{ fontSize: 9, color: '#888', textAlign: 'center' }}>{tr('그린 것을 밀어 흘려보냅니다. 불투명도가 세기입니다')}</span>}
         <span className="slider-label">{tool === 'eraser' ? tr('지우개') : 'Size'}</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 2, justifyContent: 'center' }}>
             <NumField value={curSize} onChange={setSize} min={BRUSH_MIN} max={BRUSH_MAX} width={46} style={{ textAlign: 'center' }} />

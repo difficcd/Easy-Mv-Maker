@@ -231,6 +231,17 @@ two of those sites had already worked the collision around by hand with `Date.no
 | `randomId` | A unique string id, optionally prefixed: the clock in base 36 plus eight random characters. The clock keeps ids sorting by creation; the random tail is what makes them unique, since a video import mints one per frame inside the same millisecond. |
 | `resetIds` | Reset the counter. For tests only, so one test's calls cannot change what another sees. |
 
+## `src/core/liquify.js`
+
+Pushing pixels around with a brush - the liquify tool, on a plain RGBA buffer so the preview and the committed result are the same bytes.
+
+| | |
+|---|---|
+| `pushAlong` | A drag from one point to the next as a series of pushes short enough not to tear: steps of at most a quarter radius. Returns the union of what was touched. |
+| `pushPixels` | One push: inside the circle, each pixel reads from behind itself by its own falloff, from a copy taken before any write. |
+| `falloffAt` | Brush strength by distance from the centre: 1 there, 0 at the rim, quartic between so the edge blends instead of ringing. |
+| `sampleBilinear` | Fractional read from an RGBA buffer; outside is transparent. |
+
 ## `src/core/lassoOps.js`
 
 Lasso selection: closing the path, bounding it, lifting the pixels.
