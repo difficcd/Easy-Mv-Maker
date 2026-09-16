@@ -40,7 +40,7 @@ import { scaleProjectTimes, bakePlan } from './core/timeScale.js';
 import { drawScene, drawVideoOverlay, drawOnionCut, drawSceneTexts } from './canvas/sceneRender.js';
 import { warpedOutline, warpedHandles } from './canvas/warpRender.js';
 import { drawMarquee, HANDLE_GRAB_PX } from './canvas/marquee.js';
-import { drawTextSelection, drawFloatingSelection, drawMotionPath } from './canvas/editChrome.js';
+import { drawTextSelection, drawFloatingSelection, drawMotionPath, drawMosaicMarquee, drawCurveAnchors } from './canvas/editChrome.js';
 import { createBitmapStore } from './canvas/bitmapStore.js';
 import { useLayerCache } from './hooks/useLayerCache.js';
 import { useShortcuts } from './hooks/useShortcuts.js';
@@ -89,7 +89,7 @@ import {
     DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT,
     pointInPolygon, safeArray, hexToRgb, bucketFillTransparentRegion,
     imageDataToDataURL, dataURLToImageData, drawStrokesOnCtx, sizeCanvas, scratchCanvas, flattenLayersInUiOrder, extractVideoFrames, fitRect, detectSceneCuts, curveToWave, morphPrepare,
-    targetCanvasFor, imageDataCanvas, seekTarget,
+    targetCanvasFor, imageDataCanvas, seekTarget, accentSoft,
 } from './canvas/canvasUtils';
 
 
@@ -1331,15 +1331,7 @@ export default function App() {
         clearLiveOverlay();
         const pts = curveAnchorsRef.current || [];
         if (pts.length >= 2) drawStrokesOnCtx(ctx, [curveStrokeFromAnchors(pts)], false, bitmapStoreRef.current);
-        ctx.save();
-        for (let i = 0; i < pts.length; i++) {
-            ctx.beginPath();
-            ctx.arc(pts[i].x, pts[i].y, 5, 0, Math.PI * 2);
-            ctx.fillStyle = i === 0 ? '#4ea1ff' : '#fff';
-            ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5;
-            ctx.fill(); ctx.stroke();
-        }
-        ctx.restore();
+        drawCurveAnchors(ctx, pts, view.zoom);
     };
     // A finished stroke leaves the overlay and enters the document. Baked straight onto the
     // main canvas at the same coordinates first, and the overlay cleared at once, so the line
@@ -1470,12 +1462,7 @@ export default function App() {
         const ctx = liveCtx(); if (!ctx) return;
         clearLiveOverlay();
         const r = mosaicRectRef.current; if (!r) return;
-        const x = Math.min(r.x0, r.x1), y = Math.min(r.y0, r.y1), w = Math.abs(r.x1 - r.x0), h = Math.abs(r.y1 - r.y0);
-        ctx.save();
-        ctx.fillStyle = 'rgba(120,140,255,0.15)'; ctx.fillRect(x, y, w, h);
-        ctx.setLineDash([8, 6]); ctx.lineWidth = 2; ctx.strokeStyle = 'var(--accent-soft)';
-        ctx.strokeRect(x, y, w, h);
-        ctx.restore();
+        drawMosaicMarquee(ctx, r, view.zoom, accentSoft(0.18));
     };
     // Reads the rectangle from the composited canvas, pixelates it in blocks, and stamps the
     // result onto the active layer.

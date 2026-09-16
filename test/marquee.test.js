@@ -44,3 +44,38 @@ test('a handle is drawn at screen size, and is grabbed within a wider radius tha
     assert.deepEqual(rect, { x: 88, y: 38, w: 24, h: 24 }, '6 screen px half-size at half zoom is 12 canvas px');
     assert.ok(HANDLE_GRAB_PX > HANDLE_PX, 'a finger beside the handle still gets it');
 });
+
+// ── the two gesture previews, which use the same marquee ───────────────────
+import { drawMosaicMarquee, drawCurveAnchors } from '../src/canvas/editChrome.js';
+
+test('the mosaic marquee tints the rectangle and outlines it with a real colour', () => {
+    // The border used to be set to the string 'var(--accent-soft)', which a canvas cannot parse -
+    // so strokeStyle kept whatever the last drawing left. Every colour set here must be one the
+    // canvas can actually read.
+    const ctx = fakeCtx();
+    const styles = [];
+    ctx.fillRect = () => styles.push(['fill', ctx.fillStyle]);
+    const realStroke = ctx.stroke.bind(ctx);
+    ctx.stroke = () => { styles.push(['stroke', ctx.strokeStyle]); realStroke(); };
+    drawMosaicMarquee(ctx, { x0: 30, y0: 20, x1: 10, y1: 0 }, 1, 'rgba(120,140,255,0.18)');
+    assert.ok(styles.length >= 3, 'a tint and the marquee\'s two strokes');
+    for (const [what, style] of styles) assert.ok(!String(style).includes('var('), `${what} uses ${style}`);
+});
+
+test('the mosaic marquee normalises a drag made in any direction', () => {
+    const ctx = fakeCtx();
+    let rect = null;
+    ctx.fillRect = (x, y, w, h) => { rect = { x, y, w, h }; };
+    drawMosaicMarquee(ctx, { x0: 30, y0: 20, x1: 10, y1: 0 }, 1, 'rgba(120,140,255,0.18)');
+    assert.deepEqual(rect, { x: 10, y: 0, w: 20, h: 20 });
+});
+
+test('curve anchors are sized for the screen, and the first one is marked', () => {
+    const ctx = fakeCtx();
+    const arcs = [];
+    ctx.arc = (x, y, r) => arcs.push({ x, y, r, fill: ctx.fillStyle });
+    drawCurveAnchors(ctx, [{ x: 0, y: 0 }, { x: 10, y: 10 }], 0.5);
+    assert.equal(arcs.length, 2);
+    assert.equal(arcs[0].r, 10, '5 screen px at half zoom');
+    assert.notEqual(arcs[0].fill, arcs[1].fill, 'the first anchor is marked');
+});
