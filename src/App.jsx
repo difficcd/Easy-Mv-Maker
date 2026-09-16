@@ -20,6 +20,7 @@ import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, pat
 import { closeLassoPath, lassoBounds, applyResize, cutOutPolygon, selectionStrokes } from './core/lassoOps.js';
 import { pushAlong } from './core/liquify.js';
 import { shapePoints } from './core/shapeStroke.js';
+import { EXPORT_FPS } from './core/recordClock.js';
 import { useTimelineGestures } from './hooks/useTimelineGestures.js';
 import { useTextDrag } from './hooks/useTextDrag.js';
 import { fmt, parseClock } from './core/timeCode.js';
@@ -294,6 +295,9 @@ export default function App() {
     const isExporting = useRef(false);
     const mediaRecorderRef = useRef(null);
     const exportEndRef = useRef(0);
+    const exportStartRef = useRef(0);
+    // How the playback loop asks the recorder for a frame; null means the stream samples itself.
+    const requestFrameRef = useRef(null);
 
     const {
         tool, setTool, etool, rulerMode, setRulerMode, softMode, setSoftMode, handleSetTool,
@@ -740,7 +744,7 @@ export default function App() {
         media: { audioRef, videoElRef, audioUrl, audioData, videoOverlay },
         range: { playStart, playEnd, maxTime, loopPlay, playbackRate, anchorTime: currentCut?.startTime },
         paint: { pps, playheadRef, paintFrameRef, prefetchRef },
-        recording: { isExporting, exportEndRef, mediaRecorderRef },
+        recording: { isExporting, exportEndRef, exportStartRef, requestFrameRef, mediaRecorderRef },
     });
 
 
@@ -3411,7 +3415,18 @@ export default function App() {
         const mimeType = candidates.find(t => { try { return MediaRecorder.isTypeSupported(t); } catch { return false; } }) || '';
         const ext = mimeType.startsWith('video/mp4') ? 'mp4' : 'webm';
         alert(tr('녹화가 시작됩니다.')); setCurrentTime(playStart); if (audioRef.current) audioRef.current.currentTime = audioData ? Math.max(0, (playStart - audioData.startTime) + audioData.offset) : playStart;
-        const stream = canvas.captureStream(30), tracks = [...stream.getVideoTracks()];
+        // Frames on request rather than sampled at 30Hz off a 60Hz paint loop - that sampling
+        // put two paints in one frame and three in the next, which is the judder in #156. The
+        // loop paints on the frame grid and asks for each frame itself (usePlayback). Where
+        // requestFrame does not exist the old sampling is kept, so the export still works.
+        let stream = canvas.captureStream(0);
+        const track = stream.getVideoTracks()[0];
+        const ask = typeof track?.requestFrame === 'function' ? () => track.requestFrame()
+            : typeof stream.requestFrame === 'function' ? () => stream.requestFrame() : null;
+        if (!ask) stream = canvas.captureStream(EXPORT_FPS);
+        requestFrameRef.current = ask;
+        exportStartRef.current = playStart;
+        const tracks = [...stream.getVideoTracks()];
         if (audioRef.current && audioUrl && !audioSourceRef.current) { try { audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)(); audioDestRef.current = audioCtxRef.current.createMediaStreamDestination(); audioSourceRef.current = audioCtxRef.current.createMediaElementSource(audioRef.current); audioSourceRef.current.connect(audioDestRef.current); audioSourceRef.current.connect(audioCtxRef.current.destination); } catch (e) { } }
         if (audioDestRef.current) tracks.push(...audioDestRef.current.stream.getAudioTracks());
         let mr;
@@ -3420,7 +3435,7 @@ export default function App() {
         const blobType = mimeType || 'video/webm';
         const chunks = [];
         mr.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
-        mr.onstop = () => { downloadBlob(new Blob(chunks, { type: blobType }), `mv_export.${ext}`); alert(tr('완료!')); isExporting.current = false; };
+        mr.onstop = () => { downloadBlob(new Blob(chunks, { type: blobType }), `mv_export.${ext}`); alert(tr('완료!')); isExporting.current = false; requestFrameRef.current = null; };
         exportEndRef.current = playEnd; isExporting.current = true; mediaRecorderRef.current = mr; mr.start(); setIsPlaying(true);
     };
 

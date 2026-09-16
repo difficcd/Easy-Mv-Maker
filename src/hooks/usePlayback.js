@@ -21,6 +21,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { playbackStartFrom } from '../core/playbackStart.js';
 import { xAtTime } from '../core/timelineZoom.js';
+import { nextRecordFrame, EXPORT_FPS } from '../core/recordClock.js';
 
 /**
  * @param {object} opts
@@ -35,6 +36,7 @@ import { xAtTime } from '../core/timelineZoom.js';
  *   prefetchRef: {current: ((t: number, playing: boolean) => void) | null}}} opts.paint
  *   where to draw each frame
  * @param {{isExporting: {current: boolean}, exportEndRef: {current: number},
+ *   exportStartRef: {current: number}, requestFrameRef: {current: (() => void) | null},
  *   mediaRecorderRef: {current: MediaRecorder|null}}} opts.recording
  *   export state; playback runs at real time while recording, whatever speed is selected
  */
@@ -42,7 +44,7 @@ export function usePlayback({ media, range, paint, recording }) {
     const { audioRef, videoElRef, audioUrl, audioData, videoOverlay } = media;
     const { playStart, playEnd, maxTime, loopPlay, playbackRate, anchorTime } = range;
     const { pps, playheadRef, paintFrameRef, prefetchRef } = paint;
-    const { isExporting, exportEndRef, mediaRecorderRef } = recording;
+    const { isExporting, exportEndRef, exportStartRef, requestFrameRef, mediaRecorderRef } = recording;
 
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
@@ -71,6 +73,7 @@ export function usePlayback({ media, range, paint, recording }) {
         let last = performance.now();
         let t = currentTimeRef.current;
         let lastUiSync = 0, lastPrefetch = 0;
+        let lastRecorded = -1;   // the frame index last handed to the recorder
         const audible = () => audio && audioUrl && (!audioData || (t >= audioData.startTime && t < audioData.endTime));
         // Kick audio once, seeking only at the start — not every frame (per-frame seeks stutter).
         if (audio && audioUrl) {
@@ -126,7 +129,19 @@ export function usePlayback({ media, range, paint, recording }) {
                 } else { finish(endAt); return; }
             }
             currentTimeRef.current = t;
-            paintFrameRef.current?.(t, true);                                   // 60fps imperative canvas
+            if (isExporting.current && requestFrameRef.current) {
+                // Recording: paint on the frame grid and hand the recorder exactly one frame per
+                // grid step. Between steps the canvas is left as it is - the recorder only takes
+                // what it is asked for, so nothing uneven reaches the file (see recordClock).
+                const f = nextRecordFrame(t, exportStartRef.current, EXPORT_FPS, lastRecorded);
+                if (f) {
+                    lastRecorded = f.idx;
+                    paintFrameRef.current?.(f.time, true);
+                    requestFrameRef.current();
+                }
+            } else {
+                paintFrameRef.current?.(t, true);                               // 60fps imperative canvas
+            }
             if (playheadRef.current) playheadRef.current.style.left = `${xAtTime(t, pps)}px`; // 60fps imperative playhead
             if (now - lastPrefetch > 120) { lastPrefetch = now; prefetchRef.current?.(t, true); } // decode ahead of the REAL playhead
             if (now - lastUiSync > 200) { lastUiSync = now; setCurrentTime(t); } // ~5Hz React sync — keep re-renders off the rAF thread so prefetch keeps up
