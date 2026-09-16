@@ -265,6 +265,19 @@ Pushing pixels around with a brush - the liquify tool, on a plain RGBA buffer so
 | `falloffAt` | Brush strength by distance from the centre: 1 there, 0 at the rim, quartic between so the edge blends instead of ringing. |
 | `sampleBilinear` | Fractional read from an RGBA buffer; outside is transparent. |
 
+## `src/core/keyframes.js`
+
+Editing a part's keyframe list: sorted by position, one key per instant, null when empty.
+
+| | |
+|---|---|
+| `upsertKey` | A key at a progress, replacing the one already there or adding one with a fresh id; sorted. |
+| `patchKey` | One key patched, re-sorted in case its position moved. |
+| `removeKey` | One key removed; null once the list is empty. |
+| `keysOrNull` | The stored form: sorted, or null for nothing. |
+| `snapProgress` | Progress clamped to the cut and rounded to a whole percent. |
+| `KEY_SNAP` | Two keys closer than this are the same instant. |
+
 ## `src/core/lassoOps.js`
 
 Lasso selection: closing the path, bounding it, lifting the pixels.
