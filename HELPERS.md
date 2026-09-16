@@ -659,6 +659,8 @@ What is drawn over the frame while editing and never while playing.
 | `drawFloatingSelection` | A floating selection's pixels exactly as the paste will draw them, warp included, with the marquee and handles following the warp. |
 | `drawTextSelection` | The rectangle around a selected text, as the same marquee the selection uses. |
 | `drawMotionPath` | A part's recorded motion path, dashed with a dot at its start; brighter for the part being edited. |
+| `drawMosaicMarquee` | The rectangle the mosaic tool is dragging out: a tint (colour passed in, so the function stays testable) with the same screen-sized marquee round it. |
+| `drawCurveAnchors` | The curve ruler's anchors, screen-sized, the first one marked as the end the curve is drawn from. |
 
 ## `src/canvas/layerComposite.js`
 

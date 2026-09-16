@@ -53,3 +53,51 @@ export function drawMotionPath(ctx, path, editing) {
     ctx.beginPath(); ctx.arc(path[0].x, path[0].y, 4, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
 }
+
+/**
+ * The rectangle the mosaic tool is dragging out: a faint tint with a marquee round it.
+ *
+ * The border used to be set to the string 'var(--accent-soft)'. A canvas cannot resolve a CSS
+ * variable, and an unparseable colour leaves strokeStyle as it was - so the border was drawn in
+ * whatever colour the last thing to touch the context had left, usually black. It also drew at a
+ * fixed two pixels, which thinned with every zoom-out. The marquee is both fixed at once.
+ *
+ * The tint colour is passed in rather than read from the theme here, so this stays a function
+ * of its arguments and can be checked without a browser.
+ *
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {{x0: number, y0: number, x1: number, y1: number}} r the drag, in either direction
+ * @param {number} zoom
+ * @param {string} tint
+ */
+export function drawMosaicMarquee(ctx, r, zoom, tint) {
+    const x = Math.min(r.x0, r.x1), y = Math.min(r.y0, r.y1);
+    const w = Math.abs(r.x1 - r.x0), h = Math.abs(r.y1 - r.y0);
+    ctx.save();
+    ctx.fillStyle = tint;
+    ctx.fillRect(x, y, w, h);
+    ctx.restore();
+    drawMarquee(ctx, [{ x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h }], zoom, true);
+}
+
+/**
+ * The curve ruler's anchors, over the curve they make. The first is marked, because that is the
+ * end the curve is drawn from and the one a further tap extends.
+ *
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {Array<{x: number, y: number}>} pts
+ * @param {number} zoom
+ */
+export function drawCurveAnchors(ctx, pts, zoom) {
+    const z = zoom || 1;
+    ctx.save();
+    ctx.lineWidth = 1.5 / z;
+    for (let i = 0; i < pts.length; i++) {
+        ctx.beginPath();
+        ctx.arc(pts[i].x, pts[i].y, 5 / z, 0, Math.PI * 2);
+        ctx.fillStyle = i === 0 ? '#4ea1ff' : '#fff';
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.9)';
+        ctx.fill(); ctx.stroke();
+    }
+    ctx.restore();
+}
