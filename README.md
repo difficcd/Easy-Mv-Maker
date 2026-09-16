@@ -27,8 +27,10 @@
 ## Features
 
 **Drawing**
-- Dot pen, marker, airbrush (blur / boiling-line modes), eraser, bucket fill, lasso, text
+- Dot pen, marker, airbrush (blur / boiling-line modes), eraser, bucket fill, lasso, text, liquify (pushes pixels along with the pen)
 - Shape tool: straight line, curve, rectangle and ellipse. Each is stored as an ordinary stroke, so it takes the current brush, erases, and boils with its layer
+- Lasso selection: move, resize, rotate, tilt and bend (sliders, or Ctrl-drag inside the selection); Ctrl+T selects the whole layer
+- Move tool moves what is selected — a tapped text, otherwise the active layer; texts never ride along with a layer
 - Fill matches the clicked colour, so you can paint over an already-filled area
 - Pen draws; finger pans and pinch-zooms (palm rejection)
 - Stroke smoothing (resample → Chaikin → Catmull-Rom); in-progress strokes render incrementally on a separate overlay canvas
@@ -53,7 +55,7 @@
 - Automatic server backup every 5 minutes, keeping the newest 12 — runs in the background without blocking the UI
 - Video import from a local file or URL: frame extraction, scene-change detection, audio track
 - Imports match the source video's own size by default, so a vertical shorts clip fills the canvas instead of being letterboxed; landscape and portrait presets are there too
-- WebM export, PWA, Android packaging
+- WebM/MP4 export recorded on a fixed frame grid (no judder from sampling the paint loop), PWA, Android packaging
 
 **UI**
 - English, Korean and Japanese, switchable in Settings
@@ -97,7 +99,7 @@ The same steps run in CI on every push and pull request.
 | `scripts/unused-imports.mjs` | an import nothing in the file uses |
 | `scripts/i18n-check.mjs` | a `tr()` literal with no English entry |
 
-Around 940 unit tests cover the pure modules under `src/core`, `src/canvas`, `src/engine` and
+Around 1,000 unit tests cover the pure modules under `src/core`, `src/canvas`, `src/engine` and
 `src/export` — geometry, easing, keyframe sampling, the cuts reducer, layer-tree moves, lasso
 cut-out, timeline snapping, the time-scale bake, GIF and zip writers. They use Node's built-in
 runner because none of it needs a DOM or a framework. The functions that genuinely need a 2D
