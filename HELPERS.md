@@ -811,6 +811,14 @@ Dragging a layer row to reorder it, or into a folder.
 |---|---|
 | `useLayerDnD` | Owns which row is in flight and where it would land; the moves are `moveLayer`/`moveLayerToEnd`. Returns the drag state and the row and list drop handlers. |
 
+## `src/hooks/useGesture.js`
+
+What is happening between the pen going down and coming back up.
+
+| | |
+|---|---|
+| `useGesture` | Owns the scratch state of one pointer gesture — the stroke, the lasso loop, the layers or selection being dragged, the path being recorded, the layer the stroke will commit to — plus `begin`/`end`, which take and give back pointer capture. All refs: a pointer move arrives far more often than a frame. The returned object is stable, so an effect can list it. |
+
 ## `src/hooks/useHistory.js`
 
 Undo and redo: the wiring around `historyOps`, kept out of App.
