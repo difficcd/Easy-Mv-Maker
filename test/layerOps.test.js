@@ -490,3 +490,13 @@ test('appendPoints: extends the stroke being drawn without touching the old obje
     assert.deepEqual(appendPoints([{ tool: 'paste', bitmapId: 'b' }], [{ x: 1, y: 1 }]), [{ tool: 'paste', bitmapId: 'b' }], 'a paste is not being drawn');
     assert.deepEqual(appendPoints([], [{ x: 1, y: 1 }]), []);
 });
+
+test('commitStroke: a placement decides where the stroke lands, and the reveal still happens', () => {
+    // The bucket fill puts paint *under* the ink it fills around, so it cannot simply append -
+    // but it needs the reveal as much as any stroke, or a fill into a hidden layer lands and
+    // shows nothing.
+    const layers = [{ id: 1, type: 'layer', parentId: null, visible: false, strokes: [{ id: 'ink' }] }];
+    const r = commitStroke(layers, 1, { id: 'paint' }, (strokes, st) => [st, ...strokes]);
+    assert.deepEqual(r.layers[0].strokes.map(s => s.id), ['paint', 'ink']);
+    assert.equal(r.layers[0].visible, true);
+});

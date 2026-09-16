@@ -502,10 +502,10 @@ export default function App() {
     const resolveDrawLayer = (cut) => resolveDrawLayerPure(cut, flattenLayersInUiOrder);
     // Commit the stroke to its target layer and force that layer and its parent folders
     // visible, so the result is always on screen.
-    const commitStrokeToLayer = (cutId, layerId, st) => {
+    const commitStrokeToLayer = (cutId, layerId, st, place) => {
         // A missing layer yields null; an empty patch then leaves the cut alone rather than
         // writing a half-formed one.
-        updLayers(cutId, c => commitStroke(c.layers, layerId, st) || {});
+        updLayers(cutId, c => commitStroke(c.layers, layerId, st, place) || {});
     };
 
     const cancelSelection = () => {
@@ -1637,9 +1637,9 @@ export default function App() {
         const bitmapId = storeBitmap(region.imageData);
         const stroke = { id: nextId(), tool: 'paste', bitmapId, x: region.x, y: region.y };
         noteColorUsed(color);
-        updLayers(currentCutId, c => ({
-            layers: patchLayer(c.layers, activeLayer.id, l => ({ strokes: insertFill(l.strokes, stroke, region.overPaint) }))
-        }));
+        // Through commitStrokeToLayer for the reveal - a fill into a hidden layer landed and
+        // showed nothing - with insertFill as the placement, since paint goes under the ink.
+        commitStrokeToLayer(currentCutId, activeLayer.id, stroke, (strokes, st) => insertFill(strokes, st, region.overPaint));
     };
 
     const startDraw = (e) => {
