@@ -11,14 +11,14 @@ import { inReadingOrder } from '../core/cutSelection.js';
 // and is passed straight through, because none of it is this panel's business.
 export function CutLayerPanel({
     collapsedCutIds, copiedCut, currentCutId, cuts, deleteTextObject,
-    deleteVideoBatch, dragLayerInfo, expandedCuts, handleAddCut, handleAddFolder,
+    deleteVideoBatch, onListDrop, expandedCuts, handleAddCut, handleAddFolder,
     handleAddLayer, handleCopyCut, handleCutClick, handleDeleteCut, handleDuplicateCut,
     handlePasteCut, handleSetTool, openEditText, renameCut, renamingCutId,
     updCutCamera, cameraCapture, setCameraCapture, canvasW, canvasH,
-    layerRows, rightW, selectedCutIds, selectedText, setDragLayerInfo,
-    setDropInfo, setRenamingCutId, setSelectedText, setShowRight, showRight,
+    layerRows, rightW, selectedCutIds, selectedText,
+    setRenamingCutId, setSelectedText, setShowRight, showRight,
     toggleCutCollapse, toggleCutSettings, toggleTextVisible, updCutAnim, updCutTime,
-    updLayers, videoBatches, rightTab, setRightTab, textEditorBody, cancelText,
+    videoBatches, rightTab, setRightTab, textEditorBody, cancelText,
 }) {
     // The text editor arrives as a tab rather than a panel of its own. Two panels side by side
     // in the right dock left the canvas a sliver, and a window over the canvas covered the very
@@ -92,7 +92,7 @@ export function CutLayerPanel({
                                         setCameraCapture={setCameraCapture} canvasW={canvasW} canvasH={canvasH} />
                                 </div>
                             )}
-                            <div className="layer-list" onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); if (dragLayerInfo && dragLayerInfo.cutId === cut.id) { updLayers(cut.id, c => { const layers = [...c.layers], di = layers.findIndex(l => l.id === dragLayerInfo.layerId), dragged = { ...layers[di], parentId: null }; layers.splice(di, 1); layers.push(dragged); return { layers }; }); setDragLayerInfo(null); setDropInfo(null); } }}>
+                            <div className="layer-list" onDragOver={e => e.preventDefault()} onDrop={e => onListDrop(e, cut.id)}>
                                 <LayerRows cut={cut} rows={layerRows} />
                             </div>
                             {cut.id === currentCutId && (

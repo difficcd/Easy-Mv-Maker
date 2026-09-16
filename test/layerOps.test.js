@@ -4,7 +4,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { moveLayer, isDescendantOf, resolveDrawLayer, commitStroke, insertFill, offsetLayers, mergeDown, patchLayer, mkLayer, mkFolder, nextLayerId, appendLayer, appendFolder, removeLayerTree } from '../src/core/layerOps.js';
+import { moveLayer, isDescendantOf, resolveDrawLayer, commitStroke, insertFill, offsetLayers, mergeDown, patchLayer, mkLayer, mkFolder, nextLayerId, appendLayer, appendFolder, removeLayerTree, dropPositionFor, moveLayerToEnd } from '../src/core/layerOps.js';
 import { flattenLayersInUiOrder } from '../src/canvas/canvasUtils.js';
 
 // f1 > a, b   then c at the root
@@ -460,4 +460,22 @@ test('removeLayerTree: deleting the last drawable layer leaves a fresh blank one
     assert.equal(r.layers[0].type, 'layer');
     assert.equal(r.layers[0].id, 1, 'numbered within the cut, not from the global counter');
     assert.equal(r.activeLayerId, 1);
+});
+
+// ── drag and drop geometry ─────────────────────────────────────────────────
+test('dropPositionFor: top half before, bottom half after; a folder has an inside band', () => {
+    const rect = { top: 100, height: 32 };            // mid = 116
+    assert.equal(dropPositionFor(105, rect, 'layer'), 'before');
+    assert.equal(dropPositionFor(120, rect, 'layer'), 'after');
+    assert.equal(dropPositionFor(120, rect, 'folder'), 'inside', 'the band reaches below the middle');
+    assert.equal(dropPositionFor(113, rect, 'folder'), 'inside', 'and a little above it');
+    assert.equal(dropPositionFor(104, rect, 'folder'), 'before', 'a strip at the top still drops before');
+    assert.equal(dropPositionFor(130, rect, 'folder'), 'after', 'and past the band, after');
+});
+
+test('moveLayerToEnd: to the end at the top level; a layer that is not there changes nothing', () => {
+    const layers = [{ id: 1, parentId: null }, { id: 2, parentId: 1 }, { id: 3, parentId: null }];
+    assert.deepEqual(moveLayerToEnd(layers, 2), [{ id: 1, parentId: null }, { id: 3, parentId: null }, { id: 2, parentId: null }]);
+    assert.equal(moveLayerToEnd(layers, 99), null);
+    assert.deepEqual(layers.map(l => l.id), [1, 2, 3], 'the input is not mutated');
 });

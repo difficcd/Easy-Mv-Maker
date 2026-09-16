@@ -304,3 +304,40 @@ export function removeLayerTree(cut, layerId) {
     const activeLayerId = gone.has(cut?.activeLayerId) ? (kept.find(l => l.type === 'layer')?.id ?? null) : cut.activeLayerId;
     return { layers: kept, activeLayerId };
 }
+
+/**
+ * Where a dragged row would land relative to the row under the pointer.
+ *
+ * The middle band of a folder row means "inside"; the top half of any row means before it and
+ * the bottom half after. The band is offset upward a little and reaches further down, so that
+ * hovering the folder's name - which sits slightly above centre - reads as inside, and there is
+ * still a strip at the top for dropping before it.
+ *
+ * @param {number} clientY
+ * @param {{top: number, height: number}} rect the row's bounding rect
+ * @param {'layer'|'folder'} targetType
+ * @returns {'before'|'after'|'inside'}
+ */
+export function dropPositionFor(clientY, rect, targetType) {
+    const mid = rect.top + rect.height / 2;
+    if (targetType === 'folder' && clientY > mid - 4 && clientY < mid + rect.height * 0.4) return 'inside';
+    return clientY < mid ? 'before' : 'after';
+}
+
+/**
+ * A layer moved to the end of the stack at the top level - what a drop below every row means.
+ * Null if the layer is not there, so the caller changes nothing.
+ *
+ * @param {any[]} layers
+ * @param {any} layerId
+ * @returns {any[] | null}
+ */
+export function moveLayerToEnd(layers, layerId) {
+    if (!Array.isArray(layers)) return null;
+    const i = layers.findIndex(l => l.id === layerId);
+    if (i < 0) return null;
+    const next = [...layers];
+    const [dragged] = next.splice(i, 1);
+    next.push({ ...dragged, parentId: null });
+    return next;
+}
