@@ -21,7 +21,6 @@ import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, pat
 import { mkCut, firstCut } from './core/document.js';
 import { toggled, selectionAfterClick, cutsToCopy } from './core/cutSelection.js';
 import { closeLassoPath, lassoBounds, applyResize, cutOutPolygon, selectionStrokes, applyWarpDrag, paintedBounds } from './core/lassoOps.js';
-import { pushAlong } from './core/liquify.js';
 import { shapePoints } from './core/shapeStroke.js';
 import { useTimelineGestures } from './hooks/useTimelineGestures.js';
 import { useTextDrag } from './hooks/useTextDrag.js';
@@ -42,12 +41,14 @@ import { scaleProjectTimes, bakePlan } from './core/timeScale.js';
 import { drawScene, drawVideoOverlay, drawOnionCut, drawSceneTexts } from './canvas/sceneRender.js';
 import { warpedOutline, warpedHandles } from './canvas/warpRender.js';
 import { drawMarquee, HANDLE_GRAB_PX } from './canvas/marquee.js';
-import { drawTextSelection, drawFloatingSelection, drawMotionPath, drawMosaicMarquee, drawCurveAnchors } from './canvas/editChrome.js';
+import { drawTextSelection, drawFloatingSelection, drawMotionPath } from './canvas/editChrome.js';
 import { createBitmapStore } from './canvas/bitmapStore.js';
 import { regionBounds, rectBounds, mosaic, blurMaskedRegion } from './canvas/pixelEffects.js';
 import { useLayerCache } from './hooks/useLayerCache.js';
 import { useLiveOverlay } from './hooks/useLiveOverlay.js';
-import { catmullThrough } from './core/catmullRom.js';
+import { useLiquifyTool } from './hooks/useLiquifyTool.js';
+import { useCurveTool } from './hooks/useCurveTool.js';
+import { useMosaicTool } from './hooks/useMosaicTool.js';
 import { useShortcuts } from './hooks/useShortcuts.js';
 import { usePanelVisibility } from './hooks/usePanelVisibility.js';
 import { useAppearance } from './hooks/useAppearance.js';
@@ -303,7 +304,7 @@ export default function App() {
         // edited: both are modes of their own, and leaving them by picking up another tool
         // would silently discard what is in them.
         busy: () => !!selection || !!textEdit,
-        leaveCurve: () => { if (curveAnchorsRef.current) commitCurve(); },
+        leaveCurve: () => { if (curve.anchorsRef.current) curve.commit(); },
     });
     const [expandedCuts, setExpandedCuts] = useState(new Set());
     const [collapsedCutIds, setCollapsedCutIds] = useState(new Set());
@@ -327,21 +328,16 @@ export default function App() {
     const layerDragRef = useRef(null);    // while dragging everything with the move tool
     // While the liquify brush is down: the layer's pixels being pushed around, and the canvas
     // the overlay shows them from. The layer itself is hidden until the pen lifts.
-    const liquifyRef = useRef(null);
     /** Layers a gesture is drawing on the overlay instead, so the composite must skip them. */
     const hiddenByGesture = (cutId, layerId) => {
         const d = layerDragRef.current;
         if (d && d.cutId === cutId && d.layerIds.includes(layerId)) return true;
-        const q = liquifyRef.current;
+        const q = liquify.ref.current;
         return !!q && q.cutId === cutId && q.layerId === layerId;
     };
     const [dragTick, setDragTick] = useState(0); // signal to redraw with the original hidden while dragging
     const boilPhaseRef = useRef(0);       // boiling-motion phase; advancing it over time makes the strokes shimmer in place
     const [boilTick, setBoilTick] = useState(0); // phase ticker so the boiling motion previews even while paused for editing
-    const curveAnchorsRef = useRef(null); // curve tool: the anchor points tapped out so far
-    const curveDraggingRef = useRef(false); // an anchor was just placed and is being fine-tuned by dragging
-    const [curvePts, setCurvePts] = useState(0); // anchor count, for the done/cancel bar
-    const mosaicRectRef = useRef(null);   // mosaic drag rectangle
     const isDrawing = useRef(false);
     const timelineRef = useRef(null);
 
@@ -1229,15 +1225,6 @@ export default function App() {
         }
     };
 
-    // Curve tool: the tapped anchors resampled into a dense ordinary stroke (core/catmullRom).
-    const curveStrokeFromAnchors = (pts) => ({ id: nextId(), tool: 'brush', color, opacity, size: brushSize, points: catmullThrough(pts) });
-    const renderCurvePreview = () => {
-        const ctx = liveCtx(); if (!ctx) return;
-        clearLiveOverlay();
-        const pts = curveAnchorsRef.current || [];
-        if (pts.length >= 2) drawStrokesOnCtx(ctx, [curveStrokeFromAnchors(pts)], false, bitmapStoreRef.current);
-        drawCurveAnchors(ctx, pts, view.zoom);
-    };
     // A finished stroke leaves the overlay and enters the document. Baked straight onto the
     // main canvas at the same coordinates first, and the overlay cleared at once, so the line
     // cannot disappear no matter how state updates and repaints are timed - the next normal
@@ -1253,16 +1240,6 @@ export default function App() {
         if (layerId == null) return;
         commitStrokeToLayer(currentCutId, layerId, st);
         if (st.tool !== 'eraser') noteColorUsed(st.color);
-    };
-    const commitCurve = () => {
-        const pts = curveAnchorsRef.current;
-        curveAnchorsRef.current = null; curveDraggingRef.current = false; setCurvePts(0);
-        if (pts && pts.length >= 2) commitLiveStroke(curveStrokeFromAnchors(pts));
-        else clearLiveOverlay();
-    };
-    const cancelCurve = () => {
-        curveAnchorsRef.current = null; curveDraggingRef.current = false; setCurvePts(0);
-        clearLiveOverlay();
     };
     // Blur brush: uses the path it travels as a mask and blurs the layer pixels beneath it.
     // This spreads what is already drawn rather than adding a vector stroke, so it works on
@@ -1281,64 +1258,6 @@ export default function App() {
         commitStrokeToLayer(currentCutId, layer.id, { id: nextId(), tool: 'paste', bitmapId, x: box.x, y: box.y, w: box.w, h: box.h });
     };
 
-    // Liquify: the layer's pixels are copied out when the pen goes down, pushed around in that
-    // copy on every move, and stamped back as an erase-hole plus a paste when it lifts. While the
-    // pen is down the overlay shows the copy and the composite hides the layer, so what is on
-    // screen is exactly the buffer being edited.
-    const beginLiquify = (cut, layer, pos) => {
-        const src = ensureLayerCanvas(cut.id, layer); if (!src) return false;
-        const canvas = document.createElement('canvas');
-        sizeCanvas(canvas, CANVAS_W, CANVAS_H);
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(src, 0, 0);
-        const image = ctx.getImageData(0, 0, CANVAS_W, CANVAS_H);
-        liquifyRef.current = { cutId: cut.id, layerId: layer.id, canvas, ctx, image, last: pos, box: null };
-        renderLiquifyPreview();
-        setDragTick(v => v + 1);    // hide the original
-        return true;
-    };
-    const renderLiquifyPreview = () => {
-        const q = liquifyRef.current; if (!q) return;
-        const ctx = liveCtx(); if (!ctx) return;
-        clearLiveOverlay();
-        ctx.drawImage(q.canvas, 0, 0);
-    };
-    const liquifyTo = (pos) => {
-        const q = liquifyRef.current; if (!q) return;
-        // Radius from the brush size, strength from opacity - both already on the panel.
-        const b = pushAlong(q.image.data, CANVAS_W, CANVAS_H, q.last, pos, Math.max(2, brushSize), opacity);
-        q.last = pos;
-        if (!b) return;
-        // Only the touched rectangle goes back to the canvas; the buffer is the whole layer.
-        q.ctx.putImageData(q.image, 0, 0, b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
-        q.box = q.box ? { x0: Math.min(q.box.x0, b.x0), y0: Math.min(q.box.y0, b.y0), x1: Math.max(q.box.x1, b.x1), y1: Math.max(q.box.y1, b.y1) } : b;
-        renderLiquifyPreview();
-    };
-    const endLiquify = () => {
-        const q = liquifyRef.current; liquifyRef.current = null;
-        clearLiveOverlay();
-        setDragTick(v => v + 1);    // show the layer again
-        if (!q || !q.box) return;
-        const { x0, y0, x1, y1 } = q.box;
-        const w = x1 - x0, h = y1 - y0;
-        if (w < 1 || h < 1) return;
-        // The result replaces the rectangle rather than painting over it: pixels that flowed
-        // away leave transparency behind, and a plain paste would let the original show through
-        // there. So it is the same pair a selection commits with - a hole, then the pixels.
-        const mask = new ImageData(w, h);
-        mask.data.fill(255);
-        const sel = { x: x0, y: y0, tx: x0, ty: y0, tw: w, th: h, bitmapId: storeBitmap(q.ctx.getImageData(x0, y0, w, h)), maskBitmapId: storeBitmap(mask) };
-        const { erase, paste } = selectionStrokes(sel, nextId(), nextId());
-        commitStrokeToLayer(q.cutId, q.layerId, [erase, paste]);
-    };
-
-    // Mosaic: previews the drag rectangle as a dashed outline.
-    const renderMosaicMarquee = () => {
-        const ctx = liveCtx(); if (!ctx) return;
-        clearLiveOverlay();
-        const r = mosaicRectRef.current; if (!r) return;
-        drawMosaicMarquee(ctx, r, view.zoom, accentSoft(0.18));
-    };
     // Reads the rectangle from the composited canvas, pixelates it in blocks, and stamps the
     // result onto the active layer.
     const applyMosaic = (rect) => {
@@ -1355,6 +1274,26 @@ export default function App() {
         if (!layer) return;
         commitStrokeToLayer(currentCutId, layer.id, { id: nextId(), tool: 'paste', bitmapId, x: box.x, y: box.y, w: box.w, h: box.h });
     };
+
+    // Three tools that own themselves. Each keeps its own in-progress state and exposes the
+    // same shape - begin, to, end - so the gesture handlers below say what happened rather
+    // than how it is stored. The overlay is shared: only one of them can be running at a time.
+    const overlay = { clear: clearLiveOverlay, ctx: liveCtx };
+    const liquify = useLiquifyTool({
+        overlay, ensureLayerCanvas, size: { cw: CANVAS_W, ch: CANVAS_H },
+        brush: { size: brushSize, strength: opacity },
+        storeBitmap, commitStrokeToLayer,
+        onHiddenChanged: () => setDragTick(v => v + 1),
+    });
+    const curve = useCurveTool({
+        overlay, bitmapStoreRef,
+        brush: () => ({ color, opacity, size: brushSize }),
+        zoom: () => view.zoom,
+        commitLiveStroke: (st) => commitLiveStroke(st),
+    });
+    const mosaicTool = useMosaicTool({
+        overlay, zoom: () => view.zoom, colour: () => accentSoft(0.18), apply: applyMosaic,
+    });
 
     // Rebinding: while waiting, whatever combination is pressed is captured verbatim, ahead of
     // any other handling.
@@ -1593,11 +1532,7 @@ export default function App() {
             // Curve ruler: tap to place anchors (hold and drag to fine-tune), then confirm with
             // the done button.
             beginGesture(e);
-            if (!curveAnchorsRef.current) curveAnchorsRef.current = [];
-            curveAnchorsRef.current.push({ x: pos.x, y: pos.y, pressure: pos.pressure });
-            curveDraggingRef.current = true;
-            setCurvePts(curveAnchorsRef.current.length);
-            renderCurvePreview();
+            curve.addAnchor(pos);
             e.preventDefault();
             return;
         }
@@ -1634,12 +1569,11 @@ export default function App() {
                 break;
             }
             case 'mosaic': {
-                mosaicRectRef.current = { x0: pos.x, y0: pos.y, x1: pos.x, y1: pos.y };
-                renderMosaicMarquee();
+                mosaicTool.begin(pos);
                 break;
             }
             case 'liquify': {
-                if (!beginLiquify(currentCut, activeLayer, pos)) endGesture();
+                if (!liquify.begin(currentCut, activeLayer, pos)) endGesture();
                 break;
             }
             case 'eraser': {
@@ -1691,11 +1625,7 @@ export default function App() {
             return;
         }
 
-        if (etool === 'curve' && curveDraggingRef.current && curveAnchorsRef.current) {
-            const a = curveAnchorsRef.current; a[a.length - 1] = { x: pos.x, y: pos.y, pressure: pos.pressure };
-            renderCurvePreview();
-            return;
-        }
+        if (etool === 'curve' && curve.dragTo(pos)) return;
 
         if (moveTextDrag(pos)) return;
 
@@ -1732,13 +1662,13 @@ export default function App() {
                 break;
             }
             case 'mosaic': {
-                if (mosaicRectRef.current) { mosaicRectRef.current.x1 = pos.x; mosaicRectRef.current.y1 = pos.y; renderMosaicMarquee(); }
+                mosaicTool.to(pos);
                 break;
             }
             case 'liquify': {
                 // Every sample, not just the last per frame: the push is path-dependent, and
                 // skipping samples straightens a curve the pen drew.
-                for (const p of samplesOf(e, pos)) liquifyTo(p);
+                for (const p of samplesOf(e, pos)) liquify.to(p);
                 break;
             }
             case 'pen':
@@ -1778,23 +1708,17 @@ export default function App() {
             return;
         }
         // Curve ruler: one anchor placed or fine-tuned; the done button commits it.
-        if (etool === 'curve' && curveDraggingRef.current) {
-            curveDraggingRef.current = false;
-            endGesture();
-            renderCurvePreview();
-            return;
-        }
+        if (etool === 'curve' && curve.endDrag()) { endGesture(); return; }
         // Liquify: the pushed pixels go back into the layer.
-        if (liquifyRef.current) {
+        if (liquify.ref.current) {
             endGesture();
-            endLiquify();
+            liquify.end();
             return;
         }
         // Mosaic: pixelates the dragged rectangle and stamps it down.
-        if (mosaicRectRef.current) {
-            const r = mosaicRectRef.current; mosaicRectRef.current = null;
+        if (mosaicTool.ref.current) {
             endGesture();
-            applyMosaic(r);
+            mosaicTool.end();
             liveClearPendingRef.current = true;
             return;
         }
@@ -2502,7 +2426,7 @@ export default function App() {
                 tabs={tabs} activeTabId={activeTabId} switchTab={switchTab} renameTab={renameTab} closeTab={closeTab} newTab={newTab}
                 selection={selection} setSelection={setSelection} extractSelectionToPart={extractSelectionToPart}
                 copyLassoSelection={copyLassoSelection} commitSelection={commitSelection} cancelSelection={cancelSelection}
-                etool={etool} curvePts={curvePts} commitCurve={commitCurve} cancelCurve={cancelCurve}
+                etool={etool} curvePts={curve.count} commitCurve={curve.commit} cancelCurve={curve.cancel}
                 cameraCapture={cameraCapture} setCameraCapture={setCameraCapture}
                 pathCapture={pathCapture} setPathCapture={setPathCapture} />
 

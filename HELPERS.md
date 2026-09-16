@@ -819,6 +819,14 @@ Undo and redo: the wiring around `historyOps`, kept out of App.
 |---|---|
 | `useHistory` | Records the document when it changes, unless `shouldSkip()` says a gesture is in progress. Returns `undo`, `redo`, a stable `record` for callers that choose their own moment, and `entries()` for the bitmap GC - a snapshot keeps pixels reachable, and freeing those is an undo that comes back blank. |
 
+## `src/hooks/useCurveTool.js`
+
+The curve ruler: tap out anchors, and a smooth line is fitted through them.
+
+| | |
+|---|---|
+| `useCurveTool` | Owns the anchors, whether one is being fine-tuned by dragging, and the count the mode bar shows. What it commits is an ordinary brush stroke, so nothing downstream has to learn that a curve exists. |
+
 ## `src/hooks/useExport.js`
 
 Getting the movie out: a recorded video, a GIF or PNG sequence, or several `.emv` files painted into one file.
@@ -826,6 +834,14 @@ Getting the movie out: a recorded video, a GIF or PNG sequence, or several `.emv
 | | |
 |---|---|
 | `useExport` | Returns the three export handlers. All of them paint through the app's own paint path rather than a second renderer, so nothing can drift from what the user watched. The refs that say an export is running stay in App, because usePlayback reads them every frame. |
+
+## `src/hooks/useMosaicTool.js`
+
+The mosaic's drag rectangle and its dashed outline.
+
+| | |
+|---|---|
+| `useMosaicTool` | Owns only the rectangle. What the mosaic is applied *to* stays with the caller, because it reads the composited canvas but writes to a resolved drawing layer — two different things. Takes its colour as a function, since a canvas cannot read a CSS variable and ignores an unparseable one without a word (#218). |
 
 ## `src/hooks/usePanelVisibility.js`
 
@@ -908,6 +924,14 @@ the narrowest.
 | | |
 |---|---|
 | `useServerStorage` | Save, open and delete server projects; snapshot every five minutes and rotate. Takes `buildData` and `restore` as functions rather than reaching for the document itself, because building one reads most of App's state and restoring one writes most of it - threading either in would make the seam wider than the thing it separates. |
+
+## `src/hooks/useLiquifyTool.js`
+
+The liquify brush: the layer's pixels are pushed around in a copy and stamped back when the pen lifts.
+
+| | |
+|---|---|
+| `useLiquifyTool` | Owns the buffer being pushed and the rectangle that has been touched. Commits an erase-hole plus a paste, not a plain paste — pixels that flowed away leave transparency, and painting over would let the original show through there. Calls `onHiddenChanged` so the composite can hide the real layer while the copy is on the overlay. |
 
 ## `src/hooks/useLiveOverlay.js`
 
