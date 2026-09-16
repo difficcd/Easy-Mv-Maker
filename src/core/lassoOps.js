@@ -167,7 +167,7 @@ export function cutOutPolygon({ layer, poly, minX, minY, w, h, makeImageData, in
  * Skew and bend are written only when set. A paste made with neither is byte-identical to one
  * made before the fields existed, so old projects and old builds are unaffected.
  *
- * @param {{x:number,y:number,tx:number,ty:number,tw:number,th:number,bitmapId:number,maskBitmapId:number,skew?:number,bend?:number}} sel
+ * @param {{x:number,y:number,tx:number,ty:number,tw:number,th:number,bitmapId:string,maskBitmapId:string,skew?:number,bend?:number}} sel
  * @param {number} eraseId id for the hole
  * @param {number} pasteId id for the pixels
  * @returns {{erase: object, paste: object}}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo } from 'react';
-import { Plus, PenLine, Pen, Feather, Eraser, Undo, Layers, ChevronRight, Folder, GitBranch, Move, Type, Cloud, Minus, Grid3x3, Palette, Menu, PaintBucket, RotateCcw } from 'lucide-react';
+import { Plus, PenLine, Pen, Feather, Eraser, Undo, Layers, ChevronRight, Folder, GitBranch, Move, Type, Cloud, Minus, Grid3x3, Palette, Menu, PaintBucket, RotateCcw, Waves } from 'lucide-react';
 import './App.css';
 import { saveAutosave } from './db';
 import ColorPanel from './ui/ColorPanel';
@@ -18,6 +18,7 @@ import { tr, loadLang, saveLang, setLangValue } from './i18n';
 import { moveLayer } from './core/layerOps.js';
 import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, patchLayer } from './core/layerOps.js';
 import { closeLassoPath, lassoBounds, applyResize, cutOutPolygon, selectionStrokes } from './core/lassoOps.js';
+import { pushAlong } from './core/liquify.js';
 import { shapePoints } from './core/shapeStroke.js';
 import { useTimelineGestures } from './hooks/useTimelineGestures.js';
 import { fmt, parseClock } from './core/timeCode.js';
@@ -95,6 +96,7 @@ const PEN_TYPES = [
     // Line and curve share one Ruler slot rather than taking two, and split into modes below.
     { id: 'ruler', label: '도형', Icon: Minus },
     { id: 'mosaic', label: '모자이크', Icon: Grid3x3 },
+    { id: 'liquify', label: '유동화', Icon: Waves },
     { id: 'eraser', label: 'Eraser', Icon: Eraser },
     { id: 'fill', label: 'Fill', Icon: PaintBucket },
 ];
@@ -329,6 +331,16 @@ export default function App() {
     const lineStartRef = useRef(null);    // start point of the line tool
     const drawTargetLayerRef = useRef(null); // the layer id this stroke will commit to, in case the active layer changes under us
     const layerDragRef = useRef(null);    // while dragging everything with the move tool
+    // While the liquify brush is down: the layer's pixels being pushed around, and the canvas
+    // the overlay shows them from. The layer itself is hidden until the pen lifts.
+    const liquifyRef = useRef(null);
+    /** Layers a gesture is drawing on the overlay instead, so the composite must skip them. */
+    const hiddenByGesture = (cutId, layerId) => {
+        const d = layerDragRef.current;
+        if (d && d.cutId === cutId && d.layerIds.includes(layerId)) return true;
+        const q = liquifyRef.current;
+        return !!q && q.cutId === cutId && q.layerId === layerId;
+    };
     const [dragTick, setDragTick] = useState(0); // signal to redraw with the original hidden while dragging
     const liveDrawnRef = useRef(0);       // how many points are already on the live overlay, so only the tail is appended
     const liveRafRef = useRef(0);
@@ -1614,6 +1626,57 @@ export default function App() {
         commitStrokeToLayer(currentCutId, layer.id, { id: nextId(), tool: 'paste', bitmapId, x: x0, y: y0, w, h });
     };
 
+    // Liquify: the layer's pixels are copied out when the pen goes down, pushed around in that
+    // copy on every move, and stamped back as an erase-hole plus a paste when it lifts. While the
+    // pen is down the overlay shows the copy and the composite hides the layer, so what is on
+    // screen is exactly the buffer being edited.
+    const beginLiquify = (cut, layer, pos) => {
+        const src = ensureLayerCanvas(cut.id, layer); if (!src) return false;
+        const canvas = document.createElement('canvas');
+        sizeCanvas(canvas, CANVAS_W, CANVAS_H);
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(src, 0, 0);
+        const image = ctx.getImageData(0, 0, CANVAS_W, CANVAS_H);
+        liquifyRef.current = { cutId: cut.id, layerId: layer.id, canvas, ctx, image, last: pos, box: null };
+        renderLiquifyPreview();
+        setDragTick(v => v + 1);    // hide the original
+        return true;
+    };
+    const renderLiquifyPreview = () => {
+        const q = liquifyRef.current; if (!q) return;
+        const ctx = liveCtx(); if (!ctx) return;
+        clearLiveOverlay();
+        ctx.drawImage(q.canvas, 0, 0);
+    };
+    const liquifyTo = (pos) => {
+        const q = liquifyRef.current; if (!q) return;
+        // Radius from the brush size, strength from opacity - both already on the panel.
+        const b = pushAlong(q.image.data, CANVAS_W, CANVAS_H, q.last, pos, Math.max(2, brushSize), opacity);
+        q.last = pos;
+        if (!b) return;
+        // Only the touched rectangle goes back to the canvas; the buffer is the whole layer.
+        q.ctx.putImageData(q.image, 0, 0, b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
+        q.box = q.box ? { x0: Math.min(q.box.x0, b.x0), y0: Math.min(q.box.y0, b.y0), x1: Math.max(q.box.x1, b.x1), y1: Math.max(q.box.y1, b.y1) } : b;
+        renderLiquifyPreview();
+    };
+    const endLiquify = () => {
+        const q = liquifyRef.current; liquifyRef.current = null;
+        clearLiveOverlay();
+        setDragTick(v => v + 1);    // show the layer again
+        if (!q || !q.box) return;
+        const { x0, y0, x1, y1 } = q.box;
+        const w = x1 - x0, h = y1 - y0;
+        if (w < 1 || h < 1) return;
+        // The result replaces the rectangle rather than painting over it: pixels that flowed
+        // away leave transparency behind, and a plain paste would let the original show through
+        // there. So it is the same pair a selection commits with - a hole, then the pixels.
+        const mask = new ImageData(w, h);
+        mask.data.fill(255);
+        const sel = { x: x0, y: y0, tx: x0, ty: y0, tw: w, th: h, bitmapId: storeBitmap(q.ctx.getImageData(x0, y0, w, h)), maskBitmapId: storeBitmap(mask) };
+        const { erase, paste } = selectionStrokes(sel, nextId(), nextId());
+        commitStrokeToLayer(q.cutId, q.layerId, [erase, paste]);
+    };
+
     // Mosaic: previews the drag rectangle as a dashed outline.
     const renderMosaicMarquee = () => {
         const ctx = liveCtx(); if (!ctx) return;
@@ -2089,6 +2152,10 @@ export default function App() {
                 renderMosaicMarquee();
                 break;
             }
+            case 'liquify': {
+                if (!beginLiquify(currentCut, activeLayer, pos)) endGesture();
+                break;
+            }
             case 'eraser': {
                 // Eraser must composite against the layer, so it stays on the layer-write path.
                 const newStroke = { id: nextId(), tool, color, opacity, size: eraserSize, points: [pos] };
@@ -2192,6 +2259,13 @@ export default function App() {
                 if (mosaicRectRef.current) { mosaicRectRef.current.x1 = pos.x; mosaicRectRef.current.y1 = pos.y; renderMosaicMarquee(); }
                 break;
             }
+            case 'liquify': {
+                // Every sample, not just the last per frame: the push is path-dependent, and
+                // skipping samples straightens a curve the pen drew.
+                const raw = e.getCoalescedEvents ? e.getCoalescedEvents() : null;
+                for (const p of (raw && raw.length > 1 ? raw.map(getPos) : [pos])) liquifyTo(p);
+                break;
+            }
             case 'pen':
             case 'brush':
             case 'pencil':
@@ -2241,6 +2315,12 @@ export default function App() {
             curveDraggingRef.current = false;
             endGesture();
             renderCurvePreview();
+            return;
+        }
+        // Liquify: the pushed pixels go back into the layer.
+        if (liquifyRef.current) {
+            endGesture();
+            endLiquify();
             return;
         }
         // Mosaic: pixelates the dragged rectangle and stamps it down.
@@ -2640,8 +2720,7 @@ export default function App() {
         // one frame is still decoding.
         // A layer being dragged is drawn by the overlay with the original hidden, and a clipped
         // one is no different - leaving it in the group would draw it twice and trail a ghost.
-        const drag = layerDragRef.current;
-        const dragging = (id) => !!drag && drag.cutId === cutId && drag.layerIds.includes(id);
+        const dragging = (id) => hiddenByGesture(cutId, id);
 
         const parts = [];
         for (let k = group.clipped.length - 1; k >= 0; k--) {   // bottom-to-top within the group
@@ -2760,10 +2839,9 @@ export default function App() {
                 const mb = maskEntry?.imageBitmap;
                 const mi = maskEntry?.imageData;
 
-                // A layer being dragged is drawn by the overlay instead, with the original hidden,
-                // which prevents a ghost trailing behind it.
-                if (layerDragRef.current && layerDragRef.current.cutId === ac.id
-                    && layerDragRef.current.layerIds.includes(l.id)) { ctx.restore(); continue; }
+                // A layer being dragged or liquified is drawn by the overlay instead, with the
+                // original hidden, which prevents a ghost trailing behind it.
+                if (hiddenByGesture(ac.id, l.id)) { ctx.restore(); continue; }
                 if (la?.swayProfile && (!shouldMask || (!mb && !mi))) {
                     drawSwayed(ctx, layerCanvas, {
                         profile: la.swayProfile, axis: la.swayAxis, disp: la.swayDisp,

@@ -97,8 +97,13 @@ export function patchLayer(layers, layerId, patch) {
 }
 
 /**
- * Add a stroke to a layer and make sure it will be seen: the layer itself and every folder above
- * it are forced visible. Returns { activeLayerId, layers }, or null if the layer is gone.
+ * Add a stroke - or several, as one change - to a layer and make sure it will be seen: the layer
+ * itself and every folder above it are forced visible. Returns { activeLayerId, layers }, or null
+ * if the layer is gone.
+ *
+ * Several at once is for the tools whose result is an erase-hole plus a paste. Committed one at
+ * a time those would be two history entries, and undo would put the hole back without the
+ * pixels.
  *
  * The reveal is the point. Without it, drawing into a hidden layer - or one inside a collapsed,
  * hidden folder - accepts the stroke and shows nothing, which reads as the drawing being lost.
@@ -117,7 +122,7 @@ export function commitStroke(layers, layerId, stroke) {
     return {
         activeLayerId: layerId,
         layers: layers.map(l => {
-            if (l.id === layerId) return { ...l, visible: true, strokes: [...(l.strokes || []), stroke] };
+            if (l.id === layerId) return { ...l, visible: true, strokes: [...(l.strokes || []), ...(Array.isArray(stroke) ? stroke : [stroke])] };
             if (reveal.has(l.id)) return { ...l, visible: true };
             return l;
         }),
