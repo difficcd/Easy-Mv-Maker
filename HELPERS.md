@@ -98,6 +98,7 @@ the part with the actual rules in it was the part nobody could test.
 | `frameDurations` | How long each frame lasts. One frame's worth, except where the extractor collapsed a run of identical frames - a held frame spans its whole run, so a still shot stays still. Never zero: a cut of no length cannot be selected. |
 | `partAssigner` | Which part each frame belongs to. Split by count, so the last part is the short one; with a single part there are no part suffixes at all. |
 | `buildImportedCuts` | The cuts themselves, laid end to end, each holding one paste stroke of its frame - which is what makes an imported frame drawable over rather than a background. |
+| `extractOptionsFor` | The extractor's options from the import dialog's settings: the quality tiers as a table, a range only when its end is after its start, the frame budget off when "whole" is on. |
 
 ## `src/core/viewZoom.js`
 

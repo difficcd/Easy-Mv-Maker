@@ -56,7 +56,7 @@ import {
 import { cloneCutContents as cloneCutContentsPure, placeCopies } from './core/cutClone.js';
 import { DEFAULT_KEYS, KEY_LABELS, keyOf, keymapFrom, findConflicts } from './core/shortcuts.js';
 import { derivePartsFrom, deriveVideoBatches } from './core/partOps.js';
-import { importPlacement, buildImportedCuts } from './core/videoCuts.js';
+import { importPlacement, buildImportedCuts, extractOptionsFor } from './core/videoCuts.js';
 import { playRange } from './core/playRange.js';
 import { pieceRange } from './core/exportQueue.js';
 import { frameExportPlan, exportFileInfo, LONG_EXPORT_FRAMES } from './core/frameExport.js';
@@ -2470,22 +2470,14 @@ export default function App() {
         const startedFor = docEpochRef.current;
         setVideoBusy({ done: 0, total: 0 });
         try {
-            const rStart = cfg.rangeOn ? parseClock(cfg.startText) : 0;
-            const rEnd = cfg.rangeOn ? parseClock(cfg.endText) : 0;
-            const useRange = cfg.rangeOn && rEnd > rStart;
-            // Quality tiers trade size vs fidelity. 'high' (WebP q0.95, native res) is visually
-            // lossless at ~5-8x smaller than true-lossless PNG — best default for large videos.
-            const q = cfg.quality || 'compressed';
-            const isNative = q !== 'compressed';
             const tgt = targetCanvasFor(cfg, CANVAS_W, CANVAS_H);
             const TW = tgt.w, TH = tgt.h;
             if (TW !== CANVAS_W || TH !== CANVAS_H) setCanvasSize({ w: TW, h: TH });
+            // The dialog's settings become the extractor's numbers in core/videoCuts, where the
+            // quality tiers are a table.
+            const { opts, nativeRes: isNative } = extractOptionsFor(cfg, tgt, parseClock);
             const { frames, holds = [], skipped = 0, fps, width: fW, height: fH } = await extractVideoFrames(cfg.file, {
-                fps: cfg.fps, maxFrames: cfg.whole ? 0 : cfg.maxFrames,
-                start: useRange ? rStart : 0, end: useRange ? rEnd : null,
-                scale: isNative ? 1 : cfg.scale, quality: q === 'lossless' ? 1 : q === 'high' ? 0.95 : 0.82,
-                dedupe: cfg.dedupe ?? 'exact', nativeRes: isNative, format: q === 'lossless' ? 'png' : 'webp',
-                width: TW, height: TH,
+                ...opts,
                 onProgress: (done, total, skipped) => setVideoBusy({ done, total, skipped }),
                 shouldStop: () => videoStopRef.current,
             });
@@ -2523,7 +2515,7 @@ export default function App() {
             // Audio (if asked) is the only thing that keeps the video bytes alive past this point.
             // Aligned to the first imported frame; when only a range was imported, the audio is
             // clipped to that same range (offset rStart, duration rEnd-rStart).
-            if (cfg.withAudio) loadAudioUrl(URL.createObjectURL(cfg.file), label + tr(' (영상 음원)'), made[0].startTime, useRange ? rStart : 0, useRange ? (rEnd - rStart) : null);
+            if (cfg.withAudio) loadAudioUrl(URL.createObjectURL(cfg.file), label + tr(' (영상 음원)'), made[0].startTime, opts.start, opts.end == null ? null : opts.end - opts.start);
             setVideoImport(null);
             setTimeout(gcBitmaps, 0); // replaced frames' bitmaps go too
         } catch (e) {
