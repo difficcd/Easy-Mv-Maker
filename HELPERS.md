@@ -575,6 +575,14 @@ Timeline pixels to time, and zooming without the content sliding.
 | `xAtTime` | Where a time sits, as a content x - what the playhead's `left` is set to. |
 | `zoomAnchored` | Zoom about a point. Returns null at the scale limits, so the caller leaves the scroll alone rather than recomputing from an unchanged scale. |
 
+## `src/canvas/bitmapStore.js`
+
+The pixels strokes point at - fills, pastes, video frames - and the rules for decoding and releasing them.
+
+| | |
+|---|---|
+| `createBitmapStore` | The store: `store` (drawn pixels, bitmap follows), `storeBlob` (a frame kept compressed, decoded lazily), `decodeFrame` (no larger than the canvas), `touch`/`trim`/`setHot` (the LRU over decoded frames, via decodeBudget), `clone` (a copy under a fresh id, shared within one operation). Takes createImageBitmap and ImageData as arguments so it is tested in Node. |
+
 ## `src/canvas/canvasUtils.js`
 
 The drawing engine: strokes, canvases, animation, video frames. The big one.

@@ -41,6 +41,7 @@ import { drawSwayed } from './canvas/swayRender.js';
 import { warpedOutline, warpedHandles } from './canvas/warpRender.js';
 import { drawMarquee, HANDLE_GRAB_PX } from './canvas/marquee.js';
 import { drawTextSelection, drawFloatingSelection, drawMotionPath } from './canvas/editChrome.js';
+import { createBitmapStore } from './canvas/bitmapStore.js';
 import { applyPartTransform, drawMaskedLayer } from './canvas/layerComposite.js';
 import { detachMedia, safeMediaSrc } from './core/mediaEl.js';
 import { useAutosave } from './hooks/useAutosave.js';
@@ -57,7 +58,7 @@ import { importPlacement, buildImportedCuts } from './core/videoCuts.js';
 import { playRange } from './core/playRange.js';
 import { pieceRange } from './core/exportQueue.js';
 import { frameExportPlan, exportFileInfo, LONG_EXPORT_FRAMES } from './core/frameExport.js';
-import { DECODED_CAP, framesToRelease, layerKeysUsingBitmaps, keysWithPhases } from './core/decodeBudget.js';
+import { layerKeysUsingBitmaps, keysWithPhases } from './core/decodeBudget.js';
 import { brushUp, brushDown } from './core/brushSize.js';
 import {
     cutsReducer, replaceCuts, addCuts, updateCut, setCutAnim, setCutCamera, clearCut,
@@ -380,10 +381,18 @@ export default function App() {
     const [textEdit, setTextEdit] = useState(null);
     const [selectedText, setSelectedText] = useState(null);
     const [layerCanvasCache, setLayerCanvasCache] = useState({});
-    const bitmapStoreRef = useRef(new Map());
+    // The pixels strokes point at - fills, pastes, video frames - and the rules for decoding and
+    // releasing them: canvas/bitmapStore. Made once; the canvas size is read when a frame is
+    // decoded, since it can change after the store exists.
+    const canvasSizeRef = useRef([CANVAS_W, CANVAS_H]);
+    canvasSizeRef.current = [CANVAS_W, CANVAS_H];
+    const bitmapStore = useRef(null);
+    if (!bitmapStore.current) bitmapStore.current = createBitmapStore({ canvasSize: () => canvasSizeRef.current });
+    const { store: storeBitmap, storeBlob: storeBitmapBlob, decodeFrame: decodeFrameBitmap, touch: touchDecoded, trim: trimDecodedFrames, clone: cloneBitmapId } = bitmapStore.current;
+    const bitmapStoreRef = useRef(bitmapStore.current.map);
     const fallbackCanvasRef = useRef(new Map()); // LRU of layer canvases built on demand during render
-    const decodingRef = useRef(new Set()); // frame ids currently being re-decoded from their Blob
-    const hotWindowRef = useRef(new Set()); // frame ids in the current prefetch window — never LRU-evicted
+    const decodingRef = useRef(bitmapStore.current.decoding); // frame ids currently being re-decoded from their Blob
+    const hotWindowRef = useRef(bitmapStore.current.hot); // frame ids in the current prefetch window — never LRU-evicted
     const paintFrameRef = useRef(/** @type {((t: number, playing: boolean) => void) | null} */(null)); // set below, beside paintFrame
     const renderStateRef = useRef(/** @type {{cuts: any[], currentCutId: any, cw: number, ch: number}} */({ cuts: [], currentCutId: null, cw: 1920, ch: 1080 })); // set below, beside liveRef
     const prefetchRef = useRef(null); // prefetchFramesAt, called by the rAF loop with the real playhead
@@ -497,61 +506,7 @@ export default function App() {
     const pathPtsRef = useRef(null);
     const [cameraCapture, setCameraCapture] = useState(null); // {cutId} while drawing a camera path
 
-    const storeBitmap = (imageData) => {
-        const id = randomId();
-        bitmapStoreRef.current.set(id, { imageData, imageBitmap: null });
-        // Best-effort bitmap for fast preview; fall back to ImageData rendering if this fails.
-        createImageBitmap(imageData).then(bmp => {
-            const entry = bitmapStoreRef.current.get(id);
-            if (!entry) return;
-            entry.imageBitmap = bmp;
-        }).catch(() => { });
-        return id;
-    };
-
-    // Store an already-compressed image (video frames). Keeps only the decoded bitmap for
-    // rendering plus its data URL for saving — no raw ImageData, so memory stays small.
-    // Store a video frame as a Blob (browser-managed, off the JS heap) rather than a base64
-    // dataURL string. Crucially we DON'T decode it here — decoding every frame into an
-    // ImageBitmap at import is what OOMs a big video (hundreds of full-res bitmaps resident).
-    // The bitmap is decoded lazily on first display and released under an LRU cap.
-    const storeBitmapBlob = async (blob, w = 0, h = 0) => {
-        const id = randomId();
-        const ext = (blob.type.match(/image\/(\w+)/)?.[1] || 'webp');
-        bitmapStoreRef.current.set(id, { imageData: null, imageBitmap: null, blob, ext, w, h });
-        return id;
-    };
-    // Decode a frame Blob to an ImageBitmap, downscaling to at most the canvas size. The source
-    // stays max-quality (for save/export); the DISPLAY bitmap is capped so decoding a 4K frame
-    // costs the same as a 1080p one — this is what keeps max-quality playback smooth.
-    const decodeFrameBitmap = (e) => {
-        if (e.w && e.h && (e.w > CANVAS_W || e.h > CANVAS_H)) {
-            const s = Math.min(CANVAS_W / e.w, CANVAS_H / e.h);
-            return createImageBitmap(e.blob, { resizeWidth: Math.max(1, Math.round(e.w * s)), resizeHeight: Math.max(1, Math.round(e.h * s)), resizeQuality: 'high' });
-        }
-        return createImageBitmap(e.blob);
-    };
-    // LRU cap on how many frame ImageBitmaps stay decoded at once (bounds memory regardless of
-    // import size or which mode you're in). Released frames keep their Blob and re-decode on view.
-    const decodeOrderRef = useRef(new Map()); // id -> monotonically increasing use counter
-    const decodeSeqRef = useRef(0);
     const [frameDecodeTick, setFrameDecodeTick] = useState(0); // bumped when a frame finishes decoding → forces cache rebuild
-    const touchDecoded = (id) => { decodeOrderRef.current.set(id, ++decodeSeqRef.current); };
-    const trimDecodedFrames = (protect) => {
-        const store = bitmapStoreRef.current;
-        const decoded = [];
-        for (const [id, e] of store) if (e.blob && e.imageBitmap) decoded.push(id);
-        // Which to let go of is decided in core/decodeBudget, where the reason the cap has to
-        // stay above the prefetch window is written down and tested. Here is only the letting go.
-        const release = framesToRelease({
-            decoded, order: decodeOrderRef.current, cap: DECODED_CAP,
-            protect, hot: hotWindowRef.current,
-        });
-        for (const id of release) {
-            const e = store.get(id); try { e.imageBitmap.close?.(); } catch { } e.imageBitmap = null;
-            decodeOrderRef.current.delete(id);
-        }
-    };
     // Invalidate ONLY the cached layer canvases of cuts that use the given (just-decoded) frames,
     // instead of nuking the whole cache — nuking made on-screen frames flicker while playing.
     const invalidateCutsUsing = (ids) => {
@@ -562,22 +517,6 @@ export default function App() {
             fallbackCanvasRef.current.delete(k);
         }
         setLayerCanvasCache(prev => { const n = { ...prev }; for (const k of affected) delete n[k]; return n; });
-    };
-
-    // Duplicate a stored bitmap under a fresh id so a pasted/duplicated cut owns its
-    // own pixels instead of aliasing the source's. `cache` dedups within one operation.
-    const cloneBitmapId = (oldId, cache) => {
-        if (!oldId) return oldId;
-        if (cache.has(oldId)) return cache.get(oldId);
-        const entry = bitmapStoreRef.current.get(oldId);
-        let newId = oldId; // legacy strokes carry inline imageData; leave their id as-is
-        if (entry?.imageData) {
-            const src = entry.imageData;
-            const copy = new ImageData(new Uint8ClampedArray(src.data), src.width, src.height);
-            newId = storeBitmap(copy);
-        }
-        cache.set(oldId, newId);
-        return newId;
     };
 
     const isDraggingOrResizingRef = useRef(false);
@@ -2310,7 +2249,7 @@ export default function App() {
         push(ordered[idx]);                                   // current first = highest priority
         for (let d = 1; d <= AHEAD; d++) push(ordered[idx + d]);
         for (let d = 1; d <= BEHIND; d++) push(ordered[idx - d]);
-        hotWindowRef.current = new Set(ids); // protect this window from LRU eviction
+        bitmapStore.current.setHot(ids); // protect this window from LRU eviction
         requestFrameDecode(ids);
     };
     prefetchRef.current = prefetchFramesAt;
