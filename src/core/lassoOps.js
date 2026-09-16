@@ -184,3 +184,54 @@ export function selectionStrokes(sel, eraseId, pasteId) {
     if (sel.bend) paste.bend = sel.bend;
     return { erase, paste };
 }
+
+/** Furthest a drag can push skew or bend. The same as the sliders' range, so the two agree. */
+export const WARP_LIMIT = 1;
+
+/**
+ * Skew and bend from a Ctrl-drag inside the selection (#175).
+ *
+ * Both are scaled so the picture follows the pointer: a skew of 1 moves the top edge sideways by
+ * half the height, so dragging sideways by half the height gives skew 1 and the top edge lands
+ * under the pen; a bend of 1 lifts the middle by half the height, so dragging up by that gives
+ * bend 1. Up is negative y on a canvas, hence the sign on dy.
+ *
+ * @param {{th: number, skew?: number, bend?: number}} startSel the selection when the drag began
+ * @param {number} dx pointer movement since then
+ * @param {number} dy
+ * @returns {{skew: number, bend: number}}
+ */
+export function applyWarpDrag(startSel, dx, dy) {
+    const half = Math.max(1, (startSel.th || 0) / 2);
+    const clamp = (v) => Math.max(-WARP_LIMIT, Math.min(WARP_LIMIT, v));
+    return {
+        skew: clamp((startSel.skew || 0) + dx / half),
+        bend: clamp((startSel.bend || 0) - dy / half),
+    };
+}
+
+/**
+ * The rectangle of pixels that have any alpha, or null for an empty buffer.
+ *
+ * What "select the whole layer" (#176) selects: not the canvas, which would make a floating
+ * selection the size of the screen around a small drawing, but the drawing itself.
+ *
+ * @param {Uint8ClampedArray} data RGBA
+ * @param {number} w
+ * @param {number} h
+ * @returns {{x: number, y: number, w: number, h: number} | null} integer pixel bounds
+ */
+export function paintedBounds(data, w, h) {
+    let x0 = w, y0 = h, x1 = -1, y1 = -1;
+    for (let y = 0; y < h; y++) {
+        const row = y * w * 4;
+        for (let x = 0; x < w; x++) {
+            if (data[row + x * 4 + 3] === 0) continue;
+            if (x < x0) x0 = x;
+            if (x > x1) x1 = x;
+            if (y < y0) y0 = y;
+            if (y > y1) y1 = y;
+        }
+    }
+    return x1 < 0 ? null : { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+}

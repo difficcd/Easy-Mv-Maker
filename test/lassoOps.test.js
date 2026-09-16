@@ -4,7 +4,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { closeLassoPath, lassoBounds, applyResize, MIN_SELECTION_SIZE, selectionStrokes } from '../src/core/lassoOps.js';
+import { closeLassoPath, lassoBounds, applyResize, MIN_SELECTION_SIZE, selectionStrokes, applyWarpDrag, WARP_LIMIT, paintedBounds } from '../src/core/lassoOps.js';
 import { pointInPolygon } from '../src/canvas/canvasUtils.js';
 
 const P = (x, y) => ({ x, y });
@@ -177,4 +177,32 @@ test('selectionStrokes: rotation rides on the paste like the other two, only whe
     const base = { x: 0, y: 0, tx: 0, ty: 0, tw: 10, th: 10, bitmapId: 1, maskBitmapId: 2 };
     assert.equal('rot' in selectionStrokes({ ...base, rot: 0 }, 1, 2).paste, false);
     assert.equal(selectionStrokes({ ...base, rot: 1.25 }, 1, 2).paste.rot, 1.25);
+});
+
+test('applyWarpDrag: the picture follows the pointer', () => {
+    // Half the height sideways is skew 1 (the top edge lands under the pen); half the height
+    // upward is bend 1 (the middle lifts to the pen). Up is negative y.
+    const sel = { th: 100, skew: 0, bend: 0 };
+    assert.deepEqual(applyWarpDrag(sel, 50, 0), { skew: 1, bend: 0 });
+    assert.deepEqual(applyWarpDrag(sel, 0, -50), { skew: 0, bend: 1 });
+    assert.deepEqual(applyWarpDrag(sel, -25, 25), { skew: -0.5, bend: -0.5 });
+});
+
+test('applyWarpDrag: starts from where the sliders left it, and stops at the slider range', () => {
+    const sel = { th: 100, skew: 0.5, bend: -0.5 };
+    assert.deepEqual(applyWarpDrag(sel, 10, 10), { skew: 0.7, bend: -0.7 });
+    const far = applyWarpDrag(sel, 500, -500);
+    assert.equal(far.skew, WARP_LIMIT); assert.equal(far.bend, WARP_LIMIT);
+    assert.deepEqual(applyWarpDrag({ th: 0 }, 3, 0), { skew: 1, bend: 0 }, 'a flat selection does not divide by zero');
+});
+
+test('paintedBounds: the tight box around every pixel with alpha, in whole pixels', () => {
+    const w = 6, h = 4, data = new Uint8ClampedArray(w * h * 4);
+    const set = (x, y, a) => { data[(y * w + x) * 4 + 3] = a; };
+    set(1, 1, 255); set(4, 2, 3);                     // a faint pixel counts too
+    assert.deepEqual(paintedBounds(data, w, h), { x: 1, y: 1, w: 4, h: 2 });
+});
+
+test('paintedBounds: an empty layer has no box, rather than a zero-size one', () => {
+    assert.equal(paintedBounds(new Uint8ClampedArray(4 * 4 * 4), 4, 4), null);
 });

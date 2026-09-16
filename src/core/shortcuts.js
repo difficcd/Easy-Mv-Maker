@@ -26,6 +26,7 @@ export const DEFAULT_KEYS = {
     brushDown: '[', brushUp: ']',
     zoomOut: 'ctrl+[', zoomIn: 'ctrl+]',
     resetView: 'ctrl+0',
+    selectAll: 'ctrl+t',
 
     'tool.brush': 'b',
     'tool.pen': 'd',
@@ -47,6 +48,7 @@ export const KEY_LABELS = {
     undo: '실행 취소', redo: '다시 실행',
     brushDown: '브러시 작게', brushUp: '브러시 크게',
     zoomOut: '캔버스 축소', zoomIn: '캔버스 확대', resetView: '줌 초기화',
+    selectAll: '레이어 전체 선택 (올가미)',
 
     'tool.brush': '도구: 펜',
     'tool.pen': '도구: 점',
