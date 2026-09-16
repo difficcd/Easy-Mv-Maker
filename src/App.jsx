@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo } from 'react';
-import { Plus, PenLine, Pen, Feather, Eraser, Undo, Layers, ChevronRight, Folder, GitBranch, Move, Type, Cloud, Minus, Grid3x3, Palette, Menu, PaintBucket, RotateCcw, Waves } from 'lucide-react';
+import { Plus, PenLine, Pen, Feather, Eraser, Undo, Layers, ChevronRight, GitBranch, Move, Type, Cloud, Minus, Grid3x3, Palette, Menu, PaintBucket, RotateCcw, Waves } from 'lucide-react';
 import './App.css';
 import { saveAutosave } from './db';
 import ColorPanel from './ui/ColorPanel';
@@ -16,7 +16,7 @@ import { Timeline } from './ui/Timeline';
 import { ProjectPicker, ProgressOverlay, SettingsModal, HelpModal, VideoImportModal, SceneDetectModal, LinkPromptModal, ToolKeysModal } from './ui/Modals';
 import { tr, loadLang, saveLang, setLangValue } from './i18n';
 import { moveLayer } from './core/layerOps.js';
-import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, patchLayer } from './core/layerOps.js';
+import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, patchLayer, mkLayer, nextLayerId, appendLayer, appendFolder, removeLayerTree } from './core/layerOps.js';
 import { closeLassoPath, lassoBounds, applyResize, cutOutPolygon, selectionStrokes, applyWarpDrag, paintedBounds } from './core/lassoOps.js';
 import { pushAlong } from './core/liquify.js';
 import { shapePoints } from './core/shapeStroke.js';
@@ -205,7 +205,6 @@ const TOOL_TYPES = [
 
 
 export default function App() {
-    const mkLayer = (id) => ({ id, name: `L${id}`, type: 'layer', strokes: [], redoStrokes: [], visible: true, parentId: null });
     // The document. Changes go through cutsReducer's named actions - see that file for why, and
     // prefer a named action to patchCut/patchCuts when adding one.
     const [cuts, dispatchCuts] = React.useReducer(cutsReducer, [{ id: 1, name: 'Cut 1', startTime: 0, endTime: 1, track: 0, layers: [mkLayer(1)], activeLayerId: 1, texts: [] }]);
@@ -638,8 +637,7 @@ export default function App() {
         const strokes = takeSelectionStrokes(sel);
         if (!strokes) return;
         const { erase, paste } = strokes;
-        const cut = cuts.find(c => c.id === sel.cutId);
-        const newId = cut ? Math.max(...cut.layers.map(l => l.id), 0) + 1 : 1;
+        const newId = nextLayerId(cuts.find(c => c.id === sel.cutId)?.layers);
         updLayers(sel.cutId, c => {
             const layers = patchLayer(c.layers, sel.sourceLayerId, l => ({ strokes: [...l.strokes, erase] }));
             const partLayer = { id: newId, name: tr('파츠 {0}', newId), type: 'layer', parentId: null, visible: true, redoStrokes: [], strokes: [paste] };
@@ -1410,21 +1408,11 @@ export default function App() {
         setCurrentTime(insertAt);
     };
 
-    const nextLayerId = (c) => Math.max(...c.layers.map(l => l.id), 0) + 1;
-    const handleAddLayer = (e, cutId) => { e.stopPropagation(); updLayers(cutId, c => { const id = nextLayerId(c); return { layers: [...c.layers, mkLayer(id)], activeLayerId: id }; }); };
-    const handleAddFolder = (e, cutId) => { e.stopPropagation(); updLayers(cutId, c => { const id = nextLayerId(c); return { layers: [...c.layers, { id, name: `Folder ${id}`, type: 'folder', visible: true, collapsed: false, parentId: null }] }; }); };
-    const handleDeleteLayer = (e, cutId, layerId) => {
-        e.stopPropagation();
-        updLayers(cutId, c => {
-            const toRm = new Set([layerId]);
-            const findCh = (id) => c.layers.forEach(l => { if (l.parentId === id) { toRm.add(l.id); findCh(l.id); } });
-            findCh(layerId);
-            let nl = c.layers.filter(l => !toRm.has(l.id));
-            if (!nl.some(l => l.type === 'layer')) nl = [...nl, mkLayer(nextId())];
-            const na = toRm.has(c.activeLayerId) ? (nl.find(l => l.type === 'layer')?.id ?? null) : c.activeLayerId;
-            return { layers: nl, activeLayerId: na };
-        });
-    };
+    // What each does to the layer stack lives in core/layerOps; these only stop the click from
+    // also selecting the cut row underneath.
+    const handleAddLayer = (e, cutId) => { e.stopPropagation(); updLayers(cutId, appendLayer); };
+    const handleAddFolder = (e, cutId) => { e.stopPropagation(); updLayers(cutId, appendFolder); };
+    const handleDeleteLayer = (e, cutId, layerId) => { e.stopPropagation(); updLayers(cutId, c => removeLayerTree(c, layerId)); };
     const handleToggleVisible = (e, cutId, layerId) => { e.stopPropagation(); updLayers(cutId, c => ({ layers: patchLayer(c.layers, layerId, l => ({ visible: !l.visible })) })); };
     const handleSetActive = (e, cutId, layerId) => {
         e.stopPropagation();

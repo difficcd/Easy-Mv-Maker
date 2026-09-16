@@ -4,7 +4,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { moveLayer, isDescendantOf, resolveDrawLayer, commitStroke, insertFill, offsetLayers, mergeDown , patchLayer} from '../src/core/layerOps.js';
+import { moveLayer, isDescendantOf, resolveDrawLayer, commitStroke, insertFill, offsetLayers, mergeDown, patchLayer, mkLayer, mkFolder, nextLayerId, appendLayer, appendFolder, removeLayerTree } from '../src/core/layerOps.js';
 import { flattenLayersInUiOrder } from '../src/canvas/canvasUtils.js';
 
 // f1 > a, b   then c at the root
@@ -417,4 +417,47 @@ test('commitStroke: several strokes land as one change, in order', () => {
     const r = commitStroke(layers, 1, [{ id: 'hole' }, { id: 'pixels' }]);
     assert.deepEqual(r.layers[0].strokes.map(s => s.id), [0, 'hole', 'pixels']);
     assert.equal(r.layers[0].visible, true, 'and the layer is revealed the same way');
+});
+
+// ── adding and removing ────────────────────────────────────────────────────
+test('nextLayerId: one past the largest in the cut, and 1 for an empty cut', () => {
+    assert.equal(nextLayerId([{ id: 3 }, { id: 7 }, { id: 2 }]), 8);
+    assert.equal(nextLayerId([]), 1);
+    assert.equal(nextLayerId(undefined), 1);
+});
+
+test('appendLayer: a blank layer at the end, made active; appendFolder: not made active', () => {
+    const cut = { layers: [mkLayer(1)], activeLayerId: 1 };
+    const a = appendLayer(cut);
+    assert.deepEqual(a.layers.map(l => l.id), [1, 2]);
+    assert.equal(a.activeLayerId, 2);
+    assert.deepEqual(a.layers[1], mkLayer(2), 'every field a layer needs');
+    const f = appendFolder(cut);
+    assert.deepEqual(f.layers[1], mkFolder(2));
+    assert.equal('activeLayerId' in f, false, 'a folder cannot be drawn on');
+});
+
+test('removeLayerTree: a folder takes everything nested inside it, at any depth', () => {
+    const layers = [
+        { id: 1, type: 'folder', parentId: null }, { id: 2, type: 'folder', parentId: 1 },
+        { id: 3, type: 'layer', parentId: 2 }, { id: 4, type: 'layer', parentId: null },
+    ];
+    const r = removeLayerTree({ layers, activeLayerId: 4 }, 1);
+    assert.deepEqual(r.layers.map(l => l.id), [4]);
+    assert.equal(r.activeLayerId, 4, 'an active layer the deletion did not touch stays');
+});
+
+test('removeLayerTree: deleting the active layer moves activity to the first drawable one left', () => {
+    const layers = [{ id: 1, type: 'folder', parentId: null }, { id: 2, type: 'layer', parentId: null }, { id: 3, type: 'layer', parentId: null }];
+    const r = removeLayerTree({ layers, activeLayerId: 2 }, 2);
+    assert.equal(r.activeLayerId, 3, 'not the folder, which comes first but cannot be drawn on');
+});
+
+test('removeLayerTree: deleting the last drawable layer leaves a fresh blank one, active', () => {
+    // A cut with no drawable layer is one nothing can be drawn on; the next stroke would vanish.
+    const r = removeLayerTree({ layers: [mkLayer(5)], activeLayerId: 5 }, 5);
+    assert.equal(r.layers.length, 1);
+    assert.equal(r.layers[0].type, 'layer');
+    assert.equal(r.layers[0].id, 1, 'numbered within the cut, not from the global counter');
+    assert.equal(r.activeLayerId, 1);
 });
