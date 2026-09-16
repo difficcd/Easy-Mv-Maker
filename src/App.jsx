@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { PenLine, Pen, Feather, Eraser, Undo, Layers, ChevronRight, GitBranch, Move, Type, Cloud, Minus, Grid3x3, Palette, Menu, PaintBucket, RotateCcw, Waves } from 'lucide-react';
+import { PenLine, Pen, Feather, Eraser, Undo, Layers, GitBranch, Move, Type, Cloud, Minus, Grid3x3, PaintBucket, Waves } from 'lucide-react';
 import './App.css';
 import { saveAutosave } from './db';
 import ColorPanel from './ui/ColorPanel';
@@ -9,12 +9,13 @@ import { useStored } from './hooks/useStored.js';
 import { nextId } from './core/ids.js';
 import { onOffCodec, oneZeroCodec } from './core/persist.js';
 import { TextEditor } from './ui/TextEditor';
-import { SwaySpine } from './ui/SwaySpine';
 import { ToolsPanel } from './ui/ToolsPanel';
 import { Timeline } from './ui/Timeline';
 import { ProjectPicker, ProgressOverlay, SettingsModal, HelpModal, VideoImportModal, SceneDetectModal, LinkPromptModal, ToolKeysModal } from './ui/Modals';
 import { Notices } from './ui/Notices.jsx';
 import { DocTabs } from './ui/DocTabs.jsx';
+import { CanvasStage, canvasCursor } from './ui/CanvasStage.jsx';
+import { DockRail, DockSlot, FloatingPanels, DockHint, ReopenRight } from './ui/PanelDock.jsx';
 import { tr, loadLang, saveLang, setLangValue } from './i18n';
 import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, patchLayer, nextLayerId, appendLayer, appendFolder, removeLayerTree, appendPoints } from './core/layerOps.js';
 import { mkCut, firstCut } from './core/document.js';
@@ -2405,16 +2406,6 @@ export default function App() {
     renderStateRef.current = { cuts, currentCutId, cw: CANVAS_W, ch: CANVAS_H };
 
 
-    // A docked panel keeps a splitter on the side that faces the canvas.
-    const panelSplitter = (id, side) => (
-        <div key={id + '-sp'} className="splitter-v" style={{ touchAction: 'none' }}
-            title={tr('드래그로 패널 너비 조절')}
-            onPointerDown={e => {
-                try { e.currentTarget.setPointerCapture(e.pointerId); } catch { }
-                startPanelResize(id, side, e.clientX);
-            }} />
-    );
-
     // The tool panel body lives in a variable so the same markup can be mounted in the left
     // dock, the right dock, or a floating window without being duplicated.
     const toolsPanelEl = (
@@ -2473,29 +2464,8 @@ export default function App() {
 
     const panelEls = { color: colorPanelEl, tools: toolsPanelEl, cut: cutPanelEl };
 
-    // Panels docked to one side, each with its splitter facing the canvas.
-    const dockSlot = (side) => PANEL_IDS.filter(id => docks[id] === side && panelOpen[id]).map(id => (
-        <React.Fragment key={id}>
-            {side === 'right' && panelSplitter(id, side)}
-            {panelEls[id]}
-            {side === 'left' && panelSplitter(id, side)}
-        </React.Fragment>
-    ));
-
-    // Panels pulled out of the docks, drawn above everything and positioned by their own state.
-    const floatingPanels = PANEL_IDS.filter(id => docks[id] === 'float' && panelOpen[id]).map(id => {
-        // A window being dragged follows the pointer live; the stored position only updates on drop.
-        const live = panelDrag?.id === id;
-        const x = live ? panelDrag.x - panelDrag.dx : (floatPos[id]?.x ?? 120);
-        const y = live ? panelDrag.y - panelDrag.dy : (floatPos[id]?.y ?? 120);
-        return (
-            // These sit outside main-content, so they need the header-drag handler of their own.
-            <div key={id} className="float-panel" onPointerDown={onDockPointerDown}
-                style={{ left: Math.max(0, x), top: Math.max(0, y), opacity: live ? 0.85 : 1 }}>
-                {panelEls[id]}
-            </div>
-        );
-    });
+    // Where each of those goes - a dock, or a window of its own - is PanelDock's business.
+    const dockProps = { panelIds: PANEL_IDS, docks, panelOpen, panelEls };
 
     return (
         <div className="app-container">
@@ -2583,73 +2553,28 @@ export default function App() {
                 pathCapture={pathCapture} setPathCapture={setPathCapture} />
 
             <div className="main-content" onPointerDown={onDockPointerDown}>
-                {/* Far-left icon rail for switching panels, Clip Studio style: tools on top,
-                    colour below. */}
-                <div className="dock-rail">
-                    <button className={`dock-icon${showLeft ? ' active' : ''}`} title={tr('도구 창 (펜 · 지우개 · 스포이드 등)')}
-                        onClick={() => setShowLeft(v => !v)}><Menu size={20} /></button>
-                    <button className={`dock-icon${leftDock === 'color' ? ' active' : ''}`} title={tr('색상 창 (COLOR)')}
-                        onClick={() => setLeftDock(v => v === 'color' ? null : 'color')}><Palette size={20} /></button>
-                </div>
-                {dockSlot('left')}
+                <DockRail showLeft={showLeft} setShowLeft={setShowLeft} leftDock={leftDock} setLeftDock={setLeftDock} />
+                <DockSlot side="left" {...dockProps} startPanelResize={startPanelResize} />
 
-                {/* Scrolling is locked here while panning with space. Left open, space and drag
-                    scroll the page down instead of moving the canvas. */}
-                <div className="canvas-area" ref={canvasAreaRef} style={{ touchAction: 'none', position: 'relative', cursor: spaceDown ? 'grab' : undefined, overflow: spaceDown ? 'hidden' : 'auto' }}
-                    onMouseDown={e => { if (e.button === 1) e.preventDefault(); }} /* suppress middle-click auto-scroll */
-                    onAuxClick={e => { if (e.button === 1) e.preventDefault(); }}
-                    onPointerDown={onAreaPointerDown} onPointerMove={onAreaPointerMove} onPointerUp={onAreaPointerUp} onPointerCancel={onAreaPointerUp}>
-                    {(view.zoom !== 1 || view.x !== 0 || view.y !== 0) && (
-                        <button className="button" onClick={resetView} title={tr('줌 초기화')}
-                            style={{ position: 'absolute', top: 8, right: 8, zIndex: 30, height: 28, padding: '0 10px' }}>
-                            {Math.round(view.zoom * 100)}% <RotateCcw size={11} />
-                        </button>
-                    )}
-                    <div className={`canvas-stage${transparentBg ? ' checkered' : ''}`} style={{ position: 'relative', transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})`, aspectRatio: `${CANVAS_W} / ${CANVAS_H}`, maxWidth: '100%', maxHeight: '100%' }}>
-                        {/* tabIndex -1: focusable from code, never a stop in the tab order. The
-                            canvas is where the keys are meant to land, but nobody tabs to a
-                            drawing surface. */}
-                        <canvas ref={canvasRef} width={CANVAS_W} height={CANVAS_H} tabIndex={-1}
-                            onPointerDown={startDraw} onPointerMove={onDraw} onPointerUp={stopDraw} onPointerCancel={stopDraw} onPointerLeave={onPointerLeaveCanvas}
-                            style={{
-                                // `${handle}-resize` is the eight-way set - nw-resize, n-resize
-                                // and so on - so the arrow points the way that edge will travel.
-                                // `selection &&` first, so a handle the pointer was over when the
-                                // selection was committed cannot leave a resize arrow behind on a
-                                // canvas that has nothing to resize.
-                                cursor: spaceDown ? 'grab'
-                                    : (selection && hoverHandle) ? `${hoverHandle}-resize`
-                                        : selection ? 'move'
-                                            : tool === 'fill' ? 'cell' : 'crosshair',
-                                touchAction: 'none',
-                            }} />
-                        {/* The live overlay must be transparent. Inheriting the global
-                            `canvas { background:#fff }` rule paints white over the main canvas,
-                            hiding the drawing and making committed strokes look as if they
-                            vanished. */}
-                        <canvas ref={liveCanvasRef} width={CANVAS_W} height={CANVAS_H} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', background: 'transparent', boxShadow: 'none' }} />
+                <CanvasStage
+                    canvasAreaRef={canvasAreaRef} canvasRef={canvasRef} liveCanvasRef={liveCanvasRef}
+                    cw={CANVAS_W} ch={CANVAS_H} transparentBg={transparentBg} view={view} resetView={resetView}
+                    gesture={{ spaceDown, onAreaPointerDown, onAreaPointerMove, onAreaPointerUp }}
+                    draw={{ startDraw, onDraw, stopDraw, onPointerLeaveCanvas }}
+                    cursor={canvasCursor({ spaceDown, selection, hoverHandle, tool })}
+                    spine={{
+                        layer: spineLayer,
+                        onChange: (prof) => updLayerAnim(spineEdit.cutId, spineEdit.layerId, { swayProfile: prof }),
+                        onClose: () => setSpineEdit(null),
+                    }} />
 
-                        {spineLayer && (
-                            <SwaySpine
-                                profile={spineLayer.anim.swayProfile} axis={spineLayer.anim.swayAxis === 'x' ? 'x' : 'y'}
-                                amount={spineLayer.anim.swayAmount || 0} cw={CANVAS_W} ch={CANVAS_H}
-                                onChange={(prof) => updLayerAnim(spineEdit.cutId, spineEdit.layerId, { swayProfile: prof })}
-                                onClose={() => setSpineEdit(null)} />
-                        )}
-                    </div>
-                </div>
+                <DockSlot side="right" {...dockProps} startPanelResize={startPanelResize} />
 
-                {dockSlot('right')}
-
-                {!showRight && <button onClick={() => setShowRight(true)} className="icon-btn" style={{ width: 24, alignSelf: 'stretch', padding: 0, borderRadius: 0, background: 'hsl(var(--ui-h) var(--ui-s) 15%)', border: 'none', borderLeft: '1px solid #333' }}><ChevronRight size={14} /></button>}
+                {!showRight && <ReopenRight setShowRight={setShowRight} />}
             </div>
 
-            {/* Panels pulled out of a dock float above the layout. */}
-            {floatingPanels}
-            {/* While a header is being dragged, show where it would land. */}
-            {panelDrag && panelDrag.zone !== 'float' && (
-                <div className="dock-hint" style={{ [panelDrag.zone]: 0 }} />
-            )}
+            <FloatingPanels {...dockProps} floatPos={floatPos} panelDrag={panelDrag} onDockPointerDown={onDockPointerDown} />
+            <DockHint panelDrag={panelDrag} />
 
             {showBottom && <div className="splitter-h" style={{ touchAction: 'none' }} onPointerDown={e => { try { e.currentTarget.setPointerCapture(e.pointerId); } catch { } startBottomResize(e.clientY); }} />}
 
