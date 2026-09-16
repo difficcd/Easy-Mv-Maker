@@ -243,7 +243,6 @@ body {
     display: flex;
     flex: 1;
     overflow: hidden;
-    position: relative;   /* the mode bar floats inside it */
 }
 
 .track-group-header {
@@ -474,13 +473,21 @@ body {
    It sits between the document tabs and the canvas and takes its own height, so a mode never
    costs you sight of the artwork it is about. Hidden entirely when no mode is active, so the
    canvas gets the space back. */
-/* A pill floating at the top centre of the work area, out of the layout flow - the layout
-   used to jump when the bar appeared. Sized to its content, capped at the area's width. */
+/* The tab row and the pill that floats over it. The wrapper is what the pill is positioned
+   against; the row itself scrolls sideways, and an absolute child of a scrolling box is clipped. */
+.doc-tabs-wrap {
+    position: relative;
+    flex-shrink: 0;
+}
+
+/* A pill floating over the centre of the project tab row, out of the layout flow - the layout
+   used to jump when the bar appeared, and over the canvas it covered the zoom control. Sized to
+   its content, capped at the row's width, and no taller than the row. */
 .mode-bar {
     position: absolute;
-    top: 8px;
+    top: 50%;
     left: 50%;
-    transform: translateX(-50%);
+    transform: translate(-50%, -50%);
     z-index: 30;
     display: flex;
     flex-wrap: wrap;
@@ -489,7 +496,7 @@ body {
     gap: 14px;
     width: fit-content;
     max-width: calc(100% - 24px);
-    padding: 5px 12px;
+    padding: 3px 12px;
     border-radius: 999px;
     background: hsl(var(--ui-h) var(--ui-s) 13%);
     border: 1px solid color-mix(in srgb, var(--accent-soft) 30%, transparent);
