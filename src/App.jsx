@@ -43,6 +43,7 @@ import { warpedOutline, warpedHandles } from './canvas/warpRender.js';
 import { drawMarquee, HANDLE_GRAB_PX } from './canvas/marquee.js';
 import { drawTextSelection, drawFloatingSelection, drawMotionPath, drawMosaicMarquee, drawCurveAnchors } from './canvas/editChrome.js';
 import { createBitmapStore } from './canvas/bitmapStore.js';
+import { regionBounds, rectBounds, mosaic, blurMaskedRegion } from './canvas/pixelEffects.js';
 import { useLayerCache } from './hooks/useLayerCache.js';
 import { useShortcuts } from './hooks/useShortcuts.js';
 import { usePanelVisibility } from './hooks/usePanelVisibility.js';
@@ -1316,43 +1317,13 @@ export default function App() {
         const layer = cut?.layers.find(l => l.id === drawTargetLayerRef.current);
         if (!cut || !layer) return;
         const src = ensureLayerCanvas(cut.id, layer); if (!src) return;
-        const pts = st.points, rad = Math.max(2, st.size);
+        const rad = Math.max(2, st.size);
         // Only the affected region is processed, which keeps large canvases cheap.
-        let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-        for (const p of pts) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
-        const pad = rad + 4;
-        x0 = Math.max(0, Math.floor(x0 - pad)); y0 = Math.max(0, Math.floor(y0 - pad));
-        x1 = Math.min(CANVAS_W, Math.ceil(x1 + pad)); y1 = Math.min(CANVAS_H, Math.ceil(y1 + pad));
-        const w = x1 - x0, h = y1 - y0;
-        if (w < 2 || h < 2) return;
-        // 1) A blurred copy of the region. Several light passes look far smoother than one
-        //    heavy pass, since repeated blurring approximates a Gaussian.
-        const blurred = document.createElement('canvas'); blurred.width = w; blurred.height = h;
-        const bctx = blurred.getContext('2d');
-        bctx.drawImage(src, x0, y0, w, h, 0, 0, w, h);
-        const step = Math.max(1, rad / 4);
-        for (let i = 0; i < 3; i++) {
-            bctx.filter = `blur(${step}px)`;
-            bctx.drawImage(blurred, 0, 0);
-        }
-        bctx.filter = 'none';
-        // 2) Keep only what the brush passed over, softening the mask edge so no seam forms.
-        //    A hard mask leaves a visible line where the blurred area meets the original.
-        const mask = document.createElement('canvas'); mask.width = w; mask.height = h;
-        const mctx = mask.getContext('2d');
-        mctx.filter = `blur(${Math.max(1, rad / 3)}px)`;
-        mctx.strokeStyle = '#000'; mctx.fillStyle = '#000';
-        mctx.lineCap = 'round'; mctx.lineJoin = 'round'; mctx.lineWidth = rad * 0.8;
-        mctx.beginPath();
-        pts.forEach((p, i) => i ? mctx.lineTo(p.x - x0, p.y - y0) : mctx.moveTo(p.x - x0, p.y - y0));
-        mctx.stroke();
-        if (pts.length === 1) { mctx.beginPath(); mctx.arc(pts[0].x - x0, pts[0].y - y0, rad / 2, 0, Math.PI * 2); mctx.fill(); }
-        mctx.filter = 'none';
-        bctx.globalCompositeOperation = 'destination-in';
-        bctx.drawImage(mask, 0, 0);
-        bctx.globalCompositeOperation = 'source-over';
-        const bitmapId = storeBitmap(bctx.getImageData(0, 0, w, h));
-        commitStrokeToLayer(currentCutId, layer.id, { id: nextId(), tool: 'paste', bitmapId, x: x0, y: y0, w, h });
+        const box = regionBounds(st.points, rad + 4, CANVAS_W, CANVAS_H);
+        if (!box) return;
+        const blurred = blurMaskedRegion(src, box, st.points, rad, () => document.createElement('canvas'));
+        const bitmapId = storeBitmap(blurred.getContext('2d').getImageData(0, 0, box.w, box.h));
+        commitStrokeToLayer(currentCutId, layer.id, { id: nextId(), tool: 'paste', bitmapId, x: box.x, y: box.y, w: box.w, h: box.h });
     };
 
     // Liquify: the layer's pixels are copied out when the pen goes down, pushed around in that
@@ -1416,31 +1387,18 @@ export default function App() {
     // Reads the rectangle from the composited canvas, pixelates it in blocks, and stamps the
     // result onto the active layer.
     const applyMosaic = (rect) => {
-        const bx = Math.max(0, Math.floor(Math.min(rect.x0, rect.x1)));
-        const by = Math.max(0, Math.floor(Math.min(rect.y0, rect.y1)));
-        const bw = Math.min(CANVAS_W - bx, Math.ceil(Math.abs(rect.x1 - rect.x0)));
-        const bh = Math.min(CANVAS_H - by, Math.ceil(Math.abs(rect.y1 - rect.y0)));
-        if (bw < 2 || bh < 2) return;
-        const src = canvasRef.current.getContext('2d').getImageData(bx, by, bw, bh);
-        const d = src.data;
-        const block = Math.max(2, Math.round(mosaicBlock));
-        for (let y0 = 0; y0 < bh; y0 += block) {
-            for (let x0 = 0; x0 < bw; x0 += block) {
-                let r = 0, g = 0, b = 0, a = 0, cnt = 0;
-                const xe = Math.min(bw, x0 + block), ye = Math.min(bh, y0 + block);
-                for (let y = y0; y < ye; y++) for (let x = x0; x < xe; x++) { const i = (y * bw + x) * 4; r += d[i]; g += d[i + 1]; b += d[i + 2]; a += d[i + 3]; cnt++; }
-                r = r / cnt; g = g / cnt; b = b / cnt; a = a / cnt;
-                for (let y = y0; y < ye; y++) for (let x = x0; x < xe; x++) { const i = (y * bw + x) * 4; d[i] = r; d[i + 1] = g; d[i + 2] = b; d[i + 3] = a; }
-            }
-        }
-        const bitmapId = storeBitmap(src);
+        const box = rectBounds(rect, CANVAS_W, CANVAS_H);
+        if (!box) return;
+        // Off the composited canvas, not one layer: a mosaic covers what is on screen.
+        const pixels = mosaic(canvasRef.current.getContext('2d').getImageData(box.x, box.y, box.w, box.h), mosaicBlock);
+        const bitmapId = storeBitmap(pixels);
         // Through the same two guards a stroke goes through. Addressing c.activeLayerId
         // directly had the two silent failures the lasso paste had: a folder or a stale id
         // matches no layer and the mosaic evaporates, and a hidden layer takes it and shows
         // nothing. resolveDrawLayer answers the first, commitStroke reveals for the second.
         const layer = resolveDrawLayer(currentCut);
         if (!layer) return;
-        commitStrokeToLayer(currentCutId, layer.id, { id: nextId(), tool: 'paste', bitmapId, x: bx, y: by, w: bw, h: bh });
+        commitStrokeToLayer(currentCutId, layer.id, { id: nextId(), tool: 'paste', bitmapId, x: box.x, y: box.y, w: box.w, h: box.h });
     };
 
     // Rebinding: while waiting, whatever combination is pressed is captured verbatim, ahead of

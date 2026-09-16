@@ -701,6 +701,17 @@ The selection chrome, drawn so it can be seen on anything and sized for the scre
 | `HANDLE_PX` | A handle's half-size on screen. |
 | `HANDLE_GRAB_PX` | The wider radius within which a press still takes a handle. |
 
+## `src/canvas/pixelEffects.js`
+
+The two tools that change pixels already on the canvas: the mosaic and the blur brush.
+
+| | |
+|---|---|
+| `regionBounds` | The part of the canvas a brush path can affect, clipped to it, or `null` when the result is too small to process. |
+| `rectBounds` | The same for a dragged rectangle, whichever corner it was dragged from. |
+| `mosaic` | Averages each block of pixels over itself, in place. Alpha is averaged with the colour, so a partly transparent block fades rather than stamping a hard square onto nothing. |
+| `blurMaskedRegion` | A blurred copy of one region with everything the brush missed erased. Several light passes rather than one heavy one, and the mask is blurred too — a hard mask leaves a seam that reads as a second stroke. |
+
 ## `src/canvas/sceneRender.js`
 
 Compositing the evaluated scene onto the frame - what was the middle of paintFrame.
