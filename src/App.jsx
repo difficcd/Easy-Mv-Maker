@@ -694,6 +694,14 @@ export default function App() {
             setNumTracks(snap.numTracks ?? 2);
         },
     });
+    // Record from liveRef rather than from state: the callers are inside effects and event
+    // handlers whose closures may be a render old, and the ref keeps their dependency lists
+    // honest. useCallback so the timeline-drag effect that depends on it does not re-subscribe
+    // every render.
+    const recordLiveHistory = useCallback(() => {
+        const lv = liveRef.current;
+        recordHistory({ cuts: lv.cuts, audioData: lv.audioData, numTracks: lv.numTracks });
+    }, [recordHistory]);
 
     // The ruler runs to the content plus a tail of empty room to drag into, and never less than
     // TIMELINE_MIN_SPAN - a music video is three to five minutes, so a timeline that stops at two
@@ -859,8 +867,7 @@ export default function App() {
     const bakePlaybackSpeed = () => {
         const plan = bakeInfo;
         if (plan.noop) return;
-        const lv = liveRef.current;
-        recordHistory({ cuts: lv.cuts, audioData: lv.audioData, numTracks: lv.numTracks });
+        recordLiveHistory();
         dispatchCuts(replaceCuts(scaleProjectTimes(cuts, plan.factor)));
         setPlaybackRate(RATE_DEFAULT);
         setToast(plan.stranded.length
@@ -1017,13 +1024,10 @@ export default function App() {
             clearTimeout(cutDragTimerRef.current);
             cutDragArmedRef.current = false;
             setResizingData(null); setDraggingCutData(null); setSnapLinePos(null);
-            // liveRef holds the current document precisely so this does not have to reach for
-            // a state setter to read it, and the ref keeps the effect's dependency list honest.
-            const lv = liveRef.current;
-            recordHistory({ cuts: lv.cuts, audioData: lv.audioData, numTracks: lv.numTracks });
+            recordLiveHistory();
         };
         return dragOnWindow(mv, up);
-    }, [recordHistory, resizingData, draggingCutData, pps, numTracks]);
+    }, [recordLiveHistory, resizingData, draggingCutData, pps, numTracks]);
 
     // Record an undo point for whatever is on screen now.
     //
@@ -1547,18 +1551,27 @@ export default function App() {
         }
         ctx.restore();
     };
+    // A finished stroke leaves the overlay and enters the document. Baked straight onto the
+    // main canvas at the same coordinates first, and the overlay cleared at once, so the line
+    // cannot disappear no matter how state updates and repaints are timed - the next normal
+    // repaint replaces it with an identical result. The curve ruler and every drag stroke end
+    // this way; it was two copies, and the curve's had grown a different idea of which layer
+    // to fall back to.
+    const commitLiveStroke = (st) => {
+        const mc = canvasRef.current; if (mc) drawStrokesOnCtx(mc.getContext('2d'), [st], false, bitmapStoreRef.current);
+        clearLiveOverlay();
+        // The target was fixed when the gesture began. If somehow it was not, resolve one the
+        // way startDraw does rather than trusting activeLayerId, which can name a folder.
+        const layerId = drawTargetLayerRef.current || resolveDrawLayer(currentCut)?.id;
+        if (layerId == null) return;
+        commitStrokeToLayer(currentCutId, layerId, st);
+        if (st.tool !== 'eraser') noteColorUsed(st.color);
+    };
     const commitCurve = () => {
         const pts = curveAnchorsRef.current;
         curveAnchorsRef.current = null; curveDraggingRef.current = false; setCurvePts(0);
-        if (pts && pts.length >= 2) {
-            const st = curveStrokeFromAnchors(pts);
-            const mc = canvasRef.current; if (mc) drawStrokesOnCtx(mc.getContext('2d'), [st], false, bitmapStoreRef.current);
-            clearLiveOverlay();
-            commitStrokeToLayer(currentCutId, drawTargetLayerRef.current || (currentCut?.activeLayerId), st);
-            noteColorUsed(st.color);
-        } else {
-            clearLiveOverlay();
-        }
+        if (pts && pts.length >= 2) commitLiveStroke(curveStrokeFromAnchors(pts));
+        else clearLiveOverlay();
     };
     const cancelCurve = () => {
         curveAnchorsRef.current = null; curveDraggingRef.current = false; setCurvePts(0);
@@ -2305,16 +2318,8 @@ export default function App() {
                 applyBlurStroke(st);
                 return;
             }
-            if (st.points.length) {
-                // Bake the stroke straight onto the main canvas at the same coordinates as the
-                // overlay and clear the overlay at once, so the line cannot disappear no matter
-                // how state updates and repaints are timed. The next normal repaint replaces it
-                // with an identical result.
-                const mc = canvasRef.current; if (mc) drawStrokesOnCtx(mc.getContext('2d'), [st], false, bitmapStoreRef.current);
-                clearLiveOverlay();
-                commitStrokeToLayer(currentCutId, drawTargetLayerRef.current, st);
-                if (st.tool !== 'eraser') noteColorUsed(st.color);
-            } else clearLiveOverlay();
+            if (st.points.length) commitLiveStroke(st);
+            else clearLiveOverlay();
             return;
         }
         selectionDragRef.current = null;
