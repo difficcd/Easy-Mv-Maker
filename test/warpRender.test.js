@@ -127,3 +127,44 @@ test('the kink between neighbouring slices stays small on a large bend', () => {
         assert.ok(Math.abs(slices[i].k - slices[i - 1].k) < 0.0065, `kink at slice ${i}: ${slices[i].k - slices[i - 1].k}`);
     }
 });
+
+import { warpPoint, warpedOutline, warpedHandles } from '../src/canvas/warpRender.js';
+
+test('warpPoint: with no warp a point stays put', () => {
+    assert.deepEqual(warpPoint({ x: 10, y: 20, w: 40, h: 20 }, { x: 15, y: 25 }), { x: 15, y: 25 });
+});
+
+test('warpPoint: the middle of the box is a fixed point of skew and rotation', () => {
+    // The same convention drawWarped uses, so an outline computed here sits on the picture.
+    const box = { x: 10, y: 20, w: 40, h: 20, skew: 0.7, rot: 1.1 };
+    const c = warpPoint(box, { x: 30, y: 30 });
+    near(c.x, 30, 'x'); near(c.y, 30, 'y');
+});
+
+test('warpPoint: bend lifts the middle of the top edge and leaves its ends', () => {
+    const box = { x: 0, y: 0, w: 100, h: 50, bend: 1 };
+    near(warpPoint(box, { x: 0, y: 0 }).y, 0, 'left corner stays');
+    near(warpPoint(box, { x: 50, y: 0 }).y, -25, 'middle lifts by h/2');
+});
+
+test('warpPoint: a quarter turn sends the top-right corner to the bottom-right', () => {
+    const box = { x: 0, y: 0, w: 100, h: 100, rot: Math.PI / 2 };
+    const p = warpPoint(box, { x: 100, y: 0 });
+    near(p.x, 100, 'x'); near(p.y, 100, 'y');
+});
+
+test('warpedOutline: a closed loop along the top and back along the bottom', () => {
+    const pts = warpedOutline({ x: 0, y: 0, w: 100, h: 50 }, 4);
+    assert.equal(pts.length, 10);
+    assert.deepEqual(pts[0], { x: 0, y: 0 });
+    assert.deepEqual(pts[4], { x: 100, y: 0 });
+    assert.deepEqual(pts[5], { x: 100, y: 50 });
+    assert.deepEqual(pts[9], { x: 0, y: 50 });
+});
+
+test('warpedHandles: eight, named, on the warped box', () => {
+    const hs = warpedHandles({ x: 0, y: 0, w: 100, h: 50, bend: 1 });
+    assert.deepEqual(hs.map(h => h.id), ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']);
+    near(hs.find(h => h.id === 'n').y, -25, 'the top-middle handle rides the bend');
+    near(hs.find(h => h.id === 'nw').y, 0, 'the corner does not');
+});

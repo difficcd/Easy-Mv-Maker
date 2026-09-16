@@ -653,6 +653,9 @@ Skew and bend for a pasted bitmap — the two adjustments a lasso selection carr
 | `bendOffsetAt` | The vertical displacement of the bend at an x across the box: a parabola that is zero at both ends, so the corners stay where the handles are. |
 | `bendSlices` | The sheared slices that draw a bent box, in canvas coordinates. |
 | `bendSliceCount` | How many slices a bent box needs so no boundary kinks by more than a fixed small angle. Wide, tall and strongly bent all ask for more; a fixed thirty-two read as segmented on a large selection. |
+| `warpPoint` | Where a point of the unwarped box lands once bend, skew and rotation are applied — the same order as `drawWarped`, so an outline computed here sits on the picture. |
+| `warpedOutline` | The outline of a warped box as a closed polygon, sampled along the top and bottom so the bend shows as a curve. |
+| `warpedHandles` | The eight resize handles on the warped box, named by compass point. |
 
 ## `src/canvas/textLayout.js`
 
