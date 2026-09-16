@@ -16,7 +16,8 @@ import { Timeline } from './ui/Timeline';
 import { ProjectPicker, ProgressOverlay, SettingsModal, HelpModal, VideoImportModal, SceneDetectModal, LinkPromptModal, ToolKeysModal } from './ui/Modals';
 import { tr, loadLang, saveLang, setLangValue } from './i18n';
 import { moveLayer } from './core/layerOps.js';
-import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, patchLayer, mkLayer, nextLayerId, appendLayer, appendFolder, removeLayerTree } from './core/layerOps.js';
+import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, patchLayer, nextLayerId, appendLayer, appendFolder, removeLayerTree } from './core/layerOps.js';
+import { mkCut, firstCut } from './core/document.js';
 import { closeLassoPath, lassoBounds, applyResize, cutOutPolygon, selectionStrokes, applyWarpDrag, paintedBounds } from './core/lassoOps.js';
 import { pushAlong } from './core/liquify.js';
 import { shapePoints } from './core/shapeStroke.js';
@@ -207,7 +208,7 @@ const TOOL_TYPES = [
 export default function App() {
     // The document. Changes go through cutsReducer's named actions - see that file for why, and
     // prefer a named action to patchCut/patchCuts when adding one.
-    const [cuts, dispatchCuts] = React.useReducer(cutsReducer, [{ id: 1, name: 'Cut 1', startTime: 0, endTime: 1, track: 0, layers: [mkLayer(1)], activeLayerId: 1, texts: [] }]);
+    const [cuts, dispatchCuts] = React.useReducer(cutsReducer, [firstCut()]);
     const [numTracks, setNumTracks] = useState(2);
     const [onionPrev, setOnionPrev] = useState(false);
     const [onionNext, setOnionNext] = useState(false);
@@ -1232,7 +1233,7 @@ export default function App() {
         fileHandleRef.current = null;
         bitmapStoreRef.current.clear();
         docEpochRef.current++;   // starting over
-        dispatchCuts(replaceCuts([{ id: 1, name: 'Cut 1', startTime: 0, endTime: 1, track: 0, layers: [mkLayer(1)], activeLayerId: 1, texts: [] }]));
+        dispatchCuts(replaceCuts([firstCut()]));
         setNumTracks(2); setCurrentCutId(1); setCurrentTime(0); setExpandedCuts(new Set());
         setCopiedCut(null); setSelectedCutIds(new Set()); setActivePartId(null);
         setLayerCanvasCache({});
@@ -1280,7 +1281,7 @@ export default function App() {
         const last = cuts[cuts.length - 1];
         const ns = last?.endTime ?? 0, trk = last?.track ?? 0;
         if (trk >= numTracks) setNumTracks(trk + 1);
-        const nc = { id: nextId(), name: `Cut ${cuts.length + 1}`, startTime: ns, endTime: ns + DEFAULT_CUT_DURATION, track: trk, layers: [mkLayer(1)], activeLayerId: 1, texts: [] };
+        const nc = mkCut({ id: nextId(), name: `Cut ${cuts.length + 1}`, startTime: ns, endTime: ns + DEFAULT_CUT_DURATION, track: trk });
         dispatchCuts(addCuts([nc])); setCurrentCutId(nc.id); setCurrentTime(ns);
     };
     const handleDeleteCut = (id) => {
@@ -3858,7 +3859,7 @@ export default function App() {
                 draggingCutData={draggingCutData} fmt={fmt} goToScene={goToScene} handleAddTrack={handleAddTrack}
                 handleDeleteAudio={handleDeleteAudio} handleDeleteTrack={handleDeleteTrack}
                 handlePlayPause={handlePlayPause} handleStop={handleStop} isPlaying={isPlaying} loopPlay={loopPlay}
-                makePartFromSelection={makePartFromSelection} marquee={marquee} maxTime={maxTime} mkLayer={mkLayer}
+                makePartFromSelection={makePartFromSelection} marquee={marquee} maxTime={maxTime}
                 transparentBg={transparentBg} setTransparentBg={setTransparentBg}
                 transparentFormat={transparentFormat} setTransparentFormat={setTransparentFormat}
                 numTracks={numTracks} onTimelinePointerDown={onTimelinePointerDown}

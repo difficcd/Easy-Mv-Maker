@@ -3,6 +3,8 @@ import { safeArray, accentSoft } from '../canvas/canvasUtils';
 import { tr } from '../i18n';
 import { PLAYBACK_RATES, RATE_DEFAULT } from '../core/playbackRate.js';
 import { TRACK_GUTTER } from '../core/timelineZoom.js';
+import { mkCut } from '../core/document.js';
+import { nextId } from '../core/ids.js';
 
 // Bottom timeline: playback controls, the parts bar, the ruler, track and cut blocks,
 // and the audio and video tracks.
@@ -13,7 +15,7 @@ export function Timeline({
     currentTime, cutDragArmedRef, cutDragMovedRef, cutDragTimerRef, cuts,
     draggingCutData, fmt, goToScene, handleAddTrack, handleDeleteAudio,
     handleDeleteTrack, handlePlayPause, handleStop, isPlaying, loopPlay,
-    makePartFromSelection, marquee, maxTime, mkLayer, numTracks,
+    makePartFromSelection, marquee, maxTime, numTracks,
     onTimelinePointerDown, onTimelinePointerMove, onTimelinePointerUp, parts, playbackRate, openPlaybackSettings,
     playheadRef, pps, removeVideoOverlay, renamePart, sceneDetect,
     seekToTime, selectPart, selectedCutIds, setCurrentCutId, setCurrentTime,
@@ -153,7 +155,7 @@ export function Timeline({
                                     for (const c of trackCuts) { if (c.endTime <= t) gapStart = c.endTime; }
                                     for (const c of trackCuts) { if (c.startTime > t) { gapEnd = c.startTime; break; } }
                                     if (gapEnd - gapStart < 0.05) return;
-                                    const newCut = { id: Date.now(), name: `Cut ${cuts.length + 1}`, startTime: gapStart, endTime: gapEnd, track: ti, layers: [mkLayer(1)], activeLayerId: 1 };
+                                    const newCut = mkCut({ id: nextId(), name: `Cut ${cuts.length + 1}`, startTime: gapStart, endTime: gapEnd, track: ti });
                                     addCuts([newCut]);
                                     setCurrentCutId(newCut.id);
                                     setCurrentTime(gapStart);

@@ -204,6 +204,15 @@ Undo and redo, and the memory budget that bounds them.
 | `pushSnapshot` | Record a snapshot, returning the new list and position. The input is never modified, so the caller can keep the old pair if it wants to. |
 | `step` | Step one snapshot back or forward. |
 
+## `src/core/document.js`
+
+Constructors for the pieces of a document. A cut was a literal in four places and they had drifted.
+
+| | |
+|---|---|
+| `mkCut` | A cut with one blank layer and no text — every field, every time. |
+| `firstCut` | The cut a new project opens with; a fresh object each call. |
+
 ## `src/core/exportQueue.js`
 
 Exporting several separately-made pieces as one file (#123). Past a certain number of cuts the app
