@@ -1,4 +1,5 @@
 {
-  "App.jsx:react-hooks/exhaustive-deps": 8,
+  "App.jsx:react-hooks/exhaustive-deps": 5,
+  "useLayerCache.js:react-hooks/exhaustive-deps": 3,
   "usePlayback.js:react-hooks/exhaustive-deps": 1
 }
