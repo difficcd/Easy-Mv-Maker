@@ -341,3 +341,20 @@ export function moveLayerToEnd(layers, layerId) {
     next.push({ ...dragged, parentId: null });
     return next;
 }
+
+/**
+ * The strokes with more points on the one being drawn - the last one - as a new array with a
+ * new last stroke rather than a mutation of the old. The eraser draws straight into the layer
+ * while the pen is down, so this runs on every move; a paste or a fill at the end of the list
+ * is not a stroke being drawn and is left alone.
+ *
+ * @param {any[]} strokes
+ * @param {Array<{x: number, y: number}>} points
+ * @returns {any[]}
+ */
+export function appendPoints(strokes, points) {
+    const list = Array.isArray(strokes) ? strokes : [];
+    const last = list[list.length - 1];
+    if (!last || last.tool === 'paste' || last.tool === 'fill' || !Array.isArray(last.points)) return list;
+    return [...list.slice(0, -1), { ...last, points: [...last.points, ...points] }];
+}

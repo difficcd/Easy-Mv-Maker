@@ -325,6 +325,7 @@ Layers: moving, merging, resolving which one a stroke lands on.
 | | |
 |---|---|
 | `commitStroke` | Add a stroke to a layer and make sure it will be seen: the layer itself and every folder above it are forced visible. Returns { activeLayerId, layers }, or null if the layer is gone. The reveal is the point. |
+| `appendPoints` | The strokes with more points on the one being drawn, as a new last stroke rather than a mutation; a paste or fill at the end is left alone. The eraser's per-move write. |
 | `insertFill` | Where a bucket fill belongs in a layer's stroke list. Paint goes *under* the ink. |
 | `isDescendantOf` | True when `folderId` is `maybeChildId` itself or an ancestor of it. |
 | `mergeDown` | Flatten a layer into the one below it. "Below" means the next drawable layer in UI order — folders are containers, not surfaces, so they are skipped as a target and refused as a source. |
