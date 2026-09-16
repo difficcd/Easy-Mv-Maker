@@ -105,10 +105,13 @@ export function patchLayer(layers, layerId, patch) {
  * a time those would be two history entries, and undo would put the hole back without the
  * pixels.
  *
+ * `place` decides where in the list the stroke goes; the default appends, which is on top. The
+ * bucket fill passes insertFill instead, because paint belongs under the ink it fills around.
+ *
  * The reveal is the point. Without it, drawing into a hidden layer - or one inside a collapsed,
  * hidden folder - accepts the stroke and shows nothing, which reads as the drawing being lost.
  */
-export function commitStroke(layers, layerId, stroke) {
+export function commitStroke(layers, layerId, stroke, place = (strokes, st) => [...strokes, ...(Array.isArray(st) ? st : [st])]) {
     if (!Array.isArray(layers) || !layers.some(l => l.id === layerId)) return null;
 
     const byId = new Map(layers.map(l => [l.id, l]));
@@ -122,7 +125,7 @@ export function commitStroke(layers, layerId, stroke) {
     return {
         activeLayerId: layerId,
         layers: layers.map(l => {
-            if (l.id === layerId) return { ...l, visible: true, strokes: [...(l.strokes || []), ...(Array.isArray(stroke) ? stroke : [stroke])] };
+            if (l.id === layerId) return { ...l, visible: true, strokes: place(l.strokes || [], stroke) };
             if (reveal.has(l.id)) return { ...l, visible: true };
             return l;
         }),
