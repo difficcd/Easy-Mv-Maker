@@ -1485,8 +1485,13 @@ export default function App() {
             }
         }
         const bitmapId = storeBitmap(src);
-        const stroke = { id: nextId(), tool: 'paste', bitmapId, x: bx, y: by, w: bw, h: bh };
-        updLayers(currentCutId, c => ({ layers: patchLayer(c.layers, c.activeLayerId, l => ({ strokes: [...l.strokes, stroke] })) }));
+        // Through the same two guards a stroke goes through. Addressing c.activeLayerId
+        // directly had the two silent failures the lasso paste had: a folder or a stale id
+        // matches no layer and the mosaic evaporates, and a hidden layer takes it and shows
+        // nothing. resolveDrawLayer answers the first, commitStroke reveals for the second.
+        const layer = resolveDrawLayer(currentCut);
+        if (!layer) return;
+        commitStrokeToLayer(currentCutId, layer.id, { id: nextId(), tool: 'paste', bitmapId, x: bx, y: by, w: bw, h: bh });
     };
 
     // Rebinding: while waiting, whatever combination is pressed is captured verbatim, ahead of
