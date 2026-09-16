@@ -3,7 +3,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { dragCut, resizeCut } from '../src/core/cutOps.js';
+import { dragCut, resizeCut, gapAt, MIN_GAP } from '../src/core/cutOps.js';
 
 const PPS = 50;                       // pixels per second; 8px snap ≈ 0.16s
 const cut = (id, start, end, track = 0) => ({ id, startTime: start, endTime: end, track });
@@ -123,4 +123,32 @@ test('resizeCut: an unknown cut changes nothing', () => {
     const cuts = base();
     const out = resizeCut(cuts, { cutId: 'nope', edge: 'left', initialStart: 0, initialEnd: 1 }, 1, PPS);
     assert.equal(out.cuts, cuts);
+});
+
+// ── the gap a double-click fills ───────────────────────────────────────────
+const track = [
+    { track: 0, startTime: 1, endTime: 2 },
+    { track: 0, startTime: 4, endTime: 5 },
+    { track: 1, startTime: 0, endTime: 10 },     // another track, must not count
+];
+
+test('gapAt: between two cuts, the gap runs from the end of one to the start of the next', () => {
+    assert.deepEqual(gapAt(track, 0, 3), { start: 2, end: 4 });
+});
+
+test('gapAt: before the first cut it starts at zero; after the last it runs a second past the click', () => {
+    assert.deepEqual(gapAt(track, 0, 0.5), { start: 0, end: 1 });
+    assert.deepEqual(gapAt(track, 0, 7), { start: 5, end: 8 });
+});
+
+test('gapAt: a time inside a cut is not a gap', () => {
+    assert.equal(gapAt(track, 0, 1.5), null);
+    assert.equal(gapAt(track, 0, 1), null, 'the start is inside');
+    assert.deepEqual(gapAt(track, 0, 2), { start: 2, end: 4 }, 'the end is not');
+});
+
+test('gapAt: cuts on other tracks do not count, and a sliver too narrow to grab is refused', () => {
+    assert.deepEqual(gapAt(track, 2, 5), { start: 0, end: 6 }, 'an empty track');
+    const tight = [{ track: 0, startTime: 0, endTime: 1 }, { track: 0, startTime: 1 + MIN_GAP / 2, endTime: 3 }];
+    assert.equal(gapAt(tight, 0, 1.01), null);
 });

@@ -2,7 +2,8 @@ import { ChevronDown, ChevronUp, Grid3x3, Pause, Play, Plus, Repeat, Square, Tra
 import { safeArray, accentSoft } from '../canvas/canvasUtils';
 import { tr } from '../i18n';
 import { PLAYBACK_RATES, RATE_DEFAULT } from '../core/playbackRate.js';
-import { TRACK_GUTTER } from '../core/timelineZoom.js';
+import { TRACK_GUTTER, timeAtX } from '../core/timelineZoom.js';
+import { gapAt } from '../core/cutOps.js';
 import { mkCut } from '../core/document.js';
 import { nextId } from '../core/ids.js';
 
@@ -130,8 +131,8 @@ export function Timeline({
                     <div className="ruler" style={{ position: 'sticky', top: 0, left: 0, right: 0, height: 20, background: 'hsl(var(--ui-h) var(--ui-s) 14%)', borderBottom: '1px solid hsl(var(--ui-h) var(--ui-s) 24%)', zIndex: 20 }}>
                         <div style={{ position: 'sticky', left: 0, width: TRACK_GUTTER, height: '100%', background: 'hsl(var(--ui-h) var(--ui-s) 14%)', zIndex: 21, float: 'left' }} />
                         {(() => {
-                            const iMin = Math.max(0, Math.floor((tlWin.left - 60) / pps));
-                            const iMax = Math.min(Math.ceil(maxTime), Math.ceil((tlWin.right - 60) / pps));
+                            const iMin = Math.max(0, Math.floor((tlWin.left - TRACK_GUTTER) / pps));
+                            const iMax = Math.min(Math.ceil(maxTime), Math.ceil((tlWin.right - TRACK_GUTTER) / pps));
                             const ticks = [];
                             for (let i = iMin; i <= iMax; i++) ticks.push(
                                 <div key={i} style={{ position: 'absolute', left: `${i * pps + 60}px`, borderLeft: '1px solid #333', height: i % 5 === 0 ? 20 : 10, fontSize: 10, paddingLeft: 2, top: 0, color: '#555' }}>{i % 5 === 0 ? i : ''}</div>
@@ -143,22 +144,19 @@ export function Timeline({
                         {Array.from({ length: numTracks }).map((_, ti) => (
                             <div key={ti} className="tl-track"
                                 onDoubleClick={e => {
+                                    // A double-click on empty track fills the gap with a cut. The
+                                    // row scrolls with the timeline, so its own left edge is the
+                                    // origin and there is no scroll offset to add.
                                     const rect = e.currentTarget.getBoundingClientRect();
-                                    const x = e.clientX - rect.left - 60;
-                                    if (x < 0) return;
-                                    const t = x / pps;
-                                    const hit = cuts.find(c => c.track === ti && t >= c.startTime && t < c.endTime);
-                                    if (hit) return;
+                                    const t = timeAtX(0, e.clientX - rect.left, pps);
+                                    if (t < 0) return;
+                                    const gap = gapAt(cuts, ti, t);
+                                    if (!gap) return;
                                     e.stopPropagation();
-                                    const trackCuts = cuts.filter(c => c.track === ti).sort((a, b) => a.startTime - b.startTime);
-                                    let gapStart = 0, gapEnd = t + 1;
-                                    for (const c of trackCuts) { if (c.endTime <= t) gapStart = c.endTime; }
-                                    for (const c of trackCuts) { if (c.startTime > t) { gapEnd = c.startTime; break; } }
-                                    if (gapEnd - gapStart < 0.05) return;
-                                    const newCut = mkCut({ id: nextId(), name: `Cut ${cuts.length + 1}`, startTime: gapStart, endTime: gapEnd, track: ti });
+                                    const newCut = mkCut({ id: nextId(), name: `Cut ${cuts.length + 1}`, startTime: gap.start, endTime: gap.end, track: ti });
                                     addCuts([newCut]);
                                     setCurrentCutId(newCut.id);
-                                    setCurrentTime(gapStart);
+                                    setCurrentTime(gap.start);
                                 }}
                             >
                                 <div className="tl-track-label">

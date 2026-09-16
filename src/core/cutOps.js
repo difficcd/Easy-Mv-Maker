@@ -93,3 +93,31 @@ export function resizeCut(cuts, { cutId, edge, initialStart, initialEnd }, dt, p
     for (const o of others) if (end > o.startTime && initialEnd <= o.startTime) end = o.startTime;
     return { cuts: cuts.map(c => c.id === cutId ? { ...c, endTime: end } : c), snapAt: end };
 }
+
+/** Narrower than this and a gap is not worth a cut - it could not be grabbed to resize. */
+export const MIN_GAP = 0.05;
+
+/**
+ * The empty stretch of a track around a time, for a double-click to fill with a new cut.
+ *
+ * Null when a cut already covers the time, or when the gap is too narrow to hold one. The gap
+ * runs from the end of the last cut before the time (or zero) to the start of the first cut
+ * after it - or, with nothing after, a second past the click, so a cut on an empty track has a
+ * length rather than running to the end of time.
+ *
+ * @param {Array<{track: number, startTime: number, endTime: number}>} cuts
+ * @param {number} track
+ * @param {number} t
+ * @returns {{start: number, end: number} | null}
+ */
+export function gapAt(cuts, track, t) {
+    const onTrack = cuts.filter(c => c.track === track);
+    if (onTrack.some(c => t >= c.startTime && t < c.endTime)) return null;
+    let start = 0, end = Infinity;
+    for (const c of onTrack) {
+        if (c.endTime <= t && c.endTime > start) start = c.endTime;
+        if (c.startTime > t && c.startTime < end) end = c.startTime;
+    }
+    if (end === Infinity) end = t + 1;
+    return end - start < MIN_GAP ? null : { start, end };
+}

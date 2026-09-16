@@ -1382,11 +1382,9 @@ export default function App() {
                 const img = make((i + 1) / (n + 1));
                 const bitmapId = storeBitmap(img);
                 const st = A.endTime + i * dur;
-                newCuts.push({
-                    id: nextId(), name: `${A.name}~${i + 1}`, startTime: st, endTime: st + dur, track: A.track,
-                    layers: [{ id: 1, name: 'L1', type: 'layer', parentId: null, visible: true, redoStrokes: [], strokes: [{ id: nextId(), tool: 'paste', bitmapId, x: 0, y: 0 }] }],
-                    activeLayerId: 1, texts: [],
-                });
+                const nc = mkCut({ id: nextId(), name: `${A.name}~${i + 1}`, startTime: st, endTime: st + dur, track: A.track });
+                nc.layers[0].strokes.push({ id: nextId(), tool: 'paste', bitmapId, x: 0, y: 0 });
+                newCuts.push(nc);
                 setLoadProgress({ label: tr('중간 프레임 만드는 중'), done: i + 1, total: n });
                 await new Promise(r => setTimeout(r, 0)); // yield to the UI between frames so it does not look frozen
             }
