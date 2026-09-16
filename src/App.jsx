@@ -17,11 +17,11 @@ import { DocTabs } from './ui/DocTabs.jsx';
 import { CanvasStage, canvasCursor } from './ui/CanvasStage.jsx';
 import { DockRail, DockSlot, FloatingPanels, DockHint, ReopenRight } from './ui/PanelDock.jsx';
 import { tr, loadLang, saveLang, setLangValue } from './i18n';
-import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, patchLayer, nextLayerId, appendLayer, appendFolder, removeLayerTree, appendPoints } from './core/layerOps.js';
+import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, patchLayer, nextLayerId, appendLayer, appendFolder, removeLayerTree } from './core/layerOps.js';
 import { mkCut, firstCut } from './core/document.js';
 import { toggled, selectionAfterClick, cutsToCopy } from './core/cutSelection.js';
 import { closeLassoPath, lassoBounds, applyResize, cutOutPolygon, selectionStrokes, applyWarpDrag, paintedBounds } from './core/lassoOps.js';
-import { shapePoints } from './core/shapeStroke.js';
+import { TOOLS } from './tools/canvasTools.js';
 import { useTimelineGestures } from './hooks/useTimelineGestures.js';
 import { useTextDrag } from './hooks/useTextDrag.js';
 import { useLayerDnD } from './hooks/useLayerDnD.js';
@@ -1417,6 +1417,29 @@ export default function App() {
         commitStrokeToLayer(currentCutId, activeLayer.id, stroke, (strokes, st) => insertFill(strokes, st, region.overPaint));
     };
 
+    /**
+     * Everything a tool is allowed to touch, assembled per pointer event.
+     *
+     * The list is the point: a tool cannot reach past this into App, and what a new tool may
+     * need is a question with a written answer rather than a scroll through two thousand lines.
+     *
+     * `layer` is only resolved on the way down. A move does not need it - by then the stroke
+     * already knows which layer it belongs to, in gesture.target, fixed when it began in case
+     * the active layer changed underneath it.
+     */
+    const toolCtx = (e, pos, layer) => ({
+        e, pos, layer, tool, etool,
+        cut: currentCut, cutId: currentCutId,
+        gesture,
+        overlay: {
+            renderStroke: renderLiveStroke, scheduleStroke: scheduleLiveRender,
+            restartStroke: restartLiveStroke, renderLasso: renderLassoPreview,
+        },
+        tools: { curve, liquify, mosaic: mosaicTool },
+        newStroke, samplesOf,
+        commitStrokeToLayer, updLayers, floodFillAt,
+    });
+
     const startDraw = (e) => {
         // No drawing while panning with space or the middle button - canvas-area handles that.
         if (spaceDownRef.current || e.button === 1 || panningRef.current) return;
@@ -1513,61 +1536,7 @@ export default function App() {
 
         gesture.begin(e);
         if (tool !== 'move' && tool !== 'text' && selectedText) setSelectedText(null);
-
-        switch (etool) {
-            case 'lasso':
-                gesture.lasso.current = [pos];
-                renderLassoPreview();
-                break;
-            case 'pen':
-            case 'brush':
-            case 'pencil':
-            case 'soft':
-            case 'blur':
-            case 'marker': {
-                // Draw on the live overlay only — no layer-state writes per move (that was the lag).
-                gesture.stroke.current = newStroke(etool, [pos], e);
-                restartLiveStroke();
-                break;
-            }
-            case 'line':
-            case 'rect':
-            case 'ellipse': {
-                // Drag rulers: the start is pinned and only the end follows. The shape is rebuilt
-                // from those two corners on every move, so what gets stored is an ordinary stroke
-                // - it takes the brush, it boils with the layer, it erases and saves like any
-                // other line, and nothing downstream has to learn that a rectangle exists.
-                gesture.lineStart.current = pos;
-                gesture.stroke.current = newStroke('brush', shapePoints(etool, pos, pos) || [pos, { ...pos }], e);
-                restartLiveStroke();
-                break;
-            }
-            case 'mosaic': {
-                mosaicTool.begin(pos);
-                break;
-            }
-            case 'liquify': {
-                if (!liquify.begin(currentCut, activeLayer, pos)) gesture.end();
-                break;
-            }
-            case 'eraser': {
-                // Eraser must composite against the layer, so it stays on the layer-write path
-                // rather than the overlay. Through commitStrokeToLayer all the same, for the
-                // reveal: a pen stroke on a hidden layer shows the layer, and an eraser had
-                // been the one tool that did not - which is the harder of the two to notice,
-                // since an eraser leaves nothing to look for.
-                commitStrokeToLayer(currentCutId, gesture.target.current, newStroke(tool, [pos], e));
-                break;
-            }
-            case 'fill':
-                // A fill is a single act, not a drag.
-                gesture.drawing.current = false;
-                floodFillAt(pos, currentCut, activeLayer);
-                break;
-            case 'move':
-                gesture.drawing.current = false;
-                break;
-        }
+        TOOLS[etool]?.down?.(toolCtx(e, pos, activeLayer));
     };
 
     // Which resize handle the pointer is over, or null. Only used for the cursor, so it is set
@@ -1619,55 +1588,7 @@ export default function App() {
             return;
         }
 
-        switch (etool) {
-            case 'lasso':
-                if (gesture.lasso.current) { gesture.lasso.current.push(pos); renderLassoPreview(); }
-                break;
-            case 'move':
-                break;
-            case 'line':
-            case 'rect':
-            case 'ellipse': {
-                if (gesture.stroke.current && gesture.lineStart.current) {
-                    gesture.stroke.current.points = shapePoints(etool, gesture.lineStart.current, pos)
-                        || [gesture.lineStart.current, pos];
-                    renderLiveStroke(true); // the far corner moved, so redraw the whole thing
-                }
-                break;
-            }
-            case 'mosaic': {
-                mosaicTool.to(pos);
-                break;
-            }
-            case 'liquify': {
-                // Every sample, not just the last per frame: the push is path-dependent, and
-                // skipping samples straightens a curve the pen drew.
-                for (const p of samplesOf(e, pos)) liquify.to(p);
-                break;
-            }
-            case 'pen':
-            case 'brush':
-            case 'pencil':
-            case 'soft':
-            case 'blur':
-            case 'marker':
-            case 'eraser': {
-                const positions = samplesOf(e, pos);
-                if (gesture.stroke.current) {
-                    // Brush tools: append + repaint just the overlay (no React, no full-layer rebuild).
-                    for (const p of positions) gesture.stroke.current.points.push(p);
-                    scheduleLiveRender();
-                    break;
-                }
-                // Eraser: layer-write path (needs to composite against the layer). appendPoints
-                // replaces the last stroke rather than pushing into it, so nothing already in
-                // state is mutated.
-                updLayers(currentCutId, c => ({
-                    layers: patchLayer(c.layers, gesture.target.current, l => ({ strokes: appendPoints(l.strokes, positions) })),
-                }));
-                break;
-            }
-        }
+        TOOLS[etool]?.move?.(toolCtx(e, pos, null));
     };
 
     const stopDraw = () => {
