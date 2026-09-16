@@ -122,6 +122,14 @@ Running a drag on window listeners, so it survives the pointer leaving the eleme
 |---|---|
 | `dragOnWindow` | Listen for move until pointerup **or pointercancel**, then remove everything. Returns a stop function, which is also what a React effect wants as its cleanup. The cancel case is the one five hand-written copies all missed - a cancelled pointer never sends pointerup, so the move listener stayed for the session. |
 
+## `src/core/colour.js`
+
+Putting an alpha on a colour that came from the theme.
+
+| | |
+|---|---|
+| `withAlpha` | `colour` at `alpha`, in a form a canvas can parse: hex becomes rgba, an hsl/rgb function takes a slash alpha, one that already carries an alpha has it replaced rather than appended. Handling only hsl dropped the alpha silently for the stylesheet's hex defaults. |
+
 ## `src/core/cutClone.js`
 
 Copying a cut, including the pixels its strokes point at.

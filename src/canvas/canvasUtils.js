@@ -1,4 +1,5 @@
 import { tr } from '../i18n.js';
+import { withAlpha } from '../core/colour.js';
 // textLayout imports nothing of its own, so this cannot make a cycle.
 import { charProgress } from './textLayout.js';
 import { drawWarped, isWarped } from './warpRender.js';
@@ -1779,8 +1780,10 @@ export function flattenLayersInUiOrder(layers, parentId = null, out = []) {
 // That keeps on-canvas furniture such as selection outlines and paths on the theme colour.
 export const accentSoft = (alpha = 1) => {
     const v = getComputedStyle(document.documentElement).getPropertyValue('--accent-soft').trim() || '#7c8cff';
-    if (alpha >= 1) return v;
-    return v.startsWith('hsl(') ? v.replace(/\)$/, ` / ${alpha})`) : v;
+    // The alpha is applied by core/colour, which knows the hex the stylesheet's default is
+    // as well as the hsl the theme writes. This used to handle only hsl and drop the alpha
+    // silently for anything else.
+    return withAlpha(v, alpha);
 };
 
 // Which canvas a video import should land in. A vertical clip dropped into a landscape canvas
