@@ -2,7 +2,8 @@ import { Circle } from 'lucide-react';
 import React from 'react';
 import { ANIM_DEFAULT, LAYER_ANIM_DEFAULT } from '../canvas/canvasUtils';
 import { CAMERA_DEFAULT, CAMERA_PRESETS, resolveCamera } from '../core/camera.js';
-import { randomId } from '../core/ids.js';
+import { randomId } from '../core/ids.js';
+import { upsertKey, patchKey, removeKey, snapProgress } from '../core/keyframes.js';
 import { readStored, writeStored, arrayCodec } from '../core/persist.js';
 import { NumField } from './NumField';
 import { tr } from '../i18n';
@@ -176,20 +177,16 @@ export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCaptur
     const a = { ...LAYER_ANIM_DEFAULT, ...layer.anim };
     const [custom, setCustom] = React.useState(loadCustomPresets);
     const keys = Array.isArray(a.keys) ? a.keys : [];
-    const sortKeys = (arr) => [...arr].sort((x, y) => x.p - y.p);
-    const setKeys = (arr) => updLayerAnim(cut.id, layer.id, { keys: arr.length ? sortKeys(arr) : null });
-    // Add a key at the current playback position (progress through the cut), overwriting
-    // any key already sitting there.
+    // The list rules - sorted, one key per instant, null when empty - are core/keyframes; the
+    // panel only says which key and with what.
+    const setKeys = (list) => updLayerAnim(cut.id, layer.id, { keys: list });
+    // Add a key at the current playback position (progress through the cut), carrying the
+    // current transform, overwriting any key already sitting there.
     const addKeyHere = () => {
-        const p = Math.round(Math.max(0, Math.min(1, cutProgress)) * 100) / 100;
-        const cur = keys.find(k => Math.abs(k.p - p) < 0.005);
-        const val = { p, tx: a.tx || 0, ty: a.ty || 0, rot: a.rot || 0, scale: a.scale || 0, op: 1, ease: 'inout', easePower: 2 };
-        // The id is what lets React follow a key that changes position: the list is kept sorted,
-        // so editing a %  moves the row, and with an index for a key React would instead hand the
-        // focused input the next key's values mid-edit.
-        setKeys(cur ? keys.map(k => k === cur ? { ...k, ...val } : k) : [...keys, { id: randomId('k'), ...val }]);
+        const val = { tx: a.tx || 0, ty: a.ty || 0, rot: a.rot || 0, scale: a.scale || 0, op: 1, ease: 'inout', easePower: 2 };
+        setKeys(upsertKey(keys, snapProgress(cutProgress), val, () => randomId('k')));
     };
-    const updKey = (i, o) => setKeys(keys.map((k, j) => j === i ? { ...k, ...o } : k));
+    const updKey = (i, o) => setKeys(patchKey(keys, i, o));
     return (
         <div style={{ padding: '6px 8px', background: 'hsl(var(--ui-h) var(--ui-s) 10%)', borderTop: '1px solid hsl(var(--ui-h) var(--ui-s) 20%)', display: 'flex', flexDirection: 'column', gap: 5 }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -228,8 +225,8 @@ export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCaptur
                 <div style={R('#c9a')}
                     title={tr("재생 위치를 옮겨가며 '키 추가'를 누르면 그 사이가 자동으로 보간됩니다(트위닝). 키가 2개 이상이면 위의 이동/회전/크기 대신 키프레임이 적용됩니다.")}>
                     <span style={{ fontWeight: 700, flexShrink: 0 }}>{tr('키프레임')}</span>
-                    <button className="small-btn" onClick={addKeyHere}>+ {tr('키 추가')} ({Math.round(Math.max(0, Math.min(1, cutProgress)) * 100)}%)</button>
-                    {keys.length > 0 && <button className="small-btn" onClick={() => setKeys([])}>{tr('전체 삭제')}</button>}
+                    <button className="small-btn" onClick={addKeyHere}>+ {tr('키 추가')} ({Math.round(snapProgress(cutProgress) * 100)}%)</button>
+                    {keys.length > 0 && <button className="small-btn" onClick={() => setKeys(null)}>{tr('전체 삭제')}</button>}
                     {keys.length === 1 && <span style={{ color: '#e0a84e' }}>{tr('2개 이상부터 적용')}</span>}
                     {keys.length >= 2 && <span className="anim-field" style={{ color: '#5a8' }}><Circle size={7} fill="currentColor" /> {tr('{0}개', keys.length)}</span>}
                 </div>
@@ -242,7 +239,7 @@ export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCaptur
                                 onChange={e => updKey(i, { ease: e.target.value })} title={tr('이 키에서 다음 키까지의 가감속')}>
                                 {EASE_OPTS.map(([v, l]) => <option key={v} value={v}>{tr(l)}</option>)}
                             </select>
-                            <button className="small-btn" style={{ fontSize: 9, padding: '1px 5px' }} title={tr('삭제')} onClick={() => setKeys(keys.filter((_, j) => j !== i))}>✕</button>
+                            <button className="small-btn" style={{ fontSize: 9, padding: '1px 5px' }} title={tr('삭제')} onClick={() => setKeys(removeKey(keys, i))}>✕</button>
                         </div>
                         <div className="kf-card-body">
                             <NumIn label="X" value={k.tx || 0} onChange={v => updKey(i, { tx: v })} w={46} title={tr('가로 이동(px)')} />

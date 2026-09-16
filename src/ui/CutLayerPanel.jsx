@@ -3,7 +3,8 @@ import { Plus, FolderPlus, Trash2, Copy, CopyPlus, ClipboardPaste, Eye, EyeOff, 
 import { safeArray } from '../canvas/canvasUtils';
 import { CutAnimPanel, CameraPanel } from './AnimPanels';
 import { LayerRows } from './LayerRows';
-import { tr } from '../i18n';
+import { tr } from '../i18n';
+import { inReadingOrder } from '../core/cutSelection.js';
 
 // CUT / LAYER panel: the cut list, each cut's layer tree, cut animation and text list.
 // The rows of each tree are LayerRows; everything they need arrives as the `layerRows` bundle
@@ -58,7 +59,7 @@ export function CutLayerPanel({
                     a text is being edited, so switching back is where you left off. */}
                 <div className="cut-tab-body" hidden={showingText}>
                 <div className="cut-list">
-                    {[...cuts].sort((a, b) => (a.track || 0) - (b.track || 0) || a.startTime - b.startTime).map((cut, _i, _arr) => { const isCur = currentCutId === cut.id; const collapsed = collapsedCutIds.has(cut.id); const layerCount = cut.layers.filter(l => l.type === 'layer').length; const showTrackHeader = _i === 0 || (_arr[_i - 1].track || 0) !== (cut.track || 0); return (
+                    {inReadingOrder(cuts).map((cut, _i, _arr) => { const isCur = currentCutId === cut.id; const collapsed = collapsedCutIds.has(cut.id); const layerCount = cut.layers.filter(l => l.type === 'layer').length; const showTrackHeader = _i === 0 || (_arr[_i - 1].track || 0) !== (cut.track || 0); return (
                         <React.Fragment key={cut.id}>
                         {showTrackHeader && <div className="track-group-header">Track {cut.track || 0}</div>}
                         <div className={`cut-item${currentCutId === cut.id ? ' cut-active' : ''}${selectedCutIds.has(cut.id) && selectedCutIds.size > 1 ? ' cut-multi' : ''}`} onClick={e => handleCutClick(e, cut.id)}>
