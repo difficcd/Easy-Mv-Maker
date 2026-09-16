@@ -689,6 +689,18 @@ The selection chrome, drawn so it can be seen on anything and sized for the scre
 | `HANDLE_PX` | A handle's half-size on screen. |
 | `HANDLE_GRAB_PX` | The wider radius within which a press still takes a handle. |
 
+## `src/canvas/sceneRender.js`
+
+Compositing the evaluated scene onto the frame - what was the middle of paintFrame.
+
+| | |
+|---|---|
+| `drawScene` | Every cut's layers, bottom to top, under the cut's and the part's transform, with a floating selection's hole cut out of the layer it came from. Takes the cache's clip-group flattener and the gesture-hidden test as arguments. |
+| `drawSceneTexts` | Every cut's texts under the cut's transform; a text multiplies its own opacity with the cut's. |
+| `drawVideoOverlay` | The reference video fitted to the canvas and faded by its track opacity, alpha restored after. |
+| `drawOnionCut` | A neighbouring cut's visible layers, faint, bottom to top. |
+| `ONION_ALPHA` | How faint. |
+
 ## `src/canvas/shearSlices.js`
 
 One slice rule, shared by every warp that displaces pixels along an axis.

@@ -37,14 +37,13 @@ import { useLocalDocuments } from './hooks/useLocalDocuments.js';
 import { fetchAsset } from './core/api.js';
 import { PLAYBACK_RATES, RATE_DEFAULT, playbackRateCodec } from './core/playbackRate.js';
 import { scaleProjectTimes, bakePlan } from './core/timeScale.js';
-import { drawSwayed } from './canvas/swayRender.js';
+import { drawScene, drawVideoOverlay, drawOnionCut, drawSceneTexts } from './canvas/sceneRender.js';
 import { warpedOutline, warpedHandles } from './canvas/warpRender.js';
 import { drawMarquee, HANDLE_GRAB_PX } from './canvas/marquee.js';
 import { drawTextSelection, drawFloatingSelection, drawMotionPath } from './canvas/editChrome.js';
 import { createBitmapStore } from './canvas/bitmapStore.js';
 import { useLayerCache } from './hooks/useLayerCache.js';
 import { useShortcuts } from './hooks/useShortcuts.js';
-import { applyPartTransform, drawMaskedLayer } from './canvas/layerComposite.js';
 import { detachMedia, safeMediaSrc } from './core/mediaEl.js';
 import { useAutosave } from './hooks/useAutosave.js';
 import { useAudioTrack } from './hooks/useAudioTrack.js';
@@ -89,7 +88,7 @@ import { dragCut, resizeCut } from './core/cutOps.js';
 import {
     DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT,
     pointInPolygon, safeArray, hexToRgb, bucketFillTransparentRegion,
-    imageDataToDataURL, dataURLToImageData, drawStrokesOnCtx, sizeCanvas, scratchCanvas, flattenLayersInUiOrder, applyCutAnim, extractVideoFrames, fitRect, detectSceneCuts, curveToWave, morphPrepare,
+    imageDataToDataURL, dataURLToImageData, drawStrokesOnCtx, sizeCanvas, scratchCanvas, flattenLayersInUiOrder, extractVideoFrames, fitRect, detectSceneCuts, curveToWave, morphPrepare,
     targetCanvasFor, imageDataCanvas, seekTarget,
 } from './canvas/canvasUtils';
 
@@ -109,8 +108,6 @@ const PEN_TYPES = [
     { id: 'fill', label: 'Fill', Icon: PaintBucket },
 ];
 const BOIL_FPS = 10; // how many times a second the boiling-line motion advances
-/** How faint a neighbouring drawing is under the one being worked on. */
-const ONION_ALPHA = 0.35;
 const TIMELINE_MIN_SPAN = 240; // seconds of ruler even with nothing in the project
 const TIMELINE_TAIL_PAD = 60;  // empty room past the end, to drag into
 
@@ -2140,16 +2137,7 @@ export default function App() {
         // Video overlay track: drawn underneath everything. The <video> element is kept at time t by
         // the playback loop (playing) or a paused-seek effect.
         if (videoOverlay && t >= videoOverlay.startTime && t < videoOverlay.endTime) {
-            const v = videoElRef.current;
-            if (v && v.readyState >= 2) {
-                const r = fitRect(videoOverlay.w || v.videoWidth || CANVAS_W, videoOverlay.h || v.videoHeight || CANVAS_H, CANVAS_W, CANVAS_H);
-                // Restored rather than left set: everything drawn after this - the artwork, the
-                // text - would otherwise inherit the reference layer's fade.
-                const prevAlpha = ctx.globalAlpha;
-                ctx.globalAlpha = videoOverlay.opacity ?? 1;
-                try { ctx.drawImage(v, r.x, r.y, r.w, r.h); } catch { }
-                ctx.globalAlpha = prevAlpha;
-            }
+            drawVideoOverlay(ctx, videoElRef.current, videoOverlay, CANVAS_W, CANVAS_H, fitRect);
         }
 
         // Onion skin: the neighbouring drawings, faint, so a new one can be lined up against
@@ -2157,78 +2145,19 @@ export default function App() {
         if (!playing && primary && (onionPrev || onionNext)) {
             const { prev, next } = onionNeighbours(cuts, primary);
             for (const cut of [onionPrev ? prev : null, onionNext ? next : null]) {
-                if (!cut) continue;
-                const order = flattenLayersInUiOrder(cut.layers || []).filter(l => l.type === 'layer' && l.visible !== false);
-                for (let i = order.length - 1; i >= 0; i--) {
-                    const lc = ensureLayerCanvas(cut.id, order[i]);
-                    if (lc) { ctx.globalAlpha = ONION_ALPHA; ctx.drawImage(lc, 0, 0); ctx.globalAlpha = 1.0; }
-                }
+                if (cut) drawOnionCut(ctx, cut, ensureLayerCanvas, flattenLayersInUiOrder);
             }
         }
 
-        scene.cuts.forEach(({ cut: ac, anim, groups }) => {
-            ctx.save();
-            if (anim) {
-                ctx.globalAlpha = anim.alpha;
-                applyCutAnim(ctx, anim, CANVAS_W, CANVAS_H);
-            }
-            // Draw bottom -> top so the topmost layer (UI top) is visually on top.
-            for (let i = groups.length - 1; i >= 0; i--) {
-                const group = groups[i];
-                const l = group.base;
-                const layerCanvas = flattenClipGroup(ac.id, group);
-                if (!layerCanvas) continue; // frame still decoding (part-scoped memory); will repaint when ready
-
-                // Per-layer ("part") transform nests inside the cut transform. The composition
-                // order - and why rotation happens about the pivot rather than the origin - is
-                // in canvas/layerComposite, where it is a matrix and can be checked.
-                const la = group.anim;
-                ctx.save();
-                applyPartTransform(ctx, la);
-
-                const shouldMask = selection?.maskBitmapId && selection.cutId === ac.id && selection.sourceLayerId === l.id;
-                const maskEntry = shouldMask ? bitmapStoreRef.current.get(selection.maskBitmapId) : null;
-                const mb = maskEntry?.imageBitmap;
-                const mi = maskEntry?.imageData;
-
-                // A layer being dragged or liquified is drawn by the overlay instead, with the
-                // original hidden, which prevents a ghost trailing behind it.
-                if (hiddenByGesture(ac.id, l.id)) { ctx.restore(); continue; }
-                if (la?.swayProfile && (!shouldMask || (!mb && !mi))) {
-                    drawSwayed(ctx, layerCanvas, {
-                        profile: la.swayProfile, axis: la.swayAxis, disp: la.swayDisp,
-                        cw: CANVAS_W, ch: CANVAS_H,
-                    });
-                } else if (!shouldMask || (!mb && !mi)) {
-                    ctx.drawImage(layerCanvas, 0, 0);
-                } else {
-                    // imageDataCanvas is a different shared canvas from the mask scratch, so
-                    // nesting them is safe - which is why they are separate helpers rather than
-                    // two slots of one.
-                    drawMaskedLayer(ctx, layerCanvas, mb || imageDataCanvas(mi), selection,
-                        scratchCanvas(maskScratchRef, CANVAS_W, CANVAS_H));
-                }
-                ctx.restore();
-            }
-            ctx.restore();
+        // Every cut's layers, bottom to top, under the cut's and the part's transform, with the
+        // floating selection's hole cut out of the layer it was lifted from: canvas/sceneRender.
+        drawScene(ctx, scene, {
+            cw: CANVAS_W, ch: CANVAS_H, flattenClipGroup, hiddenByGesture, selection,
+            bitmapEntry: (id) => bitmapStoreRef.current.get(id), maskScratchRef,
         });
 
         // Text objects live outside paint layers ("text layer").
-        scene.cuts.forEach(({ anim, texts }) => {
-            ctx.save();
-            // The alpha is not set here the way it is for the artwork: a text has its own
-            // opacity, so drawTextObject multiplies the two rather than being handed a context
-            // that already has one applied.
-            applyCutAnim(ctx, anim, CANVAS_W, CANVAS_H);
-            for (const { text, anim: ta } of texts) {
-                drawTextObject(ctx, text, {
-                    anim: ta,
-                    box: textNeedsBox(text, ta) ? measureTextBox(text) : null,
-                    alpha: anim ? anim.alpha : 1,
-                });
-            }
-            ctx.restore();
-        });
+        drawSceneTexts(ctx, scene, { cw: CANVAS_W, ch: CANVAS_H, drawTextObject, textNeedsBox, measureTextBox });
         if (camAt) ctx.restore();
     }, [cuts, currentCutId, currentCut, onionPrev, onionNext, selection, layerCanvasCache, frameDecodeTick, videoOverlay, boilTick, dragTick, transparentBg]);
 
