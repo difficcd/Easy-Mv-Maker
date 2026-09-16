@@ -46,6 +46,8 @@ import { drawTextSelection, drawFloatingSelection, drawMotionPath, drawMosaicMar
 import { createBitmapStore } from './canvas/bitmapStore.js';
 import { regionBounds, rectBounds, mosaic, blurMaskedRegion } from './canvas/pixelEffects.js';
 import { useLayerCache } from './hooks/useLayerCache.js';
+import { useLiveOverlay } from './hooks/useLiveOverlay.js';
+import { catmullThrough } from './core/catmullRom.js';
 import { useShortcuts } from './hooks/useShortcuts.js';
 import { usePanelVisibility } from './hooks/usePanelVisibility.js';
 import { useAppearance } from './hooks/useAppearance.js';
@@ -317,7 +319,6 @@ export default function App() {
     // local save writes it. Owned here because the two hooks cannot both create it.
     const localNameRef = useRef('');
     const canvasRef = useRef(null);
-    const liveCanvasRef = useRef(null);   // overlay for the in-progress stroke (drawn without touching layer state)
     const liveStrokeRef = useRef(null);   // the stroke currently being drawn
     const liveClearPendingRef = useRef(false); // after a commit, clear the overlay only once the layer cache has drawn the new stroke,
     // which avoids a flicker or a vanishing line
@@ -335,8 +336,6 @@ export default function App() {
         return !!q && q.cutId === cutId && q.layerId === layerId;
     };
     const [dragTick, setDragTick] = useState(0); // signal to redraw with the original hidden while dragging
-    const liveDrawnRef = useRef(0);       // how many points are already on the live overlay, so only the tail is appended
-    const liveRafRef = useRef(0);
     const boilPhaseRef = useRef(0);       // boiling-motion phase; advancing it over time makes the strokes shimmer in place
     const [boilTick, setBoilTick] = useState(0); // phase ticker so the boiling motion previews even while paused for editing
     const curveAnchorsRef = useRef(null); // curve tool: the anchor points tapped out so far
@@ -1201,35 +1200,12 @@ export default function App() {
     // reads as a doubled or smeared line and looks like a rendering bug rather than a missing
     // call.
 
-    /** The overlay's 2D context, or null before the canvas has mounted. */
-    const liveCtx = () => liveCanvasRef.current?.getContext('2d') ?? null;
-
-    /** Wipe it. Safe to call when there is no overlay yet. */
-    const clearLiveOverlay = () => {
-        const lc = liveCanvasRef.current;
-        if (lc) lc.getContext('2d').clearRect(0, 0, lc.width, lc.height);
-    };
-
-    // how long the stroke is.
-    const renderLiveStroke = (full = false) => {
-        const ctx = liveCtx(); if (!ctx) return;
-        const st = liveStrokeRef.current;
-        if (!st) { clearLiveOverlay(); liveDrawnRef.current = 0; return; }
-        const n = st.points.length;
-        // Cases needing a full redraw, such as the line and curve tools where the earlier part
-        // of the stroke changes.
-        if (full || liveDrawnRef.current === 0 || n < liveDrawnRef.current) {
-            clearLiveOverlay();
-            drawStrokesOnCtx(ctx, [st], false, bitmapStoreRef.current);
-            liveDrawnRef.current = n;
-            return;
-        }
-        if (n === liveDrawnRef.current) return;
-        // Tail only: starting slightly before the last drawn point hides the seam.
-        const from = Math.max(0, liveDrawnRef.current - 3);
-        drawStrokesOnCtx(ctx, [{ ...st, points: st.points.slice(from) }], false, bitmapStoreRef.current);
-        liveDrawnRef.current = n;
-    };
+    // The overlay canvas and the incremental drawing of the stroke on it - see the hook for
+    // what makes that incremental part delicate.
+    const {
+        overlayRef: liveCanvasRef, ctx: liveCtx, clear: clearLiveOverlay,
+        renderStroke: renderLiveStroke, schedule: scheduleLiveRender, restart: restartLiveStroke,
+    } = useLiveOverlay({ strokeRef: liveStrokeRef, bitmapStoreRef, drawStrokes: drawStrokesOnCtx });
     // The loop as it is drawn, on the overlay. Line width in screen pixels, so it is as visible
     // zoomed out as zoomed in.
     const renderLassoPreview = () => {
@@ -1253,29 +1229,7 @@ export default function App() {
         }
     };
 
-    // Coalesce to one draw per frame - pointer events arrive far more often than frames.
-    const scheduleLiveRender = () => {
-        if (liveRafRef.current) return;
-        liveRafRef.current = requestAnimationFrame(() => { liveRafRef.current = 0; renderLiveStroke(); });
-    };
-    // Curve tool: densely samples a Catmull-Rom spline through the anchors that were tapped.
-    const catmullThrough = (pts, seg = 16) => {
-        if (!pts || pts.length < 3) return (pts || []).slice();
-        const at = i => pts[Math.max(0, Math.min(pts.length - 1, i))];
-        const out = [];
-        for (let i = 0; i < pts.length - 1; i++) {
-            const p0 = at(i - 1), p1 = at(i), p2 = at(i + 1), p3 = at(i + 2);
-            for (let t = 0; t < seg; t++) {
-                const s = t / seg, s2 = s * s, s3 = s2 * s;
-                const x = 0.5 * ((2 * p1.x) + (-p0.x + p2.x) * s + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * s2 + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * s3);
-                const y = 0.5 * ((2 * p1.y) + (-p0.y + p2.y) * s + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * s2 + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * s3);
-                const pr = (p1.pressure ?? 0.5) + ((p2.pressure ?? 0.5) - (p1.pressure ?? 0.5)) * s;
-                out.push({ x, y, pressure: pr });
-            }
-        }
-        out.push(at(pts.length - 1));
-        return out;
-    };
+    // Curve tool: the tapped anchors resampled into a dense ordinary stroke (core/catmullRom).
     const curveStrokeFromAnchors = (pts) => ({ id: nextId(), tool: 'brush', color, opacity, size: brushSize, points: catmullThrough(pts) });
     const renderCurvePreview = () => {
         const ctx = liveCtx(); if (!ctx) return;
@@ -1664,7 +1618,7 @@ export default function App() {
             case 'marker': {
                 // Draw on the live overlay only — no layer-state writes per move (that was the lag).
                 liveStrokeRef.current = newStroke(etool, [pos], e);
-                liveDrawnRef.current = 0; renderLiveStroke(true);
+                restartLiveStroke();
                 break;
             }
             case 'line':
@@ -1676,7 +1630,7 @@ export default function App() {
                 // other line, and nothing downstream has to learn that a rectangle exists.
                 lineStartRef.current = pos;
                 liveStrokeRef.current = newStroke('brush', shapePoints(etool, pos, pos) || [pos, { ...pos }], e);
-                liveDrawnRef.current = 0; renderLiveStroke(true);
+                restartLiveStroke();
                 break;
             }
             case 'mosaic': {
@@ -2131,7 +2085,7 @@ export default function App() {
             liveClearPendingRef.current = false;
             clearLiveOverlay();
         }
-    }, [layerCanvasCache]);
+    }, [layerCanvasCache, clearLiveOverlay]);
 
     // Every way the timeline can be pointed at - scrub, marquee, middle-click pan, one-finger
     // pan/tap, two-finger pinch - lives in useTimelineGestures, where the overlaps between them
