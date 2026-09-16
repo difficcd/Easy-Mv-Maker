@@ -17,7 +17,7 @@ import { ProjectPicker, ProgressOverlay, SettingsModal, HelpModal, VideoImportMo
 import { tr, loadLang, saveLang, setLangValue } from './i18n';
 import { moveLayer } from './core/layerOps.js';
 import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, patchLayer } from './core/layerOps.js';
-import { closeLassoPath, lassoBounds, applyResize, cutOutPolygon } from './core/lassoOps.js';
+import { closeLassoPath, lassoBounds, applyResize, cutOutPolygon, selectionStrokes } from './core/lassoOps.js';
 import { shapePoints } from './core/shapeStroke.js';
 import { useTimelineGestures } from './hooks/useTimelineGestures.js';
 import { fmt, parseClock } from './core/timeCode.js';
@@ -32,6 +32,7 @@ import { fetchAsset } from './core/api.js';
 import { PLAYBACK_RATES, RATE_DEFAULT, playbackRateCodec } from './core/playbackRate.js';
 import { scaleProjectTimes, bakePlan } from './core/timeScale.js';
 import { drawSwayed } from './canvas/swayRender.js';
+import { drawWarped } from './canvas/warpRender.js';
 import { applyPartTransform, drawMaskedLayer } from './canvas/layerComposite.js';
 import { detachMedia, safeMediaSrc } from './core/mediaEl.js';
 import { useAutosave } from './hooks/useAutosave.js';
@@ -600,25 +601,9 @@ export default function App() {
         if (!entry?.imageData && !entry?.imageBitmap) { cancelSelection(); return; }
         if (!maskEntry?.imageData && !maskEntry?.imageBitmap) { cancelSelection(); return; }
 
-        const px = Math.round(sel.x);
-        const py = Math.round(sel.y);
-        const tx = Math.round(sel.tx);
-        const ty = Math.round(sel.ty);
-        const tw = Math.max(1, Math.round(sel.tw));
-        const th = Math.max(1, Math.round(sel.th));
-
+        const { erase, paste } = selectionStrokes(sel, nextId(), nextId());
         updLayers(cutId, c => ({
-            layers: c.layers.map(l => {
-                if (l.id !== sourceLayerId) return l;
-                return {
-                    ...l,
-                    strokes: [
-                        ...l.strokes,
-                        { id: nextId(), tool: 'eraseBitmap', bitmapId: maskBitmapId, x: px, y: py },
-                        { id: nextId(), tool: 'paste', bitmapId, x: tx, y: ty, w: tw, h: th },
-                    ]
-                };
-            })
+            layers: c.layers.map(l => l.id !== sourceLayerId ? l : { ...l, strokes: [...l.strokes, erase, paste] }),
         }));
 
         cancelSelection();
@@ -635,15 +620,12 @@ export default function App() {
         const maskEntry = bitmapStoreRef.current.get(sel.maskBitmapId);
         if (!entry?.imageData && !entry?.imageBitmap) { cancelSelection(); return; }
         if (!maskEntry?.imageData && !maskEntry?.imageBitmap) { cancelSelection(); return; }
-        const px = Math.round(sel.x), py = Math.round(sel.y);
-        const tx = Math.round(sel.tx), ty = Math.round(sel.ty);
-        const tw = Math.max(1, Math.round(sel.tw)), th = Math.max(1, Math.round(sel.th));
+        const { erase, paste } = selectionStrokes(sel, nextId(), nextId());
         const cut = cuts.find(c => c.id === sel.cutId);
         const newId = cut ? Math.max(...cut.layers.map(l => l.id), 0) + 1 : 1;
         updLayers(sel.cutId, c => {
-            const layers = patchLayer(c.layers, sel.sourceLayerId,
-                l => ({ strokes: [...l.strokes, { id: nextId(), tool: 'eraseBitmap', bitmapId: sel.maskBitmapId, x: px, y: py }] }));
-            const partLayer = { id: newId, name: tr('파츠 {0}', newId), type: 'layer', parentId: null, visible: true, redoStrokes: [], strokes: [{ id: nextId(), tool: 'paste', bitmapId: sel.bitmapId, x: tx, y: ty, w: tw, h: th }] };
+            const layers = patchLayer(c.layers, sel.sourceLayerId, l => ({ strokes: [...l.strokes, erase] }));
+            const partLayer = { id: newId, name: tr('파츠 {0}', newId), type: 'layer', parentId: null, visible: true, redoStrokes: [], strokes: [paste] };
             return { layers: [...layers, partLayer], activeLayerId: newId };
         });
         cancelSelection();
@@ -2854,8 +2836,11 @@ export default function App() {
             const tw = Math.max(1, Math.round(selection.tw));
             const th = Math.max(1, Math.round(selection.th));
 
-            if (bmp) ctx.drawImage(bmp, tx, ty, tw, th);
-            else if (img) ctx.drawImage(imageDataCanvas(img), tx, ty, tw, th);
+            // Drawn exactly as the committed paste will be, warp included - the preview is the
+            // only feedback the sliders have. The dashed box and its handles stay on the unwarped
+            // rectangle: that is what the drag moves and resizes, and the warp is applied to it.
+            const src = bmp || (img && imageDataCanvas(img));
+            if (src) drawWarped(ctx, src, src.width, src.height, { x: tx, y: ty, w: tw, h: th, skew: selection.skew, bend: selection.bend });
 
             ctx.save();
             ctx.strokeStyle = accentSoft();
@@ -3716,6 +3701,16 @@ export default function App() {
                     {selection && (
                         <div className="mode-group">
                             <span className="mode-label">{tr('선택 영역')}</span>
+                            {/* Skew and bend, -100..100%. Sliders rather than number fields: the
+                                value means nothing in itself and the eye is on the canvas. */}
+                            {[['skew', tr('기울기')], ['bend', tr('곡률')]].map(([key, label]) => (
+                                <label key={key} className="mode-slider" title={tr('드래그해 조정, 두 번 눌러 0으로')}>
+                                    <span>{label}</span>
+                                    <input type="range" min="-100" max="100" value={Math.round((selection[key] || 0) * 100)}
+                                        onChange={e => setSelection(s => s && ({ ...s, [key]: +e.target.value / 100 }))}
+                                        onDoubleClick={() => setSelection(s => s && ({ ...s, [key]: 0 }))} />
+                                </label>
+                            ))}
                             <button className="button button-primary" onClick={extractSelectionToPart} style={{ height: 26, padding: '0 10px' }} title={tr('선택 영역을 별도 레이어(파츠)로 분리해 애니메이션')}>{tr('파츠로 분리')}</button>
                             <button className="button" onClick={copyLassoSelection} style={{ height: 26, padding: '0 10px' }} title={tr('선택 영역 복사 (다른 컷/레이어에 붙여넣기)')}>{tr('복사')}</button>
                             <button className="button" onClick={commitSelection} style={{ height: 26, padding: '0 10px' }} title={tr('제자리에 적용(이동/크기)')}>{tr('완료')}</button>

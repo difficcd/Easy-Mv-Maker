@@ -94,6 +94,8 @@ const EN = {
     '원': 'Oval',
     '드래그한 타원': 'An ellipse from the drag',
     '드래그로 원·타원': 'Drag for a circle or ellipse',
+    '곡률': 'Bend',
+    '드래그해 조정, 두 번 눌러 0으로': 'Drag to adjust, double-tap to reset',
     '색을 뿌립니다': 'Sprays colour',
     '부드럽게 뿌리는 에어브러시': 'Soft-spray airbrush',
     '그려진 걸 퍼뜨립니다': 'Smudges what is already drawn',

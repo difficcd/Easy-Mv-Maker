@@ -154,3 +154,32 @@ export function cutOutPolygon({ layer, poly, minX, minY, w, h, makeImageData, in
     }
     return { selection, eraseMask, hasContent };
 }
+
+/**
+ * The two strokes that put a floating selection back into a layer: a hole where it was lifted
+ * from, and the pixels where they were dropped.
+ *
+ * Committing in place and extracting to a part both need exactly this pair, and each had its
+ * own copy of the rounding - which is how one of them would have grown the skew and bend fields
+ * and the other not. The hole never carries them: it is where the pixels *were*, and that was a
+ * plain rectangle.
+ *
+ * Skew and bend are written only when set. A paste made with neither is byte-identical to one
+ * made before the fields existed, so old projects and old builds are unaffected.
+ *
+ * @param {{x:number,y:number,tx:number,ty:number,tw:number,th:number,bitmapId:number,maskBitmapId:number,skew?:number,bend?:number}} sel
+ * @param {number} eraseId id for the hole
+ * @param {number} pasteId id for the pixels
+ * @returns {{erase: object, paste: object}}
+ */
+export function selectionStrokes(sel, eraseId, pasteId) {
+    const erase = { id: eraseId, tool: 'eraseBitmap', bitmapId: sel.maskBitmapId, x: Math.round(sel.x), y: Math.round(sel.y) };
+    const paste = {
+        id: pasteId, tool: 'paste', bitmapId: sel.bitmapId,
+        x: Math.round(sel.tx), y: Math.round(sel.ty),
+        w: Math.max(1, Math.round(sel.tw)), h: Math.max(1, Math.round(sel.th)),
+    };
+    if (sel.skew) paste.skew = sel.skew;
+    if (sel.bend) paste.bend = sel.bend;
+    return { erase, paste };
+}

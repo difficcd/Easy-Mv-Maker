@@ -4,7 +4,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { closeLassoPath, lassoBounds, applyResize, MIN_SELECTION_SIZE } from '../src/core/lassoOps.js';
+import { closeLassoPath, lassoBounds, applyResize, MIN_SELECTION_SIZE, selectionStrokes } from '../src/core/lassoOps.js';
 import { pointInPolygon } from '../src/canvas/canvasUtils.js';
 
 const P = (x, y) => ({ x, y });
@@ -148,4 +148,27 @@ test('applyResize: does not mutate the selection it started from', () => {
     const before = { ...SEL };
     applyResize('nw', SEL, 30, 30);
     assert.deepEqual(SEL, before);
+});
+
+test('selectionStrokes: a hole where it was lifted, pixels where it was dropped', () => {
+    const sel = { x: 10.4, y: 20.6, tx: 30.5, ty: 40.4, tw: 50.5, th: 60.5, bitmapId: 7, maskBitmapId: 8 };
+    const { erase, paste } = selectionStrokes(sel, 1, 2);
+    assert.deepEqual(erase, { id: 1, tool: 'eraseBitmap', bitmapId: 8, x: 10, y: 21 });
+    assert.deepEqual(paste, { id: 2, tool: 'paste', bitmapId: 7, x: 31, y: 40, w: 51, h: 61 });
+});
+
+test('selectionStrokes: a selection dragged to nothing still pastes one pixel', () => {
+    const { paste } = selectionStrokes({ x: 0, y: 0, tx: 0, ty: 0, tw: 0.2, th: 0, bitmapId: 1, maskBitmapId: 2 }, 1, 2);
+    assert.equal(paste.w, 1); assert.equal(paste.h, 1);
+});
+
+test('selectionStrokes: skew and bend ride on the paste, and only when set', () => {
+    // A paste with neither must be byte-identical to one made before the fields existed, so old
+    // projects round-trip unchanged and the file does not grow a `skew: 0` on every paste.
+    const base = { x: 0, y: 0, tx: 0, ty: 0, tw: 10, th: 10, bitmapId: 1, maskBitmapId: 2 };
+    assert.equal('skew' in selectionStrokes(base, 1, 2).paste, false);
+    assert.equal('skew' in selectionStrokes({ ...base, skew: 0, bend: 0 }, 1, 2).paste, false);
+    const { erase, paste } = selectionStrokes({ ...base, skew: 0.3, bend: -0.5 }, 1, 2);
+    assert.equal(paste.skew, 0.3); assert.equal(paste.bend, -0.5);
+    assert.equal('skew' in erase, false, 'the hole is where the pixels were: a plain rectangle');
 });
