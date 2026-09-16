@@ -255,6 +255,15 @@ Lasso selection: closing the path, bounding it, lifting the pixels.
 | `MIN_SELECTION_SIZE` | Smallest a selection may be dragged to, in pixels. Below this it is impossible to grab again. |
 | `selectionStrokes` | The erase-hole and paste strokes that put a floating selection back into a layer. Skew and bend ride on the paste, and only when set, so an unadjusted paste is byte-identical to one from before the fields existed. |
 
+## `src/core/recordClock.js`
+
+Which frame a recording should take next (#156).
+
+| | |
+|---|---|
+| `nextRecordFrame` | Quantise the playback clock to the export grid: the next frame index and the exact time to paint for it, or null while the grid has not advanced. Falling behind skips to the latest step rather than replaying missed ones, because audio is the master clock and drift is worse than a flicker. |
+| `EXPORT_FPS` | Frames per second of a recorded video, and the grid the paint is quantised to. |
+
 ## `src/core/shapeStroke.js`
 
 Ruler shapes as points, so a rectangle or an ellipse is an ordinary stroke.
