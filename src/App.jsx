@@ -45,6 +45,7 @@ import { drawTextSelection, drawFloatingSelection, drawMotionPath } from './canv
 import { createBitmapStore } from './canvas/bitmapStore.js';
 import { regionBounds, rectBounds, mosaic, blurMaskedRegion } from './canvas/pixelEffects.js';
 import { useLayerCache } from './hooks/useLayerCache.js';
+import { useGesture } from './hooks/useGesture.js';
 import { useLiveOverlay } from './hooks/useLiveOverlay.js';
 import { useLiquifyTool } from './hooks/useLiquifyTool.js';
 import { useCurveTool } from './hooks/useCurveTool.js';
@@ -320,17 +321,15 @@ export default function App() {
     // local save writes it. Owned here because the two hooks cannot both create it.
     const localNameRef = useRef('');
     const canvasRef = useRef(null);
-    const liveStrokeRef = useRef(null);   // the stroke currently being drawn
-    const liveClearPendingRef = useRef(false); // after a commit, clear the overlay only once the layer cache has drawn the new stroke,
-    // which avoids a flicker or a vanishing line
-    const lineStartRef = useRef(null);    // start point of the line tool
-    const drawTargetLayerRef = useRef(null); // the layer id this stroke will commit to, in case the active layer changes under us
-    const layerDragRef = useRef(null);    // while dragging everything with the move tool
+    // One pointer gesture at a time: the stroke being drawn, the lasso loop, the layers or the
+    // selection being dragged, the path being recorded. All refs - a pointer move arrives far
+    // more often than a frame, and re-rendering on each one is what made the lasso miss the pen.
+    const gesture = useGesture({ canvasRef });
     // While the liquify brush is down: the layer's pixels being pushed around, and the canvas
     // the overlay shows them from. The layer itself is hidden until the pen lifts.
     /** Layers a gesture is drawing on the overlay instead, so the composite must skip them. */
     const hiddenByGesture = (cutId, layerId) => {
-        const d = layerDragRef.current;
+        const d = gesture.layerDrag.current;
         if (d && d.cutId === cutId && d.layerIds.includes(layerId)) return true;
         const q = liquify.ref.current;
         return !!q && q.cutId === cutId && q.layerId === layerId;
@@ -338,7 +337,6 @@ export default function App() {
     const [dragTick, setDragTick] = useState(0); // signal to redraw with the original hidden while dragging
     const boilPhaseRef = useRef(0);       // boiling-motion phase; advancing it over time makes the strokes shimmer in place
     const [boilTick, setBoilTick] = useState(0); // phase ticker so the boiling motion previews even while paused for editing
-    const isDrawing = useRef(false);
     const timelineRef = useRef(null);
 
     // Which panels are on screen, and the Tab that folds them all away and puts them back.
@@ -357,10 +355,6 @@ export default function App() {
     const [canvasSize, setCanvasSize] = useState({ w: CANVAS_W_DEFAULT, h: CANVAS_H_DEFAULT });
     const CANVAS_W = canvasSize.w, CANVAS_H = canvasSize.h;
     const [copiedCut, setCopiedCut] = useState(null);
-    // The loop being drawn. A ref and the overlay, not state: a lasso is a pointer gesture like
-    // a stroke, and setting state on every move meant a React render plus a full repaint per
-    // sample - which is why the loop could not keep up with the pen and often missed (#lasso).
-    const lassoRef = useRef(null);
     const [selection, setSelection] = useState(null);
     const [textEdit, setTextEdit] = useState(null);
     const [selectedText, setSelectedText] = useState(null);
@@ -384,8 +378,6 @@ export default function App() {
     const maskScratchRef = useRef(null);
     const dataUrlCacheRef = useRef(new Map()); // id -> {imageData, url}; avoids re-encoding bitmaps each autosave
     const liveRef = useRef({}); // latest {cuts, copiedCut, selection} for safe bitmap GC from effects
-    const selectionDragRef = useRef(null);
-    const activePointerIdRef = useRef(null);
     const textAreaRef = useRef(null);
     // Which document is loaded, as a number that changes whenever the whole thing is replaced.
     //
@@ -434,7 +426,6 @@ export default function App() {
     const [pathCapture, setPathCapture] = useState(null); // {cutId, layerId} while recording a motion path
     // {cutId, layerId} while the sway profile is being dragged on the canvas rather than typed.
     const [spineEdit, setSpineEdit] = useState(null);
-    const pathPtsRef = useRef(null);
     const [cameraCapture, setCameraCapture] = useState(null); // {cutId} while drawing a camera path
 
 
@@ -456,9 +447,9 @@ export default function App() {
 
     const cancelSelection = () => {
         setSelection(null);
-        lassoRef.current = null;
+        gesture.lasso.current = null;
         clearLiveOverlay();
-        selectionDragRef.current = null;
+        gesture.selectionDrag.current = null;
     };
 
     // The strokes that put a selection back, or null - with the selection cancelled - if either
@@ -555,7 +546,7 @@ export default function App() {
     const historySnapshot = useMemo(() => ({ cuts, audioData, numTracks }), [cuts, audioData, numTracks]);
     const { undo: globalUndo, redo: globalRedo, record: recordHistory, entries: historyEntries } = useHistory({
         snapshot: historySnapshot,
-        shouldSkip: () => isDrawing.current || isDraggingOrResizingRef.current || !!selectionDragRef.current,
+        shouldSkip: () => gesture.drawing.current || isDraggingOrResizingRef.current || !!gesture.selectionDrag.current,
         apply: (snap) => {
             dispatchCuts(replaceCuts(snap.cuts));
             dispatchMedia(setAudioClip(snap.audioData ?? null));
@@ -1007,7 +998,7 @@ export default function App() {
     const { savedAt: autoSavedAt, error: autosaveErr } = useAutosave({
         doc: autosaveDoc,
         ready: () => didRecoverRef.current,
-        busy: () => isDrawing.current || isDraggingOrResizingRef.current,
+        busy: () => gesture.drawing.current || isDraggingOrResizingRef.current,
         build: () => {
             gcBitmaps();                       // reclaim orphaned bitmaps before encoding
             return buildData(true, null, true); // IDB stores frames and audio as Blobs natively
@@ -1201,19 +1192,19 @@ export default function App() {
     const {
         overlayRef: liveCanvasRef, ctx: liveCtx, clear: clearLiveOverlay,
         renderStroke: renderLiveStroke, schedule: scheduleLiveRender, restart: restartLiveStroke,
-    } = useLiveOverlay({ strokeRef: liveStrokeRef, bitmapStoreRef, drawStrokes: drawStrokesOnCtx });
+    } = useLiveOverlay({ strokeRef: gesture.stroke, bitmapStoreRef, drawStrokes: drawStrokesOnCtx });
     // The loop as it is drawn, on the overlay. Line width in screen pixels, so it is as visible
     // zoomed out as zoomed in.
     const renderLassoPreview = () => {
         const ctx = liveCtx(); if (!ctx) return;
         clearLiveOverlay();
-        const pts = lassoRef.current; if (!pts || pts.length === 0) return;
+        const pts = gesture.lasso.current; if (!pts || pts.length === 0) return;
         drawMarquee(ctx, pts, view.zoom);
     };
     // Move preview: the shifted result is drawn on the overlay while paintFrame hides the
     // original. It has to draw once on press too, or the screen flashes empty for a moment.
     const renderLayerDragPreview = () => {
-        const d = layerDragRef.current; if (!d) return;
+        const d = gesture.layerDrag.current; if (!d) return;
         const c2 = liveCtx(); if (!c2) return;
         const cut = cuts.find(c => c.id === d.cutId); if (!cut) return;
         clearLiveOverlay();
@@ -1236,7 +1227,7 @@ export default function App() {
         clearLiveOverlay();
         // The target was fixed when the gesture began. If somehow it was not, resolve one the
         // way startDraw does rather than trusting activeLayerId, which can name a folder.
-        const layerId = drawTargetLayerRef.current || resolveDrawLayer(currentCut)?.id;
+        const layerId = gesture.target.current || resolveDrawLayer(currentCut)?.id;
         if (layerId == null) return;
         commitStrokeToLayer(currentCutId, layerId, st);
         if (st.tool !== 'eraser') noteColorUsed(st.color);
@@ -1246,7 +1237,7 @@ export default function App() {
     // raster data.
     const applyBlurStroke = (st) => {
         const cut = currentCut;
-        const layer = cut?.layers.find(l => l.id === drawTargetLayerRef.current);
+        const layer = cut?.layers.find(l => l.id === gesture.target.current);
         if (!cut || !layer) return;
         const src = ensureLayerCanvas(cut.id, layer); if (!src) return;
         const rad = Math.max(2, st.size);
@@ -1361,30 +1352,13 @@ export default function App() {
     // setPointerCapture needs the try/catch. It throws when the pointer id is already gone -
     // optional chaining does not help, that guards a missing method, not a throw - and an
     // uncaught throw out of a pointerdown handler takes the whole app down. That happened.
-    const beginGesture = (e) => {
-        // Drawing means the canvas is what is being worked on. Leaving focus in the size box - a
-        // very ordinary place for it to be - sent the next keystroke there instead of to the
-        // shortcut it was meant for.
-        canvasRef.current?.focus({ preventScroll: true });
-        activePointerIdRef.current = e.pointerId;
-        try { canvasRef.current?.setPointerCapture(e.pointerId); } catch { }
-        isDrawing.current = true;
-    };
 
-    // The other half of beginGesture: give the pointer back and stop treating moves as drawing.
-    // Every branch of stopDraw ends this way. releasePointerCapture throws on a pointer that is
-    // already gone, exactly as its counterpart does, so it needs the same guard.
-    const endGesture = () => {
-        isDrawing.current = false;
-        try { if (activePointerIdRef.current !== null) canvasRef.current?.releasePointerCapture(activePointerIdRef.current); } catch { }
-        activePointerIdRef.current = null;
-    };
 
     // Grabbing a text and dragging it, plus the measuring that hit-testing needs. The text tool
     // and the move tool both start one and differ in one flag: under the text tool, releasing
     // without having moved opens the editor, which is why endTextDrag reports what ended.
     const { measureTextBox, hitTestText, startTextDrag, moveTextDrag, endTextDrag } = useTextDrag({
-        dispatchCuts, currentCutId, setSelectedText, beginGesture,
+        dispatchCuts, currentCutId, setSelectedText, beginGesture: gesture.begin,
     });
 
     // Open the text editor for a new text at this point. The editor is a docked panel, so the
@@ -1458,15 +1432,15 @@ export default function App() {
         // cut, not to whichever layer is selected - and before the layer is resolved at all, so
         // it works on a cut whose active layer is a folder or hidden.
         if (cameraCapture) {
-            beginGesture(e);
-            pathPtsRef.current = [pos];
+            gesture.begin(e);
+            gesture.pathPts.current = [pos];
             e.preventDefault();
             return;
         }
         // Recording a motion path for a part animation: capture the stroke as a path.
         if (pathCapture) {
-            beginGesture(e);
-            pathPtsRef.current = [pos];
+            gesture.begin(e);
+            gesture.pathPts.current = [pos];
             e.preventDefault();
             return;
         }
@@ -1474,7 +1448,7 @@ export default function App() {
         // drawable layer, so the stroke always survives and stays visible.
         const activeLayer = resolveDrawLayer(currentCut);
         if (!activeLayer) return;
-        drawTargetLayerRef.current = activeLayer.id;
+        gesture.target.current = activeLayer.id;
 
         if (textEdit) return;
 
@@ -1482,14 +1456,14 @@ export default function App() {
         if (selection) {
             const hit = hitTestSelection(pos);
             if (hit) {
-                beginGesture(e);
+                gesture.begin(e);
                 // A drag adjusts skew and bend instead of moving or resizing when Ctrl is held
                 // (#175) - wherever it starts, handles included. Letting the handles keep
                 // resizing under Ctrl meant a drag begun on a corner resized and one begun a few
                 // pixels inward warped, which read as Ctrl working only sometimes.
                 const warp = e.ctrlKey || e.metaKey;
                 const kind = warp ? { type: 'warp' } : hit;
-                selectionDragRef.current = { hit: kind, startPos: { x: pos.x, y: pos.y }, startSel: { ...selection } };
+                gesture.selectionDrag.current = { hit: kind, startPos: { x: pos.x, y: pos.y }, startSel: { ...selection } };
                 e.preventDefault();
                 return;
             }
@@ -1501,7 +1475,7 @@ export default function App() {
             const hit = hitTestText(pos, currentCut);
             if (hit) { startTextDrag(e, pos, hit, true); return; }
             openTextEditorAt(pos, currentCut);
-            isDrawing.current = false;
+            gesture.drawing.current = false;
             e.preventDefault();
             return;
         }
@@ -1519,8 +1493,8 @@ export default function App() {
             const act = resolveDrawLayer(currentCut);
             const ids = e.altKey ? drawable.map(l => l.id) : (act ? [act.id] : []);
             if (ids.length) {
-                beginGesture(e);
-                layerDragRef.current = { cutId: currentCutId, layerIds: ids, startPos: { x: pos.x, y: pos.y }, dx: 0, dy: 0 };
+                gesture.begin(e);
+                gesture.layerDrag.current = { cutId: currentCutId, layerIds: ids, startPos: { x: pos.x, y: pos.y }, dx: 0, dy: 0 };
                 renderLayerDragPreview();   // draw immediately on press so the screen does not flash empty
                 setDragTick(v => v + 1);    // hide the original
                 e.preventDefault();
@@ -1531,18 +1505,18 @@ export default function App() {
         if (etool === 'curve') {
             // Curve ruler: tap to place anchors (hold and drag to fine-tune), then confirm with
             // the done button.
-            beginGesture(e);
+            gesture.begin(e);
             curve.addAnchor(pos);
             e.preventDefault();
             return;
         }
 
-        beginGesture(e);
+        gesture.begin(e);
         if (tool !== 'move' && tool !== 'text' && selectedText) setSelectedText(null);
 
         switch (etool) {
             case 'lasso':
-                lassoRef.current = [pos];
+                gesture.lasso.current = [pos];
                 renderLassoPreview();
                 break;
             case 'pen':
@@ -1552,7 +1526,7 @@ export default function App() {
             case 'blur':
             case 'marker': {
                 // Draw on the live overlay only — no layer-state writes per move (that was the lag).
-                liveStrokeRef.current = newStroke(etool, [pos], e);
+                gesture.stroke.current = newStroke(etool, [pos], e);
                 restartLiveStroke();
                 break;
             }
@@ -1563,8 +1537,8 @@ export default function App() {
                 // from those two corners on every move, so what gets stored is an ordinary stroke
                 // - it takes the brush, it boils with the layer, it erases and saves like any
                 // other line, and nothing downstream has to learn that a rectangle exists.
-                lineStartRef.current = pos;
-                liveStrokeRef.current = newStroke('brush', shapePoints(etool, pos, pos) || [pos, { ...pos }], e);
+                gesture.lineStart.current = pos;
+                gesture.stroke.current = newStroke('brush', shapePoints(etool, pos, pos) || [pos, { ...pos }], e);
                 restartLiveStroke();
                 break;
             }
@@ -1573,7 +1547,7 @@ export default function App() {
                 break;
             }
             case 'liquify': {
-                if (!liquify.begin(currentCut, activeLayer, pos)) endGesture();
+                if (!liquify.begin(currentCut, activeLayer, pos)) gesture.end();
                 break;
             }
             case 'eraser': {
@@ -1582,16 +1556,16 @@ export default function App() {
                 // reveal: a pen stroke on a hidden layer shows the layer, and an eraser had
                 // been the one tool that did not - which is the harder of the two to notice,
                 // since an eraser leaves nothing to look for.
-                commitStrokeToLayer(currentCutId, drawTargetLayerRef.current, newStroke(tool, [pos], e));
+                commitStrokeToLayer(currentCutId, gesture.target.current, newStroke(tool, [pos], e));
                 break;
             }
             case 'fill':
                 // A fill is a single act, not a drag.
-                isDrawing.current = false;
+                gesture.drawing.current = false;
                 floodFillAt(pos, currentCut, activeLayer);
                 break;
             case 'move':
-                isDrawing.current = false;
+                gesture.drawing.current = false;
                 break;
         }
     };
@@ -1605,7 +1579,7 @@ export default function App() {
         // selection has eight handles and hitTestSelection already knows which one a point is
         // over; without this the cursor said "move" over all of them, so the one gesture that
         // resizes looked like the one that moves.
-        if (!isDrawing.current) {
+        if (!gesture.drawing.current) {
             if (!selection) { if (hoverHandle) setHoverHandle(null); return; }
             const hit = hitTestSelection(getPos(e));
             const next = hit?.type === 'resize' ? hit.handle : null;
@@ -1614,11 +1588,11 @@ export default function App() {
         }
         const pos = getPos(e);
 
-        if (pathPtsRef.current) { pathPtsRef.current.push(pos); return; }
+        if (gesture.pathPts.current) { gesture.pathPts.current.push(pos); return; }
 
         // Move preview: the overlay draws the shifted copy while paintFrame hides the original.
-        if (layerDragRef.current) {
-            const d = layerDragRef.current;
+        if (gesture.layerDrag.current) {
+            const d = gesture.layerDrag.current;
             d.dx = pos.x - d.startPos.x; d.dy = pos.y - d.startPos.y;
             renderLayerDragPreview();
             setDragTick(v => v + 1); // redraw while keeping the original hidden
@@ -1629,8 +1603,8 @@ export default function App() {
 
         if (moveTextDrag(pos)) return;
 
-        if (selectionDragRef.current && selection) {
-            const { hit, startPos, startSel } = selectionDragRef.current;
+        if (gesture.selectionDrag.current && selection) {
+            const { hit, startPos, startSel } = gesture.selectionDrag.current;
             const dx = pos.x - startPos.x;
             const dy = pos.y - startPos.y;
             if (hit.type === 'move') {
@@ -1647,16 +1621,16 @@ export default function App() {
 
         switch (etool) {
             case 'lasso':
-                if (lassoRef.current) { lassoRef.current.push(pos); renderLassoPreview(); }
+                if (gesture.lasso.current) { gesture.lasso.current.push(pos); renderLassoPreview(); }
                 break;
             case 'move':
                 break;
             case 'line':
             case 'rect':
             case 'ellipse': {
-                if (liveStrokeRef.current && lineStartRef.current) {
-                    liveStrokeRef.current.points = shapePoints(etool, lineStartRef.current, pos)
-                        || [lineStartRef.current, pos];
+                if (gesture.stroke.current && gesture.lineStart.current) {
+                    gesture.stroke.current.points = shapePoints(etool, gesture.lineStart.current, pos)
+                        || [gesture.lineStart.current, pos];
                     renderLiveStroke(true); // the far corner moved, so redraw the whole thing
                 }
                 break;
@@ -1679,9 +1653,9 @@ export default function App() {
             case 'marker':
             case 'eraser': {
                 const positions = samplesOf(e, pos);
-                if (liveStrokeRef.current) {
+                if (gesture.stroke.current) {
                     // Brush tools: append + repaint just the overlay (no React, no full-layer rebuild).
-                    for (const p of positions) liveStrokeRef.current.points.push(p);
+                    for (const p of positions) gesture.stroke.current.points.push(p);
                     scheduleLiveRender();
                     break;
                 }
@@ -1689,7 +1663,7 @@ export default function App() {
                 // replaces the last stroke rather than pushing into it, so nothing already in
                 // state is mutated.
                 updLayers(currentCutId, c => ({
-                    layers: patchLayer(c.layers, drawTargetLayerRef.current, l => ({ strokes: appendPoints(l.strokes, positions) })),
+                    layers: patchLayer(c.layers, gesture.target.current, l => ({ strokes: appendPoints(l.strokes, positions) })),
                 }));
                 break;
             }
@@ -1698,9 +1672,9 @@ export default function App() {
 
     const stopDraw = () => {
         // Committing a whole-layer move: the offset is added to every stroke coordinate.
-        if (layerDragRef.current) {
-            const d = layerDragRef.current; layerDragRef.current = null;
-            endGesture();
+        if (gesture.layerDrag.current) {
+            const d = gesture.layerDrag.current; gesture.layerDrag.current = null;
+            gesture.end();
             const dx = Math.round(d.dx), dy = Math.round(d.dy);
             clearLiveOverlay();
             if (dx || dy) dispatchCuts(moveLayers(d.cutId, d.layerIds, dx, dy));
@@ -1708,25 +1682,25 @@ export default function App() {
             return;
         }
         // Curve ruler: one anchor placed or fine-tuned; the done button commits it.
-        if (etool === 'curve' && curve.endDrag()) { endGesture(); return; }
+        if (etool === 'curve' && curve.endDrag()) { gesture.end(); return; }
         // Liquify: the pushed pixels go back into the layer.
         if (liquify.ref.current) {
-            endGesture();
+            gesture.end();
             liquify.end();
             return;
         }
         // Mosaic: pixelates the dragged rectangle and stamps it down.
         if (mosaicTool.ref.current) {
-            endGesture();
+            gesture.end();
             mosaicTool.end();
-            liveClearPendingRef.current = true;
+            gesture.clearPending.current = true;
             return;
         }
         // Finish recording a motion path → store it on the target layer's animation.
-        if (pathPtsRef.current) {
-            const pts = pathPtsRef.current;
-            pathPtsRef.current = null;
-            endGesture();
+        if (gesture.pathPts.current) {
+            const pts = gesture.pathPts.current;
+            gesture.pathPts.current = null;
+            gesture.end();
             if (cameraCapture) {
                 // Evened out the same way a part path is, and for the same reason: the camera
                 // walks it by index, so uneven points would replay the drawing speed. A camera
@@ -1757,9 +1731,9 @@ export default function App() {
         }
         // Commit the live overlay stroke into the layer data (one write), then clear the overlay
         // after the layer has repainted so there's no flicker.
-        if (liveStrokeRef.current) {
-            const st = liveStrokeRef.current; liveStrokeRef.current = null;
-            endGesture();
+        if (gesture.stroke.current) {
+            const st = gesture.stroke.current; gesture.stroke.current = null;
+            gesture.end();
             if (st.tool === 'blur') {
                 // Blur does not lay down ink; it spreads what is already there, blurring the
                 // layer pixels under the path and stamping the result back over them.
@@ -1771,18 +1745,18 @@ export default function App() {
             else clearLiveOverlay();
             return;
         }
-        selectionDragRef.current = null;
+        gesture.selectionDrag.current = null;
         const endedTextDrag = endTextDrag();
-        if (!isDrawing.current) return;
-        endGesture();
+        if (!gesture.drawing.current) return;
+        gesture.end();
 
         if (endedTextDrag?.clickToEdit && !endedTextDrag.moved) {
             openEditText(endedTextDrag.cutId, endedTextDrag.textId);
             return;
         }
 
-        if (tool === 'lasso' && lassoRef.current) {
-            const pts = lassoRef.current; lassoRef.current = null;
+        if (tool === 'lasso' && gesture.lasso.current) {
+            const pts = gesture.lasso.current; gesture.lasso.current = null;
             clearLiveOverlay();
             if (pts.length > 1) liftLassoSelection(pts);
         }
@@ -1844,7 +1818,7 @@ export default function App() {
 
         // With pointer capture, we still receive move/up events outside the canvas.
         // Avoid auto-stopping lasso/selection transforms just because the pointer left the element.
-        if (isDrawing.current && (tool === 'lasso' || selectionDragRef.current)) return;
+        if (gesture.drawing.current && (tool === 'lasso' || gesture.selectionDrag.current)) return;
         stopDraw();
     };
 
@@ -1992,24 +1966,24 @@ export default function App() {
         if (!cut || !safeArray(cut.layers).some(l => l.roughen && l.visible !== false)) return;
         const id = setInterval(() => {
             if (document.hidden) return;                      // pointless while the tab is hidden
-            if (isDrawing.current || panningRef.current) return; // mid-stroke or mid-pan
+            if (gesture.drawing.current || panningRef.current) return; // mid-stroke or mid-pan
             if (Date.now() - lastInteractRef.current < 400) return; // yield briefly right after a zoom
             setBoilTick(v => (v + 1) % 100000);
         }, Math.round(1000 / BOIL_FPS));
         return () => clearInterval(id);
         // The two refs come from useCanvasView and never change identity; listed so the linter
         // can see them rather than left out of a list it cannot check.
-    }, [isPlaying, cuts, currentCutId, currentCut, panningRef, lastInteractRef]);
+    }, [isPlaying, cuts, currentCutId, currentCut, panningRef, lastInteractRef, gesture]);
 
     // The live overlay is cleared once the layer cache has updated, not on a timer, so the
     // committed stroke is already on the main canvas before the overlay goes. That makes it
     // independent of how fast the machine is - the line cannot vanish in between.
     useEffect(() => {
-        if (liveClearPendingRef.current && !isDrawing.current && !liveStrokeRef.current) {
-            liveClearPendingRef.current = false;
+        if (gesture.clearPending.current && !gesture.drawing.current && !gesture.stroke.current) {
+            gesture.clearPending.current = false;
             clearLiveOverlay();
         }
-    }, [layerCanvasCache, clearLiveOverlay]);
+    }, [layerCanvasCache, clearLiveOverlay, gesture]);
 
     // Every way the timeline can be pointed at - scrub, marquee, middle-click pan, one-finger
     // pan/tap, two-finger pinch - lives in useTimelineGestures, where the overlaps between them
