@@ -888,9 +888,13 @@ canvas {
     background: hsl(var(--ui-h) var(--ui-s) 18%);
 }
 
+/* The selected row - a layer or a text - in the accent, so it cannot be mistaken for a hover.
+   Selected means "what the move tool moves and the pen draws on"; the grey hover state was
+   too close to it, and with a text and a layer side by side nobody could tell which was
+   selected. Tint at 14% and a 45% border, the accent ladder's "selected row" rung. */
 .layer-active {
-    background: hsl(var(--ui-h) var(--ui-s) 18%);
-    border-color: hsl(var(--ui-h) var(--ui-s) 37%);
+    background: color-mix(in srgb, var(--accent-soft) 14%, transparent);
+    border-color: color-mix(in srgb, var(--accent-soft) 45%, transparent);
 }
 
 .layer-folder {

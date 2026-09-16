@@ -1998,11 +1998,13 @@ export default function App() {
             const hit = hitTestSelection(pos);
             if (hit) {
                 beginGesture(e);
-                // Inside the selection a drag moves it, or - with Ctrl held, or the bar's 변형
-                // toggle on, for keyboards without a Ctrl at hand - adjusts skew and bend
-                // (#175). The handles keep resizing either way.
+                // A drag adjusts skew and bend instead of moving or resizing when Ctrl is held
+                // or the bar's 변형 toggle is on (#175) - wherever it starts, handles included.
+                // Letting the handles keep resizing under Ctrl meant a drag begun on a corner
+                // resized and one begun a few pixels inward warped, which read as Ctrl working
+                // only sometimes.
                 const warp = e.ctrlKey || e.metaKey || selection.dragMode === 'warp';
-                const kind = hit.type === 'move' && warp ? { type: 'warp' } : hit;
+                const kind = warp ? { type: 'warp' } : hit;
                 selectionDragRef.current = { hit: kind, startPos: { x: pos.x, y: pos.y }, startSel: { ...selection } };
                 e.preventDefault();
                 return;
@@ -3417,6 +3419,9 @@ export default function App() {
         // rest of what a row needs. #144 turned the rows into a component while this branch
         // was adding them; neither is wrong alone, they only meet here.
         spineEdit, setSpineEdit,
+        // One thing is selected at a time: while a text of this cut is selected, no layer row
+        // shows as active, or two things look selected and the move tool's scope is a guess.
+        selectedText,
     };
 
 
