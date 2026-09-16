@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { frameStorage, frameLoad, imageExt, imageExtFromType, audioExt, videoExt } from '../src/core/projectAssets.js';
+import { frameStorage, frameLoad, imageExt, imageExtFromType, audioExt, videoExt, packMedia } from '../src/core/projectAssets.js';
 
 const blobEntry = () => ({ blob: new Blob(['x']), url: null });
 const urlEntry = () => ({ blob: null, url: 'data:image/webp;base64,AA' });
@@ -96,4 +96,34 @@ test('imageExtFromType: a Blob MIME type, with webp as the fallback', () => {
     assert.equal(imageExtFromType(undefined), 'webp');
     // A Blob with no recorded type reads as empty, not as some other image format.
     assert.equal(imageExtFromType('application/octet-stream'), 'webp');
+});
+
+
+const meta = { name: 'song', startTime: 0, endTime: 3 };
+
+test('packMedia: a server save sends the bytes out as an asset and keeps only a reference', async () => {
+    const sink = [];
+    const out = await packMedia(meta, { id: '__audio__', ext: 'mp3', assetSink: sink, dataUrl: 'data:audio/mpeg;base64,AAA' });
+    assert.deepEqual(out, { ...meta, asset: true, ext: 'mp3' });
+    assert.deepEqual(sink, [{ id: '__audio__', url: 'data:audio/mpeg;base64,AAA', ext: 'mp3' }]);
+    const sink2 = [];
+    const blob = new Blob(['x']);
+    await packMedia(meta, { id: '__video__', ext: 'webm', assetSink: sink2, blob });
+    assert.equal(sink2[0].blob, blob, 'a Blob at hand goes out as the Blob');
+});
+
+test('packMedia: the browser store keeps a Blob, making one if needed, and falls back to the dataURL', async () => {
+    const blob = new Blob(['x']);
+    assert.equal((await packMedia(meta, { id: 'v', ext: 'webm', blobsOk: true, blob })).blob, blob);
+    const made = await packMedia(meta, { id: 'a', ext: 'mp3', blobsOk: true, dataUrl: 'data:x', toBlob: async () => blob });
+    assert.equal(made.blob, blob, 'made from the dataURL');
+    const failed = await packMedia(meta, { id: 'a', ext: 'mp3', blobsOk: true, dataUrl: 'data:x', toBlob: async () => null });
+    assert.equal(failed.dataUrl, 'data:x', 'a large autosave beats one with no music in it');
+});
+
+test('packMedia: a self-contained file embeds the dataURL, made from the Blob if that is what is at hand', async () => {
+    assert.equal((await packMedia(meta, { id: 'a', ext: 'mp3', dataUrl: 'data:x' })).dataUrl, 'data:x');
+    const out = await packMedia(meta, { id: 'v', ext: 'webm', blob: new Blob(['x']), toDataUrl: async () => 'data:made' });
+    assert.equal(out.dataUrl, 'data:made');
+    assert.equal('blob' in out, false);
 });

@@ -253,3 +253,40 @@ export function blobToDataURL(blob) {
         fr.readAsDataURL(blob);
     });
 }
+
+/**
+ * How the audio or the video track is written into a project, in one of three shapes.
+ *
+ * Both tracks made the same three-way choice inline, one with a dataURL at hand and a Blob to
+ * make, the other the reverse, and the two had drifted in wording. The choice:
+ *
+ *  - server save (`assetSink`): the bytes go out as a separate binary asset and the document
+ *    keeps `{asset: true, ext}` - embedding tens of MB of base64 was the main OOM source;
+ *  - browser store (`blobsOk`): the Blob is stored as it is, made on the spot if only a dataURL
+ *    is at hand, and falls back to the dataURL if that fails - a large autosave beats one with
+ *    no music in it;
+ *  - a self-contained file: the dataURL, made from the Blob if that is what is at hand.
+ *
+ * @param {object} meta the track's timing and name, spread into the field
+ * @param {object} args
+ * @param {string} args.id the asset id, e.g. '__audio__'
+ * @param {string} args.ext
+ * @param {{push: (a: object) => void} | null} [args.assetSink]
+ * @param {boolean} [args.blobsOk]
+ * @param {Blob | null} [args.blob] the bytes as a Blob, if that is what is at hand
+ * @param {string | null} [args.dataUrl] the bytes as a dataURL, if that is what is at hand
+ * @param {() => Promise<Blob | null>} [args.toBlob] makes the Blob when only the dataURL is at hand
+ * @param {(b: Blob) => Promise<string>} [args.toDataUrl] makes the dataURL when only the Blob is
+ * @returns {Promise<object>} the field for the document
+ */
+export async function packMedia(meta, { id, ext, assetSink = null, blobsOk = false, blob = null, dataUrl = null, toBlob, toDataUrl }) {
+    if (assetSink) {
+        assetSink.push(blob ? { id, blob, ext } : { id, url: dataUrl, ext });
+        return { ...meta, asset: true, ext };
+    }
+    if (blobsOk) {
+        const b = blob || (toBlob ? await toBlob() : null);
+        return b ? { ...meta, blob: b } : { ...meta, dataUrl };
+    }
+    return { ...meta, dataUrl: dataUrl || (toDataUrl && blob ? await toDataUrl(blob) : null) };
+}
