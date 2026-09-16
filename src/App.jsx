@@ -15,7 +15,6 @@ import { ToolsPanel } from './ui/ToolsPanel';
 import { Timeline } from './ui/Timeline';
 import { ProjectPicker, ProgressOverlay, SettingsModal, HelpModal, VideoImportModal, SceneDetectModal, LinkPromptModal, ToolKeysModal } from './ui/Modals';
 import { tr, loadLang, saveLang, setLangValue } from './i18n';
-import { moveLayer } from './core/layerOps.js';
 import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, patchLayer, nextLayerId, appendLayer, appendFolder, removeLayerTree } from './core/layerOps.js';
 import { mkCut, firstCut } from './core/document.js';
 import { toggled, selectionAfterClick, cutsToCopy } from './core/cutSelection.js';
@@ -25,6 +24,7 @@ import { shapePoints } from './core/shapeStroke.js';
 import { EXPORT_FPS } from './core/recordClock.js';
 import { useTimelineGestures } from './hooks/useTimelineGestures.js';
 import { useTextDrag } from './hooks/useTextDrag.js';
+import { useLayerDnD } from './hooks/useLayerDnD.js';
 import { fmt, parseClock } from './core/timeCode.js';
 import { textFromEdit, editFromText, blankTextEdit } from './core/textEdit.js';
 import { useHistory } from './hooks/useHistory.js';
@@ -326,8 +326,6 @@ export default function App() {
     // Shared by both document hooks: the server backup falls back to it for a name, and the
     // local save writes it. Owned here because the two hooks cannot both create it.
     const localNameRef = useRef('');
-    const [dragLayerInfo, setDragLayerInfo] = useState(null);
-    const [dropInfo, setDropInfo] = useState(null);
     const canvasRef = useRef(null);
     const liveCanvasRef = useRef(null);   // overlay for the in-progress stroke (drawn without touching layer state)
     const liveStrokeRef = useRef(null);   // the stroke currently being drawn
@@ -1398,26 +1396,8 @@ export default function App() {
     const updLayerProps = (cutId, layerId, obj) => dispatchCuts(updateLayer(cutId, layerId, obj));
     const toggleJitterPanel = (e, cutId, layerId) => { e.stopPropagation(); setJitterLayer(j => (j && j.cutId === cutId && j.layerId === layerId) ? null : { cutId, layerId }); };
 
-    const onLayerDragStart = (e, cutId, layerId) => { e.stopPropagation(); setDragLayerInfo({ cutId, layerId }); e.dataTransfer.effectAllowed = 'move'; };
-    const onLayerDragOver = (e, targetId, targetType) => {
-        e.preventDefault(); e.stopPropagation();
-        const r = e.currentTarget.getBoundingClientRect(), mid = r.top + r.height / 2;
-        const pos = (targetType === 'folder' && e.clientY > mid - 4 && e.clientY < mid + r.height * 0.4) ? 'inside' : (e.clientY < mid ? 'before' : 'after');
-        setDropInfo({ layerId: targetId, position: pos }); e.dataTransfer.dropEffect = 'move';
-    };
-    const onLayerDrop = (e, cutId, targetId) => {
-        e.preventDefault(); e.stopPropagation();
-        if (!dragLayerInfo || dragLayerInfo.layerId === targetId || dragLayerInfo.cutId !== cutId) { setDragLayerInfo(null); setDropInfo(null); return; }
-        const { layerId } = dragLayerInfo, { position } = dropInfo || { position: 'after' };
-        // The move itself is pure and lives in layerOps, where it is unit tested; null means the
-        // move was refused (dropping a folder into its own subtree) and nothing should change.
-        updLayers(cutId, c => {
-            const layers = moveLayer(c.layers, layerId, targetId, position);
-            return layers ? { layers } : {};
-        });
-        setDragLayerInfo(null); setDropInfo(null);
-    };
-    const onLayerDragEnd = () => { setDragLayerInfo(null); setDropInfo(null); };
+    // Reordering layers by drag: the state and handlers are the hook's, the moves are layerOps.
+    const { dragLayerInfo, dropInfo, onLayerDragStart, onLayerDragOver, onLayerDrop, onListDrop, onLayerDragEnd } = useLayerDnD({ updLayers });
 
     // Pressure is flattened here rather than at render time, so it is baked into the stroke and
     // the drawing keeps the shape it had when it was made. Turning the preference off later does
@@ -3490,17 +3470,17 @@ export default function App() {
                 <CutLayerPanel
                     collapsedCutIds={collapsedCutIds} copiedCut={copiedCut} currentCutId={currentCutId} cuts={cuts}
                     deleteTextObject={deleteTextObject} deleteVideoBatch={deleteVideoBatch}
-                    dragLayerInfo={dragLayerInfo} expandedCuts={expandedCuts} handleAddCut={handleAddCut}
+                    onListDrop={onListDrop} expandedCuts={expandedCuts} handleAddCut={handleAddCut}
                     handleAddFolder={handleAddFolder} handleAddLayer={handleAddLayer} handleCopyCut={handleCopyCut}
                     handleCutClick={handleCutClick} handleDeleteCut={handleDeleteCut}
                     handleDuplicateCut={handleDuplicateCut} handlePasteCut={handlePasteCut}
                     handleSetTool={handleSetTool} openEditText={openEditText} renameCut={renameCut}
                     renamingCutId={renamingCutId} layerRows={layerRows} rightW={rightW}
-                    selectedCutIds={selectedCutIds} selectedText={selectedText} setDragLayerInfo={setDragLayerInfo}
-                    setDropInfo={setDropInfo} setRenamingCutId={setRenamingCutId} setSelectedText={setSelectedText}
+                    selectedCutIds={selectedCutIds} selectedText={selectedText}
+                    setRenamingCutId={setRenamingCutId} setSelectedText={setSelectedText}
                     setShowRight={setShowRight} showRight={showRight} toggleCutCollapse={toggleCutCollapse}
                     toggleCutSettings={toggleCutSettings} toggleTextVisible={toggleTextVisible}
-                    updCutAnim={updCutAnim} updCutTime={updCutTime} updLayers={updLayers}
+                    updCutAnim={updCutAnim} updCutTime={updCutTime}
                     updCutCamera={updCutCamera} cameraCapture={cameraCapture} setCameraCapture={setCameraCapture}
                     canvasW={CANVAS_W} canvasH={CANVAS_H}
                     rightTab={rightTab} setRightTab={setRightTab} textEditorBody={textEditorBody} cancelText={cancelText}

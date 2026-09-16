@@ -331,6 +331,8 @@ Layers: moving, merging, resolving which one a stroke lands on.
 | `removeLayerTree` | Remove a layer, or a folder and everything nested in it at any depth. The cut keeps a drawable layer (a fresh blank if the last went) and the active id still names one that exists. |
 | `patchLayer` | Replace one layer with a patched copy, leaving the rest alone. Eight call sites wrote the map out by hand; the guard inside it is not noise, because layer ids are unique within a cut and not across cuts, so it must only ever be handed one cut layer list. |
 | `moveLayer` | Move `layerId` relative to `targetId`. `position` is 'before', 'after', or 'inside' (only meaningful when the target is a folder). Returns a new array, or null when the move is refused and the caller should change nothing. |
+| `moveLayerToEnd` | A layer moved to the end of the stack at the top level — a drop below every row. Null if it is not there. |
+| `dropPositionFor` | Where a dragged row lands relative to the row under the pointer: top half before, bottom half after, a folder's middle band inside. |
 | `offsetLayers` | Shift whole layers, and optionally the cut's texts, by a pixel offset. This is what a move-everything drag commits. |
 | `resolveDrawLayer` | Which layer a stroke should actually go into. The active layer is not always usable: it can be a folder, or point at something that no longer exists. |
 
@@ -715,6 +717,14 @@ A menu that opens from a button and closes on a press anywhere outside it.
 | | |
 |---|---|
 | `useDropdown` | `[open, setOpen, ref]` — the ref marks what counts as inside; a document mousedown elsewhere closes it, only listened for while open. |
+
+## `src/hooks/useLayerDnD.js`
+
+Dragging a layer row to reorder it, or into a folder.
+
+| | |
+|---|---|
+| `useLayerDnD` | Owns which row is in flight and where it would land; the moves are `moveLayer`/`moveLayerToEnd`. Returns the drag state and the row and list drop handlers. |
 
 ## `src/hooks/useHistory.js`
 
