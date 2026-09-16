@@ -604,19 +604,24 @@ export default function App() {
         selectionDragRef.current = null;
     };
 
+    // The strokes that put a selection back, or null - with the selection cancelled - if either
+    // of its bitmaps is gone. Both commits start this way; a selection whose pixels have been
+    // evicted has nothing to commit and must not leave a half-made pair behind.
+    const takeSelectionStrokes = (sel) => {
+        if (!sel) return null;
+        const store = bitmapStoreRef.current;
+        const has = (id) => { const e = store.get(id); return !!(e?.imageData || e?.imageBitmap); };
+        if (!has(sel.bitmapId) || !has(sel.maskBitmapId)) { cancelSelection(); return null; }
+        return selectionStrokes(sel, nextId(), nextId());
+    };
+
     const commitSelectionImpl = (sel) => {
-        if (!sel) return;
-        const { cutId, sourceLayerId, bitmapId, maskBitmapId } = sel;
-        const entry = bitmapStoreRef.current.get(bitmapId);
-        const maskEntry = bitmapStoreRef.current.get(maskBitmapId);
-        if (!entry?.imageData && !entry?.imageBitmap) { cancelSelection(); return; }
-        if (!maskEntry?.imageData && !maskEntry?.imageBitmap) { cancelSelection(); return; }
-
-        const { erase, paste } = selectionStrokes(sel, nextId(), nextId());
-        updLayers(cutId, c => ({
-            layers: c.layers.map(l => l.id !== sourceLayerId ? l : { ...l, strokes: [...l.strokes, erase, paste] }),
+        const strokes = takeSelectionStrokes(sel);
+        if (!strokes) return;
+        const { erase, paste } = strokes;
+        updLayers(sel.cutId, c => ({
+            layers: c.layers.map(l => l.id !== sel.sourceLayerId ? l : { ...l, strokes: [...l.strokes, erase, paste] }),
         }));
-
         cancelSelection();
     };
 
@@ -626,12 +631,9 @@ export default function App() {
     // so that region can be animated on its own (via the layer/part animation panel).
     const extractSelectionToPart = () => {
         const sel = selection;
-        if (!sel) return;
-        const entry = bitmapStoreRef.current.get(sel.bitmapId);
-        const maskEntry = bitmapStoreRef.current.get(sel.maskBitmapId);
-        if (!entry?.imageData && !entry?.imageBitmap) { cancelSelection(); return; }
-        if (!maskEntry?.imageData && !maskEntry?.imageBitmap) { cancelSelection(); return; }
-        const { erase, paste } = selectionStrokes(sel, nextId(), nextId());
+        const strokes = takeSelectionStrokes(sel);
+        if (!strokes) return;
+        const { erase, paste } = strokes;
         const cut = cuts.find(c => c.id === sel.cutId);
         const newId = cut ? Math.max(...cut.layers.map(l => l.id), 0) + 1 : 1;
         updLayers(sel.cutId, c => {
@@ -1912,21 +1914,14 @@ export default function App() {
         dispatchCuts, currentCutId, setSelectedText, beginGesture,
     });
 
-    // Open the text editor over this point. Its position is in CSS pixels relative to the
-    // displayed canvas, which is scaled to fit and zoomed independently of the drawing
-    // resolution - hence converting through the bounding rect and the zoom rather than using
-    // the canvas coordinates directly.
+    // Open the text editor for a new text at this point. The editor is a docked panel, so the
+    // point is only where the text will sit on the canvas; it no longer positions anything on
+    // screen.
     const openTextEditorAt = (pos, currentCut) => {
-        const c = canvasRef.current;
-        const r = c.getBoundingClientRect();
-        const sx = r.width / c.width;
-        const sy = r.height / c.height;
         setTextEdit({
             cutId: currentCutId,
             layerId: currentCut.activeLayerId,
             ...blankTextEdit(pos, { color, opacity }),
-            cssX: (pos.x * sx / view.zoom),
-            cssY: (pos.y * sy / view.zoom),
         });
     };
 
@@ -2404,21 +2399,9 @@ export default function App() {
     const openEditText = (cutId, textId) => {
         const cut = cuts.find(c => c.id === cutId);
         const t = safeArray(cut?.texts).find(tt => tt.id === textId);
-        if (!t || !canvasRef.current) return;
-        const c = canvasRef.current;
-        const r = c.getBoundingClientRect();
-        const sx = r.width / c.width;
-        const sy = r.height / c.height;
+        if (!t) return;
         setSelectedText({ cutId, textId });
-        setTextEdit({
-            cutId,
-            textId,
-            ...editFromText(t, { color, opacity }),
-            // Where the textarea sits on screen, which is the editor's business and not the
-            // document's - so it is added here rather than in the shared shape.
-            cssX: ((t.x ?? 0) * sx / view.zoom),
-            cssY: ((t.y ?? 0) * sy / view.zoom),
-        });
+        setTextEdit({ cutId, textId, ...editFromText(t, { color, opacity }) });
     };
 
     const deleteTextObject = (cutId, textId) => {
