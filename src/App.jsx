@@ -17,7 +17,7 @@ import { ProjectPicker, ProgressOverlay, SettingsModal, HelpModal, VideoImportMo
 import { tr, loadLang, saveLang, setLangValue } from './i18n';
 import { moveLayer } from './core/layerOps.js';
 import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, patchLayer } from './core/layerOps.js';
-import { closeLassoPath, lassoBounds, applyResize, cutOutPolygon, selectionStrokes, applyWarpDrag } from './core/lassoOps.js';
+import { closeLassoPath, lassoBounds, applyResize, cutOutPolygon, selectionStrokes, applyWarpDrag, paintedBounds } from './core/lassoOps.js';
 import { pushAlong } from './core/liquify.js';
 import { shapePoints } from './core/shapeStroke.js';
 import { EXPORT_FPS } from './core/recordClock.js';
@@ -649,6 +649,18 @@ export default function App() {
         setAnimLayer({ cutId: sel.cutId, layerId: newId }); // open its anim panel
     };
 
+    // Ctrl+T: the whole active layer as a floating selection (#176) - the drawing's painted
+    // bounds, not the canvas, so a small drawing does not get a screen-sized box around it.
+    const selectAllAsLasso = () => {
+        if (selection) commitSelectionImpl(selection);
+        const source = renderLassoSource();
+        if (!source) return;
+        const b = paintedBounds(source.ctx.getImageData(0, 0, CANVAS_W, CANVAS_H).data, CANVAS_W, CANVAS_H);
+        if (!b) { setToast(tr('이 레이어에는 아직 그린 것이 없습니다')); return; }
+        handleSetTool('lasso');
+        liftLassoSelection([{ x: b.x, y: b.y }, { x: b.x + b.w, y: b.y }, { x: b.x + b.w, y: b.y + b.h }, { x: b.x, y: b.y + b.h }], source);
+    };
+
     // Lasso copy: clone the selected pixels to a clipboard. Paste: drop them as a paste
     // stroke on the current active layer (offset slightly so it's visible).
     const copyLassoSelection = () => {
@@ -794,6 +806,7 @@ export default function App() {
                 else if (hit === 'resetView') resetView();
                 else if (hit === 'brushUp') setToolSize(brushUp(toolSize));
                 else if (hit === 'brushDown') setToolSize(brushDown(toolSize));
+                else if (hit === 'selectAll') selectAllAsLasso();
                 return;
             }
             if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); globalUndo(); }
@@ -2355,21 +2368,29 @@ export default function App() {
 
     // Lift what the lasso encloses into a floating selection: the enclosed pixels, plus a mask
     // of exactly which ones, so committing the move knows what to erase from the source layer.
-    const liftLassoSelection = (points) => {
-
-        const activeLayer = currentCut?.layers.find(l => l.id === currentCut.activeLayerId);
-        if (!activeLayer) return;
-
-        // Deliberately NOT ensureLayerCanvas, which is what everything else on screen uses. That
-        // canvas holds one boil phase, and the mask taken from it outlives the phase it was cut
-        // from - it is applied to whichever phase is on screen when the selection is committed,
-        // so it would fit at the moment of the lasso and drift afterwards. The un-boiled strokes
-        // sit at the middle of the wobble instead, which is the closest one mask can be to every
-        // phase. (The cache is signature-checked and never stale; that is not the reason.)
+    // The layer a lasso lifts from, rendered from its strokes. Deliberately NOT
+    // ensureLayerCanvas, which is what everything else on screen uses: that canvas holds one
+    // boil phase, and the mask taken from it outlives the phase it was cut from - it is applied
+    // to whichever phase is on screen when the selection is committed, so it would fit at the
+    // moment of the lasso and drift afterwards. The un-boiled strokes sit at the middle of the
+    // wobble instead, which is the closest one mask can be to every phase. (The cache is
+    // signature-checked and never stale; that is not the reason.)
+    //
+    // Through resolveDrawLayer, so an active folder or hidden layer resolves to something a
+    // lasso can lift from rather than to nothing.
+    const renderLassoSource = () => {
+        const activeLayer = resolveDrawLayer(currentCut);
+        if (!activeLayer) return null;
         const tmpCanvas = document.createElement('canvas');
         sizeCanvas(tmpCanvas, CANVAS_W, CANVAS_H);
         const ctx = tmpCanvas.getContext('2d');
         drawStrokesOnCtx(ctx, activeLayer.strokes, true, bitmapStoreRef.current);
+        return { activeLayer, ctx };
+    };
+
+    const liftLassoSelection = (points, source = renderLassoSource()) => {
+        if (!source) return;
+        const { activeLayer, ctx } = source;
 
         const poly = closeLassoPath(points).map(p => [p.x, p.y]);
         const { x: minX, y: minY, w, h } = lassoBounds(points, CANVAS_W, CANVAS_H);

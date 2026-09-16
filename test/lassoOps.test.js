@@ -4,7 +4,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { closeLassoPath, lassoBounds, applyResize, MIN_SELECTION_SIZE, selectionStrokes, applyWarpDrag, WARP_LIMIT } from '../src/core/lassoOps.js';
+import { closeLassoPath, lassoBounds, applyResize, MIN_SELECTION_SIZE, selectionStrokes, applyWarpDrag, WARP_LIMIT, paintedBounds } from '../src/core/lassoOps.js';
 import { pointInPolygon } from '../src/canvas/canvasUtils.js';
 
 const P = (x, y) => ({ x, y });
@@ -194,4 +194,15 @@ test('applyWarpDrag: starts from where the sliders left it, and stops at the sli
     const far = applyWarpDrag(sel, 500, -500);
     assert.equal(far.skew, WARP_LIMIT); assert.equal(far.bend, WARP_LIMIT);
     assert.deepEqual(applyWarpDrag({ th: 0 }, 3, 0), { skew: 1, bend: 0 }, 'a flat selection does not divide by zero');
+});
+
+test('paintedBounds: the tight box around every pixel with alpha, in whole pixels', () => {
+    const w = 6, h = 4, data = new Uint8ClampedArray(w * h * 4);
+    const set = (x, y, a) => { data[(y * w + x) * 4 + 3] = a; };
+    set(1, 1, 255); set(4, 2, 3);                     // a faint pixel counts too
+    assert.deepEqual(paintedBounds(data, w, h), { x: 1, y: 1, w: 4, h: 2 });
+});
+
+test('paintedBounds: an empty layer has no box, rather than a zero-size one', () => {
+    assert.equal(paintedBounds(new Uint8ClampedArray(4 * 4 * 4), 4, 4), null);
 });

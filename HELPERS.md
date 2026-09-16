@@ -256,6 +256,7 @@ Lasso selection: closing the path, bounding it, lifting the pixels.
 | `selectionStrokes` | The erase-hole and paste strokes that put a floating selection back into a layer. Skew and bend ride on the paste, and only when set, so an unadjusted paste is byte-identical to one from before the fields existed. |
 | `applyWarpDrag` | Skew and bend from a Ctrl-drag inside the selection, scaled so the picture follows the pointer: half the height sideways is skew 1, half the height up is bend 1. Clamped to the sliders' range. |
 | `WARP_LIMIT` | Furthest a drag can push skew or bend — the sliders' range, so the two agree. |
+| `paintedBounds` | The tight integer box around every pixel with alpha, or null for an empty buffer. What Ctrl+T selects: the drawing, not the canvas. |
 
 ## `src/core/recordClock.js`
 

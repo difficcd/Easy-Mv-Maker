@@ -557,6 +557,7 @@ const EN = {
     '도구: 펜': 'Tool: Brush', '도구: 점': 'Tool: Dot', '도구: 연필': 'Tool: Pencil',
     '도구: 에어': 'Tool: Air', '도구: 마커': 'Tool: Marker', '도구: 지우개': 'Tool: Eraser',
     '도구: 채우기': 'Tool: Fill', '도구: 도형': 'Tool: Shape', '도구: 모자이크': 'Tool: Mosaic', '도구: 유동화': 'Tool: Liquify',
+    '레이어 전체 선택 (올가미)': 'Select whole layer (lasso)', '이 레이어에는 아직 그린 것이 없습니다': 'Nothing is drawn on this layer yet',
     '도구: 올가미': 'Tool: Lasso', '도구: 이동': 'Tool: Move', '도구: 텍스트': 'Tool: Text',
     '끄면 세게 눌러도 굵기가 일정합니다. 이미 그린 선은 그대로입니다.': 'Off draws an even line however hard you press. Strokes already drawn are unchanged.',
     '그리는 중…': 'Drawing…',

@@ -209,3 +209,29 @@ export function applyWarpDrag(startSel, dx, dy) {
         bend: clamp((startSel.bend || 0) - dy / half),
     };
 }
+
+/**
+ * The rectangle of pixels that have any alpha, or null for an empty buffer.
+ *
+ * What "select the whole layer" (#176) selects: not the canvas, which would make a floating
+ * selection the size of the screen around a small drawing, but the drawing itself.
+ *
+ * @param {Uint8ClampedArray} data RGBA
+ * @param {number} w
+ * @param {number} h
+ * @returns {{x: number, y: number, w: number, h: number} | null} integer pixel bounds
+ */
+export function paintedBounds(data, w, h) {
+    let x0 = w, y0 = h, x1 = -1, y1 = -1;
+    for (let y = 0; y < h; y++) {
+        const row = y * w * 4;
+        for (let x = 0; x < w; x++) {
+            if (data[row + x * 4 + 3] === 0) continue;
+            if (x < x0) x0 = x;
+            if (x > x1) x1 = x;
+            if (y < y0) y0 = y;
+            if (y > y1) y1 = y;
+        }
+    }
+    return x1 < 0 ? null : { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+}
