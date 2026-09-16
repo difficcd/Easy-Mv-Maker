@@ -1028,6 +1028,14 @@ Which addresses the importer will hand to yt-dlp.
 | `isYouTubeUrl` | Parses rather than pattern-matches, because both obvious string checks are wrong in opposite directions. |
 | `YOUTUBE_HOSTS` | Hosts yt-dlp is allowed to be pointed at. |
 
+## `src/tools/canvasTools.js`
+
+What each tool does when the pen goes down, and when it moves.
+
+| | |
+|---|---|
+| `TOOLS` | One entry per tool, keyed by the effective tool name, each `{down, move}` over the same context object (`toolCtx` in App). The value is that a tool's two halves sit together — they used to be 150 lines apart in two switches. The *end* of a gesture is deliberately not here: it is decided by which gesture is in flight, not by which tool is selected now, and the two can differ. |
+
 ## `src/export/byteWriter.js`
 
 A growable byte buffer, little-endian. Both export formats want one for the same reason: a JS array

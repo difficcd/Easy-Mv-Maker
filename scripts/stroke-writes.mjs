@@ -45,7 +45,7 @@ export const ALLOWED = [
     // The eraser extending the stroke it is already drawing. The first point went through
     // commitStrokeToLayer, so the layer has been resolved and revealed already; this only adds
     // points to that stroke, and appendPoints leaves the list alone if it is not there.
-    { file: 'src/App.jsx', match: 'appendPoints' },
+    { file: 'src/tools/canvasTools.js', match: 'appendPoints' },
 ];
 
 const isAllowed = (file, text) => ALLOWED.some(a => file.endsWith(a.file) && text.includes(a.match));
