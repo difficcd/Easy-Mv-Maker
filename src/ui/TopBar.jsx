@@ -2,6 +2,7 @@ import { ChevronDown, Download, Upload, Film, Settings, AlertTriangle, DatabaseB
 import { tr } from '../i18n';
 import { Logo } from './Logo.jsx';
 import { clampCanvasSize } from '../core/canvasSize.js';
+import { useDropdown } from '../hooks/useDropdown.js';
 
 // Top menu bar: the File and Media menus, resolution, canvas zoom, save state, Export.
 export function TopBar({
@@ -9,11 +10,14 @@ export function TopBar({
     doServerSave, openServerList, doServerBackup, openBackupList, backupBusy,
     handleAudioUpload, loadYoutubeAudio, handleDeleteAudio, audioFile, openVideoImport,
     loadYoutubeVideo, videoFileRef, recentVideos, reimportRecent, serverAvailable, setToast,
-    showFileMenu, setShowFileMenu, showMediaMenu, setShowMediaMenu, fileMenuRef,
-    mediaMenuRef, canvasW, canvasH, setCanvasSize, setShowHelp,
+    canvasW, canvasH, setCanvasSize, setShowHelp,
     setShowSettings, keymap, view, zoomCanvas, resetView,
     autoSavedAt, autosaveErr, backupAt, storageInfo, handleExport, doSplitSave, handleExportPieces,
 }) {
+    // The two menus are this bar's own: which is open, and where its edge is for the
+    // outside-press that closes it. App used to hold both for no reason of its own.
+    const [showFileMenu, setShowFileMenu, fileMenuRef] = useDropdown();
+    const [showMediaMenu, setShowMediaMenu, mediaMenuRef] = useDropdown();
     return (
         <div className="top-bar">
             {/* The mark alone. The name stays as the accessible label on the svg, so a

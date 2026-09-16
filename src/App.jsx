@@ -321,8 +321,6 @@ export default function App() {
     const [activePartId, setActivePartId] = useState(null); // scope playback and editing to one part (null = all)
     const lassoClipRef = useRef(null); // copied lasso pixels: { bitmapId, w, h }
     const [hasLassoClip, setHasLassoClip] = useState(false);
-    const [showFileMenu, setShowFileMenu] = useState(false);
-    const [showMediaMenu, setShowMediaMenu] = useState(false);
     const [showHelp, setShowHelp] = useState(false);
     const fileHandleRef = useRef(null);
     // Shared by both document hooks: the server backup falls back to it for a name, and the
@@ -358,8 +356,6 @@ export default function App() {
     const [curvePts, setCurvePts] = useState(0); // anchor count, for the done/cancel bar
     const mosaicRectRef = useRef(null);   // mosaic drag rectangle
     const isDrawing = useRef(false);
-    const fileMenuRef = useRef(null);
-    const mediaMenuRef = useRef(null);
     const timelineRef = useRef(null);
     // Where the timeline was scrolled to before it was folded away, so unfolding returns to the
     // same place rather than to the start of the project.
@@ -764,15 +760,6 @@ export default function App() {
         recording: { isExporting, exportEndRef, exportStartRef, requestFrameRef, mediaRecorderRef },
     });
 
-
-    useEffect(() => {
-        const h = (e) => {
-            if (fileMenuRef.current && !fileMenuRef.current.contains(e.target)) setShowFileMenu(false);
-            if (mediaMenuRef.current && !mediaMenuRef.current.contains(e.target)) setShowMediaMenu(false);
-        };
-        document.addEventListener('mousedown', h);
-        return () => document.removeEventListener('mousedown', h);
-    }, []);
 
     useEffect(() => {
         const handleKeyDown = (e) => {
@@ -3652,9 +3639,8 @@ export default function App() {
                 handleAudioUpload={handleAudioUpload} loadYoutubeAudio={loadYoutubeAudio}
                 handleDeleteAudio={handleDeleteAudio} audioFile={audioFile} openVideoImport={openVideoImport}
                 loadYoutubeVideo={loadYoutubeVideo} videoFileRef={videoFileRef} recentVideos={recentVideos}
-                reimportRecent={reimportRecent} serverAvailable={serverAvailable} setToast={setToast} showFileMenu={showFileMenu}
-                setShowFileMenu={setShowFileMenu} showMediaMenu={showMediaMenu} setShowMediaMenu={setShowMediaMenu}
-                fileMenuRef={fileMenuRef} mediaMenuRef={mediaMenuRef} canvasW={CANVAS_W} canvasH={CANVAS_H}
+                reimportRecent={reimportRecent} serverAvailable={serverAvailable} setToast={setToast}
+                canvasW={CANVAS_W} canvasH={CANVAS_H}
                 setCanvasSize={setCanvasSize} setShowHelp={setShowHelp} setShowSettings={setShowSettings}
                 keymap={keymap} view={view} zoomCanvas={zoomCanvas} resetView={resetView} autoSavedAt={autoSavedAt}
                 autosaveErr={autosaveErr} backupAt={backupAt} storageInfo={storageInfo} handleExport={handleExport}

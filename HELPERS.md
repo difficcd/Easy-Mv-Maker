@@ -708,6 +708,14 @@ Measuring and drawing text objects.
 | `textLineHeight` | Baseline-to-baseline distance for stacked lines. |
 | `textNeedsBox` | Whether this text has to be measured before it can be drawn. Measuring costs a measureText per line, so it is skipped for plain text. |
 
+## `src/hooks/useDropdown.js`
+
+A menu that opens from a button and closes on a press anywhere outside it.
+
+| | |
+|---|---|
+| `useDropdown` | `[open, setOpen, ref]` — the ref marks what counts as inside; a document mousedown elsewhere closes it, only listened for while open. |
+
 ## `src/hooks/useHistory.js`
 
 Undo and redo: the wiring around `historyOps`, kept out of App.
