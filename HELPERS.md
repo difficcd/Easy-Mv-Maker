@@ -635,6 +635,16 @@ The drawing engine: strokes, canvases, animation, video frames. The big one.
 | `SWING` | The three shapes a return animation can take. `through` passes the resting position and goes out the other side, which is what the layer presets are made of - 둥실둥실 bobs above and below. `there` and `along` go out to the target and back and never past the start. One cycle is one whole trip in all three, so speed means the same thing to each. |
 | `swing` | A return animation's progress for one of those shapes, or 0 once it has run out of repeats. Settling at 0 rather than mid-wave is where a whole trip would have ended anyway. |
 
+## `src/canvas/editChrome.js`
+
+What is drawn over the frame while editing and never while playing.
+
+| | |
+|---|---|
+| `drawFloatingSelection` | A floating selection's pixels exactly as the paste will draw them, warp included, with the marquee and handles following the warp. |
+| `drawTextSelection` | The rectangle around a selected text, as the same marquee the selection uses. |
+| `drawMotionPath` | A part's recorded motion path, dashed with a dot at its start; brighter for the part being edited. |
+
 ## `src/canvas/layerComposite.js`
 
 Putting one layer onto the frame: where it sits, and how a floating selection is cut out of it. Both came out of the composite loop, which runs for every layer of every visible cut, sixty times a second.
