@@ -99,7 +99,7 @@ The same steps run in CI on every push and pull request.
 | `scripts/unused-imports.mjs` | an import nothing in the file uses |
 | `scripts/i18n-check.mjs` | a `tr()` literal with no English entry |
 
-Around 1,000 unit tests cover the pure modules under `src/core`, `src/canvas`, `src/engine` and
+Around 1,050 unit tests cover the pure modules under `src/core`, `src/canvas`, `src/engine` and
 `src/export` — geometry, easing, keyframe sampling, the cuts reducer, layer-tree moves, lasso
 cut-out, timeline snapping, the time-scale bake, GIF and zip writers. They use Node's built-in
 runner because none of it needs a DOM or a framework. The functions that genuinely need a 2D
@@ -145,12 +145,13 @@ npm run android:open     # open Android Studio -> run / build APK
 
 ```
 src/
-  App.jsx          the component: gesture dispatch, paint loop, wiring (~3,900 lines)
+  App.jsx          the component: gesture dispatch, paint loop, wiring (~3,100 lines)
   core/            pure logic - reducers, timeline geometry, lasso, shapes, persistence, export planning
   canvas/          anything that draws on a 2D context: strokes, text, sway slices, layer compositing
   engine/          evaluating one frame: which cuts are on, what each layer looks like at time t
-  export/          byte writers for GIF and zip, download plumbing
-  hooks/           App state that has been given its own home: audio, autosave, history, playback, panels, tool settings
+  export/          byte writers for GIF and zip, video recording plumbing, download
+  hooks/           App state that has been given its own home: the canvas view, the layer cache, playback,
+                   audio, history, autosave, panels, tool settings, shortcuts, the drag gestures
   ui/              panels and modals
   i18n.js          the English dictionary (~640 entries) and the tr() lookup; i18n.ja.js the Japanese one
   globals.d.ts     ambient declarations (EyeDropper, Capacitor, File System Access…)
