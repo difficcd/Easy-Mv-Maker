@@ -47,3 +47,29 @@ export function cloneCutContents(srcCut, cloneBitmapId) {
     const texts = (Array.isArray(srcCut?.texts) ? srcCut.texts : []).map(t => JSON.parse(JSON.stringify(t)));
     return { layers, activeLayerId, texts };
 }
+
+/**
+ * Copies of several cuts laid end to end from `at` on one track, each with fresh contents.
+ *
+ * The clipboard holds whole cuts; what a paste needs is the same cuts with new ids, new
+ * contents (see cloneCutContents), "(copy)" on the name, and times that run on from the paste
+ * point in the order they were copied - which is reading order, so a run of frames pastes as
+ * the same run. The total span is returned so the caller can push later cuts aside by it.
+ *
+ * @param {Cut[]} copies the cuts as copied
+ * @param {number} at where the first one starts
+ * @param {number} track
+ * @param {(cut: Cut) => {layers: Layer[], activeLayerId: any, texts: CutText[]}} cloneContents
+ * @param {() => any} nextId
+ * @returns {{cuts: Cut[], span: number}}
+ */
+export function placeCopies(copies, at, track, cloneContents, nextId) {
+    let cursor = at;
+    const cuts = copies.map((cc) => {
+        const dur = cc.endTime - cc.startTime;
+        const nc = { ...cc, id: nextId(), name: `${cc.name} (copy)`, startTime: cursor, endTime: cursor + dur, track, ...cloneContents(cc) };
+        cursor += dur;
+        return nc;
+    });
+    return { cuts, span: cursor - at };
+}

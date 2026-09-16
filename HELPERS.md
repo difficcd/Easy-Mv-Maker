@@ -126,6 +126,7 @@ Copying a cut, including the pixels its strokes point at.
 | | |
 |---|---|
 | `cloneCutContents` | A cut's layers, texts and active layer, copied for a new cut. Takes the bitmap cloner so the pixels come with it, sharing one cache so a bitmap used twice becomes one copy rather than two. |
+| `placeCopies` | Copies of several cuts laid end to end from a point on one track, each with fresh contents and "(copy)" on the name; returns the total span so later cuts can be pushed aside by it. |
 
 ## `src/core/cutOps.js`
 
