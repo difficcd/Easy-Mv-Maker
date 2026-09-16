@@ -795,6 +795,9 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null,
         // happen to hover near 0.5, the heuristic below reads that as "no pressure" and the whole
         // width variation disappears.
         const hasPressure = s.pen === true || s.points.some(p => p.pressure !== undefined && p.pressure !== 0.5);
+        // Pressure at a point of a smoothed path, or the neutral 0.5 when the stroke has none.
+        // Every tool below asked this question in its own words.
+        const prAt = (pts, i) => hasPressure && pts.length > 1 ? pressureAt(pts, Math.max(1, i)) : 0.5;
         const baseColor = s.color;
         const baseOpacity = s.opacity ?? 1;
         // Marker: draw the whole stroke opaque on a temp canvas, then composite once.
@@ -805,7 +808,7 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null,
             const tmp = tctx.canvas;
             tctx.lineCap = 'round'; tctx.lineJoin = 'round'; tctx.strokeStyle = baseColor; tctx.fillStyle = baseColor;
             const mp = smooth(s.points);
-            const mw = mp.map((_, i) => hasPressure && mp.length > 1 ? s.size * pressureAt(mp, Math.max(1, i)) * 2 : s.size);
+            const mw = mp.map((_, i) => hasPressure ? s.size * prAt(mp, i) * 2 : s.size);
             smoothStroke(tctx, mp, mw, () => { });
             ctx.save();
             ctx.globalCompositeOperation = 'multiply';
@@ -821,9 +824,9 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null,
             const tctx = takeScratch(ctx.canvas.width, ctx.canvas.height);
             const tmp = tctx.canvas;
             tctx.lineCap = 'round'; tctx.lineJoin = 'round'; tctx.strokeStyle = baseColor; tctx.fillStyle = baseColor;
-            const pp = smooth(s.points), pn = pp.length;
-            const pw = pp.map((_, idx) => { const i = Math.max(1, idx); const pr = hasPressure && pn > 1 ? pressureAt(pp, i) : 0.5; return s.size * (0.65 + 0.35 * Math.min(1, pr * 2)); });
-            smoothStroke(tctx, pp, pw, (i) => { const pr = hasPressure && pn > 1 ? pressureAt(pp, Math.max(1, i)) : 0.5; tctx.globalAlpha = 0.5 + 0.5 * Math.min(1, pr * 2); });
+            const pp = smooth(s.points);
+            const pw = pp.map((_, i) => s.size * (0.65 + 0.35 * Math.min(1, prAt(pp, i) * 2)));
+            smoothStroke(tctx, pp, pw, (i) => { tctx.globalAlpha = 0.5 + 0.5 * Math.min(1, prAt(pp, i) * 2); });
             tctx.globalAlpha = 1; tctx.globalCompositeOperation = 'destination-in';
             const pat = tctx.createPattern(grainTile(), 'repeat'); if (pat) { tctx.fillStyle = pat; tctx.fillRect(0, 0, tmp.width, tmp.height); }
             tctx.globalCompositeOperation = 'source-over';
@@ -834,7 +837,6 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null,
         // Airbrush: a real soft spray — dense radial stamps along the path that build up density on
         // overlap and feather at the edges (instead of a plain blurred line).
         if (s.tool === 'soft') {
-            const isErase = false; // airbrush erase falls through to the default eraser elsewhere
             const { r, g, b } = hexToRgb(baseColor);
             const R = Math.max(2, s.size * 0.9);
             const stamp = softStamp(r, g, b, R), half = stamp.width / 2;
@@ -859,23 +861,14 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null,
         ctx.fillStyle = ctx.strokeStyle;
         let pts = smooth(s.points);
         const n = pts.length;
-        const widths = pts.map((_, idx) => {
-            const i = Math.max(1, idx);
-            const pr = hasPressure && n > 1 ? pressureAt(pts, i) : 0.5;
-            if (s.tool === 'pencil') return s.size * (0.85 + 0.15 * pr * 2);
-            if (s.tool === 'brush') return s.size * (hasPressure ? pr * 2 : 1) * taperAt(i, n);
-            return s.size * (hasPressure ? pr * 2 : 1);
+        // The pencil, marker and airbrush have all returned by here; what is left is the brush,
+        // the eraser and anything older that never got its own branch. This used to carry pencil
+        // and airbrush cases too, which could not be reached and said otherwise.
+        const widths = pts.map((_, i) => {
+            const w = s.size * (hasPressure ? prAt(pts, i) * 2 : 1);
+            return s.tool === 'brush' ? w * taperAt(Math.max(1, i), n) : w;
         });
-        const alphas = pts.map((_, idx) => {
-            const i = Math.max(1, idx);
-            const pr = hasPressure && n > 1 ? pressureAt(pts, i) : 0.5;
-            if (isEraser) return 1;
-            // Pencil: pressure drives darkness rather than thickness.
-            if (s.tool === 'pencil') return baseOpacity * (0.45 + 0.55 * Math.min(1, pr * 2));
-            if (s.tool === 'soft') return baseOpacity * 0.5;
-            return baseOpacity;
-        });
-        smoothStroke(ctx, pts, widths, (i) => { ctx.globalAlpha = alphas[i]; });
+        smoothStroke(ctx, pts, widths, () => { ctx.globalAlpha = isEraser ? 1 : baseOpacity; });
         ctx.restore();
         ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1.0;
     });
