@@ -27,3 +27,39 @@ export function clampZoom(zoom) {
     if (!Number.isFinite(zoom)) return 1;
     return Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoom));
 }
+
+/**
+ * The view zoomed by a factor about a point, with that point staying put on screen.
+ *
+ * `cx, cy` are measured from the centre of the canvas area, which is the origin the view's
+ * offset is expressed in - so (0, 0) zooms about the centre, which is what the buttons and the
+ * shortcuts do, and the cursor position zooms about the cursor, which is what the wheel does.
+ * The clamp applies before the offset is scaled, so at a limit the view does not drift.
+ *
+ * @param {{zoom: number, x: number, y: number}} view
+ * @param {number} factor
+ * @param {number} [cx]
+ * @param {number} [cy]
+ * @returns {{zoom: number, x: number, y: number}}
+ */
+export function zoomAbout(view, factor, cx = 0, cy = 0) {
+    const zoom = clampZoom(view.zoom * factor);
+    const k = zoom / view.zoom;
+    return { zoom, x: cx - (cx - view.x) * k, y: cy - (cy - view.y) * k };
+}
+
+/**
+ * The view under a two-finger pinch: zoomed by how far apart the fingers are compared with
+ * where they started, and panned by how far their midpoint has moved.
+ *
+ * @param {{startView: {zoom: number, x: number, y: number}, startDist: number, startMid: {x: number, y: number}}} pinch
+ * @param {{x: number, y: number}} a one finger now
+ * @param {{x: number, y: number}} b the other
+ * @returns {{zoom: number, x: number, y: number}}
+ */
+export function pinchedView(pinch, a, b) {
+    const dist = Math.hypot(a.x - b.x, a.y - b.y);
+    const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    const { startView: s } = pinch;
+    return { zoom: clampZoom(s.zoom * (dist / pinch.startDist)), x: s.x + (mid.x - pinch.startMid.x), y: s.y + (mid.y - pinch.startMid.y) };
+}

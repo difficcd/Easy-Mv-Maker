@@ -7,7 +7,6 @@ import { TopBar } from './ui/TopBar';
 import { CutLayerPanel } from './ui/CutLayerPanel';
 import { useStored } from './hooks/useStored.js';
 import { nextId, randomId } from './core/ids.js';
-import { clampZoom } from './core/viewZoom.js';
 import { arrayCodec, onOffCodec, oneZeroCodec, numberCodec } from './core/persist.js';
 import { TextEditor } from './ui/TextEditor';
 import { SwaySpine } from './ui/SwaySpine';
@@ -25,6 +24,7 @@ import { EXPORT_FPS } from './core/recordClock.js';
 import { useTimelineGestures } from './hooks/useTimelineGestures.js';
 import { useTextDrag } from './hooks/useTextDrag.js';
 import { useLayerDnD } from './hooks/useLayerDnD.js';
+import { useCanvasView } from './hooks/useCanvasView.js';
 import { fmt, parseClock } from './core/timeCode.js';
 import { textFromEdit, editFromText, blankTextEdit } from './core/textEdit.js';
 import { useHistory } from './hooks/useHistory.js';
@@ -84,7 +84,7 @@ import { unusedBitmapIds } from './core/bitmapRefs.js';
 import { dragCut, resizeCut } from './core/cutOps.js';
 import {
     DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT,
-    pointInPolygon, dist, safeArray, hexToRgb, bucketFillTransparentRegion,
+    pointInPolygon, safeArray, hexToRgb, bucketFillTransparentRegion,
     layerKey, imageDataToDataURL, dataURLToImageData, drawStrokesOnCtx, sizeCanvas, scratchCanvas, flattenLayersInUiOrder, layerSig, applyCutAnim, extractVideoFrames, fitRect, detectSceneCuts, curveToWave, morphPrepare,
     accentSoft,
     targetCanvasFor, imageDataCanvas, seekTarget,
@@ -397,9 +397,6 @@ export default function App() {
     const selectionDragRef = useRef(null);
     const activePointerIdRef = useRef(null);
     const textAreaRef = useRef(null);
-    const [view, setView] = useState({ zoom: 1, x: 0, y: 0 });
-    const touchPtsRef = useRef(new Map());
-    const pinchRef = useRef(null);
     // Which document is loaded, as a number that changes whenever the whole thing is replaced.
     //
     // Long jobs - extracting frames from a video, detecting scenes - can be sent to the
@@ -489,10 +486,10 @@ export default function App() {
     const [showSettings, setShowSettings] = useState(false); // settings dialog (shortcuts and theme)
     const [settingsTab, setSettingsTab] = useState('theme'); // open on the theme tab
     const [rebinding, setRebinding] = useState(null);  // id of the action waiting to be rebound
-    const [spaceDown, setSpaceDown] = useState(false); // space = pan (hand) mode
-    const spaceDownRef = useRef(false);
-    const panningRef = useRef(false);
-    const lastInteractRef = useRef(0); // time of the last zoom or pan, used to briefly yield the boiling preview
+    // The view - zoom and offset - and every gesture that changes it, from a hook. It only needs
+    // the element the wheel listens on.
+    const { view, setView, zoomCanvas, resetView, spaceDown, spaceDownRef, panningRef, lastInteractRef,
+        onAreaPointerDown, onAreaPointerMove, onAreaPointerUp } = useCanvasView({ canvasAreaRef });
     const [pathCapture, setPathCapture] = useState(null); // {cutId, layerId} while recording a motion path
     // {cutId, layerId} while the sway profile is being dragged on the canvas rather than typed.
     const [spineEdit, setSpineEdit] = useState(null);
@@ -1593,65 +1590,6 @@ export default function App() {
         updLayers(currentCutId, c => ({ layers: patchLayer(c.layers, c.activeLayerId, l => ({ strokes: [...l.strokes, stroke] })) }));
     };
 
-    // Touch navigation on the canvas (fingers never draw — palm rejection):
-    //   1 finger  = pan the view,  2 fingers = pinch zoom (+ pan).
-    const startCanvasPan = () => {
-        const [a] = [...touchPtsRef.current.values()];
-        pinchRef.current = { mode: 'pan', startPt: { x: a.x, y: a.y }, startView: { ...view } };
-    };
-    // Panning on desktop: hold space and drag (the usual paint-program convention), or drag
-    // with the middle button. startDraw is blocked while space is held, so nothing is drawn.
-    const startMousePan = (e) => {
-        const sx = e.clientX, sy = e.clientY, sv = { ...view };
-        panningRef.current = true;
-        const mv = (ev) => { lastInteractRef.current = Date.now(); setView({ zoom: sv.zoom, x: sv.x + (ev.clientX - sx), y: sv.y + (ev.clientY - sy) }); ev.preventDefault(); };
-        dragOnWindow(mv, () => { panningRef.current = false; });
-    };
-    const onAreaPointerDown = (e) => {
-        if (e.pointerType !== 'touch') {
-            if (spaceDownRef.current || e.button === 1) { e.preventDefault(); startMousePan(e); }
-            return;
-        }
-        touchPtsRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-        if (touchPtsRef.current.size === 2) {
-            const [a, b] = [...touchPtsRef.current.values()];
-            pinchRef.current = {
-                mode: 'pinch',
-                startDist: Math.hypot(a.x - b.x, a.y - b.y) || 1,
-                startMid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
-                startView: { ...view },
-            };
-        } else if (touchPtsRef.current.size === 1) {
-            startCanvasPan();
-        }
-    };
-    const onAreaPointerMove = (e) => {
-        if (e.pointerType !== 'touch') return;
-        if (!touchPtsRef.current.has(e.pointerId)) return;
-        touchPtsRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-        const p = pinchRef.current;
-        if (touchPtsRef.current.size >= 2 && p?.mode === 'pinch') {
-            const [a, b] = [...touchPtsRef.current.values()];
-            const dist = Math.hypot(a.x - b.x, a.y - b.y);
-            const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-            const zoom = clampZoom(p.startView.zoom * (dist / p.startDist));
-            lastInteractRef.current = Date.now();
-            setView({ zoom, x: p.startView.x + (mid.x - p.startMid.x), y: p.startView.y + (mid.y - p.startMid.y) });
-            e.preventDefault();
-        } else if (touchPtsRef.current.size === 1 && p?.mode === 'pan') {
-            const [a] = [...touchPtsRef.current.values()];
-            lastInteractRef.current = Date.now();
-            setView({ zoom: p.startView.zoom, x: p.startView.x + (a.x - p.startPt.x), y: p.startView.y + (a.y - p.startPt.y) });
-            e.preventDefault();
-        }
-    };
-    const onAreaPointerUp = (e) => {
-        if (e.pointerType !== 'touch') return;
-        touchPtsRef.current.delete(e.pointerId);
-        if (touchPtsRef.current.size === 1) startCanvasPan(); // one finger remains → resume panning
-        else if (touchPtsRef.current.size === 0) pinchRef.current = null;
-    };
-    const resetView = () => setView({ zoom: 1, x: 0, y: 0 });
     // Rebinding: while waiting, whatever combination is pressed is captured verbatim, ahead of
     // any other handling.
     useEffect(() => {
@@ -1673,62 +1611,6 @@ export default function App() {
         window.addEventListener('keydown', h, true);
         return () => window.removeEventListener('keydown', h, true);
     }, [rebinding, setKeymap]);
-
-    // Zoom about the centre of the view, for the buttons and shortcuts.
-    const zoomCanvas = (factor) => {
-        lastInteractRef.current = Date.now();
-        setView(v => {
-            const zoom = clampZoom(v.zoom * factor);
-            const k = zoom / v.zoom;
-            return { zoom, x: v.x * k, y: v.y * k };
-        });
-    };
-
-    // Space is the hand (pan) mode. Ignored while typing in a field, and the default is
-    // suppressed only so the page does not scroll.
-    useEffect(() => {
-        const isTyping = () => {
-            const a = document.activeElement;
-            return a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || /** @type {HTMLElement} */ (a).isContentEditable);
-        };
-        const down = (e) => {
-            if (e.code !== 'Space' || e.repeat || isTyping()) return;
-            e.preventDefault();
-            spaceDownRef.current = true; setSpaceDown(true);
-        };
-        const up = (e) => {
-            if (e.code !== 'Space') return;
-            // keyup must be suppressed too, or space "clicks" whichever button has focus.
-            if (!isTyping()) e.preventDefault();
-            spaceDownRef.current = false; setSpaceDown(false);
-        };
-        // Reset on refocus so the key does not stay stuck down after leaving the window.
-        const blur = () => { spaceDownRef.current = false; setSpaceDown(false); };
-        window.addEventListener('keydown', down);
-        window.addEventListener('keyup', up);
-        window.addEventListener('blur', blur);
-        return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); window.removeEventListener('blur', blur); };
-    }, []);
-
-    // Wheel zoom on the canvas (PC): anchored at the cursor so the point under it stays put.
-    // Shift/Ctrl not required — plain wheel zooms, since the stage never scrolls.
-    useEffect(() => {
-        const el = canvasAreaRef.current; if (!el) return;
-        const h = (e) => {
-            e.preventDefault();
-            lastInteractRef.current = Date.now(); // keep the boiling preview out of the way while zooming
-            const r = el.getBoundingClientRect();
-            const cx = e.clientX - r.left - r.width / 2;
-            const cy = e.clientY - r.top - r.height / 2;
-            setView(v => {
-                const zoom = clampZoom(v.zoom * (e.deltaY > 0 ? 0.9 : 1.1));
-                const k = zoom / v.zoom;
-                return { zoom, x: cx - (cx - v.x) * k, y: cy - (cy - v.y) * k };
-            });
-        };
-        el.addEventListener('wheel', h, { passive: false });
-        return () => el.removeEventListener('wheel', h);
-    }, []);
 
     // Track the timeline's visible px window (scroll + resize) to drive virtualization.
     useEffect(() => {
@@ -2778,7 +2660,9 @@ export default function App() {
             setBoilTick(v => (v + 1) % 100000);
         }, Math.round(1000 / BOIL_FPS));
         return () => clearInterval(id);
-    }, [isPlaying, cuts, currentCutId, currentCut]);
+        // The two refs come from useCanvasView and never change identity; listed so the linter
+        // can see them rather than left out of a list it cannot check.
+    }, [isPlaying, cuts, currentCutId, currentCut, panningRef, lastInteractRef]);
 
     // The live overlay is cleared once the layer cache has updated, not on a timer, so the
     // committed stroke is already on the main canvas before the overlay goes. That makes it

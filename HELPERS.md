@@ -108,6 +108,8 @@ not, and one notch of the wheel snapped a 16x view back to 8x.
 | | |
 |---|---|
 | `clampZoom` | Constrain a canvas zoom to the usable range, and turn anything that is not a number into 1 - a pinch divides by the starting finger distance, which can be zero, and a NaN zoom propagates into the view transform and blanks the canvas. |
+| `zoomAbout` | The view zoomed by a factor about a point measured from the area's centre, with that point staying put; (0,0) is the buttons, the cursor is the wheel. |
+| `pinchedView` | The view under a two-finger pinch: zoomed by the fingers' spread, panned by their midpoint. |
 | `ZOOM_MIN` | Below this the artwork is too small to place a stroke on. |
 | `ZOOM_MAX` | Above this a single pixel fills a large part of the screen and panning is the only control left. |
 
@@ -709,6 +711,14 @@ Measuring and drawing text objects.
 | `textFontOf` | The CSS font string, in the order the canvas shorthand requires: style, weight, size, family. |
 | `textLineHeight` | Baseline-to-baseline distance for stacked lines. |
 | `textNeedsBox` | Whether this text has to be measured before it can be drawn. Measuring costs a measureText per line, so it is skipped for plain text. |
+
+## `src/hooks/useCanvasView.js`
+
+How the canvas is looked at - zoom and offset - and every gesture that changes them.
+
+| | |
+|---|---|
+| `useCanvasView` | Owns the view, space-to-pan, middle-button pan, wheel zoom about the cursor, one-finger pan and two-finger pinch, and `lastInteractRef` (the paint loop holds the boiling preview still for a moment after a zoom or pan). The maths is `viewZoom`. |
 
 ## `src/hooks/useDropdown.js`
 
