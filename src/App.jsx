@@ -3548,7 +3548,11 @@ export default function App() {
                 keymap={keymap} view={view} zoomCanvas={zoomCanvas} resetView={resetView} autoSavedAt={autoSavedAt}
                 autosaveErr={autosaveErr} backupAt={backupAt} storageInfo={storageInfo} handleExport={handleExport}
                 doSplitSave={doSplitSave} handleExportPieces={handleExportPieces} />
-            {/* Project (document) tab bar, below the File and Media menus. */}
+            {/* Project (document) tab bar, below the File and Media menus. The mode bar - selection,
+                curve, camera path, motion path - floats over this row as a pill, centred: the
+                row is always there, so nothing shifts when a mode comes and goes, and it is off
+                the canvas, where a floating bar covered the zoom control. */}
+            <div className="doc-tabs-wrap">
             <div className="doc-tabs" style={{ display: 'flex', alignItems: 'stretch', gap: 2, background: 'hsl(var(--ui-h) var(--ui-s) 11%)', borderBottom: '1px solid hsl(var(--ui-h) var(--ui-s) 20%)', padding: '3px 6px 0', overflowX: 'auto', flexShrink: 0 }}>
                 {tabs.map(t => (
                     <div key={t.id} onClick={() => switchTab(t.id)}
@@ -3561,74 +3565,67 @@ export default function App() {
                 ))}
                 <button className="icon-btn" onClick={newTab} title={tr('새 탭(프로젝트)')} style={{ alignSelf: 'center', marginLeft: 2 }}><Plus size={14} /></button>
             </div>
+            {(selection || cameraCapture || pathCapture || etool === 'curve') && (
+                <div className="mode-bar">
+                    {selection && (
+                        <div className="mode-group">
+                            <span className="mode-label">{tr('선택 영역')}</span>
+                            {/* What a drag inside the selection does. Ctrl does the same for one
+                                drag; the toggle is for a tablet with no Ctrl to hold. */}
+                            <div className="mode-toggle" title={tr('안쪽을 끌면: 이동, 또는 기울기·곡률 (Ctrl을 누른 채 끌어도 됩니다)')}>
+                                <button className={`pal-btn${selection.dragMode !== 'warp' ? ' active' : ''}`} onClick={() => setSelection(s => s && ({ ...s, dragMode: 'move' }))}>{tr('이동')}</button>
+                                <button className={`pal-btn${selection.dragMode === 'warp' ? ' active' : ''}`} onClick={() => setSelection(s => s && ({ ...s, dragMode: 'warp' }))}>{tr('변형')}</button>
+                            </div>
+                            {/* Rotation in degrees, skew and bend in -100..100%. Sliders rather than
+                                number fields: the value means nothing in itself and the eye is on
+                                the canvas. Rotation is stored in radians, as layer animation does. */}
+                            {[['rot', tr('회전'), 180, 180 / Math.PI], ['skew', tr('기울기'), 100, 100], ['bend', tr('곡률'), 100, 100]].map(([key, label, range, scale]) => (
+                                <label key={key} className="mode-slider" title={tr('드래그해 조정, 두 번 눌러 0으로. 기울기·곡률은 Ctrl 누르고 선택 영역을 끌어도 됩니다')}>
+                                    <span>{label}</span>
+                                    <input type="range" min={-range} max={range} value={Math.round((selection[key] || 0) * scale)}
+                                        onChange={e => setSelection(s => s && ({ ...s, [key]: +e.target.value / scale }))}
+                                        onDoubleClick={() => setSelection(s => s && ({ ...s, [key]: 0 }))} />
+                                </label>
+                            ))}
+                            <button className="button button-primary" onClick={extractSelectionToPart} style={{ height: 26, padding: '0 10px' }} title={tr('선택 영역을 별도 레이어(파츠)로 분리해 애니메이션')}>{tr('파츠로 분리')}</button>
+                            <button className="button" onClick={copyLassoSelection} style={{ height: 26, padding: '0 10px' }} title={tr('선택 영역 복사 (다른 컷/레이어에 붙여넣기)')}>{tr('복사')}</button>
+                            <button className="button" onClick={commitSelection} style={{ height: 26, padding: '0 10px' }} title={tr('제자리에 적용(이동/크기)')}>{tr('완료')}</button>
+                            <button className="button" onClick={cancelSelection} style={{ height: 26, padding: '0 10px' }}>{tr('취소')}</button>
+                        </div>
+                    )}
+                    {etool === 'curve' && (
+                        <div className="mode-group">
+                            <span className="mode-label">{tr('곡선 자')}</span>
+                            {/* No anchors yet means there is nothing to finish and nothing to
+                                cancel. These were rendered disabled, which on a tablet is a
+                                button that looks pressable and does nothing - the same reading
+                                as a broken app. */}
+                            <span className="mode-hint">{curvePts === 0 ? tr('점을 찍어 곡선을 만드세요') : tr('앵커 {0}개 (누른 채 끌어 미세조정)', curvePts)}</span>
+                            {curvePts > 0 && <>
+                                <button className="button button-primary" style={{ height: 26, padding: '0 10px' }} disabled={curvePts < 2} onClick={commitCurve}>{tr('완료')}</button>
+                                <button className="button" style={{ height: 26, padding: '0 10px' }} onClick={cancelCurve}>{tr('취소')}</button>
+                            </>}
+                        </div>
+                    )}
+                    {cameraCapture && (
+                        <div className="mode-group">
+                            <span className="mode-label">{tr('카메라 경로')}</span>
+                            <span className="mode-hint">{tr('카메라가 지나갈 길을 그리세요 — 재생하면 그 길을 따라갑니다')}</span>
+                            <button className="button" style={{ height: 26, padding: '0 10px' }} onClick={() => setCameraCapture(null)}>{tr('취소')}</button>
+                        </div>
+                    )}
+                    {pathCapture && (
+                        <div className="mode-group">
+                            <span className="mode-label">{pathCapture.mode === 'sway' ? tr('흔들림 곡선') : tr('이동 경로')}</span>
+                            <span className="mode-hint">{pathCapture.mode === 'sway' ? tr('물결치듯 곡선을 그리세요 — 그 모양·크기대로 흔들립니다') : tr('펜으로 이동 경로를 그리세요')}</span>
+                            <button className="button" style={{ height: 26, padding: '0 10px' }} onClick={() => setPathCapture(null)}>{tr('취소')}</button>
+                        </div>
+                    )}
+                </div>
+            )}
+            </div>
 
             <div className="main-content" onPointerDown={onDockPointerDown}>
-                {/* The mode bars - selection, curve, camera path, motion path. They used to be a
-                    full-width row above the canvas, which pushed the whole layout down the moment
-                    one appeared and back up when it went; the user found that jumpy. Now a pill
-                    floating at the top centre of the work area, out of the layout flow, so nothing
-                    moves when a mode comes and goes. It still sits above the canvas rather than
-                    on the artwork: the stage is inset from the top of the area. Two modes at once
-                    are laid out side by side in the one pill. */}
-                {(selection || cameraCapture || pathCapture || etool === 'curve') && (
-                    <div className="mode-bar">
-                        {selection && (
-                            <div className="mode-group">
-                                <span className="mode-label">{tr('선택 영역')}</span>
-                                {/* What a drag inside the selection does. Ctrl does the same for one
-                                    drag; the toggle is for a tablet with no Ctrl to hold. */}
-                                <div className="mode-toggle" title={tr('안쪽을 끌면: 이동, 또는 기울기·곡률 (Ctrl을 누른 채 끌어도 됩니다)')}>
-                                    <button className={`pal-btn${selection.dragMode !== 'warp' ? ' active' : ''}`} onClick={() => setSelection(s => s && ({ ...s, dragMode: 'move' }))}>{tr('이동')}</button>
-                                    <button className={`pal-btn${selection.dragMode === 'warp' ? ' active' : ''}`} onClick={() => setSelection(s => s && ({ ...s, dragMode: 'warp' }))}>{tr('변형')}</button>
-                                </div>
-                                {/* Rotation in degrees, skew and bend in -100..100%. Sliders rather than
-                                    number fields: the value means nothing in itself and the eye is on
-                                    the canvas. Rotation is stored in radians, as layer animation does. */}
-                                {[['rot', tr('회전'), 180, 180 / Math.PI], ['skew', tr('기울기'), 100, 100], ['bend', tr('곡률'), 100, 100]].map(([key, label, range, scale]) => (
-                                    <label key={key} className="mode-slider" title={tr('드래그해 조정, 두 번 눌러 0으로. 기울기·곡률은 Ctrl 누르고 선택 영역을 끌어도 됩니다')}>
-                                        <span>{label}</span>
-                                        <input type="range" min={-range} max={range} value={Math.round((selection[key] || 0) * scale)}
-                                            onChange={e => setSelection(s => s && ({ ...s, [key]: +e.target.value / scale }))}
-                                            onDoubleClick={() => setSelection(s => s && ({ ...s, [key]: 0 }))} />
-                                    </label>
-                                ))}
-                                <button className="button button-primary" onClick={extractSelectionToPart} style={{ height: 26, padding: '0 10px' }} title={tr('선택 영역을 별도 레이어(파츠)로 분리해 애니메이션')}>{tr('파츠로 분리')}</button>
-                                <button className="button" onClick={copyLassoSelection} style={{ height: 26, padding: '0 10px' }} title={tr('선택 영역 복사 (다른 컷/레이어에 붙여넣기)')}>{tr('복사')}</button>
-                                <button className="button" onClick={commitSelection} style={{ height: 26, padding: '0 10px' }} title={tr('제자리에 적용(이동/크기)')}>{tr('완료')}</button>
-                                <button className="button" onClick={cancelSelection} style={{ height: 26, padding: '0 10px' }}>{tr('취소')}</button>
-                            </div>
-                        )}
-                        {etool === 'curve' && (
-                            <div className="mode-group">
-                                <span className="mode-label">{tr('곡선 자')}</span>
-                                {/* No anchors yet means there is nothing to finish and nothing to
-                                    cancel. These were rendered disabled, which on a tablet is a
-                                    button that looks pressable and does nothing - the same reading
-                                    as a broken app. */}
-                                <span className="mode-hint">{curvePts === 0 ? tr('점을 찍어 곡선을 만드세요') : tr('앵커 {0}개 (누른 채 끌어 미세조정)', curvePts)}</span>
-                                {curvePts > 0 && <>
-                                    <button className="button button-primary" style={{ height: 26, padding: '0 10px' }} disabled={curvePts < 2} onClick={commitCurve}>{tr('완료')}</button>
-                                    <button className="button" style={{ height: 26, padding: '0 10px' }} onClick={cancelCurve}>{tr('취소')}</button>
-                                </>}
-                            </div>
-                        )}
-                        {cameraCapture && (
-                            <div className="mode-group">
-                                <span className="mode-label">{tr('카메라 경로')}</span>
-                                <span className="mode-hint">{tr('카메라가 지나갈 길을 그리세요 — 재생하면 그 길을 따라갑니다')}</span>
-                                <button className="button" style={{ height: 26, padding: '0 10px' }} onClick={() => setCameraCapture(null)}>{tr('취소')}</button>
-                            </div>
-                        )}
-                        {pathCapture && (
-                            <div className="mode-group">
-                                <span className="mode-label">{pathCapture.mode === 'sway' ? tr('흔들림 곡선') : tr('이동 경로')}</span>
-                                <span className="mode-hint">{pathCapture.mode === 'sway' ? tr('물결치듯 곡선을 그리세요 — 그 모양·크기대로 흔들립니다') : tr('펜으로 이동 경로를 그리세요')}</span>
-                                <button className="button" style={{ height: 26, padding: '0 10px' }} onClick={() => setPathCapture(null)}>{tr('취소')}</button>
-                            </div>
-                        )}
-                    </div>
-                )}
-
                 {/* Far-left icon rail for switching panels, Clip Studio style: tools on top,
                     colour below. */}
                 <div className="dock-rail">
