@@ -1,6 +1,7 @@
 import { tr } from '../i18n.js';
 // textLayout imports nothing of its own, so this cannot make a cycle.
 import { charProgress } from './textLayout.js';
+import { drawWarped, isWarped } from './warpRender.js';
 // Pure helpers extracted from App.jsx: constants, geometry, colour, canvas drawing,
 // layer flattening, and animation math. Kept free of React/component state so App.jsx
 // stays smaller (cheaper to read/edit) and these stay unit-testable.
@@ -713,6 +714,13 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null,
             const bmp = entry?.imageBitmap;
             const img = entry?.imageData;
             ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high'; // crisp video-frame scaling
+            // A skewed or bent paste cannot go through drawImage's rectangle; warpRender slices
+            // it. Only pastes that carry the fields take this path, so nothing older changes.
+            if (isWarped(s)) {
+                const src = bmp || (img && imageDataCanvas(img));
+                if (src) drawWarped(ctx, src, src.width, src.height, { x: s.x, y: s.y, w: s.w ?? src.width, h: s.h ?? src.height, skew: s.skew, bend: s.bend });
+                return;
+            }
             if (bmp) {
                 if (typeof s.w === 'number' && typeof s.h === 'number') ctx.drawImage(bmp, s.x, s.y, s.w, s.h);
                 else ctx.drawImage(bmp, s.x, s.y);

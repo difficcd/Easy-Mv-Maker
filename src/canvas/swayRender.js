@@ -1,4 +1,5 @@
 import { swayWeightAt } from './canvasUtils.js';
+import { shearSlices } from './shearSlices.js';
 
 /**
  * Bending a layer along an axis: hair swinging from its roots, a ribbon trailing from where it
@@ -36,21 +37,7 @@ export const SWAY_SLICES = 64;
  * @returns {Array<{a0: number, len: number, k: number, m: number}>}
  */
 export function swaySlices({ profile, disp, span, slices = SWAY_SLICES }) {
-    const dispAt = (pos) => disp * swayWeightAt(profile, pos / span);
-    const out = [];
-    for (let i = 0; i < slices; i++) {
-        // Rounded to whole pixels so the source rectangles tile the span exactly; the last
-        // slice absorbs the remainder rather than a fractional strip being left over.
-        const a0 = Math.round(i * span / slices);
-        const a1 = Math.round((i + 1) * span / slices);
-        const len = a1 - a0;
-        if (len <= 0) continue;
-        const d0 = dispAt(a0), d1 = dispAt(a1);
-        const k = (d1 - d0) / len;  // gradient within the slice
-        const m = d0 - k * a0;      // so that it equals d0 exactly at a0
-        out.push({ a0, len, k, m });
-    }
-    return out;
+    return shearSlices((pos) => disp * swayWeightAt(profile, pos / span), 0, span, slices);
 }
 
 /**
