@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Plus, PenLine, Pen, Feather, Eraser, Undo, Layers, ChevronRight, GitBranch, Move, Type, Cloud, Minus, Grid3x3, Palette, Menu, PaintBucket, RotateCcw, Waves } from 'lucide-react';
+import { PenLine, Pen, Feather, Eraser, Undo, Layers, ChevronRight, GitBranch, Move, Type, Cloud, Minus, Grid3x3, Palette, Menu, PaintBucket, RotateCcw, Waves } from 'lucide-react';
 import './App.css';
 import { saveAutosave } from './db';
 import ColorPanel from './ui/ColorPanel';
@@ -13,6 +13,8 @@ import { SwaySpine } from './ui/SwaySpine';
 import { ToolsPanel } from './ui/ToolsPanel';
 import { Timeline } from './ui/Timeline';
 import { ProjectPicker, ProgressOverlay, SettingsModal, HelpModal, VideoImportModal, SceneDetectModal, LinkPromptModal, ToolKeysModal } from './ui/Modals';
+import { Notices } from './ui/Notices.jsx';
+import { DocTabs } from './ui/DocTabs.jsx';
 import { tr, loadLang, saveLang, setLangValue } from './i18n';
 import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, patchLayer, nextLayerId, appendLayer, appendFolder, removeLayerTree, appendPoints } from './core/layerOps.js';
 import { mkCut, firstCut } from './core/document.js';
@@ -2834,47 +2836,8 @@ export default function App() {
                     onDelete={(stamp) => doBackupDelete(stamp)}
                     onClose={() => setBackupList(null)} />
             )}
-            {/* Fetching a video and the automatic backup both take a while, so neither blocks
-                the screen. They used to raise a full-screen overlay that stopped all work. */}
-            {(videoBusy?.fetching || backupProg || toast) && (
-                <div style={{ position: 'fixed', right: 16, bottom: 16, zIndex: 1500, display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
-                    {videoBusy?.fetching && (
-                        <div className="bg-chip">
-                            <span className="bg-spin" /> {tr('영상 받는 중…')} <span style={{ color: '#888' }}>{tr('(작업 계속 가능)')}</span>
-                        </div>
-                    )}
-                    {backupProg && (
-                        <div className="bg-chip">
-                            <span className="bg-spin" /> {tr('서버 백업')} {backupProg.done}/{backupProg.total}
-                        </div>
-                    )}
-                    {toast && (
-                        <div className="bg-chip" style={{ borderColor: 'var(--accent-hi)' }}>
-                            {toast}
-                            <button className="icon-btn" style={{ marginLeft: 4 }} onClick={() => setToast(null)}>✕</button>
-                        </div>
-                    )}
-                </div>
-            )}
-            {videoBusy && videoBusyBg && !videoBusy.fetching && (
-                <div style={{ position: 'fixed', right: 16, bottom: 16, zIndex: 1000, background: 'hsl(var(--ui-h) var(--ui-s) 15%)', border: '1px solid #333', borderRadius: 8, padding: '10px 14px', color: '#ccc', fontSize: 12, display: 'flex', gap: 10, alignItems: 'center', boxShadow: '0 4px 16px rgba(0,0,0,.4)' }}>
-                    <span>{tr('프레임 추출')} {videoBusy.done}/{videoBusy.total || '?'}</span>
-                    <div style={{ width: 80, height: 6, background: 'hsl(var(--ui-h) var(--ui-s) 20%)', borderRadius: 3, overflow: 'hidden' }}><div style={{ height: '100%', width: `${videoBusy.total ? (videoBusy.done / videoBusy.total * 100) : 0}%`, background: 'var(--accent-soft)' }} /></div>
-                    <button className="button" style={{ height: 26, padding: '0 8px' }} onClick={() => setVideoBusyBg(false)}>{tr('열기')}</button>
-                    <button className="button" style={{ height: 26, padding: '0 8px' }} onClick={() => { videoStopRef.current = true; }}>{tr('중지')}</button>
-                </div>
-            )}
-            {/* Failure banner: keeps the error on screen. With the API server down, a blocked
-                alert used to make it look as though nothing had happened at all. */}
-            {appError && (
-                <div style={{ position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', zIndex: 3000,
-                    maxWidth: 640, background: '#3a1414', border: '1px solid #a33', color: '#ffd9d9',
-                    borderRadius: 8, padding: '10px 14px', fontSize: 12.5, display: 'flex', gap: 10, alignItems: 'center',
-                    boxShadow: '0 8px 28px rgba(0,0,0,.5)' }}>
-                    <span style={{ flex: 1 }}>{appError}</span>
-                    <button className="button" style={{ height: 26, padding: '0 10px' }} onClick={() => setAppError(null)}>{tr('닫기')}</button>
-                </div>
-            )}
+            <Notices videoBusy={videoBusy} videoBusyBg={videoBusyBg} setVideoBusyBg={setVideoBusyBg} videoStopRef={videoStopRef}
+                backupProg={backupProg} toast={toast} setToast={setToast} appError={appError} setAppError={setAppError} />
             {linkPrompt && (
                 <LinkPromptModal
                     title={linkPrompt.kind === 'audio' ? tr('유튜브 음원 가져오기') : tr('유튜브 영상 프레임 가져오기')}
@@ -2921,76 +2884,13 @@ export default function App() {
                 keymap={keymap} view={view} zoomCanvas={zoomCanvas} resetView={resetView} autoSavedAt={autoSavedAt}
                 autosaveErr={autosaveErr} backupAt={backupAt} storageInfo={storageInfo} handleExport={handleExport}
                 doSplitSave={doSplitSave} handleExportPieces={handleExportPieces} />
-            {/* Project (document) tab bar, below the File and Media menus. The mode bar - selection,
-                curve, camera path, motion path - floats over this row as a pill, centred: the
-                row is always there, so nothing shifts when a mode comes and goes, and it is off
-                the canvas, where a floating bar covered the zoom control. */}
-            <div className="doc-tabs-wrap">
-            <div className="doc-tabs" style={{ display: 'flex', alignItems: 'stretch', gap: 2, background: 'hsl(var(--ui-h) var(--ui-s) 11%)', borderBottom: '1px solid hsl(var(--ui-h) var(--ui-s) 20%)', padding: '3px 6px 0', overflowX: 'auto', flexShrink: 0 }}>
-                {tabs.map(t => (
-                    <div key={t.id} onClick={() => switchTab(t.id)}
-                        onDoubleClick={() => { const n = window.prompt(tr('탭 이름'), t.name); if (n != null) renameTab(t.id, n); }}
-                        title={tr('클릭: 전환 · 더블클릭: 이름변경')}
-                        style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: '6px 6px 0 0', cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap', maxWidth: 180, background: t.id === activeTabId ? 'hsl(var(--ui-h) var(--ui-s) 15%)' : 'transparent', color: t.id === activeTabId ? '#fff' : '#9a9ab0', borderBottom: t.id === activeTabId ? '2px solid var(--accent-soft)' : '2px solid transparent' }}>
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.name}</span>
-                        <span onClick={e => { e.stopPropagation(); closeTab(t.id); }} title={tr('탭 닫기')} style={{ opacity: 0.6, fontSize: 13, lineHeight: 1 }}>✕</span>
-                    </div>
-                ))}
-                <button className="icon-btn" onClick={newTab} title={tr('새 탭(프로젝트)')} style={{ alignSelf: 'center', marginLeft: 2 }}><Plus size={14} /></button>
-            </div>
-            {(selection || cameraCapture || pathCapture || etool === 'curve') && (
-                <div className="mode-bar">
-                    {selection && (
-                        <div className="mode-group">
-                            <span className="mode-label">{tr('선택 영역')}</span>
-                            {/* Rotation in degrees, skew and bend in -100..100%. Sliders rather than
-                                number fields: the value means nothing in itself and the eye is on
-                                the canvas. Rotation is stored in radians, as layer animation does. */}
-                            {[['rot', tr('회전'), 180, 180 / Math.PI], ['skew', tr('기울기'), 100, 100], ['bend', tr('곡률'), 100, 100]].map(([key, label, range, scale]) => (
-                                <label key={key} className="mode-slider" title={tr('드래그해 조정, 두 번 눌러 0으로. 기울기·곡률은 Ctrl 누르고 선택 영역을 끌어도 됩니다')}>
-                                    <span>{label}</span>
-                                    <input type="range" min={-range} max={range} value={Math.round((selection[key] || 0) * scale)}
-                                        onChange={e => setSelection(s => s && ({ ...s, [key]: +e.target.value / scale }))}
-                                        onDoubleClick={() => setSelection(s => s && ({ ...s, [key]: 0 }))} />
-                                </label>
-                            ))}
-                            <button className="button button-primary" onClick={extractSelectionToPart} style={{ height: 26, padding: '0 10px' }} title={tr('선택 영역을 별도 레이어(파츠)로 분리해 애니메이션')}>{tr('파츠로 분리')}</button>
-                            <button className="button" onClick={copyLassoSelection} style={{ height: 26, padding: '0 10px' }} title={tr('선택 영역 복사 (다른 컷/레이어에 붙여넣기)')}>{tr('복사')}</button>
-                            <button className="button" onClick={commitSelection} style={{ height: 26, padding: '0 10px' }} title={tr('제자리에 적용(이동/크기)')}>{tr('완료')}</button>
-                            <button className="button" onClick={cancelSelection} style={{ height: 26, padding: '0 10px' }}>{tr('취소')}</button>
-                        </div>
-                    )}
-                    {etool === 'curve' && (
-                        <div className="mode-group">
-                            <span className="mode-label">{tr('곡선 자')}</span>
-                            {/* No anchors yet means there is nothing to finish and nothing to
-                                cancel. These were rendered disabled, which on a tablet is a
-                                button that looks pressable and does nothing - the same reading
-                                as a broken app. */}
-                            <span className="mode-hint">{curvePts === 0 ? tr('점을 찍어 곡선을 만드세요') : tr('앵커 {0}개 (누른 채 끌어 미세조정)', curvePts)}</span>
-                            {curvePts > 0 && <>
-                                <button className="button button-primary" style={{ height: 26, padding: '0 10px' }} disabled={curvePts < 2} onClick={commitCurve}>{tr('완료')}</button>
-                                <button className="button" style={{ height: 26, padding: '0 10px' }} onClick={cancelCurve}>{tr('취소')}</button>
-                            </>}
-                        </div>
-                    )}
-                    {cameraCapture && (
-                        <div className="mode-group">
-                            <span className="mode-label">{tr('카메라 경로')}</span>
-                            <span className="mode-hint">{tr('카메라가 지나갈 길을 그리세요 — 재생하면 그 길을 따라갑니다')}</span>
-                            <button className="button" style={{ height: 26, padding: '0 10px' }} onClick={() => setCameraCapture(null)}>{tr('취소')}</button>
-                        </div>
-                    )}
-                    {pathCapture && (
-                        <div className="mode-group">
-                            <span className="mode-label">{pathCapture.mode === 'sway' ? tr('흔들림 곡선') : tr('이동 경로')}</span>
-                            <span className="mode-hint">{pathCapture.mode === 'sway' ? tr('물결치듯 곡선을 그리세요 — 그 모양·크기대로 흔들립니다') : tr('펜으로 이동 경로를 그리세요')}</span>
-                            <button className="button" style={{ height: 26, padding: '0 10px' }} onClick={() => setPathCapture(null)}>{tr('취소')}</button>
-                        </div>
-                    )}
-                </div>
-            )}
-            </div>
+            <DocTabs
+                tabs={tabs} activeTabId={activeTabId} switchTab={switchTab} renameTab={renameTab} closeTab={closeTab} newTab={newTab}
+                selection={selection} setSelection={setSelection} extractSelectionToPart={extractSelectionToPart}
+                copyLassoSelection={copyLassoSelection} commitSelection={commitSelection} cancelSelection={cancelSelection}
+                etool={etool} curvePts={curvePts} commitCurve={commitCurve} cancelCurve={cancelCurve}
+                cameraCapture={cameraCapture} setCameraCapture={setCameraCapture}
+                pathCapture={pathCapture} setPathCapture={setPathCapture} />
 
             <div className="main-content" onPointerDown={onDockPointerDown}>
                 {/* Far-left icon rail for switching panels, Clip Studio style: tools on top,
