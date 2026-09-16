@@ -48,8 +48,9 @@ export function LayerRows({ cut, parentId = null, depth = 0, rows }) {
         handleSetActive, handleToggleFolder, handleToggleVisible, jitterLayer, layerCanvasCache,
         onLayerDragEnd, onLayerDragOver, onLayerDragStart, onLayerDrop, pathCapture,
         setAnimLayer, setPathCapture, toggleJitterPanel, updLayerAnim, updLayerProps, updLayers,
-        spineEdit, setSpineEdit,
+        spineEdit, setSpineEdit, selectedText,
     } = rows;
+    const textSelected = selectedText?.cutId === cut.id;
     return cut.layers.filter(l => (l.parentId ?? null) === parentId).map(layer => {
         const isFolder = layer.type === 'folder';
         const isDragging = dragLayerInfo?.layerId === layer.id;
@@ -58,7 +59,7 @@ export function LayerRows({ cut, parentId = null, depth = 0, rows }) {
             <div key={layer.id} style={{ opacity: isDragging ? 0.4 : 1 }}>
                 {dt === 'before' && <div className="drop-line" />}
                 <div
-                    className={`layer-row${!isFolder && cut.activeLayerId === layer.id ? ' layer-active' : ''}${isFolder ? ' layer-folder' : ''}${dt === 'inside' ? ' drop-inside' : ''}`}
+                    className={`layer-row${!isFolder && !textSelected && cut.activeLayerId === layer.id ? ' layer-active' : ''}${isFolder ? ' layer-folder' : ''}${dt === 'inside' ? ' drop-inside' : ''}`}
                     style={{ paddingLeft: depth * 14 + 6 }}
                     draggable
                     onDragStart={e => onLayerDragStart(e, cut.id, layer.id)}
