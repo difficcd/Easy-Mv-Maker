@@ -485,9 +485,9 @@ body {
    its content, capped at the row's width, and no taller than the row. */
 .mode-bar {
     position: absolute;
-    top: 50%;
+    top: 2px;
     left: 50%;
-    transform: translate(-50%, -50%);
+    transform: translateX(-50%);
     z-index: 30;
     display: flex;
     flex-wrap: wrap;
@@ -505,6 +505,8 @@ body {
 
 .mode-group {
     display: flex;
+    flex-wrap: wrap;          /* a narrow window wraps the controls rather than clipping the pill */
+    justify-content: center;
     align-items: center;
     gap: 6px;
     min-width: 0;
@@ -548,7 +550,7 @@ body {
 }
 .mode-slider input[type="range"] {
     -webkit-appearance: none;
-    width: 84px;
+    width: 64px;
     height: 4px;
     margin: 0;
     background: hsl(var(--ui-h) var(--ui-s) 21%);
@@ -564,6 +566,9 @@ body {
     border: 1px solid color-mix(in srgb, var(--accent-soft) 34%, transparent);
 }
 .mode-toggle .pal-btn {
+    flex: none;               /* pal-btn stretches to share a row; here each is as wide as its word */
+    min-width: max-content;
+    white-space: nowrap;
     border-radius: 0;
     border: none;
     padding: 2px 9px;
