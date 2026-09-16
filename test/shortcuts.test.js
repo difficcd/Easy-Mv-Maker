@@ -156,3 +156,49 @@ test('every binding still has a label', () => {
     // The settings panel builds its list from DEFAULT_KEYS, so a missing label renders blank.
     assert.deepEqual(Object.keys(DEFAULT_KEYS).sort(), Object.keys(KEY_LABELS).sort());
 });
+
+// ── what a key press does ──────────────────────────────────────────────────
+import { shortcutFor } from '../src/core/shortcuts.js';
+const press = (key, o = {}) => ({ key, combo: keyOf({ key, ctrlKey: !!o.ctrl, shiftKey: !!o.shift, altKey: !!o.alt }), ctrl: !!o.ctrl, shift: !!o.shift, alt: !!o.alt, inField: !!o.inField });
+const idle = { selection: false, textEdit: false, currentCut: true, clipboard: false };
+
+test('shortcutFor: Ctrl+S saves even inside a text field; nothing else is claimed there', () => {
+    assert.deepEqual(shortcutFor(press('s', { ctrl: true, inField: true }), DEFAULT_KEYS, idle), { action: 'save' });
+    assert.equal(shortcutFor(press('z', { ctrl: true, inField: true }), DEFAULT_KEYS, idle), null, 'undo in a field is the field\'s');
+    assert.equal(shortcutFor(press('b', { inField: true }), DEFAULT_KEYS, idle), null, 'a tool key while typing is typing');
+});
+
+test('shortcutFor: plain Tab folds the panels; a modified Tab stays with the browser', () => {
+    assert.deepEqual(shortcutFor(press('Tab'), DEFAULT_KEYS, idle), { action: 'togglePanels' });
+    assert.equal(shortcutFor(press('Tab', { shift: true }), DEFAULT_KEYS, idle), null);
+});
+
+test('shortcutFor: the bindings win, tools by prefix', () => {
+    assert.deepEqual(shortcutFor(press('b'), DEFAULT_KEYS, idle), { action: 'tool', arg: 'brush' });
+    assert.deepEqual(shortcutFor(press('j'), DEFAULT_KEYS, idle), { action: 'undo' });
+    assert.deepEqual(shortcutFor(press('t', { ctrl: true }), DEFAULT_KEYS, idle), { action: 'selectAll' });
+    // A rebound key is honoured and its old meaning is gone.
+    const km = { ...DEFAULT_KEYS, undo: 'u' };
+    assert.deepEqual(shortcutFor(press('u'), km, idle), { action: 'undo' });
+    assert.equal(shortcutFor(press('j'), km, idle), null);
+});
+
+test('shortcutFor: the conventional combinations depend on what there is to act on', () => {
+    assert.deepEqual(shortcutFor(press('z', { ctrl: true }), DEFAULT_KEYS, idle), { action: 'undo' });
+    assert.deepEqual(shortcutFor(press('y', { ctrl: true }), DEFAULT_KEYS, idle), { action: 'redo' });
+    assert.deepEqual(shortcutFor(press('z', { ctrl: true, shift: true }), DEFAULT_KEYS, idle), { action: 'redo' });
+    assert.deepEqual(shortcutFor(press('c', { ctrl: true }), DEFAULT_KEYS, idle), { action: 'copyCut' });
+    assert.equal(shortcutFor(press('v', { ctrl: true }), DEFAULT_KEYS, idle), null, 'nothing copied yet');
+    assert.deepEqual(shortcutFor(press('v', { ctrl: true }), DEFAULT_KEYS, { ...idle, clipboard: true }), { action: 'pasteCut' });
+    assert.equal(shortcutFor(press('c', { ctrl: true }), DEFAULT_KEYS, { ...idle, currentCut: false }), null);
+});
+
+test('shortcutFor: Escape and Enter belong to a selection; Delete to the cut when nothing else claims it', () => {
+    const sel = { ...idle, selection: true };
+    assert.deepEqual(shortcutFor(press('Escape'), DEFAULT_KEYS, sel), { action: 'cancelSelection' });
+    assert.deepEqual(shortcutFor(press('Enter'), DEFAULT_KEYS, sel), { action: 'commitSelection' });
+    assert.equal(shortcutFor(press('Escape'), DEFAULT_KEYS, idle), null);
+    assert.deepEqual(shortcutFor(press('Delete'), DEFAULT_KEYS, idle), { action: 'deleteCut' });
+    assert.equal(shortcutFor(press('Delete'), DEFAULT_KEYS, sel), null, 'a selection is on screen - not the cut');
+    assert.equal(shortcutFor(press('Backspace'), DEFAULT_KEYS, { ...idle, textEdit: true }), null, 'editing text - not the cut');
+});

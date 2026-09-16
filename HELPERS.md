@@ -511,6 +511,7 @@ Key bindings, and what a key event means.
 | `keyOf` | Render a key event as a string such as "ctrl+shift+k". |
 | `keymapFrom` | A stored keymap with anything missing filled in from the defaults: a binding the user removed stays removed, one that never existed comes from the defaults or it would be unreachable. It no longer reads storage itself - that is readStored's job, and a second reader meant a second try/catch to keep in step. |
 | `matchShortcut` | Which binding, if any, a combo triggers. Compared case-insensitively so a binding stored as "Ctrl+[" still matches; they are written lowercase now, but a shortcut saved by an older version is not going to be rewritten. |
+| `shortcutFor` | What a key press does, given the bindings and what the app is in the middle of: Ctrl+S even in a field, nothing else in a field, plain Tab, the bindings (tools by prefix), then Ctrl+Z/Y/C/V/D, Escape/Enter for a selection, Delete for the cut. Pure; every rule has a test. |
 | `TOOL_PREFIX` | Selecting a tool is a binding like any other, distinguished by this prefix so the handler can route it without a list of tool ids to keep in step with the toolbar. |
 | `toolFromAction` | The tool a binding selects, or null if it is not a tool binding. |
 
@@ -875,6 +876,14 @@ What the pen is set to: which tool, what colour, how wide, how hard.
 | | |
 |---|---|
 | `useToolSettings` | Twenty-eight names that are read everywhere and written almost nowhere — the opposite shape from the drawing code that consumes them. Owns `etool` (Ruler and Air are each two tools behind one button) and `toolSize` (the eraser keeps its own width), so no caller has to work either out again. |
+
+## `src/hooks/useShortcuts.js`
+
+The document keydown listener, wired to what each shortcut does.
+
+| | |
+|---|---|
+| `useShortcuts` | Reads the event, asks `shortcutFor`, calls the named action. Actions are read through a ref at event time, so the listener attaches once per keymap instead of on every render. |
 
 ## `src/hooks/useTextDrag.js`
 

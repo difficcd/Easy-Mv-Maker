@@ -43,6 +43,7 @@ import { drawMarquee, HANDLE_GRAB_PX } from './canvas/marquee.js';
 import { drawTextSelection, drawFloatingSelection, drawMotionPath } from './canvas/editChrome.js';
 import { createBitmapStore } from './canvas/bitmapStore.js';
 import { useLayerCache } from './hooks/useLayerCache.js';
+import { useShortcuts } from './hooks/useShortcuts.js';
 import { applyPartTransform, drawMaskedLayer } from './canvas/layerComposite.js';
 import { detachMedia, safeMediaSrc } from './core/mediaEl.js';
 import { useAutosave } from './hooks/useAutosave.js';
@@ -53,7 +54,7 @@ import {
     loadVideo, clearVideo, setVideoCuts, setVideoOpacity, clearVideoCuts, moveTrack, resizeAudio,
 } from './core/mediaReducer.js';
 import { cloneCutContents as cloneCutContentsPure, placeCopies } from './core/cutClone.js';
-import { DEFAULT_KEYS, KEY_LABELS, keyOf, matchShortcut, keymapFrom, toolFromAction, findConflicts } from './core/shortcuts.js';
+import { DEFAULT_KEYS, KEY_LABELS, keyOf, keymapFrom, findConflicts } from './core/shortcuts.js';
 import { derivePartsFrom, deriveVideoBatches } from './core/partOps.js';
 import { importPlacement, buildImportedCuts } from './core/videoCuts.js';
 import { playRange } from './core/playRange.js';
@@ -682,58 +683,30 @@ export default function App() {
 
 
 
-    useEffect(() => {
-        const handleKeyDown = (e) => {
-            // Save is claimed before the input guard below. A text field has no "save" of its
-            // own, so Ctrl+S typed while editing text used to fall through to the browser and
-            // offer to save the page as HTML - which is the reflex moment for pressing it.
-            // Undo and redo are deliberately *not* hoisted: inside a field those belong to the
-            // field.
-            if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) { e.preventDefault(); doSave(false); return; }
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
-            // Tab hides every panel so the canvas is alone on screen, and restores exactly what was
-            // open before. Plain Tab only: Ctrl/Alt/Shift+Tab stay with the browser.
-            if (e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
-                e.preventDefault();
-                toggleAllPanelsRef.current?.();
-                // Folding unmounts whatever held focus, and focus then falls back to <body> -
-                // which is why the next Tab started from the top of the page. Put it on the
-                // canvas instead, where the shortcuts are aimed.
-                requestAnimationFrame(() => canvasRef.current?.focus({ preventScroll: true }));
-                return;
-            }
-            // User-defined shortcuts first; the conventional Ctrl+Z / Ctrl+Y combinations are
-            // left in place below.
-            const hit = matchShortcut(keymap, keyOf(e));
-            if (hit) {
-                e.preventDefault();
-                // Tools are routed by prefix rather than by a list of ids kept in step with the
-                // toolbar; handleSetTool already does the tidying up a switch needs (committing a
-                // curve in progress, refusing while the text editor is open).
-                const toolId = toolFromAction(hit);
-                if (toolId) { handleSetTool(toolId); return; }
-                if (hit === 'undo') globalUndo();
-                else if (hit === 'redo') globalRedo();
-                else if (hit === 'zoomIn') zoomCanvas(1.25);
-                else if (hit === 'zoomOut') zoomCanvas(1 / 1.25);
-                else if (hit === 'resetView') resetView();
-                else if (hit === 'brushUp') setToolSize(brushUp(toolSize));
-                else if (hit === 'brushDown') setToolSize(brushDown(toolSize));
-                else if (hit === 'selectAll') selectAllAsLasso();
-                return;
-            }
-            if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); globalUndo(); }
-            if ((e.ctrlKey || e.metaKey) && (e.key === 'Z' || (e.key === 'z' && e.shiftKey) || e.key === 'y')) { e.preventDefault(); globalRedo(); }
-            if ((e.ctrlKey || e.metaKey) && e.key === 'c') { if (currentCutId) { e.preventDefault(); handleCopyCut(currentCutId); } }
-            if ((e.ctrlKey || e.metaKey) && e.key === 'v') { if (copiedCut) { e.preventDefault(); handlePasteCut(); } }
-            if ((e.ctrlKey || e.metaKey) && (e.key === 'd' || e.key === 'D')) { if (currentCutId) { e.preventDefault(); handleDuplicateCut(currentCutId); } }
-            if (e.key === 'Escape') { if (selection) { e.preventDefault(); cancelSelection(); } }
-            if (e.key === 'Enter') { if (selection) { e.preventDefault(); commitSelection(); } }
-            if ((e.key === 'Delete' || e.key === 'Backspace') && !selection && !textEdit && currentCutId) { e.preventDefault(); handleDeleteCut(currentCutId); }
-        };
-        document.addEventListener('keydown', handleKeyDown);
-        return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [cuts, currentCutId, copiedCut, selection, keymap, tool, brushSize, eraserSize]);
+    // Keys. Which key means what is core/shortcuts, tested; this is only what each does.
+    useShortcuts(keymap, {
+        state: () => ({ selection: !!selection, textEdit: !!textEdit, currentCut: !!currentCutId, clipboard: !!copiedCut }),
+        save: () => doSave(false),
+        togglePanels: () => {
+            toggleAllPanelsRef.current?.();
+            // Folding unmounts whatever held focus, and focus then falls back to <body> - which
+            // is why the next Tab started from the top of the page. Put it on the canvas
+            // instead, where the shortcuts are aimed.
+            requestAnimationFrame(() => canvasRef.current?.focus({ preventScroll: true }));
+        },
+        // handleSetTool does the tidying a switch needs (committing a curve in progress,
+        // refusing while the text editor is open).
+        tool: (id) => handleSetTool(id),
+        // Arrows throughout: several of these are declared further down, and the object is
+        // built at render time.
+        undo: () => globalUndo(), redo: () => globalRedo(),
+        zoomIn: () => zoomCanvas(1.25), zoomOut: () => zoomCanvas(1 / 1.25), resetView: () => resetView(),
+        brushUp: () => setToolSize(brushUp(toolSize)), brushDown: () => setToolSize(brushDown(toolSize)),
+        selectAll: () => selectAllAsLasso(),
+        copyCut: () => handleCopyCut(currentCutId), pasteCut: () => handlePasteCut(),
+        duplicateCut: () => handleDuplicateCut(currentCutId), deleteCut: () => handleDeleteCut(currentCutId),
+        cancelSelection: () => cancelSelection(), commitSelection: () => commitSelection(),
+    });
 
     useEffect(() => {
         if (selection && selection.cutId !== currentCutId) cancelSelection();
