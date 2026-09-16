@@ -800,6 +800,14 @@ Undo and redo: the wiring around `historyOps`, kept out of App.
 |---|---|
 | `useHistory` | Records the document when it changes, unless `shouldSkip()` says a gesture is in progress. Returns `undo`, `redo`, a stable `record` for callers that choose their own moment, and `entries()` for the bitmap GC - a snapshot keeps pixels reachable, and freeing those is an undo that comes back blank. |
 
+## `src/hooks/useExport.js`
+
+Getting the movie out: a recorded video, a GIF or PNG sequence, or several `.emv` files painted into one file.
+
+| | |
+|---|---|
+| `useExport` | Returns the three export handlers. All of them paint through the app's own paint path rather than a second renderer, so nothing can drift from what the user watched. The refs that say an export is running stay in App, because usePlayback reads them every frame. |
+
 ## `src/hooks/usePanelVisibility.js`
 
 Which panels are on screen, and the Tab that folds them all away.
