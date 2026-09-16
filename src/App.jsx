@@ -18,6 +18,7 @@ import { tr, loadLang, saveLang, setLangValue } from './i18n';
 import { moveLayer } from './core/layerOps.js';
 import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, patchLayer, nextLayerId, appendLayer, appendFolder, removeLayerTree } from './core/layerOps.js';
 import { mkCut, firstCut } from './core/document.js';
+import { toggled, selectionAfterClick, cutsToCopy } from './core/cutSelection.js';
 import { closeLassoPath, lassoBounds, applyResize, cutOutPolygon, selectionStrokes, applyWarpDrag, paintedBounds } from './core/lassoOps.js';
 import { pushAlong } from './core/liquify.js';
 import { shapePoints } from './core/shapeStroke.js';
@@ -1300,8 +1301,8 @@ export default function App() {
         setSelectedText(null);
     };
     const updCutTime = (id, field, val) => { let v = Math.max(0, parseFloat(val) || 0); if (field === 'track') { v = Math.round(v); if (v >= numTracks) setNumTracks(v + 1); } dispatchCuts(updateCut(id, { [field]: v })); };
-    const toggleCutSettings = (id) => setExpandedCuts(p => { const s = new Set(p); s.has(id) ? s.delete(id) : s.add(id); return s; });
-    const toggleCutCollapse = (id) => setCollapsedCutIds(p => { const s = new Set(p); s.has(id) ? s.delete(id) : s.add(id); return s; });
+    const toggleCutSettings = (id) => setExpandedCuts(p => toggled(p, id));
+    const toggleCutCollapse = (id) => setCollapsedCutIds(p => toggled(p, id));
     const renameCut = (id, name) => dispatchCuts(updateCut(id, { name }));
     const updCutAnim = (id, patch) => dispatchCuts(setCutAnim(id, patch));
     const updCutCamera = (id, patch) => dispatchCuts(setCutCamera(id, patch));
@@ -1309,24 +1310,15 @@ export default function App() {
     const handleAddTrack = () => setNumTracks(p => p + 1);
     const handleDeleteTrack = (i) => { if (numTracks <= 1) return; if (!window.confirm(tr('Track {0} 삭제?', i))) return; dispatchCuts(deleteTrack(i)); setNumTracks(p => p - 1); };
     // Click a cut in the list: plain = select one, Ctrl/Cmd = toggle, Shift = range (timeline order).
+    // Plain, Ctrl and Shift clicks are three selection rules; core/cutSelection has them.
     const handleCutClick = (e, id) => {
-        if (e.ctrlKey || e.metaKey) {
-            setSelectedCutIds(p => { const s = new Set(p); s.has(id) ? s.delete(id) : s.add(id); return s; });
-        } else if (e.shiftKey && currentCutId) {
-            const ordered = [...cuts].sort((a, b) => a.track - b.track || a.startTime - b.startTime);
-            const i1 = ordered.findIndex(c => c.id === currentCutId), i2 = ordered.findIndex(c => c.id === id);
-            if (i1 >= 0 && i2 >= 0) { const lo = Math.min(i1, i2), hi = Math.max(i1, i2); setSelectedCutIds(new Set(ordered.slice(lo, hi + 1).map(c => c.id))); }
-        } else {
-            setSelectedCutIds(new Set([id]));
-        }
+        setSelectedCutIds(p => selectionAfterClick(p, cuts, currentCutId, id, { ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey }));
         setCurrentCutId(id);
     };
     const handleCopyCut = (id) => {
-        // Multi-copy when several cuts are selected, else just this one.
-        const ids = (selectedCutIds.size > 1 && selectedCutIds.has(id)) ? [...selectedCutIds] : [id];
-        const arr = ids.map(i => cuts.find(c => c.id === i)).filter(Boolean)
-            .sort((a, b) => a.track - b.track || a.startTime - b.startTime)
-            .map(c => JSON.parse(JSON.stringify(c)));
+        // The whole multi-selection when this cut is in it, else just this one. Deep-copied,
+        // so later edits to the originals do not reach the clipboard.
+        const arr = cutsToCopy(cuts, selectedCutIds, id).map(c => JSON.parse(JSON.stringify(c)));
         if (arr.length) setCopiedCut(arr);
     };
     // Deep-clone a cut's contents: remap layer ids to 1..N (rewriting parentId so
