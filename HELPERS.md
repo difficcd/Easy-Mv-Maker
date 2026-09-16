@@ -800,6 +800,14 @@ Undo and redo: the wiring around `historyOps`, kept out of App.
 |---|---|
 | `useHistory` | Records the document when it changes, unless `shouldSkip()` says a gesture is in progress. Returns `undo`, `redo`, a stable `record` for callers that choose their own moment, and `entries()` for the bitmap GC - a snapshot keeps pixels reachable, and freeing those is an undo that comes back blank. |
 
+## `src/hooks/usePanelVisibility.js`
+
+Which panels are on screen, and the Tab that folds them all away.
+
+| | |
+|---|---|
+| `usePanelVisibility` | The three panel flags and the left dock's choice, plus `toggleAllPanels` — which remembers exactly what was open, and where the timeline was scrolled to, since its container is unmounted while folded and comes back at zero. Exposes `panelOpen` for the dock and a ref for the key handler, which subscribes once. |
+
 ## `src/hooks/usePlayback.js`
 
 The playback clock: one rAF loop driving canvas, playhead, audio, video and the prefetcher.
@@ -846,6 +854,14 @@ The music track: the element that plays it, the copies of it a save needs, and t
 | | |
 |---|---|
 | `useAudioTrack` | Owns `audioRef` and the AudioContext the export recorder taps, plus the two extra shapes of the same sound — a base64 dataURL so an `.emv` is self-contained, and a Blob (cached by the dataURL it came from) because IndexedDB can hold one and autosave cannot afford base64. Also `restoreAudio`, which puts a saved track back from any of its three stored shapes. |
+
+## `src/hooks/useAppearance.js`
+
+What the app looks like: the accent colour, the chrome's saturation, and the colours picked recently.
+
+| | |
+|---|---|
+| `useAppearance` | The three stored values and the two effects over them — applying the theme, and recording a colour as used only once the picker has settled, so a drag through the wheel does not fill the recent list. `applyTheme` is passed in, so the hook says nothing about the DOM. |
 
 ## `src/hooks/useAutosave.js`
 

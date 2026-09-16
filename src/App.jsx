@@ -7,7 +7,7 @@ import { TopBar } from './ui/TopBar';
 import { CutLayerPanel } from './ui/CutLayerPanel';
 import { useStored } from './hooks/useStored.js';
 import { nextId } from './core/ids.js';
-import { arrayCodec, onOffCodec, oneZeroCodec, numberCodec } from './core/persist.js';
+import { onOffCodec, oneZeroCodec } from './core/persist.js';
 import { TextEditor } from './ui/TextEditor';
 import { SwaySpine } from './ui/SwaySpine';
 import { ToolsPanel } from './ui/ToolsPanel';
@@ -44,6 +44,8 @@ import { drawTextSelection, drawFloatingSelection, drawMotionPath, drawMosaicMar
 import { createBitmapStore } from './canvas/bitmapStore.js';
 import { useLayerCache } from './hooks/useLayerCache.js';
 import { useShortcuts } from './hooks/useShortcuts.js';
+import { usePanelVisibility } from './hooks/usePanelVisibility.js';
+import { useAppearance } from './hooks/useAppearance.js';
 import { detachMedia, safeMediaSrc } from './core/mediaEl.js';
 import { useAutosave } from './hooks/useAutosave.js';
 import { useAudioTrack } from './hooks/useAudioTrack.js';
@@ -235,9 +237,6 @@ export default function App() {
         onDockPointerDown, startPanelResize, startBottomResize,
     } = usePanelLayout({ panelIds: PANEL_IDS, widthRange: PANEL_W });
 
-    const [showLeft, setShowLeft] = useState(true);
-    const [showRight, setShowRight] = useState(true);
-    const [showBottom, setShowBottom] = useState(true);
     // True while the playhead is being dragged. Rendering treats it as playback (see paintFrame).
     const [scrubbing, setScrubbing] = useState(false);
 
@@ -348,9 +347,12 @@ export default function App() {
     const mosaicRectRef = useRef(null);   // mosaic drag rectangle
     const isDrawing = useRef(false);
     const timelineRef = useRef(null);
-    // Where the timeline was scrolled to before it was folded away, so unfolding returns to the
-    // same place rather than to the start of the project.
-    const timelineScrollRef = useRef(/** @type {{left: number, top: number} | null} */(null));
+
+    // Which panels are on screen, and the Tab that folds them all away and puts them back.
+    const {
+        showLeft, setShowLeft, showRight, setShowRight, showBottom, setShowBottom,
+        leftDock, setLeftDock, toggleAllPanelsRef, panelOpen,
+    } = usePanelVisibility({ timelineRef });
     const [pps, setPps] = useState(50);
     // Visible px window of the horizontally-scrolled timeline, so only on-screen cut blocks and
     // ruler ticks are rendered (thousands of DOM nodes otherwise stall the whole app).
@@ -421,57 +423,8 @@ export default function App() {
     // Nothing here is memoised, so changing it re-renders the whole tree in the new language.
     const [lang, setLang] = useState(loadLang);
     const changeLang = (l) => { setLangValue(l); saveLang(l); setLang(l); };
-    const [themeColor, setThemeColor] = useStored('mv_theme', DEFAULT_THEME);
-    const [themeRecent, setThemeRecent] = useStored('mv_theme_recent', [], arrayCodec);
-    // This one had no try/catch at all, so a browser that refuses localStorage took the app
-    // down on first render instead of falling back to 3.
-    const [uiSat, setUiSat] = useStored('mv_ui_sat', 3, numberCodec);
-    // Only the applying is left here; useStored does the remembering.
-    useEffect(() => { applyTheme(themeColor, uiSat); }, [themeColor, uiSat]);
-    // The value changes continuously while picking, so it is only recorded once picking stops.
-    useEffect(() => {
-        if (!/^#[0-9a-fA-F]{6}$/.test(themeColor)) return;
-        const t = setTimeout(() => {
-            // No write here: the list only changes after the debounce, and useStored records
-            // it when it does.
-            setThemeRecent(p => [themeColor, ...p.filter(x => x.toLowerCase() !== themeColor.toLowerCase())].slice(0, 10));
-        }, 800);
-        return () => clearTimeout(t);
-        // The setter is listed because it comes from a custom hook: the linter knows a useState
-        // setter is stable and cannot know that about one handed back from useStored. It is
-        // stable, so saying so costs nothing and keeps the warning count honest.
-    }, [themeColor, setThemeRecent]);
-    const [leftDock, setLeftDock] = useState('color'); // which panel is open in the left dock (null = closed); switched from the icon rail
-
-    // Tab collapses every panel to leave just the canvas, and remembers what was open so the
-    // second press restores exactly that rather than opening everything.
-    const panelsBeforeHideRef = useRef(null);
-    const toggleAllPanels = () => {
-        const prev = panelsBeforeHideRef.current;
-        if (prev) {
-            panelsBeforeHideRef.current = null;
-            setShowLeft(prev.left); setLeftDock(prev.dock); setShowRight(prev.right); setShowBottom(prev.bottom);
-            // After the layout has been laid out again - the container does not exist until then.
-            const want = timelineScrollRef.current;
-            if (want) requestAnimationFrame(() => requestAnimationFrame(() => {
-                const el = timelineRef.current;
-                if (el) { el.scrollLeft = want.left; el.scrollTop = want.top; }
-            }));
-        } else {
-            // The timeline's scroll container is unmounted while the panels are folded, so it
-            // comes back a fresh element scrolled to zero - the view jumps to the start of the
-            // project rather than staying where the work was. Remember where it was looking.
-            const tl = timelineRef.current;
-            timelineScrollRef.current = tl ? { left: tl.scrollLeft, top: tl.scrollTop } : null;
-            panelsBeforeHideRef.current = { left: showLeft, dock: leftDock, right: showRight, bottom: showBottom };
-            setShowLeft(false); setLeftDock(null); setShowRight(false); setShowBottom(false);
-        }
-    };
-    // The key handler subscribes once with an empty dependency list, so calling toggleAllPanels
-    // directly from it would freeze the panel state as it was on the first render. Same ref trick
-    // paintFrame already uses.
-    const toggleAllPanelsRef = useRef(null);
-    toggleAllPanelsRef.current = toggleAllPanels;
+    // What the app looks like: the accent, the chrome's saturation, and the recent colours.
+    const { themeColor, setThemeColor, themeRecent, uiSat, setUiSat } = useAppearance({ applyTheme, defaultTheme: DEFAULT_THEME });
     // One place writes the keymap. It used to be written in three: here, and again inside each
     // of the two modals that edit it.
     const [keymap, setKeymap] = useStored('mv_keymap', { ...DEFAULT_KEYS }, {
@@ -2759,7 +2712,6 @@ export default function App() {
     // export the piece before the one that was just opened, silently and looking fine.
     renderStateRef.current = { cuts, currentCutId, cw: CANVAS_W, ch: CANVAS_H };
 
-    const panelOpen = { color: leftDock === 'color', tools: showLeft, cut: showRight };
 
     // A docked panel keeps a splitter on the side that faces the canvas.
     const panelSplitter = (id, side) => (
