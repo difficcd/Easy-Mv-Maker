@@ -243,6 +243,7 @@ body {
     display: flex;
     flex: 1;
     overflow: hidden;
+    position: relative;   /* the mode bar floats inside it */
 }
 
 .track-group-header {
@@ -473,15 +474,26 @@ body {
    It sits between the document tabs and the canvas and takes its own height, so a mode never
    costs you sight of the artwork it is about. Hidden entirely when no mode is active, so the
    canvas gets the space back. */
+/* A pill floating at the top centre of the work area, out of the layout flow - the layout
+   used to jump when the bar appeared. Sized to its content, capped at the area's width. */
 .mode-bar {
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 30;
     display: flex;
     flex-wrap: wrap;
     align-items: center;
+    justify-content: center;
     gap: 14px;
-    flex-shrink: 0;
-    padding: 5px 10px;
+    width: fit-content;
+    max-width: calc(100% - 24px);
+    padding: 5px 12px;
+    border-radius: 999px;
     background: hsl(var(--ui-h) var(--ui-s) 13%);
-    border-bottom: 1px solid color-mix(in srgb, var(--accent-soft) 30%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent-soft) 30%, transparent);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
 }
 
 .mode-group {
