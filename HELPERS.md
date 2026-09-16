@@ -748,6 +748,15 @@ A menu that opens from a button and closes on a press anywhere outside it.
 |---|---|
 | `useDropdown` | `[open, setOpen, ref]` — the ref marks what counts as inside; a document mousedown elsewhere closes it, only listened for while open. |
 
+## `src/hooks/useLayerCache.js`
+
+The layer canvases the frame is composited from, and everything that keeps them current.
+
+| | |
+|---|---|
+| `useLayerCache` | Owns the state cache (rebuilt for the cuts that can be on screen), the on-demand LRU `ensureLayerCanvas` fills during playback, clip-group flattening, lazy frame decoding ahead of the playhead, and invalidation when a frame lands. Returns the cache, `clearLayerCache`, `ensureLayerCanvas`, `flattenClipGroup`, `invalidateCutsUsing`, `requestFrameDecode`, `frameDecodeTick` and `requestRepaint`. |
+| `BOIL_PHASES` | How many distinct wobbles the boiling line cycles through — a few drawings alternating, each rasterised once. |
+
 ## `src/hooks/useLayerDnD.js`
 
 Dragging a layer row to reorder it, or into a folder.
