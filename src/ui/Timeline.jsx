@@ -2,8 +2,9 @@ import { ChevronDown, ChevronUp, Grid3x3, Pause, Play, Plus, Repeat, Square, Tra
 import { safeArray, accentSoft } from '../canvas/canvasUtils';
 import { tr } from '../i18n';
 import { PLAYBACK_RATES, RATE_DEFAULT } from '../core/playbackRate.js';
-import { TRACK_GUTTER, timeAtX } from '../core/timelineZoom.js';
+import { TRACK_GUTTER, timeAtX, xAtTime } from '../core/timelineZoom.js';
 import { gapAt } from '../core/cutOps.js';
+import { toggled } from '../core/cutSelection.js';
 import { mkCut } from '../core/document.js';
 import { nextId } from '../core/ids.js';
 
@@ -135,7 +136,7 @@ export function Timeline({
                             const iMax = Math.min(Math.ceil(maxTime), Math.ceil((tlWin.right - TRACK_GUTTER) / pps));
                             const ticks = [];
                             for (let i = iMin; i <= iMax; i++) ticks.push(
-                                <div key={i} style={{ position: 'absolute', left: `${i * pps + 60}px`, borderLeft: '1px solid #333', height: i % 5 === 0 ? 20 : 10, fontSize: 10, paddingLeft: 2, top: 0, color: '#555' }}>{i % 5 === 0 ? i : ''}</div>
+                                <div key={i} style={{ position: 'absolute', left: `${xAtTime(i, pps)}px`, borderLeft: '1px solid #333', height: i % 5 === 0 ? 20 : 10, fontSize: 10, paddingLeft: 2, top: 0, color: '#555' }}>{i % 5 === 0 ? i : ''}</div>
                             );
                             return ticks;
                         })()}
@@ -163,15 +164,15 @@ export function Timeline({
                                     <span>Track {ti}</span>
                                     <button className="icon-btn del-btn" onClick={e => { e.stopPropagation(); handleDeleteTrack(ti); }}><Trash2 size={9} /></button>
                                 </div>
-                                {cuts.filter(c => (c.track || 0) === ti).filter(cut => { const l = cut.startTime * pps + 60, r = l + (cut.endTime - cut.startTime) * pps; return r >= tlWin.left && l <= tlWin.right; }).map(cut => (
+                                {cuts.filter(c => (c.track || 0) === ti).filter(cut => { const l = xAtTime(cut.startTime, pps), r = l + (cut.endTime - cut.startTime) * pps; return r >= tlWin.left && l <= tlWin.right; }).map(cut => (
                                     <div key={cut.id} data-cutid={cut.id}
                                         className={`cut-block${currentCutId === cut.id ? ' cut-block-active' : ''}${selectedCutIds.has(cut.id) ? ' cut-block-selected' : ''}`}
-                                        style={{ left: `${cut.startTime * pps + 60}px`, width: `${(cut.endTime - cut.startTime) * pps}px`, cursor: draggingCutData?.cutId === cut.id ? 'grabbing' : 'grab', touchAction: 'none', opacity: activePartId && cut.partId !== activePartId ? 0.3 : 1 }}
+                                        style={{ left: `${xAtTime(cut.startTime, pps)}px`, width: `${(cut.endTime - cut.startTime) * pps}px`, cursor: draggingCutData?.cutId === cut.id ? 'grabbing' : 'grab', touchAction: 'none', opacity: activePartId && cut.partId !== activePartId ? 0.3 : 1 }}
                                         onClick={e => { e.stopPropagation(); if (cutDragMovedRef.current || e.shiftKey || e.ctrlKey || e.metaKey) return; setCurrentCutId(cut.id); setSelectedCutIds(new Set([cut.id])); }}
                                         onPointerDown={e => {
                                             e.stopPropagation();
                                             if (e.shiftKey || e.ctrlKey || e.metaKey) { // add/remove from selection, no drag
-                                                setSelectedCutIds(p => { const s = new Set(p); s.has(cut.id) ? s.delete(cut.id) : s.add(cut.id); return s; });
+                                                setSelectedCutIds(p => toggled(p, cut.id));
                                                 setCurrentCutId(cut.id); cutDragMovedRef.current = false; return;
                                             }
                                             setCurrentCutId(cut.id);
@@ -200,7 +201,7 @@ export function Timeline({
                                     <EyeOff size={10} />
                                 </button>
                                 <span>Audio</span><button className="icon-btn del-btn" onClick={e => { e.stopPropagation(); handleDeleteAudio(); }} title={tr('오디오 삭제')}><Trash2 size={9} /></button></div>
-                            <div className="cut-block" style={{ left: `${audioData.startTime * pps + 60}px`, width: `${(audioData.endTime - audioData.startTime) * pps}px`, background: '#374151', borderColor: '#4b5563', cursor: draggingCutData?.cutId === 'audio' ? 'grabbing' : 'grab', touchAction: 'none' }}
+                            <div className="cut-block" style={{ left: `${xAtTime(audioData.startTime, pps)}px`, width: `${(audioData.endTime - audioData.startTime) * pps}px`, background: '#374151', borderColor: '#4b5563', cursor: draggingCutData?.cutId === 'audio' ? 'grabbing' : 'grab', touchAction: 'none' }}
                                 onPointerDown={e => { e.stopPropagation(); cutDragMovedRef.current = false; clearTimeout(cutDragTimerRef.current); cutDragArmedRef.current = e.pointerType !== 'touch'; if (e.pointerType === 'touch') cutDragTimerRef.current = setTimeout(() => { cutDragArmedRef.current = true; }, 350); try { e.currentTarget.setPointerCapture(e.pointerId); } catch { } setDraggingCutData({ cutId: 'audio', startX: e.clientX, startY: e.clientY, initialStart: audioData.startTime, initialTrack: 0 }); }}>
                                 <div className="rh rh-left" style={{ touchAction: 'none' }} onPointerDown={e => { e.stopPropagation(); try { e.target.setPointerCapture(e.pointerId); } catch { } setResizingData({ cutId: 'audio', edge: 'left', startX: e.clientX, initialStart: audioData.startTime, initialEnd: audioData.endTime, initialOffset: audioData.offset }); }} />
                                 <span>Audio</span>
@@ -221,7 +222,7 @@ export function Timeline({
                                     : videoOverlay.cuts?.length ? <span style={{ fontSize: 9, color: '#7aa' }}>{tr('{0}컷', videoOverlay.cuts.length)}</span> : null}
                                 <button className="icon-btn" title={tr('장면(컷) 감지 설정')} style={{ fontSize: 11 }} onClick={e => { e.stopPropagation(); setSceneCfg({ threshold: 14, rangeOn: false, startText: '0:00', endText: '' }); }}></button>
                                 <button className="icon-btn del-btn" onClick={e => { e.stopPropagation(); removeVideoOverlay(); }} title={tr('영상 트랙 삭제')}><Trash2 size={9} /></button></div>
-                            <div className="cut-block" style={{ left: `${videoOverlay.startTime * pps + 60}px`, width: `${(videoOverlay.endTime - videoOverlay.startTime) * pps}px`, background: '#155e75', borderColor: '#22d3ee55', cursor: draggingCutData?.cutId === 'video' ? 'grabbing' : 'grab', touchAction: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                            <div className="cut-block" style={{ left: `${xAtTime(videoOverlay.startTime, pps)}px`, width: `${(videoOverlay.endTime - videoOverlay.startTime) * pps}px`, background: '#155e75', borderColor: '#22d3ee55', cursor: draggingCutData?.cutId === 'video' ? 'grabbing' : 'grab', touchAction: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                                 onPointerDown={e => { e.stopPropagation(); cutDragMovedRef.current = false; clearTimeout(cutDragTimerRef.current); cutDragArmedRef.current = e.pointerType !== 'touch'; if (e.pointerType === 'touch') cutDragTimerRef.current = setTimeout(() => { cutDragArmedRef.current = true; }, 350); try { e.currentTarget.setPointerCapture(e.pointerId); } catch { } setDraggingCutData({ cutId: 'video', startX: e.clientX, startY: e.clientY, initialStart: videoOverlay.startTime, initialTrack: 0 }); }}>
                                 {videoOverlay.name}
                                 {/* scene-cut markers: click to jump the playhead to that scene */}
@@ -248,7 +249,7 @@ export function Timeline({
                     {marquee && (
                         <div style={{ position: 'absolute', left: marquee.x, top: marquee.y, width: marquee.w, height: marquee.h, background: accentSoft(0.15), border: `1px solid ${accentSoft(0.8)}`, zIndex: 16, pointerEvents: 'none' }} />
                     )}
-                    <div className="playhead" ref={playheadRef} style={{ left: `${currentTime * pps + 60}px` }}><div className="playhead-dot" /></div>
+                    <div className="playhead" ref={playheadRef} style={{ left: `${xAtTime(currentTime, pps)}px` }}><div className="playhead-dot" /></div>
                     {snapLinePos !== null && (
                         <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${snapLinePos}px`, width: 2, background: '#888', opacity: 0.85, zIndex: 15, pointerEvents: 'none', boxShadow: '0 0 6px rgba(136,136,136,.5)' }} />
                     )}
