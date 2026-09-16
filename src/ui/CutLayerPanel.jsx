@@ -104,16 +104,24 @@ export function CutLayerPanel({
                                     {safeArray(cut.texts).length === 0 && (
                                         <div style={{ fontSize: 11, color: '#666', padding: '6px 2px' }}>{tr('텍스트 없음')}</div>
                                     )}
+                                    {/* The same row as a layer - same classes, same selected
+                                        state - so the panel reads as one list of things in the
+                                        cut. It had its own boxed, bordered style and looked like
+                                        a different panel. A "T" stands where a layer has its
+                                        thumbnail. */}
                                     {safeArray(cut.texts).map(t => (
                                         <div
                                             key={t.id}
-                                            className={`text-item${selectedText?.cutId === cut.id && selectedText?.textId === t.id ? ' active' : ''}`}
+                                            className={`layer-row${selectedText?.cutId === cut.id && selectedText?.textId === t.id ? ' layer-active' : ''}`}
+                                            style={{ paddingLeft: 6 }}
                                             onClick={e => { e.stopPropagation(); setSelectedText({ cutId: cut.id, textId: t.id }); }}
                                         >
-                                            <button className="icon-btn" onClick={e => { e.stopPropagation(); toggleTextVisible(cut.id, t.id); }} title={tr('표시')}>
+                                            <span style={{ width: 11, flexShrink: 0, display: 'inline-block' }} />
+                                            <span className="text-row-glyph">T</span>
+                                            <button className="icon-btn" style={{ marginLeft: 4 }} onClick={e => { e.stopPropagation(); toggleTextVisible(cut.id, t.id); }} title={tr('표시')}>
                                                 {t.visible === false ? <EyeOff size={10} style={{ color: '#555' }} /> : <Eye size={10} />}
                                             </button>
-                                            <div className="text-item-name">{String(t.text ?? '').split('\n')[0] || tr('(빈 텍스트)')}</div>
+                                            <span className="layer-name">{String(t.text ?? '').split('\n')[0] || tr('(빈 텍스트)')}</span>
                                             <button className="icon-btn" onClick={e => { e.stopPropagation(); openEditText(cut.id, t.id); }} title={tr('편집')}><Settings size={11} /></button>
                                             <button className="icon-btn del-btn" onClick={e => { e.stopPropagation(); deleteTextObject(cut.id, t.id); }} title={tr('삭제')}><Trash2 size={11} /></button>
                                         </div>
