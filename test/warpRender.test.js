@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { bendOffsetAt, bendSlices, drawWarped, isWarped } from '../src/canvas/warpRender.js';
+import { bendOffsetAt, bendSlices, bendSliceCount, drawWarped, isWarped } from '../src/canvas/warpRender.js';
 
 const near = (a, b, msg) => assert.ok(Math.abs(a - b) < 1e-9, `${msg}: ${a} vs ${b}`);
 const box = { x: 100, y: 50, w: 200, h: 80, bend: 0.5 };
@@ -106,4 +106,24 @@ test('rotation is about the centre of the box, and applied before skew', () => {
 test('isWarped counts a rotation too', () => {
     assert.equal(isWarped({ rot: 0.1 }), true);
     assert.equal(isWarped({ rot: 0 }), false);
+});
+
+test('a big, strongly bent selection gets many more slices than a small one', () => {
+    // At a fixed count a wide bent selection kinked visibly at every slice boundary - it read as
+    // segmented. The count follows the slope change across the box, so the kink stays under the
+    // threshold whatever the size.
+    const big = bendSliceCount({ w: 1500, h: 800, bend: 1 });
+    const small = bendSliceCount({ w: 120, h: 40, bend: 0.3 });
+    assert.ok(big > 200, `big: ${big}`);
+    assert.ok(small < big, `small: ${small}`);
+    assert.equal(bendSliceCount({ w: 1500, h: 800, bend: 0 }), 8, 'unbent: the floor');
+    assert.equal(bendSliceCount({ w: 0, h: 800, bend: 1 }), 8, 'degenerate: the floor, not infinity');
+    assert.ok(bendSliceCount({ w: 1, h: 4000, bend: 1 }) <= 512, 'capped');
+});
+
+test('the kink between neighbouring slices stays small on a large bend', () => {
+    const slices = bendSlices({ x: 0, w: 1500, h: 800, bend: 1 });
+    for (let i = 1; i < slices.length; i++) {
+        assert.ok(Math.abs(slices[i].k - slices[i - 1].k) < 0.0065, `kink at slice ${i}: ${slices[i].k - slices[i - 1].k}`);
+    }
 });

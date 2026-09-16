@@ -8,8 +8,31 @@
 
 import { shearSlices } from './shearSlices.js';
 
-/** Slices across a bent selection. Fewer than sway needs: a selection is small and one curve. */
-export const BEND_SLICES = 32;
+/**
+ * The largest change of slope allowed where two slices meet, in radians.
+ *
+ * Each slice is one shear, so a line running through the selection is straight inside a slice
+ * and kinks at every boundary by the difference between neighbouring shears. The sag of the
+ * curve is tiny even with few slices; the kinks are what the eye catches, and it catches them on
+ * a smooth circle at well under a degree. This is what made a large bent selection read as
+ * segmented at a fixed thirty-two slices.
+ */
+const MAX_KINK = 0.006;
+
+/**
+ * How many slices a bent box needs so that no boundary kinks by more than MAX_KINK.
+ *
+ * The bend parabola's slope runs from -2*bend*h/w at one edge to +2*bend*h/w at the other, a
+ * change of `4 * bend * h / w` across the width, so per slice it changes by that over the count. Wide, tall and strongly bent all ask for more; a flat or
+ * unbent box gets the floor, which is enough to be invisible at any size.
+ *
+ * @param {{w: number, h: number, bend: number}} box
+ */
+export function bendSliceCount({ w, h, bend }) {
+    if (!(w > 0) || !bend) return 8;
+    const n = Math.ceil((4 * Math.abs(bend) * h) / (w * MAX_KINK));
+    return Math.max(8, Math.min(512, n));
+}
 
 /**
  * How far a point across the box is displaced vertically by the bend, in pixels.
@@ -35,7 +58,7 @@ export function bendOffsetAt(x, { x: bx, w, h, bend }) {
  * @param {{x: number, w: number, h: number, bend: number}} box
  * @param {number} [slices]
  */
-export function bendSlices(box, slices = BEND_SLICES) {
+export function bendSlices(box, slices = bendSliceCount(box)) {
     return shearSlices((x) => bendOffsetAt(x, box), box.x, box.w, slices);
 }
 

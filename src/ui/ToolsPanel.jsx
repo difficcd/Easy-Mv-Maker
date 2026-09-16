@@ -5,11 +5,21 @@ import { BRUSH_MIN, BRUSH_MAX } from '../core/brushSize.js';
 
 // TOOLS panel: the tool grid, the colour swatch, and whatever settings the current tool has.
 //
-// The lower half changes with the tool - the airbrush picks a mode, the ruler picks straight or
-// curved, mosaic sets a block size, everything else sets a brush size - which is why it is one
+// The lower half changes with the tool - the airbrush picks a mode, the shape tool picks which
+// shape, mosaic sets a block size, everything else sets a brush size - which is why it is one
 // panel rather than several.
 
 const SIZE_PRESETS = [1, 2, 3, 5, 8, 12, 16, 24, 32, 48, 64, 90, 120, 160];
+
+// Tools that have no width. They used to fall through to the brush block, which showed a size
+// grid that did nothing under the lasso - a panel that looks like the pen's while the pen is
+// not what is selected reads as the wrong tool being active.
+const NO_SIZE_HINT = {
+    lasso: () => tr('영역을 둘러 그리세요. 선택되면 위 바에서 이동·크기·회전·기울기·곡률'),
+    move: () => tr('드래그해 옮깁니다. 텍스트를 찍으면 그 텍스트만'),
+    text: () => tr('탭해서 글을 놓습니다. 있는 글을 탭하면 편집'),
+    fill: () => tr('닫힌 영역을 탭해 채웁니다'),
+};
 
 /** The settings block under the divider, which is per-tool. */
 function ToolSettings({
@@ -31,6 +41,7 @@ function ToolSettings({
             <span style={{ fontSize: 9, color: '#888', textAlign: 'center' }}>{softMode === 'soft' ? tr('색을 뿌립니다') : tr('그려진 걸 퍼뜨립니다')}</span>
         </>);
     }
+    let head = null;
     if (tool === 'ruler') {
         // Two rows of two rather than one row of four: at four the labels are down to a couple of
         // characters each, and on a tablet the buttons are through the 24px hit target this
@@ -43,7 +54,9 @@ function ToolSettings({
             ['rect', tr('네모'), tr('드래그한 사각형'), tr('드래그로 사각형')],
             ['ellipse', tr('원'), tr('드래그한 타원'), tr('드래그로 원·타원')],
         ];
-        return (<>
+        // The mode picker, then the brush block below: a shape is drawn with the current brush,
+        // so it needs the width the same as a freehand line does.
+        head = (<>
             <span className="slider-label">{tr('도형 모드')}</span>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3, width: '100%' }}>
                 {shapes.map(([id, label, title]) => (
@@ -55,6 +68,9 @@ function ToolSettings({
                 {(shapes.find(s => s[0] === rulerMode) || shapes[0])[3]}
             </span>
         </>);
+    }
+    if (NO_SIZE_HINT[tool]) {
+        return <span style={{ fontSize: 9, color: '#888', textAlign: 'center', padding: '4px 2px' }}>{NO_SIZE_HINT[tool]()}</span>;
     }
     if (tool === 'mosaic') {
         return (<>
@@ -72,6 +88,7 @@ function ToolSettings({
     // second copy of the range to go with it.
     const curSize = toolSize, setSize = setToolSize;
     return (<>
+        {head}
         {/* Liquify is a brush too - the size is its radius - but what it does is not obvious
             from a wave icon, and the opacity slider doubling as its strength even less so. */}
         {tool === 'liquify' && <span style={{ fontSize: 9, color: '#888', textAlign: 'center' }}>{tr('그린 것을 밀어 흘려보냅니다. 불투명도가 세기입니다')}</span>}

@@ -623,7 +623,7 @@ Skew and bend for a pasted bitmap — the two adjustments a lasso selection carr
 | `isWarped` | Whether a paste carries a skew or bend at all — false for every paste made before the fields existed. |
 | `bendOffsetAt` | The vertical displacement of the bend at an x across the box: a parabola that is zero at both ends, so the corners stay where the handles are. |
 | `bendSlices` | The sheared slices that draw a bent box, in canvas coordinates. |
-| `BEND_SLICES` | How many. Fewer than sway: a selection is small and one curve. |
+| `bendSliceCount` | How many slices a bent box needs so no boundary kinks by more than a fixed small angle. Wide, tall and strongly bent all ask for more; a fixed thirty-two read as segmented on a large selection. |
 
 ## `src/canvas/textLayout.js`
 
