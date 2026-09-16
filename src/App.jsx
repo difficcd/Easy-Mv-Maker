@@ -38,6 +38,7 @@ import { PLAYBACK_RATES, RATE_DEFAULT, playbackRateCodec } from './core/playback
 import { scaleProjectTimes, bakePlan } from './core/timeScale.js';
 import { drawSwayed } from './canvas/swayRender.js';
 import { drawWarped, warpedOutline, warpedHandles } from './canvas/warpRender.js';
+import { drawMarquee, drawHandle, HANDLE_GRAB_PX } from './canvas/marquee.js';
 import { applyPartTransform, drawMaskedLayer } from './canvas/layerComposite.js';
 import { detachMedia, safeMediaSrc } from './core/mediaEl.js';
 import { useAutosave } from './hooks/useAutosave.js';
@@ -90,11 +91,6 @@ import {
 } from './canvas/canvasUtils';
 
 
-
-// Selection chrome, in screen pixels. The handle is drawn at this half-size and grabbed within
-// the larger radius, so a finger that lands beside a handle still gets it.
-const SELECTION_HANDLE_PX = 5;
-const SELECTION_GRAB_PX = 11;
 
 const PEN_TYPES = [
     { id: 'pen', label: 'Dot', Icon: PenLine },
@@ -1509,14 +1505,7 @@ export default function App() {
         const ctx = liveCtx(); if (!ctx) return;
         clearLiveOverlay();
         const pts = lassoRef.current; if (!pts || pts.length === 0) return;
-        ctx.save();
-        ctx.strokeStyle = accentSoft();
-        ctx.lineWidth = 1.5 / view.zoom;
-        ctx.setLineDash([4 / view.zoom, 4 / view.zoom]);
-        ctx.beginPath();
-        pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
-        ctx.stroke();
-        ctx.restore();
+        drawMarquee(ctx, pts, view.zoom);
     };
     // Move preview: the shifted result is drawn on the overlay while paintFrame hides the
     // original. It has to draw once on press too, or the screen flashes empty for a moment.
@@ -1899,7 +1888,7 @@ export default function App() {
     const hitTestSelection = (pos) => {
         if (!selection) return null;
         const box = { x: selection.tx, y: selection.ty, w: selection.tw, h: selection.th, rot: selection.rot, skew: selection.skew, bend: selection.bend };
-        const grab = SELECTION_GRAB_PX / view.zoom;
+        const grab = HANDLE_GRAB_PX / view.zoom;
         for (const hd of warpedHandles(box)) {
             if (Math.abs(pos.x - hd.x) <= grab && Math.abs(pos.y - hd.y) <= grab) return { type: 'resize', handle: hd.id };
         }
@@ -2036,9 +2025,11 @@ export default function App() {
             const hit = hitTestSelection(pos);
             if (hit) {
                 beginGesture(e);
-                // Ctrl inside the selection adjusts skew and bend by dragging instead of moving
-                // it (#175); the handles keep resizing either way.
-                const kind = hit.type === 'move' && e.ctrlKey ? { type: 'warp' } : hit;
+                // Inside the selection a drag moves it, or - with Ctrl held, or the bar's 변형
+                // toggle on, for keyboards without a Ctrl at hand - adjusts skew and bend
+                // (#175). The handles keep resizing either way.
+                const warp = e.ctrlKey || e.metaKey || selection.dragMode === 'warp';
+                const kind = hit.type === 'move' && warp ? { type: 'warp' } : hit;
                 selectionDragRef.current = { hit: kind, startPos: { x: pos.x, y: pos.y }, startSel: { ...selection } };
                 e.preventDefault();
                 return;
@@ -2870,31 +2861,10 @@ export default function App() {
             const src = bmp || (img && imageDataCanvas(img));
             if (src) drawWarped(ctx, src, src.width, src.height, box);
 
-            // Everything here is sized in screen pixels - divided by the zoom - so a handle is
-            // the same size to the finger zoomed out as zoomed in. At canvas-pixel sizes the
-            // outline vanished and the handles shrank to a few screen pixels once zoomed out.
-            const z = view.zoom;
-            ctx.save();
-            ctx.strokeStyle = accentSoft();
-            ctx.lineWidth = 1.5 / z;
-            ctx.setLineDash([6 / z, 4 / z]);
-            ctx.beginPath();
-            warpedOutline(box).forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
-            ctx.closePath();
-            ctx.stroke();
-            ctx.setLineDash([]);
-
-            const hs = SELECTION_HANDLE_PX / z;
-            ctx.fillStyle = '#ffffff';
-            ctx.strokeStyle = 'rgba(30, 30, 46, 0.9)';
-            ctx.lineWidth = 1 / z;
-            for (const hd of warpedHandles(box)) {
-                ctx.beginPath();
-                ctx.rect(hd.x - hs, hd.y - hs, hs * 2, hs * 2);
-                ctx.fill();
-                ctx.stroke();
-            }
-            ctx.restore();
+            // The marquee and handles are sized for the screen and drawn to show on anything -
+            // see canvas/marquee for both.
+            drawMarquee(ctx, warpedOutline(box), view.zoom, true);
+            for (const hd of warpedHandles(box)) drawHandle(ctx, hd.x, hd.y, view.zoom);
         }
 
         // Recorded motion paths (per layer) shown while editing so they're visible/redrawable.
@@ -3733,6 +3703,12 @@ export default function App() {
                     {selection && (
                         <div className="mode-group">
                             <span className="mode-label">{tr('선택 영역')}</span>
+                            {/* What a drag inside the selection does. Ctrl does the same for one
+                                drag; the toggle is for a tablet with no Ctrl to hold. */}
+                            <div className="mode-toggle" title={tr('안쪽을 끌면: 이동, 또는 기울기·곡률 (Ctrl을 누른 채 끌어도 됩니다)')}>
+                                <button className={`pal-btn${selection.dragMode !== 'warp' ? ' active' : ''}`} onClick={() => setSelection(s => s && ({ ...s, dragMode: 'move' }))}>{tr('이동')}</button>
+                                <button className={`pal-btn${selection.dragMode === 'warp' ? ' active' : ''}`} onClick={() => setSelection(s => s && ({ ...s, dragMode: 'warp' }))}>{tr('변형')}</button>
+                            </div>
                             {/* Rotation in degrees, skew and bend in -100..100%. Sliders rather than
                                 number fields: the value means nothing in itself and the eye is on
                                 the canvas. Rotation is stored in radians, as layer animation does. */}

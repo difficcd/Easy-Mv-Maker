@@ -650,6 +650,17 @@ Bending a layer along an axis - hair swinging from its roots, a ribbon trailing 
 | `swaySlices` | The shear each slice gets, as `offset(a) = k*a + m`. Separate from the drawing because this is where the correctness lives: a slice that translates rigidly instead of shearing tears the image into visible bands. |
 | `SWAY_SLICES` | How many slices. More only fits the curve better — it is the shear, not the count, that removes the seams. |
 
+## `src/canvas/marquee.js`
+
+The selection chrome, drawn so it can be seen on anything and sized for the screen.
+
+| | |
+|---|---|
+| `drawMarquee` | A dark solid line with a light dashed one on top, widths divided by the zoom; open or closed. |
+| `drawHandle` | A white square with a dark border, `HANDLE_PX` half-size on screen. |
+| `HANDLE_PX` | A handle's half-size on screen. |
+| `HANDLE_GRAB_PX` | The wider radius within which a press still takes a handle. |
+
 ## `src/canvas/shearSlices.js`
 
 One slice rule, shared by every warp that displaces pixels along an axis.
