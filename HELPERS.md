@@ -204,6 +204,17 @@ Undo and redo, and the memory budget that bounds them.
 | `pushSnapshot` | Record a snapshot, returning the new list and position. The input is never modified, so the caller can keep the old pair if it wants to. |
 | `step` | Step one snapshot back or forward. |
 
+## `src/core/cutSelection.js`
+
+Which cuts are selected after a click on one, and which are copied. The shift-run is in reading order (track, then start time), not creation order.
+
+| | |
+|---|---|
+| `selectionAfterClick` | Plain → that cut alone; Ctrl → toggled in or out; Shift → the run from the current cut to it, in reading order, either direction. |
+| `cutsToCopy` | The whole multi-selection when the copied cut is in it, else just that cut — in reading order so a paste lays them out as they read. |
+| `inReadingOrder` | Cuts sorted by track, then start time. |
+| `toggled` | A copy of a Set with one id added if absent, removed if present. Three copies of this lived in App. |
+
 ## `src/core/document.js`
 
 Constructors for the pieces of a document. A cut was a literal in four places and they had drifted.
