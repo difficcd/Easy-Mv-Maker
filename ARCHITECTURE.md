@@ -99,6 +99,19 @@ needs a document takes those two functions rather than the document.
 - `usePanelLayout.js` — where the panels are docked and how wide they are. Pure geometry: it reads
   nothing about the document, which is why it could leave whole.
 - `useStored.js` — state that remembers itself in localStorage, through `core/persist`.
+- `useToolSettings.js` — which tool, colour, width, pressure; `etool` resolves the two-in-one tools.
+- `useAudioTrack.js` — the audio element, its base64 copy, and putting a saved track back.
+- `useCanvasView.js` — zoom and offset of the canvas: space/middle-button pan, wheel zoom about
+  the cursor, one-finger pan, two-finger pinch. Maths in `core/viewZoom`.
+- `useLayerCache.js` — the layer canvases the frame is composited from: the state cache rebuilt for
+  the cuts on screen (`engine/selectCuts.cutsToCache`), the on-demand LRU `ensureLayerCanvas`
+  fills during playback, clip-group flattening, lazy frame decoding ahead of the playhead
+  (`core/decodeBudget.prefetchWindow`) and invalidation when a frame lands. Sits over
+  `canvas/bitmapStore`, which owns the pixels themselves.
+- `useLayerDnD.js` — dragging a layer row to reorder it or into a folder; moves in `core/layerOps`.
+- `useTextDrag.js` — grabbing a text on the canvas and dragging it, one document write per frame.
+- `useShortcuts.js` — the keydown listener; which key means what is `core/shortcuts.shortcutFor`.
+- `useDropdown.js` — a menu that closes on a press outside it (the File and Media menus).
 
 - `server/index.js` — Express file-backed project DB on :8787, files under `server/data/`.
   Proxied at `/api` (vite.config).
@@ -118,17 +131,24 @@ needs a document takes those two functions rather than the document.
 
 ## App.jsx key handlers (search these names)
 - Drawing: `startDraw`/`onDraw`/`stopDraw` (palm rejection: ignore `pointerType==='touch'`; path capture via `pathCapture`/`pathPtsRef`).
-- Selection (lasso): `commitSelectionImpl`, `extractSelectionToPart` (lasso → new layer).
-- Cuts: `handleAddCut`, `handleDuplicateCut` (Ctrl+D), `handleCopyCut`/`handlePasteCut`, `handleClearCut`, `cloneCutContents`.
-- Layers: `handleAddLayer/handleAddFolder/handleDeleteLayer`, drag `onLayerDrag*`, `renderLayers`.
+- Selection (lasso): `liftLassoSelection`, `selectAllAsLasso` (Ctrl+T), `takeSelectionStrokes` →
+  `commitSelectionImpl` / `extractSelectionToPart` (lasso → new layer). A selection carries `rot`,
+  `skew`, `bend`; `canvas/warpRender` draws it and `canvas/editChrome` its marquee.
+- Cuts: `handleAddCut` (`core/document.mkCut`), `handleDuplicateCut` (Ctrl+D), `handleCopyCut`/`handlePasteCut`
+  (`core/cutSelection`, `core/cutClone.placeCopies`), `handleClearCut`, `handleCutClick`.
+- Layers: `handleAddLayer/handleAddFolder/handleDeleteLayer` are one-liners over `core/layerOps`
+  (`appendLayer`, `appendFolder`, `removeLayerTree`); drag-and-drop is `useLayerDnD`.
 - Anim updaters: `updCutAnim`, `updLayerAnim`. The panels take free numeric input (`NumField`);
   the old fixed-value dropdowns and their option lists are gone.
 - Gestures: `beginGesture`/`endGesture` wrap pointer capture — **always use them.**
   `setPointerCapture` and `releasePointerCapture` *throw* on a pointer that has already gone, and
   optional chaining does not help (it guards a missing method, not a throw). An uncaught throw out
   of a pointer handler takes the whole app down; it has happened.
-- Timeline: `seekToClientX`, `startTimelineScrub` (mouse), `onTimelinePointer*` (touch: 1=pan/tap-seek, 2=pinch zoom pps). Cut blocks: drag = long-press on touch (`cutDragArmedRef`), resize = absolute delta (`initialStart/initialEnd`). `splitter` for panel resize.
-- Canvas nav: `onAreaPointer*` (1-finger pan / 2-finger pinch), `view={zoom,x,y}`.
+- Timeline: all in `useTimelineGestures` — `seekToClientX`, `startTimelineScrub` (mouse), touch as
+  native capture-phase listeners (1=pan/tap-seek, 2=pinch zoom pps, works over cut blocks), wheel
+  zoom about the cursor. Cut blocks: drag = long-press on touch (`cutDragArmedRef`), resize =
+  absolute delta (`initialStart/initialEnd`). `splitter` for panel resize.
+- Canvas nav: `useCanvasView` — `onAreaPointer*` (1-finger pan / 2-finger pinch), `view={zoom,x,y}`.
 - Playback: `usePlayback`; bounds are `playStart..playEnd` from `core/playRange` (NOT maxTime) —
   the same range export uses, so what you watch is what comes out. `loopPlay` repeats.
 - Files: `buildData` and `restore` are in App, because one reads most of its state and the other
@@ -139,7 +159,9 @@ needs a document takes those two functions rather than the document.
   for "not now, a gesture is in progress".
 - Export: `renderFrameRange` paints a range and hands each frame to a capture function, so the
   multi-piece export can run it once per piece into one writer. `captureFrame` decides what a
-  format wants from a painted canvas.
+  format wants from a painted canvas. Video recording paints on a fixed frame grid
+  (`core/recordClock`) into a stream that takes frames on request (`export/recorder`).
+- Keys: `useShortcuts` with an actions table; `core/shortcuts.shortcutFor` is the rule set.
 
 ## Where the render path is going
 
