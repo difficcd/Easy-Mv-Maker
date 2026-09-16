@@ -238,3 +238,69 @@ export function mergeDown(layers, layerId, flattenVisibleLeaves) {
         activeLayerId: target.id,
     };
 }
+
+/** A blank drawable layer. The one shape, so a layer made anywhere has every field. */
+export const mkLayer = (id, name = `L${id}`) => ({ id, name, type: 'layer', strokes: [], redoStrokes: [], visible: true, parentId: null });
+
+/** A blank folder. */
+export const mkFolder = (id) => ({ id, name: `Folder ${id}`, type: 'folder', visible: true, collapsed: false, parentId: null });
+
+/**
+ * The next free layer id within a cut. Layer ids are per cut, not global (see the gotchas):
+ * one past the largest in use, or 1 for an empty cut.
+ *
+ * This was written out in three places - adding a layer, adding a folder, extracting a part -
+ * and a fourth site used the global id counter instead, so a layer added after a delete could
+ * carry an id in the millions beside layers numbered 1 to 5.
+ */
+export const nextLayerId = (layers) => Math.max(...(Array.isArray(layers) ? layers : []).map(l => l.id), 0) + 1;
+
+/**
+ * A new layer at the end of the stack, made active.
+ *
+ * @param {{layers: any[]}} cut
+ * @returns {{layers: any[], activeLayerId: number}}
+ */
+export function appendLayer(cut) {
+    const layers = Array.isArray(cut?.layers) ? cut.layers : [];
+    const id = nextLayerId(layers);
+    return { layers: [...layers, mkLayer(id)], activeLayerId: id };
+}
+
+/**
+ * A new folder at the end of the stack. Not made active: a folder cannot be drawn on.
+ *
+ * @param {{layers: any[]}} cut
+ * @returns {{layers: any[]}}
+ */
+export function appendFolder(cut) {
+    const layers = Array.isArray(cut?.layers) ? cut.layers : [];
+    return { layers: [...layers, mkFolder(nextLayerId(layers))] };
+}
+
+/**
+ * Remove a layer, or a folder and everything inside it.
+ *
+ * Two things must hold afterwards. The cut still has a drawable layer - deleting the last one
+ * leaves a fresh blank rather than a cut that nothing can be drawn on. And the active layer is
+ * still one that exists: if the deletion took it, the first remaining drawable layer is made
+ * active, so the next stroke has somewhere to go.
+ *
+ * @param {{layers: any[], activeLayerId: any}} cut
+ * @param {any} layerId
+ * @returns {{layers: any[], activeLayerId: any}}
+ */
+export function removeLayerTree(cut, layerId) {
+    const layers = Array.isArray(cut?.layers) ? cut.layers : [];
+    const gone = new Set([layerId]);
+    // Folders can nest, so walk until no new child turns up.
+    let grew = true;
+    while (grew) {
+        grew = false;
+        for (const l of layers) if (!gone.has(l.id) && gone.has(l.parentId)) { gone.add(l.id); grew = true; }
+    }
+    let kept = layers.filter(l => !gone.has(l.id));
+    if (!kept.some(l => l.type === 'layer')) kept = [...kept, mkLayer(nextLayerId(kept))];
+    const activeLayerId = gone.has(cut?.activeLayerId) ? (kept.find(l => l.type === 'layer')?.id ?? null) : cut.activeLayerId;
+    return { layers: kept, activeLayerId };
+}
