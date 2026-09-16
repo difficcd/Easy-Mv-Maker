@@ -21,6 +21,7 @@ import { closeLassoPath, lassoBounds, applyResize, cutOutPolygon, selectionStrok
 import { pushAlong } from './core/liquify.js';
 import { shapePoints } from './core/shapeStroke.js';
 import { useTimelineGestures } from './hooks/useTimelineGestures.js';
+import { useTextDrag } from './hooks/useTextDrag.js';
 import { fmt, parseClock } from './core/timeCode.js';
 import { textFromEdit, editFromText, blankTextEdit } from './core/textEdit.js';
 import { useHistory } from './hooks/useHistory.js';
@@ -54,11 +55,11 @@ import { DECODED_CAP, framesToRelease, layerKeysUsingBitmaps, keysWithPhases } f
 import { brushUp, brushDown } from './core/brushSize.js';
 import {
     cutsReducer, replaceCuts, addCuts, updateCut, setCutAnim, setCutCamera, clearCut,
-    updateLayer, setLayerAnim, moveLayers, upsertText, moveText, deleteText, toggleTextVisible as toggleTextVisibleAction,
+    updateLayer, setLayerAnim, moveLayers, upsertText, deleteText, toggleTextVisible as toggleTextVisibleAction,
     assignPartTo, renamePart as renamePartAction, ungroupPart as ungroupPartAction, removeBatch,
     insertCutsShifting, deleteTrack, moveCutGroup, replaceBatchCuts, patchCut, patchCuts,
 } from './core/cutsReducer.js';
-import { measureTextBox as measureTextBoxPure, textNeedsBox, drawTextObject } from './canvas/textRender.js';
+import { textNeedsBox, drawTextObject } from './canvas/textRender.js';
 import { migrateCuts, projectSettings, makeLoadProgress } from './core/projectFormat.js';
 import { imageExtFromType, audioExt, videoExt, collectBitmaps, loadBitmapStore, blobToDataURL } from './core/projectAssets.js';
 import { xAtTime, timeAtX, zoomAnchored, pinchZoom } from './core/timelineZoom.js';
@@ -394,8 +395,6 @@ export default function App() {
     const selectionDragRef = useRef(null);
     const activePointerIdRef = useRef(null);
     const textAreaRef = useRef(null);
-    const textDragRef = useRef(null);
-    const textMeasureCtxRef = useRef(null);
     const [view, setView] = useState({ zoom: 1, x: 0, y: 0 });
     const touchPtsRef = useRef(new Map());
     const pinchRef = useRef(null);
@@ -1508,22 +1507,6 @@ export default function App() {
     };
 
     // Coalesce to one draw per frame - pointer events arrive far more often than frames.
-    // Coalesce a text drag to one document update per frame. The last position wins, so nothing
-    // is lost by dropping the ones in between: each is absolute, computed from where the drag
-    // started plus the total delta.
-    const textDragRafRef = useRef(0);
-    const flushTextDrag = () => {
-        textDragRafRef.current = 0;
-        const p = textDragRef.current?.pending;
-        if (!p) return;
-        textDragRef.current.pending = null;
-        dispatchCuts(moveText(p.cutId, p.textId, p.x, p.y));
-    };
-    const scheduleTextDrag = () => {
-        if (textDragRafRef.current) return;
-        textDragRafRef.current = requestAnimationFrame(flushTextDrag);
-    };
-
     const scheduleLiveRender = () => {
         if (liveRafRef.current) return;
         liveRafRef.current = requestAnimationFrame(() => { liveRafRef.current = 0; renderLiveStroke(); });
@@ -1874,31 +1857,6 @@ export default function App() {
         setTlWin({ left: el.scrollLeft - pad, right: el.scrollLeft + (el.clientWidth || 2000) + pad });
     }, [pps, maxTime, numTracks]);
 
-    const getTextMeasureCtx = () => {
-        if (!textMeasureCtxRef.current) {
-            const c = document.createElement('canvas');
-            c.width = 16;
-            c.height = 16;
-            textMeasureCtxRef.current = c.getContext('2d');
-        }
-        return textMeasureCtxRef.current;
-    };
-
-    // Measuring and drawing text live in textRender; this only supplies the scratch context that
-    // measureText needs.
-    const measureTextBox = (t) => measureTextBoxPure(t, getTextMeasureCtx());
-
-    const hitTestText = (pos, cut) => {
-        const texts = safeArray(cut?.texts);
-        for (let i = texts.length - 1; i >= 0; i--) {
-            const t = texts[i];
-            if (t.visible === false) continue;
-            const b = measureTextBox(t);
-            if (pos.x >= b.x && pos.x <= b.x + b.w && pos.y >= b.y && pos.y <= b.y + b.h) return { text: t, box: b };
-        }
-        return null;
-    };
-
     const hitTestSelection = (pos) => {
         if (!selection) return null;
         const x = selection.tx, y = selection.ty, w = selection.tw, h = selection.th;
@@ -1947,22 +1905,12 @@ export default function App() {
         activePointerIdRef.current = null;
     };
 
-    // Grab a text object to drag. The text tool and the move tool both do this and differ in one
-    // way: under the text tool, releasing without having moved opens the editor, so the drag
-    // starts out "not yet moved". The move tool has no editor to open, so it never needs to know.
-    const startTextDrag = (e, pos, hit, clickToEdit) => {
-        setSelectedText({ cutId: currentCutId, textId: hit.text.id });
-        beginGesture(e);
-        textDragRef.current = {
-            cutId: currentCutId,
-            textId: hit.text.id,
-            startPos: { x: pos.x, y: pos.y },
-            startText: { x: hit.text.x ?? 0, y: hit.text.y ?? 0 },
-            moved: !clickToEdit,
-            clickToEdit,
-        };
-        e.preventDefault();
-    };
+    // Grabbing a text and dragging it, plus the measuring that hit-testing needs. The text tool
+    // and the move tool both start one and differ in one flag: under the text tool, releasing
+    // without having moved opens the editor, which is why endTextDrag reports what ended.
+    const { measureTextBox, hitTestText, startTextDrag, moveTextDrag, endTextDrag } = useTextDrag({
+        dispatchCuts, currentCutId, setSelectedText, beginGesture,
+    });
 
     // Open the text editor over this point. Its position is in CSS pixels relative to the
     // displayed canvas, which is scaled to fit and zoomed independently of the drawing
@@ -2210,21 +2158,7 @@ export default function App() {
             return;
         }
 
-        if (textDragRef.current) {
-            const { cutId, textId, startPos, startText, clickToEdit } = textDragRef.current;
-            const dx = pos.x - startPos.x;
-            const dy = pos.y - startPos.y;
-            if (clickToEdit && !textDragRef.current.moved && Math.hypot(dx, dy) <= 4) return;
-            textDragRef.current.moved = true;
-            // One update per frame, not one per event. A pen reports well over a hundred moves a
-            // second and each write to the document is a React render plus a full repaint, so
-            // most of that work is thrown away before it can be seen - and the drag ends up
-            // lagging the pointer rather than following it. The strokes were fixed the same way
-            // (see scheduleLiveRender); this is the same problem on the text path.
-            textDragRef.current.pending = { cutId, textId, x: Math.round(startText.x + dx), y: Math.round(startText.y + dy) };
-            scheduleTextDrag();
-            return;
-        }
+        if (moveTextDrag(pos)) return;
 
         if (selectionDragRef.current && selection) {
             const { hit, startPos, startSel } = selectionDragRef.current;
@@ -2388,12 +2322,8 @@ export default function App() {
             } else clearLiveOverlay();
             return;
         }
-        // A drag can end between frames with a move still queued; flush it or the text snaps
-        // back to wherever the last painted frame left it.
-        if (textDragRafRef.current) { cancelAnimationFrame(textDragRafRef.current); flushTextDrag(); }
         selectionDragRef.current = null;
-        const endedTextDrag = textDragRef.current;
-        textDragRef.current = null;
+        const endedTextDrag = endTextDrag();
         if (!isDrawing.current) return;
         endGesture();
 
