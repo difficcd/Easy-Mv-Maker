@@ -516,6 +516,35 @@ body {
     text-overflow: ellipsis;
 }
 
+/* A labelled slider in the mode bar - the selection's skew and bend. Reuses the v-slider track
+   and thumb so it reads as the same control as the ones in the tool panel; only the width is
+   its own, because the bar is a row and the panel is a column. */
+.mode-slider {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: #aaa;
+    white-space: nowrap;
+}
+.mode-slider input[type="range"] {
+    -webkit-appearance: none;
+    width: 84px;
+    height: 4px;
+    margin: 0;
+    background: hsl(var(--ui-h) var(--ui-s) 21%);
+    border-radius: 4px;
+    outline: none;
+}
+.mode-slider input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    background: var(--accent);
+    border-radius: 50%;
+    cursor: pointer;
+}
+
 /* The text editor is a docked panel now, not a window over the canvas: it had grown enough
    controls to cover the drawing it was meant to be editing. It keeps the .right-panel chrome
    and only needs its own scrolling body, so the header stays put while the controls scroll. */

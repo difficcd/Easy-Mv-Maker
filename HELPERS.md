@@ -242,6 +242,7 @@ Lasso selection: closing the path, bounding it, lifting the pixels.
 | `cutOutPolygon` | The pixels inside a lasso, and the hole they leave, from one pass — they describe the same set from both sides, and a mask that drifts from its selection leaves a ghost in the layer. Only non-transparent pixels are lifted, and the inside test is at the pixel centre so a boundary on the grid is not a coin toss. |
 | `lassoBounds` | The pixel rectangle a lasso covers, clamped to the canvas. Returned as integers because it indexes into image data: the left and top round down and the right and bottom round up, so a region is never clipped by a fraction of a pixel. |
 | `MIN_SELECTION_SIZE` | Smallest a selection may be dragged to, in pixels. Below this it is impossible to grab again. |
+| `selectionStrokes` | The erase-hole and paste strokes that put a floating selection back into a layer. Skew and bend ride on the paste, and only when set, so an unadjusted paste is byte-identical to one from before the fields existed. |
 
 ## `src/core/shapeStroke.js`
 
@@ -583,6 +584,26 @@ Bending a layer along an axis - hair swinging from its roots, a ribbon trailing 
 | `drawSwayed` | Draw a layer canvas bent by its profile, in slices, respecting the caller's transform. |
 | `swaySlices` | The shear each slice gets, as `offset(a) = k*a + m`. Separate from the drawing because this is where the correctness lives: a slice that translates rigidly instead of shearing tears the image into visible bands. |
 | `SWAY_SLICES` | How many slices. More only fits the curve better — it is the shear, not the count, that removes the seams. |
+
+## `src/canvas/shearSlices.js`
+
+One slice rule, shared by every warp that displaces pixels along an axis.
+
+| | |
+|---|---|
+| `shearSlices` | Cut a span into slices, each with the shear that matches a displacement function exactly at both of its boundaries — so neighbours agree where they meet, at any slice count. Sway and the selection bend both call it. |
+
+## `src/canvas/warpRender.js`
+
+Skew and bend for a pasted bitmap — the two adjustments a lasso selection carries beyond where it sits and how big it is.
+
+| | |
+|---|---|
+| `drawWarped` | Draw a bitmap into a box, skewed about its middle row and bent in vertical slices. Neither set means one plain `drawImage`. |
+| `isWarped` | Whether a paste carries a skew or bend at all — false for every paste made before the fields existed. |
+| `bendOffsetAt` | The vertical displacement of the bend at an x across the box: a parabola that is zero at both ends, so the corners stay where the handles are. |
+| `bendSlices` | The sheared slices that draw a bent box, in canvas coordinates. |
+| `BEND_SLICES` | How many. Fewer than sway: a selection is small and one curve. |
 
 ## `src/canvas/textLayout.js`
 
