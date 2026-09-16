@@ -88,7 +88,7 @@ npm run lint       # eslint-plugin-react-hooks
 npm run smoke      # boots the built app in a headless browser and draws a stroke
 ```
 
-`npm run check` is the gate: typecheck, the unit tests, then five static guards, then the build.
+`npm run check` is the gate: typecheck, the unit tests, then six static guards, then the build.
 The same steps run in CI on every push and pull request.
 
 | Guard | What it fails on |
@@ -97,6 +97,7 @@ The same steps run in CI on every push and pull request.
 | `scripts/helper-index.mjs` | a shared export missing from `HELPERS.md` |
 | `scripts/unreachable.mjs` | an App-level name nothing can reach |
 | `scripts/unused-imports.mjs` | an import nothing in the file uses |
+| `scripts/stroke-writes.mjs` | a write that adds a stroke to a layer without going through `commitStroke` |
 | `scripts/i18n-check.mjs` | a `tr()` literal with no English entry |
 
 Around 1,050 unit tests cover the pure modules under `src/core`, `src/canvas`, `src/engine` and
