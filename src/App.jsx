@@ -58,7 +58,7 @@ import { importPlacement, buildImportedCuts } from './core/videoCuts.js';
 import { playRange } from './core/playRange.js';
 import { pieceRange } from './core/exportQueue.js';
 import { frameExportPlan, exportFileInfo, LONG_EXPORT_FRAMES } from './core/frameExport.js';
-import { layerKeysUsingBitmaps, keysWithPhases } from './core/decodeBudget.js';
+import { layerKeysUsingBitmaps, keysWithPhases, prefetchWindow } from './core/decodeBudget.js';
 import { brushUp, brushDown } from './core/brushSize.js';
 import {
     cutsReducer, replaceCuts, addCuts, updateCut, setCutAnim, setCutCamera, clearCut,
@@ -77,7 +77,7 @@ import { dragOnWindow } from './core/windowDrag.js';
 // rather than of whichever layer happens to be selected.
 
 import { applyCamera } from './core/camera.js';
-import { onionNeighbours, topCutAt } from './engine/selectCuts.js';
+import { onionNeighbours, topCutAt, cutsToCache } from './engine/selectCuts.js';
 import { evaluateFrame } from './engine/evaluateFrame.js';
 import { pendingBitmapIds, scanLayerBitmaps } from './engine/pendingBitmaps.js';
 import { frameName, ZipWriter } from './export/zip.js';
@@ -2138,22 +2138,9 @@ export default function App() {
         const newCache = { ...layerCanvasCache };
         const validKeys = new Set();
         let changed = false;
-        // Only cache cuts that can actually be on screen (playing/current + onion neighbours).
-        // Caching every cut made hundreds of frames rebuild on each edit and stalled the app.
-        const visible = new Set();
-        cuts.forEach(c => { if (currentTime >= c.startTime && currentTime < c.endTime) visible.add(c.id); });
-        const primary = currentCut;
-        if (primary) {
-            visible.add(primary.id);
-            if (onionPrev) {
-                const prev = onionNeighbours(cuts, primary).prev;
-                if (prev) visible.add(prev.id);
-            }
-            if (onionNext) {
-                const next = onionNeighbours(cuts, primary).next;
-                if (next) visible.add(next.id);
-            }
-        }
+        // Only the cuts that can be on screen - engine/selectCuts says which. Caching every cut
+        // made hundreds of frames rebuild on each edit and stalled the app.
+        const visible = cutsToCache(cuts, currentTime, currentCut, { prev: onionPrev, next: onionNext });
         for (const cut of cuts) {
             if (!visible.has(cut.id)) continue;
             for (const layer of cut.layers) {
@@ -2237,19 +2224,11 @@ export default function App() {
     // the playhead (and a few behind), so playback and scrubbing don't stall on lazy decoding.
     // The LRU cap releases frames outside this window, so memory stays bounded.
     const prefetchFramesAt = (time, playing) => {
-        const ordered = cuts.filter(c => safeArray(c.layers).some(l => safeArray(l.strokes).some(s => s.tool === 'paste' && s.bitmapId)))
-            .sort((a, b) => a.startTime - b.startTime);
-        if (!ordered.length) return;
-        let idx = ordered.findIndex(c => time >= c.startTime && time < c.endTime);
-        if (idx < 0) idx = ordered.findIndex(c => c.id === currentCutId);
-        if (idx < 0) idx = 0;
-        const AHEAD = playing ? 48 : 10, BEHIND = playing ? 2 : 4;
-        const ids = [];
-        const push = (c) => c && safeArray(c.layers).forEach(l => safeArray(l.strokes).forEach(s => { if (s.tool === 'paste' && s.bitmapId) ids.push(s.bitmapId); }));
-        push(ordered[idx]);                                   // current first = highest priority
-        for (let d = 1; d <= AHEAD; d++) push(ordered[idx + d]);
-        for (let d = 1; d <= BEHIND; d++) push(ordered[idx - d]);
-        bitmapStore.current.setHot(ids); // protect this window from LRU eviction
+        // Which frames, and in what order, is core/decodeBudget's answer; here they are marked
+        // hot - protected from the LRU - and decoded.
+        const ids = prefetchWindow(cuts, time, currentCutId, playing);
+        if (!ids.length) return;
+        bitmapStore.current.setHot(ids);
         requestFrameDecode(ids);
     };
     prefetchRef.current = prefetchFramesAt;

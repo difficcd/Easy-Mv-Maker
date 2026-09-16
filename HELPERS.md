@@ -181,6 +181,8 @@ How many decoded frames to hold, which to let go of, and which cached layers a d
 | | |
 |---|---|
 | `DECODED_CAP` | How many decoded frames may be held. **Must stay above the prefetch window (~50)** — below it, the trim evicts what the prefetcher just decoded and the two fight each other, which reads as stutter rather than as a memory problem. |
+| `prefetchWindow` | The frame bitmaps to have decoded around a time: the cut under the playhead first, then a window ahead and a few behind; only cuts that carry frames count. |
+| `PREFETCH_AHEAD` / `PREFETCH_BEHIND` | How far the window reaches, in cuts, playing and paused. |
 | `framesToRelease` | Oldest use first, never the prefetch window or the caller's protected set. A skipped id is not counted against the quota, or the trim stops early and leaves the store over cap. |
 | `layerKeysUsingBitmaps` | The layer-canvas keys holding pixels from given frames. Only these are dropped — clearing everything made on-screen frames flicker while playing. |
 | `keysWithPhases` | Includes a boiling layer's `cut:layer#phase` variants. Dropping the plain key alone leaves the phases holding the replaced bitmap. |
@@ -798,6 +800,7 @@ thumbnails and onion skin should all describe a frame the same way.
 | `cutsAt` | The cuts playing at a moment, bottom track first. Half-open, so two cuts that touch never both claim the instant between them. |
 | `visibleCutsAt` | What to draw, which is not the same question: while paused it also includes the cut being edited, or clicking a cut and finding a blank canvas becomes normal. |
 | `onionNeighbours` | The cuts either side on the **same** track. `next` starts at `endTime`, because cuts abut and a strict comparison would find nothing in the common case. |
+| `cutsToCache` | The cuts whose layers are worth caching: under the playhead, the current cut, and its shown onion neighbours. Caching every cut stalled the app. |
 | `topCutAt` | The cut the playhead selects: topmost of those it is over, since the upper tracks are what a click would land on. |
 
 ## `src/hooks/useAudioTrack.js`

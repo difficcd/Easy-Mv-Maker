@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { framesToRelease, layerKeysUsingBitmaps, keysWithPhases, DECODED_CAP } from '../src/core/decodeBudget.js';
+import { framesToRelease, layerKeysUsingBitmaps, keysWithPhases, DECODED_CAP, prefetchWindow, PREFETCH_AHEAD, PREFETCH_BEHIND } from '../src/core/decodeBudget.js';
 
 const ids = (n, prefix = 'f') => Array.from({ length: n }, (_, i) => `${prefix}${i}`);
 /** Used in the order given: f0 oldest, last newest. */
@@ -107,4 +107,28 @@ test('a phase key does not drag in a different layer that shares a prefix', () =
 
 test('nothing to drop drops nothing', () => {
     assert.deepEqual(keysWithPhases(['1:10', '1:10#0'], new Set()), []);
+});
+
+// ── the prefetch window ────────────────────────────────────────────────────
+const frameCut = (id, start, ...bitmapIds) => ({ id, startTime: start, endTime: start + 1, layers: [{ strokes: bitmapIds.map(b => ({ tool: 'paste', bitmapId: b })) }] });
+
+test('prefetchWindow: the cut under the playhead comes first, then ahead, then behind', () => {
+    const cuts = [frameCut('c', 2, 'f2'), frameCut('a', 0, 'f0'), frameCut('b', 1, 'f1'), frameCut('d', 3, 'f3')];
+    assert.deepEqual(prefetchWindow(cuts, 1.5, null, false), ['f1', 'f2', 'f3', 'f0']);
+});
+
+test('prefetchWindow: playing looks further ahead and less far behind', () => {
+    const cuts = Array.from({ length: 80 }, (_, i) => frameCut(i, i, `f${i}`));
+    const playing = prefetchWindow(cuts, 20.5, null, true);
+    const paused = prefetchWindow(cuts, 20.5, null, false);
+    assert.equal(playing.length, 1 + PREFETCH_AHEAD.playing + PREFETCH_BEHIND.playing);
+    assert.equal(paused.length, 1 + PREFETCH_AHEAD.paused + PREFETCH_BEHIND.paused);
+    assert.ok(PREFETCH_AHEAD.playing > PREFETCH_AHEAD.paused);
+});
+
+test('prefetchWindow: cuts without frames do not count, and off every cut the current one anchors', () => {
+    const cuts = [frameCut('a', 0, 'fa'), { id: 'drawn', startTime: 1, endTime: 2, layers: [{ strokes: [{ tool: 'brush' }] }] }, frameCut('b', 5, 'fb')];
+    assert.deepEqual(prefetchWindow(cuts, 3, 'b', false), ['fb', 'fa'], 'time 3 is on no frame cut; b is current');
+    assert.deepEqual(prefetchWindow(cuts, 3, 'zzz', false), ['fa', 'fb'], 'unknown current: the first');
+    assert.deepEqual(prefetchWindow([], 0, null, false), []);
 });

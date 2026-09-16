@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cutsAt, visibleCutsAt, onionNeighbours, topCutAt } from '../src/engine/selectCuts.js';
+import { cutsAt, visibleCutsAt, onionNeighbours, topCutAt, cutsToCache } from '../src/engine/selectCuts.js';
 
 const cut = (id, start, end, track = 0) => ({ id, startTime: start, endTime: end, track });
 const ids = (cs) => cs.map(c => c.id);
@@ -87,4 +87,18 @@ test('the playhead selects the topmost cut it is over', () => {
     assert.equal(topCutAt(doc(), 1.5).id, 'over');
     assert.equal(topCutAt(doc(), 0.5).id, 'a');
     assert.equal(topCutAt(doc(), 99), null);
+});
+
+// ── which cuts the layer cache covers ──────────────────────────────────────
+test('cutsToCache: the cuts under the playhead, the current cut, and shown onion neighbours', () => {
+    const cuts = [
+        { id: 'a', track: 0, startTime: 0, endTime: 1 }, { id: 'b', track: 0, startTime: 1, endTime: 2 },
+        { id: 'c', track: 0, startTime: 2, endTime: 3 }, { id: 'x', track: 1, startTime: 0, endTime: 5 },
+    ];
+    const b = cuts[1];
+    assert.deepEqual([...cutsToCache(cuts, 1.5, b, {})].sort(), ['b', 'x'], 'under the playhead on both tracks');
+    assert.deepEqual([...cutsToCache(cuts, 4, b, {})].sort(), ['b', 'x'], 'the current cut even when the playhead is elsewhere');
+    assert.deepEqual([...cutsToCache(cuts, 4, b, { prev: true })].sort(), ['a', 'b', 'x']);
+    assert.deepEqual([...cutsToCache(cuts, 4, b, { prev: true, next: true })].sort(), ['a', 'b', 'c', 'x']);
+    assert.deepEqual([...cutsToCache(cuts, 10, null, { prev: true })], [], 'nothing on screen, no current cut: nothing');
 });

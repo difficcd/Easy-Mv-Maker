@@ -95,3 +95,30 @@ export function topCutAt(cuts, t) {
     if (!active.length) return null;
     return active.reduce((p, c) => (p.track > c.track ? p : c));
 }
+
+/**
+ * The cuts whose layers are worth caching: the ones on screen now - every cut under the
+ * playhead, the current cut, and its onion-skin neighbours when those are shown.
+ *
+ * Caching every cut made hundreds of frames rebuild on each edit and stalled the app; this is
+ * the set the cache effect limits itself to.
+ *
+ * @param {Cut[]} cuts
+ * @param {number} time
+ * @param {Cut | null} currentCut
+ * @param {{prev?: boolean, next?: boolean}} onion which neighbours are shown
+ * @returns {Set<any>}
+ */
+export function cutsToCache(cuts, time, currentCut, onion) {
+    const visible = new Set();
+    for (const c of cuts) if (time >= c.startTime && time < c.endTime) visible.add(c.id);
+    if (currentCut) {
+        visible.add(currentCut.id);
+        if (onion.prev || onion.next) {
+            const { prev, next } = onionNeighbours(cuts, currentCut);
+            if (onion.prev && prev) visible.add(prev.id);
+            if (onion.next && next) visible.add(next.id);
+        }
+    }
+    return visible;
+}
