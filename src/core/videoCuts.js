@@ -125,3 +125,43 @@ export function buildImportedCuts({ bitmapIds, holds, fps, track, startAt, batch
     }
     return made;
 }
+
+/** What each quality tier asks the extractor for. */
+const QUALITY = {
+    // 'high' is WebP at q0.95 at the source's own size: visually lossless at 5-8x smaller than a
+    // true-lossless PNG, which is why it is the default for large videos.
+    lossless: { quality: 1, format: 'png', nativeRes: true },
+    high: { quality: 0.95, format: 'webp', nativeRes: true },
+    compressed: { quality: 0.82, format: 'webp', nativeRes: false },
+};
+
+/**
+ * The extractor's options from the import dialog's settings.
+ *
+ * The dialog holds what the user chose - a range typed as clock text, a quality tier, a frame
+ * budget, a scale for the compressed tier - and the extractor takes numbers. The translation was
+ * inline in the import handler: which tier means which codec, that a range is only a range when
+ * its end is after its start, that the frame budget is off when "whole" is on. Here, so it can
+ * be read and tested as a table.
+ *
+ * @param {any} cfg the dialog's settings
+ * @param {{w: number, h: number}} target the canvas the frames are made for
+ * @param {(text: string) => number} parseClock
+ * @returns {{opts: {fps: number, maxFrames: number, start: number, end: number | null, scale: number, quality: number, dedupe: string, nativeRes: boolean, format: string, width: number, height: number}, nativeRes: boolean}} `opts` without the progress and stop callbacks
+ */
+export function extractOptionsFor(cfg, target, parseClock) {
+    const rStart = cfg.rangeOn ? parseClock(cfg.startText) : 0;
+    const rEnd = cfg.rangeOn ? parseClock(cfg.endText) : 0;
+    const useRange = !!cfg.rangeOn && rEnd > rStart;
+    const tier = QUALITY[cfg.quality] || QUALITY.compressed;
+    return {
+        nativeRes: tier.nativeRes,
+        opts: {
+            fps: cfg.fps, maxFrames: cfg.whole ? 0 : cfg.maxFrames,
+            start: useRange ? rStart : 0, end: useRange ? rEnd : null,
+            scale: tier.nativeRes ? 1 : cfg.scale, quality: tier.quality,
+            dedupe: cfg.dedupe ?? 'exact', nativeRes: tier.nativeRes, format: tier.format,
+            width: target.w, height: target.h,
+        },
+    };
+}

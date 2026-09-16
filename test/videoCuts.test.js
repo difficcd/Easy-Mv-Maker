@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { importPlacement, frameDurations, partAssigner, buildImportedCuts } from '../src/core/videoCuts.js';
+import { importPlacement, frameDurations, partAssigner, buildImportedCuts, extractOptionsFor } from '../src/core/videoCuts.js';
 
 const rect = { x: 0, y: 0, w: 1920, h: 1080 };
 const ids = (n) => { let i = 0; return () => ++i; };
@@ -152,4 +152,34 @@ test('cuts: no frames is no cuts, not one empty one', () => {
         bitmapIds: [], holds: [], fps: 12, track: 0, startAt: 0,
         batch: 'vb_1', label: 'Clip', srcKey: 'src', parts: 3, rect, nextId: ids(),
     }), []);
+});
+
+// ── the extractor's options ────────────────────────────────────────────────
+const clock = (t) => ({ '0:10': 10, '0:05': 5 }[t] ?? 0);
+const base = { fps: 12, maxFrames: 100, scale: 0.5, quality: 'compressed' };
+
+test('extractOptionsFor: the quality tiers are a table - codec, quality and native size follow the tier', () => {
+    const c = extractOptionsFor(base, { w: 1920, h: 1080 }, clock);
+    assert.deepEqual([c.opts.format, c.opts.quality, c.opts.nativeRes, c.opts.scale], ['webp', 0.82, false, 0.5]);
+    const h = extractOptionsFor({ ...base, quality: 'high' }, { w: 1920, h: 1080 }, clock);
+    assert.deepEqual([h.opts.format, h.opts.quality, h.opts.nativeRes, h.opts.scale], ['webp', 0.95, true, 1], 'native tiers ignore the scale');
+    const l = extractOptionsFor({ ...base, quality: 'lossless' }, { w: 1920, h: 1080 }, clock);
+    assert.deepEqual([l.opts.format, l.opts.quality], ['png', 1]);
+    assert.equal(extractOptionsFor({ ...base, quality: 'nonsense' }, { w: 1, h: 1 }, clock).opts.format, 'webp', 'an unknown tier is the compressed one');
+});
+
+test('extractOptionsFor: a range counts only when it is on and its end is after its start', () => {
+    const t = { w: 1, h: 1 };
+    assert.deepEqual([extractOptionsFor({ ...base, rangeOn: true, startText: '0:05', endText: '0:10' }, t, clock).opts.start, extractOptionsFor({ ...base, rangeOn: true, startText: '0:05', endText: '0:10' }, t, clock).opts.end], [5, 10]);
+    const backwards = extractOptionsFor({ ...base, rangeOn: true, startText: '0:10', endText: '0:05' }, t, clock).opts;
+    assert.deepEqual([backwards.start, backwards.end], [0, null]);
+    const off = extractOptionsFor({ ...base, rangeOn: false, startText: '0:05', endText: '0:10' }, t, clock).opts;
+    assert.deepEqual([off.start, off.end], [0, null]);
+});
+
+test('extractOptionsFor: "whole" turns the frame budget off; dedupe defaults to exact', () => {
+    assert.equal(extractOptionsFor({ ...base, whole: true }, { w: 1, h: 1 }, clock).opts.maxFrames, 0);
+    assert.equal(extractOptionsFor(base, { w: 1, h: 1 }, clock).opts.maxFrames, 100);
+    assert.equal(extractOptionsFor(base, { w: 1, h: 1 }, clock).opts.dedupe, 'exact');
+    assert.equal(extractOptionsFor({ ...base, dedupe: 'none' }, { w: 1, h: 1 }, clock).opts.dedupe, 'none');
 });
