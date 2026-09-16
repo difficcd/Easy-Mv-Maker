@@ -4,7 +4,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { moveLayer, isDescendantOf, resolveDrawLayer, commitStroke, insertFill, offsetLayers, mergeDown, patchLayer, mkLayer, mkFolder, nextLayerId, appendLayer, appendFolder, removeLayerTree, dropPositionFor, moveLayerToEnd } from '../src/core/layerOps.js';
+import { moveLayer, isDescendantOf, resolveDrawLayer, commitStroke, insertFill, offsetLayers, mergeDown, patchLayer, mkLayer, mkFolder, nextLayerId, appendLayer, appendFolder, removeLayerTree, dropPositionFor, moveLayerToEnd, appendPoints } from '../src/core/layerOps.js';
 import { flattenLayersInUiOrder } from '../src/canvas/canvasUtils.js';
 
 // f1 > a, b   then c at the root
@@ -478,4 +478,15 @@ test('moveLayerToEnd: to the end at the top level; a layer that is not there cha
     assert.deepEqual(moveLayerToEnd(layers, 2), [{ id: 1, parentId: null }, { id: 3, parentId: null }, { id: 2, parentId: null }]);
     assert.equal(moveLayerToEnd(layers, 99), null);
     assert.deepEqual(layers.map(l => l.id), [1, 2, 3], 'the input is not mutated');
+});
+
+test('appendPoints: extends the stroke being drawn without touching the old objects', () => {
+    const last = { id: 2, tool: 'eraser', points: [{ x: 0, y: 0 }] };
+    const strokes = [{ id: 1, tool: 'brush', points: [] }, last];
+    const out = appendPoints(strokes, [{ x: 1, y: 1 }, { x: 2, y: 2 }]);
+    assert.equal(out[1].points.length, 3);
+    assert.equal(last.points.length, 1, 'the stroke in the old state is untouched');
+    assert.equal(out[0], strokes[0], 'earlier strokes are shared, not copied');
+    assert.deepEqual(appendPoints([{ tool: 'paste', bitmapId: 'b' }], [{ x: 1, y: 1 }]), [{ tool: 'paste', bitmapId: 'b' }], 'a paste is not being drawn');
+    assert.deepEqual(appendPoints([], [{ x: 1, y: 1 }]), []);
 });

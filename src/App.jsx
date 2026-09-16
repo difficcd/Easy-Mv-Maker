@@ -14,7 +14,7 @@ import { ToolsPanel } from './ui/ToolsPanel';
 import { Timeline } from './ui/Timeline';
 import { ProjectPicker, ProgressOverlay, SettingsModal, HelpModal, VideoImportModal, SceneDetectModal, LinkPromptModal, ToolKeysModal } from './ui/Modals';
 import { tr, loadLang, saveLang, setLangValue } from './i18n';
-import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, patchLayer, nextLayerId, appendLayer, appendFolder, removeLayerTree } from './core/layerOps.js';
+import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, patchLayer, nextLayerId, appendLayer, appendFolder, removeLayerTree, appendPoints } from './core/layerOps.js';
 import { mkCut, firstCut } from './core/document.js';
 import { toggled, selectionAfterClick, cutsToCopy } from './core/cutSelection.js';
 import { closeLassoPath, lassoBounds, applyResize, cutOutPolygon, selectionStrokes, applyWarpDrag, paintedBounds } from './core/lassoOps.js';
@@ -1223,6 +1223,18 @@ export default function App() {
         const pressure = pressureOn && e.pressure > 0 ? e.pressure : 0.5;
         return { x: (e.clientX - r.left) * (c.width / r.width), y: (e.clientY - r.top) * (c.height / r.height), pressure };
     };
+    // Fast strokes get coalesced by the browser into one event; this recovers every
+    // intermediate sample so quick curves stay curved instead of going polygonal.
+    const samplesOf = (e, pos) => {
+        const raw = e.getCoalescedEvents ? e.getCoalescedEvents() : null;
+        return raw && raw.length > 1 ? raw.map(getPos) : [pos];
+    };
+    // A stroke as it begins, with the pen's current settings. The eraser keeps its own width;
+    // `pen` records whether pressure was on and the pointer a stylus, which the renderer reads.
+    const newStroke = (tool, points, e) => ({
+        id: nextId(), tool, color, opacity, size: tool === 'eraser' ? eraserSize : brushSize, points,
+        pen: pressureOn && e.pointerType === 'pen',
+    });
     // Render only the in-progress stroke on the overlay canvas — one stroke, no full-layer rebuild.
     // Live preview while drawing. This used to re-smooth and redraw the entire stroke on every
     // pointer move: the cost of one redraw grew with the length of the line and the total grew
@@ -1751,7 +1763,7 @@ export default function App() {
             case 'blur':
             case 'marker': {
                 // Draw on the live overlay only — no layer-state writes per move (that was the lag).
-                liveStrokeRef.current = { id: nextId(), tool: etool, color, opacity, size: brushSize, points: [pos], pen: pressureOn && e.pointerType === 'pen' };
+                liveStrokeRef.current = newStroke(etool, [pos], e);
                 liveDrawnRef.current = 0; renderLiveStroke(true);
                 break;
             }
@@ -1763,7 +1775,7 @@ export default function App() {
                 // - it takes the brush, it boils with the layer, it erases and saves like any
                 // other line, and nothing downstream has to learn that a rectangle exists.
                 lineStartRef.current = pos;
-                liveStrokeRef.current = { id: nextId(), tool: 'brush', color, opacity, size: brushSize, points: shapePoints(etool, pos, pos) || [pos, { ...pos }], pen: pressureOn && e.pointerType === 'pen' };
+                liveStrokeRef.current = newStroke('brush', shapePoints(etool, pos, pos) || [pos, { ...pos }], e);
                 liveDrawnRef.current = 0; renderLiveStroke(true);
                 break;
             }
@@ -1778,9 +1790,9 @@ export default function App() {
             }
             case 'eraser': {
                 // Eraser must composite against the layer, so it stays on the layer-write path.
-                const newStroke = { id: nextId(), tool, color, opacity, size: eraserSize, points: [pos] };
+                const st = newStroke(tool, [pos], e);
                 updLayers(currentCutId, c => ({
-                    layers: patchLayer(c.layers, drawTargetLayerRef.current, l => ({ strokes: [...l.strokes, newStroke] }))
+                    layers: patchLayer(c.layers, drawTargetLayerRef.current, l => ({ strokes: [...l.strokes, st] }))
                 }));
                 break;
             }
@@ -1871,8 +1883,7 @@ export default function App() {
             case 'liquify': {
                 // Every sample, not just the last per frame: the push is path-dependent, and
                 // skipping samples straightens a curve the pen drew.
-                const raw = e.getCoalescedEvents ? e.getCoalescedEvents() : null;
-                for (const p of (raw && raw.length > 1 ? raw.map(getPos) : [pos])) liquifyTo(p);
+                for (const p of samplesOf(e, pos)) liquifyTo(p);
                 break;
             }
             case 'pen':
@@ -1882,26 +1893,18 @@ export default function App() {
             case 'blur':
             case 'marker':
             case 'eraser': {
-                // Fast strokes get coalesced by the browser into one event; recover every
-                // intermediate sample so quick curves stay curved instead of going polygonal.
-                const raw = e.getCoalescedEvents ? e.getCoalescedEvents() : null;
-                const positions = raw && raw.length > 1 ? raw.map(getPos) : [pos];
+                const positions = samplesOf(e, pos);
                 if (liveStrokeRef.current) {
                     // Brush tools: append + repaint just the overlay (no React, no full-layer rebuild).
                     for (const p of positions) liveStrokeRef.current.points.push(p);
                     scheduleLiveRender();
                     break;
                 }
-                // Eraser: layer-write path (needs to composite against the layer).
+                // Eraser: layer-write path (needs to composite against the layer). appendPoints
+                // replaces the last stroke rather than pushing into it, so nothing already in
+                // state is mutated.
                 updLayers(currentCutId, c => ({
-                    layers: patchLayer(c.layers, drawTargetLayerRef.current, l => {
-                        const newStrokes = [...l.strokes];
-                        const currentStroke = newStrokes[newStrokes.length - 1];
-                        if (currentStroke && currentStroke.tool !== 'paste' && currentStroke.tool !== 'fill') {
-                            for (const p of positions) currentStroke.points.push(p);
-                        }
-                        return { strokes: newStrokes };
-                    })
+                    layers: patchLayer(c.layers, drawTargetLayerRef.current, l => ({ strokes: appendPoints(l.strokes, positions) })),
                 }));
                 break;
             }
