@@ -139,3 +139,45 @@ export function keymapFrom(value) {
         ? { ...DEFAULT_KEYS, ...value }
         : { ...DEFAULT_KEYS };
 }
+
+/**
+ * What a key press should do, given the bindings and what the app is in the middle of.
+ *
+ * The order is the whole of the rule set:
+ *
+ *  1. Save is claimed before the input guard. A text field has no save of its own, so Ctrl+S
+ *     typed while editing used to fall through to the browser and offer to save the page.
+ *  2. Inside a field, nothing else is claimed - undo and redo there belong to the field.
+ *  3. Plain Tab folds the panels; Ctrl/Alt/Shift+Tab stay with the browser.
+ *  4. The user's bindings, tools included.
+ *  5. The conventional Ctrl+Z / Y / C / V / D, then Escape and Enter for a selection, and
+ *     Delete for the current cut when nothing else would take it.
+ *
+ * Returns the action's name and whether the browser default should be suppressed, or null to
+ * leave the key alone. Pure, so every rule above has a test.
+ *
+ * @param {{key: string, combo: string, ctrl: boolean, shift: boolean, alt: boolean, inField: boolean}} press
+ * @param {Record<string, string>} keymap
+ * @param {{selection: boolean, textEdit: boolean, currentCut: boolean, clipboard: boolean}} state
+ * @returns {{action: string, arg?: string} | null}
+ */
+export function shortcutFor(press, keymap, state) {
+    const { key, ctrl, shift, alt, inField } = press;
+    if (ctrl && (key === 's' || key === 'S')) return { action: 'save' };
+    if (inField) return null;
+    if (key === 'Tab' && !ctrl && !alt && !shift) return { action: 'togglePanels' };
+    const hit = matchShortcut(keymap, press.combo);
+    if (hit) {
+        const toolId = toolFromAction(hit);
+        return toolId ? { action: 'tool', arg: toolId } : { action: hit };
+    }
+    if (ctrl && key === 'z' && !shift) return { action: 'undo' };
+    if (ctrl && (key === 'Z' || (key === 'z' && shift) || key === 'y')) return { action: 'redo' };
+    if (ctrl && key === 'c') return state.currentCut ? { action: 'copyCut' } : null;
+    if (ctrl && key === 'v') return state.clipboard ? { action: 'pasteCut' } : null;
+    if (ctrl && (key === 'd' || key === 'D')) return state.currentCut ? { action: 'duplicateCut' } : null;
+    if (key === 'Escape') return state.selection ? { action: 'cancelSelection' } : null;
+    if (key === 'Enter') return state.selection ? { action: 'commitSelection' } : null;
+    if ((key === 'Delete' || key === 'Backspace') && !state.selection && !state.textEdit && state.currentCut) return { action: 'deleteCut' };
+    return null;
+}
