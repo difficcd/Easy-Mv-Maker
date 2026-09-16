@@ -4,7 +4,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cloneCutContents } from '../src/core/cutClone.js';
+import { cloneCutContents, placeCopies } from '../src/core/cutClone.js';
 
 // Stands in for the real one: hands back a new id per distinct old id, sharing within a call.
 const fakeCloneBitmap = () => {
@@ -100,4 +100,24 @@ test('an empty or malformed cut copies to something usable', () => {
         assert.deepEqual(out.texts, []);
         assert.equal(out.activeLayerId, 1, 'a usable id even with no layers');
     }
+});
+
+test('placeCopies: end to end from the paste point, on the given track, each with fresh contents', () => {
+    let n = 100;
+    const contents = (c) => ({ layers: [{ id: 1, from: c.id }], activeLayerId: 1, texts: [] });
+    const copies = [
+        { id: 'a', name: 'A', startTime: 10, endTime: 12, track: 3, layers: ['old'] },
+        { id: 'b', name: 'B', startTime: 20, endTime: 20.5, track: 3, layers: ['old'] },
+    ];
+    const { cuts, span } = placeCopies(copies, 5, 1, contents, () => n++);
+    assert.deepEqual(cuts.map(c => [c.id, c.name, c.startTime, c.endTime, c.track]), [
+        [100, 'A (copy)', 5, 7, 1],
+        [101, 'B (copy)', 7, 7.5, 1],
+    ]);
+    assert.equal(span, 2.5, 'the total, so later cuts can be pushed aside by it');
+    assert.deepEqual(cuts[0].layers, [{ id: 1, from: 'a' }], 'contents come from the clone, not the original');
+});
+
+test('placeCopies: nothing to paste is an empty result, not a throw', () => {
+    assert.deepEqual(placeCopies([], 0, 0, () => ({}), () => 1), { cuts: [], span: 0 });
 });

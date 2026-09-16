@@ -47,7 +47,7 @@ import {
     mediaReducer, EMPTY_MEDIA, setAudioClip, clearAudio,
     loadVideo, clearVideo, setVideoCuts, setVideoOpacity, clearVideoCuts, moveTrack, resizeAudio,
 } from './core/mediaReducer.js';
-import { cloneCutContents as cloneCutContentsPure } from './core/cutClone.js';
+import { cloneCutContents as cloneCutContentsPure, placeCopies } from './core/cutClone.js';
 import { DEFAULT_KEYS, KEY_LABELS, keyOf, matchShortcut, keymapFrom, toolFromAction, findConflicts } from './core/shortcuts.js';
 import { derivePartsFrom, deriveVideoBatches } from './core/partOps.js';
 import { importPlacement, buildImportedCuts } from './core/videoCuts.js';
@@ -1336,21 +1336,19 @@ export default function App() {
     // necessary. cloneBitmapId is passed in because it is the one part that touches the store.
     const cloneCutContents = (srcCut) => cloneCutContentsPure(srcCut, cloneBitmapId);
 
+    // Paste goes right after the current cut, on its track, and pushes whatever follows on
+    // that track aside by the pasted span - the same insertion duplicate uses. It used to add
+    // the copies without shifting, so with a cut already after the current one the paste
+    // landed on top of it, which the timeline otherwise refuses to let happen.
     const handlePasteCut = () => {
         if (!copiedCut) return;
         const arr = Array.isArray(copiedCut) ? copiedCut : [copiedCut];
         if (!arr.length) return;
         const src = currentCut;
-        let cursor = src ? src.endTime : (cuts.length ? Math.max(...cuts.map(c => c.endTime)) : 0);
+        const at = src ? src.endTime : (cuts.length ? Math.max(...cuts.map(c => c.endTime)) : 0);
         const trk = src ? src.track : (arr[0]?.track ?? 0);
-        const made = arr.map((cc) => {
-            const dur = cc.endTime - cc.startTime;
-            const { layers, activeLayerId, texts } = cloneCutContents(cc);
-            const nc = { ...cc, id: nextId(), name: `${cc.name} (copy)`, startTime: cursor, endTime: cursor + dur, track: trk, layers, activeLayerId, texts };
-            cursor += dur;
-            return nc;
-        });
-        dispatchCuts(addCuts(made));
+        const { cuts: made, span } = placeCopies(arr, at, trk, cloneCutContents, nextId);
+        dispatchCuts(insertCutsShifting(trk, at, span, made, null));
         const last = made[made.length - 1];
         setCurrentCutId(last.id);
         setCurrentTime(last.startTime);
