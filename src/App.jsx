@@ -1779,11 +1779,10 @@ export default function App() {
             if (hit) {
                 beginGesture(e);
                 // A drag adjusts skew and bend instead of moving or resizing when Ctrl is held
-                // or the bar's 변형 toggle is on (#175) - wherever it starts, handles included.
-                // Letting the handles keep resizing under Ctrl meant a drag begun on a corner
-                // resized and one begun a few pixels inward warped, which read as Ctrl working
-                // only sometimes.
-                const warp = e.ctrlKey || e.metaKey || selection.dragMode === 'warp';
+                // (#175) - wherever it starts, handles included. Letting the handles keep
+                // resizing under Ctrl meant a drag begun on a corner resized and one begun a few
+                // pixels inward warped, which read as Ctrl working only sometimes.
+                const warp = e.ctrlKey || e.metaKey;
                 const kind = warp ? { type: 'warp' } : hit;
                 selectionDragRef.current = { hit: kind, startPos: { x: pos.x, y: pos.y }, startSel: { ...selection } };
                 e.preventDefault();
@@ -3454,12 +3453,6 @@ export default function App() {
                     {selection && (
                         <div className="mode-group">
                             <span className="mode-label">{tr('선택 영역')}</span>
-                            {/* What a drag inside the selection does. Ctrl does the same for one
-                                drag; the toggle is for a tablet with no Ctrl to hold. */}
-                            <div className="mode-toggle" title={tr('안쪽을 끌면: 이동, 또는 기울기·곡률 (Ctrl을 누른 채 끌어도 됩니다)')}>
-                                <button className={`pal-btn${selection.dragMode !== 'warp' ? ' active' : ''}`} onClick={() => setSelection(s => s && ({ ...s, dragMode: 'move' }))}>{tr('이동')}</button>
-                                <button className={`pal-btn${selection.dragMode === 'warp' ? ' active' : ''}`} onClick={() => setSelection(s => s && ({ ...s, dragMode: 'warp' }))}>{tr('변형')}</button>
-                            </div>
                             {/* Rotation in degrees, skew and bend in -100..100%. Sliders rather than
                                 number fields: the value means nothing in itself and the eye is on
                                 the canvas. Rotation is stored in radians, as layer animation does. */}
