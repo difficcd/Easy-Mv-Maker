@@ -92,7 +92,7 @@ const PEN_TYPES = [
     { id: 'soft', label: '에어', Icon: Cloud },
     { id: 'marker', label: 'Marker', Icon: Pen },
     // Line and curve share one Ruler slot rather than taking two, and split into modes below.
-    { id: 'ruler', label: '자', Icon: Minus },
+    { id: 'ruler', label: '도형', Icon: Minus },
     { id: 'mosaic', label: '모자이크', Icon: Grid3x3 },
     { id: 'eraser', label: 'Eraser', Icon: Eraser },
     { id: 'fill', label: 'Fill', Icon: PaintBucket },

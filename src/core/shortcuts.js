@@ -54,7 +54,7 @@ export const KEY_LABELS = {
     'tool.marker': '도구: 마커',
     'tool.eraser': '도구: 지우개',
     'tool.fill': '도구: 채우기',
-    'tool.ruler': '도구: 자',
+    'tool.ruler': '도구: 도형',
     'tool.mosaic': '도구: 모자이크',
     'tool.lasso': '도구: 올가미',
     'tool.move': '도구: 이동',
