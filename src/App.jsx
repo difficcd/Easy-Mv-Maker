@@ -65,7 +65,7 @@ import {
 } from './core/cutsReducer.js';
 import { textNeedsBox, drawTextObject } from './canvas/textRender.js';
 import { migrateCuts, projectSettings, makeLoadProgress } from './core/projectFormat.js';
-import { imageExtFromType, audioExt, videoExt, collectBitmaps, loadBitmapStore, blobToDataURL } from './core/projectAssets.js';
+import { imageExtFromType, audioExt, videoExt, collectBitmaps, loadBitmapStore, blobToDataURL, packMedia } from './core/projectAssets.js';
 import { xAtTime, timeAtX, zoomAnchored, pinchZoom } from './core/timelineZoom.js';
 import { preparePath } from './core/pathMotion.js';
 import { dragOnWindow } from './core/windowDrag.js';
@@ -1096,29 +1096,15 @@ export default function App() {
         // Save the audio "with the music". For server save (assetSink) the audio goes out as a
         // separate binary asset — embedding it as base64 (often tens of MB) is the main remaining
         // OOM source. For local/autosave it's embedded so the file stays self-contained.
+        // The three shapes a track can take - asset, Blob, dataURL - are packMedia's decision.
+        // The audio is held as a dataURL and can make a Blob; the video is the reverse.
         if (includeAudio && audioB64Ref.current && audioData) {
             const meta = { name: audioFile?.name || tr('오디오'), startTime: audioData.startTime, endTime: audioData.endTime, offset: audioData.offset, duration: audioDuration };
-            if (assetSink) {
-                const ext = audioExt(audioB64Ref.current);
-                assetSink.push({ id: '__audio__', url: audioB64Ref.current, ext });
-                out.audio = { ...meta, asset: true, ext };
-            } else if (blobsOk) {
-                // Same three shapes as the video below. Falls through to the dataURL if the Blob
-                // cannot be made, because a large autosave beats an autosave with no music in it.
-                const blob = await audioAsBlob();
-                out.audio = blob ? { ...meta, blob } : { ...meta, dataUrl: audioB64Ref.current };
-            } else {
-                out.audio = { ...meta, dataUrl: audioB64Ref.current };
-            }
+            out.audio = await packMedia(meta, { id: '__audio__', ext: audioExt(audioB64Ref.current), assetSink, blobsOk, dataUrl: audioB64Ref.current, toBlob: audioAsBlob });
         }
-        // Video overlay track (like audio): externalize the video blob for server saves; store the
-        // Blob directly for IndexedDB; embed as dataURL only for a self-contained .emv file.
         if (videoOverlay && videoBlobRef.current) {
             const meta = { name: videoOverlay.name, startTime: videoOverlay.startTime, endTime: videoOverlay.endTime, offset: videoOverlay.offset, duration: videoOverlay.duration, w: videoOverlay.w, h: videoOverlay.h, opacity: videoOverlay.opacity ?? 1, cuts: videoOverlay.cuts, cutStart: videoOverlay.cutStart, cutOffset: videoOverlay.cutOffset };
-            const ext = videoExt(videoBlobRef.current.type);
-            if (assetSink) { assetSink.push({ id: '__video__', blob: videoBlobRef.current, ext }); out.video = { ...meta, asset: true, ext }; }
-            else if (blobsOk) { out.video = { ...meta, blob: videoBlobRef.current }; }
-            else { out.video = { ...meta, dataUrl: await blobToDataURL(videoBlobRef.current) }; }
+            out.video = await packMedia(meta, { id: '__video__', ext: videoExt(videoBlobRef.current.type), assetSink, blobsOk, blob: videoBlobRef.current, toDataUrl: blobToDataURL });
         }
         return out;
     };

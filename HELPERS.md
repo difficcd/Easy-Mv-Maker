@@ -471,6 +471,7 @@ How each piece of a project is stored, and how it comes back.
 | `audioExt` | The file extension for the audio track, from its dataURL. |
 | `frameLoad` | How a bitmap read back from a saved project has to be loaded. Only drawing layers are decoded to ImageData up front, because those are the ones the user can still edit pixel by pixel. |
 | `frameStorage` | Which of the three ways a frame is saved. A legacy entry with no Blob still embeds rather than being dropped. |
+| `packMedia` | How the audio or video track is written: an asset for a server save, a Blob for the browser store (made from the dataURL if needed, dataURL fallback), a dataURL for a self-contained file. Both tracks had made this choice inline. |
 | `loadBitmapStore` | Rebuild a bitmap store from a saved project's bitmaps, the reverse of `collectBitmaps`. Written inline in App's restore before, which meant the only way to read a project's pixels was to open the project and replace whatever was on screen. An entry that will not load is skipped and counted, so one bad frame costs that frame rather than the file. |
 | `blobToDataURL` | A Blob as a base64 dataURL — the conversion the "a local .emv must stand alone" rule rests on, and the way back for bytes that have to reach a media element and then be saved again. |
 | `collectBitmaps` | Every bitmap the cuts reference, packed the way this kind of save wants them. The loop around frameStorage, which used to live in App.jsx where it could be read but never run. Encoders are injected because one needs FileReader and the other a canvas. |
