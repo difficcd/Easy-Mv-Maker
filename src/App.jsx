@@ -1781,11 +1781,12 @@ export default function App() {
                 break;
             }
             case 'eraser': {
-                // Eraser must composite against the layer, so it stays on the layer-write path.
-                const st = newStroke(tool, [pos], e);
-                updLayers(currentCutId, c => ({
-                    layers: patchLayer(c.layers, drawTargetLayerRef.current, l => ({ strokes: [...l.strokes, st] }))
-                }));
+                // Eraser must composite against the layer, so it stays on the layer-write path
+                // rather than the overlay. Through commitStrokeToLayer all the same, for the
+                // reveal: a pen stroke on a hidden layer shows the layer, and an eraser had
+                // been the one tool that did not - which is the harder of the two to notice,
+                // since an eraser leaves nothing to look for.
+                commitStrokeToLayer(currentCutId, drawTargetLayerRef.current, newStroke(tool, [pos], e));
                 break;
             }
             case 'fill':
