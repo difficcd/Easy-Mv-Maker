@@ -122,6 +122,14 @@ Running a drag on window listeners, so it survives the pointer leaving the eleme
 |---|---|
 | `dragOnWindow` | Listen for move until pointerup **or pointercancel**, then remove everything. Returns a stop function, which is also what a React effect wants as its cleanup. The cancel case is the one five hand-written copies all missed - a cancelled pointer never sends pointerup, so the move listener stayed for the session. |
 
+## `src/core/catmullRom.js`
+
+The spline behind the curve ruler.
+
+| | |
+|---|---|
+| `catmullThrough` | A Catmull-Rom spline through every anchor, not near it — which is why it is this and not a Bezier, since the user taps where the line should go. Carries pressure through, clamps the end neighbours so the line does not hook at each end, and returns fewer than three points unchanged. |
+
 ## `src/core/colour.js`
 
 Putting an alpha on a colour that came from the theme.
@@ -900,6 +908,14 @@ the narrowest.
 | | |
 |---|---|
 | `useServerStorage` | Save, open and delete server projects; snapshot every five minutes and rotate. Takes `buildData` and `restore` as functions rather than reaching for the document itself, because building one reads most of App's state and restoring one writes most of it - threading either in would make the seam wider than the thing it separates. |
+
+## `src/hooks/useLiveOverlay.js`
+
+The canvas the current gesture is drawn on, over the document canvas.
+
+| | |
+|---|---|
+| `useLiveOverlay` | Owns the overlay ref and the bookkeeping for drawing a stroke incrementally — only the new tail each frame, because redrawing a long stroke from the start on every move is what makes a pen feel heavy. Returns `clear` (stable, an effect depends on it), `renderStroke`, `schedule` (one draw per frame) and `restart` for a tool that rewrites what it has already drawn. |
 
 ## `src/hooks/useLocalDocuments.js`
 
