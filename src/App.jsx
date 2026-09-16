@@ -37,8 +37,9 @@ import { fetchAsset } from './core/api.js';
 import { PLAYBACK_RATES, RATE_DEFAULT, playbackRateCodec } from './core/playbackRate.js';
 import { scaleProjectTimes, bakePlan } from './core/timeScale.js';
 import { drawSwayed } from './canvas/swayRender.js';
-import { drawWarped, warpedOutline, warpedHandles } from './canvas/warpRender.js';
-import { drawMarquee, drawHandle, HANDLE_GRAB_PX } from './canvas/marquee.js';
+import { warpedOutline, warpedHandles } from './canvas/warpRender.js';
+import { drawMarquee, HANDLE_GRAB_PX } from './canvas/marquee.js';
+import { drawTextSelection, drawFloatingSelection, drawMotionPath } from './canvas/editChrome.js';
 import { applyPartTransform, drawMaskedLayer } from './canvas/layerComposite.js';
 import { detachMedia, safeMediaSrc } from './core/mediaEl.js';
 import { useAutosave } from './hooks/useAutosave.js';
@@ -86,7 +87,6 @@ import {
     DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT,
     pointInPolygon, safeArray, hexToRgb, bucketFillTransparentRegion,
     layerKey, imageDataToDataURL, dataURLToImageData, drawStrokesOnCtx, sizeCanvas, scratchCanvas, flattenLayersInUiOrder, layerSig, applyCutAnim, extractVideoFrames, fitRect, detectSceneCuts, curveToWave, morphPrepare,
-    accentSoft,
     targetCanvasFor, imageDataCanvas, seekTarget,
 } from './canvas/canvasUtils';
 
@@ -2587,16 +2587,7 @@ export default function App() {
                 if (selectedText?.cutId === currentCutId) {
             const c = cuts.find(cc => cc.id === selectedText.cutId);
             const t = safeArray(c?.texts).find(tt => tt.id === selectedText.textId && tt.visible !== false);
-            if (t) {
-                const b = measureTextBox(t);
-                ctx.save();
-                ctx.strokeStyle = accentSoft();
-                ctx.lineWidth = 1;
-                ctx.setLineDash([6, 4]);
-                ctx.strokeRect(Math.round(b.x) + 0.5, Math.round(b.y) + 0.5, Math.round(b.w), Math.round(b.h));
-                ctx.setLineDash([]);
-                ctx.restore();
-            }
+            if (t) drawTextSelection(ctx, measureTextBox(t), view.zoom);
         }
 
         if (selection?.bitmapId) {
@@ -2608,37 +2599,15 @@ export default function App() {
             const tw = Math.max(1, Math.round(selection.tw));
             const th = Math.max(1, Math.round(selection.th));
 
-            // Drawn exactly as the committed paste will be, warp included - the preview is the
-            // only feedback the sliders have. The outline and the handles follow the warp too,
-            // so what is dashed is the picture, not the rectangle it started as.
             const box = { x: tx, y: ty, w: tw, h: th, rot: selection.rot, skew: selection.skew, bend: selection.bend };
-            const src = bmp || (img && imageDataCanvas(img));
-            if (src) drawWarped(ctx, src, src.width, src.height, box);
-
-            // The marquee and handles are sized for the screen and drawn to show on anything -
-            // see canvas/marquee for both.
-            drawMarquee(ctx, warpedOutline(box), view.zoom, true);
-            for (const hd of warpedHandles(box)) drawHandle(ctx, hd.x, hd.y, view.zoom);
+            drawFloatingSelection(ctx, bmp || (img && imageDataCanvas(img)), box, view.zoom);
         }
 
         // Recorded motion paths (per layer) shown while editing so they're visible/redrawable.
         if (!isPlaying) {
             const cc = currentCut;
             for (const l of (cc?.layers || [])) {
-                const path = l.anim?.path;
-                if (!path || path.length < 2) continue;
-                const editing = animLayer && animLayer.cutId === cc.id && animLayer.layerId === l.id;
-                ctx.save();
-                ctx.strokeStyle = editing ? accentSoft() : accentSoft(0.4);
-                ctx.lineWidth = 2;
-                ctx.setLineDash([6, 4]);
-                ctx.beginPath();
-                path.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
-                ctx.stroke();
-                ctx.setLineDash([]);
-                ctx.fillStyle = editing ? accentSoft() : accentSoft(0.5);
-                ctx.beginPath(); ctx.arc(path[0].x, path[0].y, 4, 0, Math.PI * 2); ctx.fill();
-                ctx.restore();
+                drawMotionPath(ctx, l.anim?.path, !!animLayer && animLayer.cutId === cc.id && animLayer.layerId === l.id);
             }
         }
 
