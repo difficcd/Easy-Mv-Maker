@@ -749,6 +749,14 @@ What the pen is set to: which tool, what colour, how wide, how hard.
 |---|---|
 | `useToolSettings` | Twenty-eight names that are read everywhere and written almost nowhere — the opposite shape from the drawing code that consumes them. Owns `etool` (Ruler and Air are each two tools behind one button) and `toolSize` (the eraser keeps its own width), so no caller has to work either out again. |
 
+## `src/hooks/useTextDrag.js`
+
+Grabbing a text object on the canvas and dragging it, and the measuring that hit-testing needs.
+
+| | |
+|---|---|
+| `useTextDrag` | Owns the drag (which text, where it started, one document write per frame — a pen reports over a hundred moves a second and each write is a render plus a repaint) and the scratch context text is measured with. Returns `measureTextBox`, `hitTestText`, `startTextDrag`, `moveTextDrag` (true if it consumed the move) and `endTextDrag` (flushes the queued move, returns what ended so App can open the editor on a press that never moved). |
+
 ## `src/hooks/useTimelineGestures.js`
 
 Every way the timeline can be pointed at, in one place.
