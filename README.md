@@ -28,7 +28,7 @@
 
 **Drawing**
 - Dot pen, marker, airbrush (blur / boiling-line modes), eraser, bucket fill, lasso, text
-- Straight-line and curve ruler as two options of one tool
+- Shape tool: straight line, curve, rectangle and ellipse. Each is stored as an ordinary stroke, so it takes the current brush, erases, and boils with its layer
 - Fill matches the clicked colour, so you can paint over an already-filled area
 - Pen draws; finger pans and pinch-zooms (palm rejection)
 - Stroke smoothing (resample → Chaikin → Catmull-Rom); in-progress strokes render incrementally on a separate overlay canvas
@@ -43,6 +43,7 @@
 
 **Timeline and structure**
 - Multi-track timeline: drag, resize, snap, loop playback, part grouping
+- Playback speed can be kept as the project default, or baked into the film so every cut length, easing and text speed is rescaled to match
 - Cuts with layers and nestable folders; rename, collapse, multi-select
 - Onion skin
 - Numeric fields (speed, coordinates…) accept free input rather than being capped by the slider range
@@ -55,7 +56,7 @@
 - WebM export, PWA, Android packaging
 
 **UI**
-- English and Korean, switchable in Settings
+- English, Korean and Japanese, switchable in Settings
 - Dockable panels: drag a panel by its header to the left or right edge to dock it there, or drop it in the middle to pull it out as a floating window. The arrangement is remembered
 - Tab hides every panel to leave just the canvas, and restores exactly what was open
 - Dragging the playhead scrubs with animation, so you see the motion rather than static artwork sliding past
@@ -78,19 +79,30 @@ On a tablet, scan the QR printed by `npm run dev` (same Wi-Fi). If 5173 is taken
 ### Checks
 
 ```bash
-npm run check      # typecheck + unit tests + hook-warning baseline + build
+npm run check      # everything below, in order, then a production build
 npm test           # node --test, no test framework dependency
 npm run typecheck  # tsc --noEmit (allowJs/checkJs, files stay .jsx)
 npm run lint       # eslint-plugin-react-hooks
+npm run smoke      # boots the built app in a headless browser and draws a stroke
 ```
 
+`npm run check` is the gate: typecheck, the unit tests, then five static guards, then the build.
 The same steps run in CI on every push and pull request.
 
-Unit tests cover the pure helpers in `canvasUtils` — geometry, easing and waveforms, keyframe
-sampling, layer flattening, the video-import canvas sizing — and the layer-tree moves in
-`layerOps`, including the rule that a folder may not be dropped into its own subtree. They use
-Node's built-in runner because none of it needs a DOM or a framework. The functions that
-genuinely need a 2D context (frame extraction, stroke drawing) are deliberately not faked here.
+| Guard | What it fails on |
+|---|---|
+| `scripts/hook-baseline.mjs` | more React hook dependency warnings than the pinned baseline |
+| `scripts/helper-index.mjs` | a shared export missing from `HELPERS.md` |
+| `scripts/unreachable.mjs` | an App-level name nothing can reach |
+| `scripts/unused-imports.mjs` | an import nothing in the file uses |
+| `scripts/i18n-check.mjs` | a `tr()` literal with no English entry |
+
+Around 940 unit tests cover the pure modules under `src/core`, `src/canvas`, `src/engine` and
+`src/export` — geometry, easing, keyframe sampling, the cuts reducer, layer-tree moves, lasso
+cut-out, timeline snapping, the time-scale bake, GIF and zip writers. They use Node's built-in
+runner because none of it needs a DOM or a framework. The functions that genuinely need a 2D
+context (frame extraction, stroke drawing) are deliberately not faked; the smoke test covers those
+end to end.
 
 ```bash
 npm run bench      # measures the pure hot paths
@@ -131,23 +143,30 @@ npm run android:open     # open Android Studio -> run / build APK
 
 ```
 src/
-  App.jsx          app state, drawing pipeline, timeline logic, panel docking (~4,500 lines)
-  canvasUtils.js   pure helpers: smoothing, boiling, fill, distance-field morph, waveforms
-  i18n.js          the English dictionary (~500 entries) and the tr() lookup
-  layerOps.js      pure layer-tree moves, draw-target resolution, stroke commit
-  cutOps.js        pure timeline geometry: cut drag, resize, snapping, overlap
-  bitmapRefs.js    which stored bitmaps are still referenced (undo, clipboard, selection)
-  Modals.jsx       project picker, settings, help, video import, scene detect
-  TopBar.jsx  Timeline.jsx  CutLayerPanel.jsx  ColorPanel.jsx  AnimPanels.jsx
+  App.jsx          the component: gesture dispatch, paint loop, wiring (~3,900 lines)
+  core/            pure logic - reducers, timeline geometry, lasso, shapes, persistence, export planning
+  canvas/          anything that draws on a 2D context: strokes, text, sway slices, layer compositing
+  engine/          evaluating one frame: which cuts are on, what each layer looks like at time t
+  export/          byte writers for GIF and zip, download plumbing
+  hooks/           App state that has been given its own home: audio, autosave, history, playback, panels, tool settings
+  ui/              panels and modals
+  i18n.js          the English dictionary (~640 entries) and the tr() lookup; i18n.ja.js the Japanese one
   globals.d.ts     ambient declarations (EyeDropper, Capacitor, File System Access…)
 server/index.js    project storage + backup rotation + video/audio import API
-scripts/           hook-warning baseline guard, hot-path benchmark
-test/              unit tests (node --test)
+scripts/           the check guards above, the hot-path benchmark, font subsetting
+test/              unit tests (node --test) and the smoke test
 ```
 
+Nothing under `core/`, `engine/` or `export/` touches a canvas or React - where one of them
+needs an `ImageData`, it takes a constructor as an argument. `canvas/` draws on a context it is
+handed rather than one it owns. That split is what keeps the tests framework-free. [ARCHITECTURE.md](ARCHITECTURE.md)
+is the map to read before editing `App.jsx`, and [HELPERS.md](HELPERS.md) lists every shared
+export.
+
 The Korean source text doubles as the translation key, gettext style, so a missing entry shows
-Korean rather than an empty label. The lookup is named `tr`, not `t`, because `t` is already a
-local variable in dozens of places here.
+Korean rather than an empty label. Japanese is allowed to be incomplete and falls back to English.
+The lookup is named `tr`, not `t`, because `t` is already a local variable in dozens of places
+here.
 
 ## Notes
 
