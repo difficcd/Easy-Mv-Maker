@@ -925,6 +925,16 @@ unsupported for every codec it offers.
 | `lzwEncode` | GIF's variable-width LZW, including the clear code when the table fills - a decoder that did not expect it would read garbage from the first full table on. |
 | `paletteBits` | The bit width for a colour table of a given size, never below the 2 GIF requires. |
 
+## `src/export/recorder.js`
+
+The pieces of recording the canvas to a video that do not depend on the app.
+
+| | |
+|---|---|
+| `pickRecordingType` | The best container/codec this browser records (mp4 h264 first, then webm), and the file extension; empty means "let MediaRecorder choose". `isTypeSupported` is injected so it is testable. |
+| `frameSource` | A canvas stream that takes a frame only when asked, so the recording is painted on a fixed grid (#156); falls back to self-sampling at the given fps where requestFrame is missing. |
+| `startRecorder` | A started MediaRecorder over the tracks, retried without the type if the browser refuses it, handing the finished Blob to a callback. |
+
 ## `src/export/zip.js`
 
 A store-only ZIP writer, for the PNG frame sequence a transparent project exports as.

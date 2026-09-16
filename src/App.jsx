@@ -21,6 +21,7 @@ import { closeLassoPath, lassoBounds, applyResize, cutOutPolygon, selectionStrok
 import { pushAlong } from './core/liquify.js';
 import { shapePoints } from './core/shapeStroke.js';
 import { EXPORT_FPS } from './core/recordClock.js';
+import { pickRecordingType, frameSource, startRecorder } from './export/recorder.js';
 import { useTimelineGestures } from './hooks/useTimelineGestures.js';
 import { useTextDrag } from './hooks/useTextDrag.js';
 import { useLayerDnD } from './hooks/useLayerDnD.js';
@@ -3127,32 +3128,26 @@ export default function App() {
         // to "where does the content end" - cuts and audio, but not the reference video, which is
         // on the canvas being recorded.
         if (playEnd <= playStart) { alert(tr('내보낼 콘텐츠가 없습니다.')); return; }
-        const candidates = ['video/mp4;codecs=h264', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
-        const mimeType = candidates.find(t => { try { return MediaRecorder.isTypeSupported(t); } catch { return false; } }) || '';
-        const ext = mimeType.startsWith('video/mp4') ? 'mp4' : 'webm';
+        const { mimeType, ext } = pickRecordingType(t => MediaRecorder.isTypeSupported(t));
         alert(tr('녹화가 시작됩니다.')); setCurrentTime(playStart); if (audioRef.current) audioRef.current.currentTime = audioData ? Math.max(0, (playStart - audioData.startTime) + audioData.offset) : playStart;
         // Frames on request rather than sampled at 30Hz off a 60Hz paint loop - that sampling
         // put two paints in one frame and three in the next, which is the judder in #156. The
-        // loop paints on the frame grid and asks for each frame itself (usePlayback). Where
-        // requestFrame does not exist the old sampling is kept, so the export still works.
-        let stream = canvas.captureStream(0);
-        const track = stream.getVideoTracks()[0];
-        const ask = typeof track?.requestFrame === 'function' ? () => track.requestFrame()
-            : typeof stream.requestFrame === 'function' ? () => stream.requestFrame() : null;
-        if (!ask) stream = canvas.captureStream(EXPORT_FPS);
-        requestFrameRef.current = ask;
+        // loop paints on the frame grid and asks for each frame itself (usePlayback).
+        const { stream, requestFrame } = frameSource(canvas, EXPORT_FPS);
+        requestFrameRef.current = requestFrame;
         exportStartRef.current = playStart;
         const tracks = [...stream.getVideoTracks()];
         if (audioRef.current && audioUrl && !audioSourceRef.current) { try { audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)(); audioDestRef.current = audioCtxRef.current.createMediaStreamDestination(); audioSourceRef.current = audioCtxRef.current.createMediaElementSource(audioRef.current); audioSourceRef.current.connect(audioDestRef.current); audioSourceRef.current.connect(audioCtxRef.current.destination); } catch (e) { } }
         if (audioDestRef.current) tracks.push(...audioDestRef.current.stream.getAudioTracks());
         let mr;
-        try { mr = new MediaRecorder(new MediaStream(tracks), mimeType ? { mimeType } : undefined); }
-        catch (e) { try { mr = new MediaRecorder(new MediaStream(tracks)); } catch (e2) { alert(tr('녹화를 시작할 수 없습니다: ') + e2.message); return; } }
-        const blobType = mimeType || 'video/webm';
-        const chunks = [];
-        mr.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
-        mr.onstop = () => { downloadBlob(new Blob(chunks, { type: blobType }), `mv_export.${ext}`); alert(tr('완료!')); isExporting.current = false; requestFrameRef.current = null; };
-        exportEndRef.current = playEnd; isExporting.current = true; mediaRecorderRef.current = mr; mr.start(); setIsPlaying(true);
+        try {
+            mr = startRecorder(tracks, mimeType, (blob) => {
+                downloadBlob(blob, `mv_export.${ext}`);
+                alert(tr('완료!'));
+                isExporting.current = false; requestFrameRef.current = null;
+            });
+        } catch (e) { alert(tr('녹화를 시작할 수 없습니다: ') + e.message); return; }
+        exportEndRef.current = playEnd; isExporting.current = true; mediaRecorderRef.current = mr; setIsPlaying(true);
     };
 
 
