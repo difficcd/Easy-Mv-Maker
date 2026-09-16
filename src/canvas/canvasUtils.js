@@ -634,11 +634,28 @@ export function imageDataCanvas(img) {
     if (!_imgCanvas) _imgCanvas = document.createElement('canvas');
     sizeCanvas(_imgCanvas, img.width, img.height);
     const cx = _imgCanvas.getContext('2d');
+    resetCtx(cx);
+    cx.putImageData(img, 0, 0);
+    return _imgCanvas;
+}
+
+/**
+ * A shared canvas's context put back to its default state.
+ *
+ * A resize resets these; a reuse does not, and the last user leaves them dirty. Marker in
+ * particular sets no alpha of its own, so it would inherit whatever pencil left behind.
+ *
+ * @param {CanvasRenderingContext2D} cx
+ * @returns {CanvasRenderingContext2D} the same context
+ */
+export function resetCtx(cx) {
     cx.setTransform(1, 0, 0, 1, 0, 0);
     cx.globalAlpha = 1;
     cx.globalCompositeOperation = 'source-over';
-    cx.putImageData(img, 0, 0);
-    return _imgCanvas;
+    cx.filter = 'none';
+    cx.shadowBlur = 0;
+    cx.shadowColor = 'transparent';
+    return cx;
 }
 
 // One scratch canvas, reused. Marker and pencil each need a full-size temporary layer to
@@ -654,14 +671,23 @@ function takeScratch(w, h) {
     const cx = sizeCanvas(_scratch, w, h)
         ? _scratch.getContext('2d')                        // a resize already blanked it
         : (() => { const c = _scratch.getContext('2d'); c.clearRect(0, 0, w, h); return c; })();
-    // A resize resets these; a reuse does not, and the last user leaves them dirty. Marker in
-    // particular sets no alpha of its own, so it would inherit whatever pencil left behind.
-    cx.setTransform(1, 0, 0, 1, 0, 0);
-    cx.globalAlpha = 1;
-    cx.globalCompositeOperation = 'source-over';
-    cx.filter = 'none';
-    cx.shadowBlur = 0; cx.shadowColor = 'transparent';
-    return cx;
+    return resetCtx(cx);
+}
+
+/**
+ * The pixels a stroke points at: the display bitmap if one is decoded, else the ImageData, else
+ * the inline ImageData a stroke from before the store existed carries. Null when none of the
+ * three is there - a frame that has not decoded yet, or pixels that were evicted.
+ *
+ * @param {{bitmapId?: string, imageData?: ImageData}} s
+ * @param {Map<string, any> | undefined} bitmapStore
+ * @returns {CanvasImageSource | null}
+ */
+function strokePixels(s, bitmapStore) {
+    const entry = bitmapStore?.get(s.bitmapId);
+    if (entry?.imageBitmap) return entry.imageBitmap;
+    const img = entry?.imageData || s.imageData;
+    return img ? imageDataCanvas(img) : null;
 }
 
 export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null, opts = {}) {
@@ -692,19 +718,11 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null,
             return;
         }
         if (s.tool === 'eraseBitmap') {
-            const entry = bitmapStore?.get(s.bitmapId);
-            const bmp = entry?.imageBitmap;
-            const img = entry?.imageData;
-            const legacyImg = s.imageData;
-            if (!bmp && !img && !legacyImg) return;
-
+            const src = strokePixels(s, bitmapStore);
+            if (!src) return;
             ctx.globalCompositeOperation = 'destination-out';
             ctx.globalAlpha = 1.0;
-            if (bmp) {
-                ctx.drawImage(bmp, s.x, s.y);
-            } else if (img || legacyImg) {
-                ctx.drawImage(imageDataCanvas(img || legacyImg), s.x, s.y);
-            }
+            ctx.drawImage(src, s.x, s.y);
             ctx.globalCompositeOperation = 'source-over';
             ctx.globalAlpha = 1.0;
             return;

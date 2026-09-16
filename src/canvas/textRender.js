@@ -256,28 +256,51 @@ export function drawTextObject(ctx, t, { anim = null, box = null, alpha = 1 } = 
         return;
     }
 
-    if (t.outline) {
-        ctx.lineJoin = 'round';
-        ctx.lineWidth = Math.max(2, fontSize / 6);
-        ctx.strokeStyle = t.outlineColor || '#ffffff';
+    if (setOutline(ctx, t, fontSize)) {
         for (let i = 0; i < lines.length; i++) ctx.strokeText(lines[i], x, y + i * lineHeight);
     }
     ctx.fillStyle = fillStyle;
     for (let i = 0; i < lines.length; i++) {
         ctx.fillText(lines[i], x, y + i * lineHeight);
-        // The shadow is cast once, by the block as a whole. Left on, each line would drop a
-        // shadow onto the line beneath it and the stack would darken as it went down.
-        if (i === 0 && t.shadow) {
-            ctx.shadowColor = 'transparent';
-            ctx.shadowBlur = 0;
-            ctx.shadowOffsetX = 0;
-            ctx.shadowOffsetY = 0;
-        }
+        if (i === 0) shadowCastOnce(ctx, t);
     }
     try { ctx.letterSpacing = '0px'; } catch { }
     ctx.restore();
 }
 
+
+/**
+ * Set up the outline stroke, and say whether there is one to draw. The width follows the font
+ * size so an outline looks the same at any size.
+ *
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {{outline?: any, outlineColor?: string}} t
+ * @param {number} fontSize
+ * @returns {boolean}
+ */
+function setOutline(ctx, t, fontSize) {
+    if (!t.outline) return false;
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = Math.max(2, fontSize / 6);
+    ctx.strokeStyle = t.outlineColor || '#ffffff';
+    return true;
+}
+
+/**
+ * Turn the shadow off after the first thing drawn, so the block casts one shadow rather than
+ * one per line or per character - left on, each line drops a shadow onto the line beneath it
+ * and the stack darkens as it goes down.
+ *
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {{shadow?: any}} t
+ */
+function shadowCastOnce(ctx, t) {
+    if (!t.shadow) return;
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+}
 
 /**
  * Draw the lines one character at a time: along an arc, with a staggered entrance, or both.
@@ -334,12 +357,7 @@ function drawPerChar(ctx, t, lines, { x, y, lineHeight, fontSize, fillStyle, per
             ctx.rotate(c.angle);
             if (ca && ca.rot) ctx.rotate((ca.rot * Math.PI) / 180);
             if (ca && ca.scale !== 1) ctx.scale(ca.scale, ca.scale);
-            if (t.outline) {
-                ctx.lineJoin = 'round';
-                ctx.lineWidth = Math.max(2, fontSize / 6);
-                ctx.strokeStyle = t.outlineColor || '#ffffff';
-                ctx.strokeText(c.ch, 0, 0);
-            }
+            if (setOutline(ctx, t, fontSize)) ctx.strokeText(c.ch, 0, 0);
             ctx.fillStyle = fillStyle;
             ctx.fillText(c.ch, 0, 0);
             ctx.restore();
@@ -347,14 +365,7 @@ function drawPerChar(ctx, t, lines, { x, y, lineHeight, fontSize, fillStyle, per
 
         seen += chars.length;
 
-        // As on the straight path: the shadow is cast once by the block, or every character would
-        // drop one onto its neighbours.
-        if (i === 0 && t.shadow) {
-            ctx.shadowColor = 'transparent';
-            ctx.shadowBlur = 0;
-            ctx.shadowOffsetX = 0;
-            ctx.shadowOffsetY = 0;
-        }
+        if (i === 0) shadowCastOnce(ctx, t);
     }
     ctx.textAlign = align;
 }
