@@ -22,8 +22,8 @@
 // implementations because of that: React handlers here, and a capture listener in App that
 // stopped propagation first and so was the only one that ever ran. This is the one now.
 
-import { useEffect, useRef } from 'react';
-import { timeAtX, pinchZoom } from '../core/timelineZoom.js';
+import { useEffect, useLayoutEffect, useRef } from 'react';
+import { timeAtX, pinchZoom, zoomAnchored } from '../core/timelineZoom.js';
 import { dragOnWindow } from '../core/windowDrag.js';
 
 const DRAG_SLOP = 5;   // mouse travel before a click becomes a marquee drag
@@ -156,6 +156,50 @@ export function useTimelineGestures({
         );
     };
 
+    // Read at event time through a ref, so the native listeners below see the current pps,
+    // seek and zoom without being re-attached on every render; only the element's identity
+    // decides that. Filled in after the functions it names are defined.
+    const latest = useRef({});
+
+    // Zoom the timeline about a screen x (the cursor, or the point between two fingers),
+    // keeping the time under it fixed. The scroll adjustment is deferred to a layout effect so
+    // it runs after the new width is laid out; setting it now would be clamped to the old one.
+    const pendingScrollRef = useRef(null);
+    const zoomTimelineAt = (clientX, factor) => {
+        const el = timelineRef.current; if (!el) return;
+        const localX = clientX - el.getBoundingClientRect().left;
+        setPps(prev => {
+            const r = zoomAnchored(prev, factor, el.scrollLeft, localX);
+            if (!r) return prev; // already at the limit - leave the scroll where it is
+            pendingScrollRef.current = r.scrollLeft;
+            return r.pps;
+        });
+    };
+    useLayoutEffect(() => {
+        if (pendingScrollRef.current != null && timelineRef.current) {
+            timelineRef.current.scrollLeft = pendingScrollRef.current;
+            pendingScrollRef.current = null;
+        }
+    }, [pps]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Plain wheel over the timeline zooms about the cursor; Shift+wheel is left to scroll
+    // horizontally. Ctrl/Cmd+wheel is left to the browser: the timeline and the canvas both
+    // zoom on a plain wheel, so the app never needs the modifier, and taking it away would
+    // remove page zoom from the whole application.
+    useEffect(() => {
+        const el = timelineRef.current; if (!el) return;
+        const h = (e) => {
+            if (e.shiftKey) return;
+            e.preventDefault();
+            latest.current.zoomTimelineAt(e.clientX, e.deltaY > 0 ? 0.9 : 1.1);
+        };
+        el.addEventListener('wheel', h, { passive: false });
+        return () => el.removeEventListener('wheel', h);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [timelineMounted]);
+
+    latest.current = { pps, seekToClientX, zoomTimelineAt };
+
     /** A mouse or pen press on the timeline root. Fingers never reach here; see the effect. */
     const onTimelinePointerDown = (e) => {
         if (e.pointerType === 'touch') return;
@@ -171,10 +215,6 @@ export function useTimelineGestures({
     //
     // Re-attached whenever the timeline is shown again: it is inside `showBottom &&`, so hiding
     // it unmounts the element, and listeners on the old node would be silently dead.
-    // Read at event time through a ref, so the listeners see the current pps and seek without
-    // being re-attached on every render; only the element's identity decides that.
-    const latest = useRef(null);
-    latest.current = { pps, seekToClientX };
     useEffect(() => {
         const el = timelineRef.current;
         if (!el) return;
@@ -246,6 +286,6 @@ export function useTimelineGestures({
     return {
         seekToTime, seekToClientX, goToScene, sceneTimelineTimes,
         startTimelinePan, startTimelineScrub, startMarqueeOrSeek,
-        onTimelinePointerDown,
+        onTimelinePointerDown, zoomTimelineAt,
     };
 }

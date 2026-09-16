@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Plus, PenLine, Pen, Feather, Eraser, Undo, Layers, ChevronRight, GitBranch, Move, Type, Cloud, Minus, Grid3x3, Palette, Menu, PaintBucket, RotateCcw, Waves } from 'lucide-react';
 import './App.css';
 import { saveAutosave } from './db';
@@ -66,7 +66,7 @@ import {
 import { textNeedsBox, drawTextObject } from './canvas/textRender.js';
 import { migrateCuts, projectSettings, makeLoadProgress } from './core/projectFormat.js';
 import { imageExtFromType, audioExt, videoExt, collectBitmaps, loadBitmapStore, blobToDataURL, packMedia } from './core/projectAssets.js';
-import { xAtTime, zoomAnchored } from './core/timelineZoom.js';
+import { xAtTime } from './core/timelineZoom.js';
 import { preparePath } from './core/pathMotion.js';
 import { dragOnWindow } from './core/windowDrag.js';
 // Recording a camera path reuses the pen the way a part's motion path does; the two cannot be
@@ -363,7 +363,6 @@ export default function App() {
     // ruler ticks are rendered (thousands of DOM nodes otherwise stall the whole app).
     const [tlWin, setTlWin] = useState({ left: 0, right: 4000 });
     const tlWinRafRef = useRef(0);
-    const pendingTlScrollRef = useRef(null); // scrollLeft to apply after a pps change (cursor-anchored zoom)
     const ppsRef = useRef(50);
     ppsRef.current = pps;
     // User-adjustable canvas resolution. Shadows the imported defaults for the whole component.
@@ -880,41 +879,6 @@ export default function App() {
             : tr('{0}배 길이로 굳혔습니다 · Ctrl+Z로 취소', plan.factor.toFixed(2).replace(/\.?0+$/, '')));
     };
 
-    // Zoom the timeline about a screen x (cursor), keeping the time under it fixed. The scroll
-    // adjustment is deferred to a layout effect so it runs after the new width is laid out.
-    const zoomTimelineAt = (clientX, factor) => {
-        const el = timelineRef.current; if (!el) return;
-        const localX = clientX - el.getBoundingClientRect().left;
-        setPps(prev => {
-            const r = zoomAnchored(prev, factor, el.scrollLeft, localX);
-            if (!r) return prev; // already at the limit - leave the scroll where it is
-            pendingTlScrollRef.current = r.scrollLeft;
-            return r.pps;
-        });
-    };
-    useLayoutEffect(() => {
-        if (pendingTlScrollRef.current != null && timelineRef.current) {
-            timelineRef.current.scrollLeft = pendingTlScrollRef.current;
-            pendingTlScrollRef.current = null;
-        }
-    }, [pps]);
-    // Ctrl/Cmd + wheel is left to the browser. The timeline and the canvas both zoom on a plain
-    // wheel, so the app never needs the modifier - and taking it away everywhere would remove
-    // page zoom from the whole application to protect against pressing it by accident.
-    useEffect(() => {
-        const t = timelineRef.current; if (!t) return;
-        // Plain wheel over the timeline zooms about the cursor (Shift+wheel = horizontal scroll).
-        const h = (e) => {
-            if (e.shiftKey) return; // let shift-wheel scroll horizontally
-            e.preventDefault();
-            zoomTimelineAt(e.clientX, e.deltaY > 0 ? 0.9 : 1.1);
-        };
-        t.addEventListener('wheel', h, { passive: false });
-        return () => t.removeEventListener('wheel', h);
-        // Re-attach when the timeline is shown again. It is inside `showBottom &&`, so hiding it
-        // unmounts the element and showing it mounts a new one - an empty dependency list would
-        // leave these listeners on the detached node and wheel zoom silently dead after a Tab.
-    }, [showBottom]);
 
 
     useEffect(() => {
@@ -2832,7 +2796,7 @@ export default function App() {
     const {
         seekToTime, seekToClientX, goToScene,
         startTimelinePan, startTimelineScrub,
-        onTimelinePointerDown,
+        onTimelinePointerDown, zoomTimelineAt,
     } = useTimelineGestures({
         timelineRef, timelineMounted: showBottom,
         cuts, currentCutId, setCurrentCutId, maxTime,
