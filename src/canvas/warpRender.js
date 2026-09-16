@@ -108,3 +108,55 @@ export function drawWarped(ctx, src, sw, sh, box) {
     }
     ctx.restore();
 }
+
+/**
+ * Where a point of the unwarped box lands once the warp is applied.
+ *
+ * The same order as drawWarped's transforms, innermost first: bend moves it vertically by the
+ * curve at its x, skew slides it sideways in proportion to its distance from the middle row,
+ * rotation turns it about the centre. This is what lets the outline and the handles follow the
+ * picture instead of sitting on the rectangle it started as.
+ *
+ * @param {{x: number, y: number, w: number, h: number, rot?: number, skew?: number, bend?: number}} box
+ * @param {{x: number, y: number}} p
+ * @returns {{x: number, y: number}}
+ */
+export function warpPoint(box, p) {
+    const midY = box.y + box.h / 2;
+    let x = p.x, y = p.y + bendOffsetAt(p.x, { x: box.x, w: box.w, h: box.h, bend: box.bend || 0 });
+    if (box.skew) x += box.skew * (y - midY);
+    if (box.rot) {
+        const cx = box.x + box.w / 2, cy = midY;
+        const c = Math.cos(box.rot), s = Math.sin(box.rot);
+        const dx = x - cx, dy = y - cy;
+        x = cx + dx * c - dy * s;
+        y = cy + dx * s + dy * c;
+    }
+    return { x, y };
+}
+
+/**
+ * The outline of a warped box as a closed polygon, sampled along the top and bottom so the
+ * bend shows as a curve rather than a straight line between two corners.
+ *
+ * @param {{x: number, y: number, w: number, h: number, rot?: number, skew?: number, bend?: number}} box
+ * @param {number} [samples] points along each of the top and bottom edges
+ * @returns {Array<{x: number, y: number}>}
+ */
+export function warpedOutline(box, samples = 24) {
+    const pts = [];
+    for (let i = 0; i <= samples; i++) pts.push({ x: box.x + (box.w * i) / samples, y: box.y });
+    for (let i = samples; i >= 0; i--) pts.push({ x: box.x + (box.w * i) / samples, y: box.y + box.h });
+    return pts.map(p => warpPoint(box, p));
+}
+
+/** The eight resize handles, on the warped box, named by compass point. */
+export function warpedHandles(box) {
+    const { x, y, w, h } = box;
+    return [
+        { id: 'nw', x, y }, { id: 'n', x: x + w / 2, y }, { id: 'ne', x: x + w, y },
+        { id: 'e', x: x + w, y: y + h / 2 },
+        { id: 'se', x: x + w, y: y + h }, { id: 's', x: x + w / 2, y: y + h }, { id: 'sw', x, y: y + h },
+        { id: 'w', x, y: y + h / 2 },
+    ].map(hd => ({ id: hd.id, ...warpPoint(box, hd) }));
+}

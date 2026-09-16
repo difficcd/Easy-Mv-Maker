@@ -37,7 +37,7 @@ import { fetchAsset } from './core/api.js';
 import { PLAYBACK_RATES, RATE_DEFAULT, playbackRateCodec } from './core/playbackRate.js';
 import { scaleProjectTimes, bakePlan } from './core/timeScale.js';
 import { drawSwayed } from './canvas/swayRender.js';
-import { drawWarped } from './canvas/warpRender.js';
+import { drawWarped, warpedOutline, warpedHandles } from './canvas/warpRender.js';
 import { applyPartTransform, drawMaskedLayer } from './canvas/layerComposite.js';
 import { detachMedia, safeMediaSrc } from './core/mediaEl.js';
 import { useAutosave } from './hooks/useAutosave.js';
@@ -90,6 +90,11 @@ import {
 } from './canvas/canvasUtils';
 
 
+
+// Selection chrome, in screen pixels. The handle is drawn at this half-size and grabbed within
+// the larger radius, so a finger that lands beside a handle still gets it.
+const SELECTION_HANDLE_PX = 5;
+const SELECTION_GRAB_PX = 11;
 
 const PEN_TYPES = [
     { id: 'pen', label: 'Dot', Icon: PenLine },
@@ -377,7 +382,10 @@ export default function App() {
     // Cached layer canvases hold the old dimensions — drop them when the size changes.
     useEffect(() => { setLayerCanvasCache({}); }, [canvasSize.w, canvasSize.h]);
     const [copiedCut, setCopiedCut] = useState(null);
-    const [lassoPoints, setLassoPoints] = useState([]);
+    // The loop being drawn. A ref and the overlay, not state: a lasso is a pointer gesture like
+    // a stroke, and setting state on every move meant a React render plus a full repaint per
+    // sample - which is why the loop could not keep up with the pen and often missed (#lasso).
+    const lassoRef = useRef(null);
     const [selection, setSelection] = useState(null);
     const [textEdit, setTextEdit] = useState(null);
     const [selectedText, setSelectedText] = useState(null);
@@ -605,7 +613,8 @@ export default function App() {
 
     const cancelSelection = () => {
         setSelection(null);
-        setLassoPoints([]);
+        lassoRef.current = null;
+        clearLiveOverlay();
         selectionDragRef.current = null;
     };
 
@@ -1498,6 +1507,21 @@ export default function App() {
         drawStrokesOnCtx(ctx, [{ ...st, points: st.points.slice(from) }], false, bitmapStoreRef.current);
         liveDrawnRef.current = n;
     };
+    // The loop as it is drawn, on the overlay. Line width in screen pixels, so it is as visible
+    // zoomed out as zoomed in.
+    const renderLassoPreview = () => {
+        const ctx = liveCtx(); if (!ctx) return;
+        clearLiveOverlay();
+        const pts = lassoRef.current; if (!pts || pts.length === 0) return;
+        ctx.save();
+        ctx.strokeStyle = accentSoft();
+        ctx.lineWidth = 1.5 / view.zoom;
+        ctx.setLineDash([4 / view.zoom, 4 / view.zoom]);
+        ctx.beginPath();
+        pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+        ctx.stroke();
+        ctx.restore();
+    };
     // Move preview: the shifted result is drawn on the overlay while paintFrame hides the
     // original. It has to draw once on press too, or the screen flashes empty for a moment.
     const renderLayerDragPreview = () => {
@@ -1873,25 +1897,17 @@ export default function App() {
         setTlWin({ left: el.scrollLeft - pad, right: el.scrollLeft + (el.clientWidth || 2000) + pad });
     }, [pps, maxTime, numTracks]);
 
+    // The handles and the outline are where paintFrame draws them - on the warped box - and the
+    // grab radius is in screen pixels, like their size. Measured in canvas pixels it shrank with
+    // every zoom-out until a corner could not be caught at all.
     const hitTestSelection = (pos) => {
         if (!selection) return null;
-        const x = selection.tx, y = selection.ty, w = selection.tw, h = selection.th;
-        const hs = 8;
-        const handles = [
-            { id: 'nw', x: x, y: y },
-            { id: 'n', x: x + w / 2, y: y },
-            { id: 'ne', x: x + w, y: y },
-            { id: 'e', x: x + w, y: y + h / 2 },
-            { id: 'se', x: x + w, y: y + h },
-            { id: 's', x: x + w / 2, y: y + h },
-            { id: 'sw', x: x, y: y + h },
-            { id: 'w', x: x, y: y + h / 2 },
-        ];
-        for (const hd of handles) {
-            if (Math.abs(pos.x - hd.x) <= hs && Math.abs(pos.y - hd.y) <= hs) return { type: 'resize', handle: hd.id };
+        const box = { x: selection.tx, y: selection.ty, w: selection.tw, h: selection.th, rot: selection.rot, skew: selection.skew, bend: selection.bend };
+        const grab = SELECTION_GRAB_PX / view.zoom;
+        for (const hd of warpedHandles(box)) {
+            if (Math.abs(pos.x - hd.x) <= grab && Math.abs(pos.y - hd.y) <= grab) return { type: 'resize', handle: hd.id };
         }
-        const inside = pos.x >= x && pos.x <= x + w && pos.y >= y && pos.y <= y + h;
-        return inside ? { type: 'move' } : null;
+        return pointInPolygon([pos.x, pos.y], warpedOutline(box).map(p => [p.x, p.y])) ? { type: 'move' } : null;
     };
 
 
@@ -2084,7 +2100,8 @@ export default function App() {
 
         switch (etool) {
             case 'lasso':
-                setLassoPoints([pos]);
+                lassoRef.current = [pos];
+                renderLassoPreview();
                 break;
             case 'pen':
             case 'brush':
@@ -2192,7 +2209,7 @@ export default function App() {
 
         switch (etool) {
             case 'lasso':
-                setLassoPoints(p => [...p, pos]);
+                if (lassoRef.current) { lassoRef.current.push(pos); renderLassoPreview(); }
                 break;
             case 'move':
                 break;
@@ -2341,9 +2358,10 @@ export default function App() {
             return;
         }
 
-        if (tool === 'lasso' && lassoPoints.length > 1) {
-            liftLassoSelection(lassoPoints);
-            setLassoPoints([]);
+        if (tool === 'lasso' && lassoRef.current) {
+            const pts = lassoRef.current; lassoRef.current = null;
+            clearLiveOverlay();
+            if (pts.length > 1) liftLassoSelection(pts);
         }
     };
 
@@ -2850,30 +2868,33 @@ export default function App() {
             const th = Math.max(1, Math.round(selection.th));
 
             // Drawn exactly as the committed paste will be, warp included - the preview is the
-            // only feedback the sliders have. The dashed box and its handles stay on the unwarped
-            // rectangle: that is what the drag moves and resizes, and the warp is applied to it.
+            // only feedback the sliders have. The outline and the handles follow the warp too,
+            // so what is dashed is the picture, not the rectangle it started as.
+            const box = { x: tx, y: ty, w: tw, h: th, rot: selection.rot, skew: selection.skew, bend: selection.bend };
             const src = bmp || (img && imageDataCanvas(img));
-            if (src) drawWarped(ctx, src, src.width, src.height, { x: tx, y: ty, w: tw, h: th, rot: selection.rot, skew: selection.skew, bend: selection.bend });
+            if (src) drawWarped(ctx, src, src.width, src.height, box);
 
+            // Everything here is sized in screen pixels - divided by the zoom - so a handle is
+            // the same size to the finger zoomed out as zoomed in. At canvas-pixel sizes the
+            // outline vanished and the handles shrank to a few screen pixels once zoomed out.
+            const z = view.zoom;
             ctx.save();
             ctx.strokeStyle = accentSoft();
-            ctx.lineWidth = 1;
-            ctx.setLineDash([6, 4]);
-            ctx.strokeRect(tx + 0.5, ty + 0.5, tw, th);
+            ctx.lineWidth = 1.5 / z;
+            ctx.setLineDash([6 / z, 4 / z]);
+            ctx.beginPath();
+            warpedOutline(box).forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+            ctx.closePath();
+            ctx.stroke();
             ctx.setLineDash([]);
 
-            const hs = 5;
-            const handlePts = [
-                [tx, ty], [tx + tw / 2, ty], [tx + tw, ty],
-                [tx + tw, ty + th / 2],
-                [tx + tw, ty + th], [tx + tw / 2, ty + th], [tx, ty + th],
-                [tx, ty + th / 2],
-            ];
+            const hs = SELECTION_HANDLE_PX / z;
             ctx.fillStyle = '#ffffff';
             ctx.strokeStyle = 'rgba(30, 30, 46, 0.9)';
-            for (const [hx, hy] of handlePts) {
+            ctx.lineWidth = 1 / z;
+            for (const hd of warpedHandles(box)) {
                 ctx.beginPath();
-                ctx.rect(Math.round(hx) - hs, Math.round(hy) - hs, hs * 2, hs * 2);
+                ctx.rect(hd.x - hs, hd.y - hs, hs * 2, hs * 2);
                 ctx.fill();
                 ctx.stroke();
             }
@@ -2901,16 +2922,7 @@ export default function App() {
             }
         }
 
-        if (lassoPoints.length > 0) {
-            ctx.strokeStyle = accentSoft();
-            ctx.lineWidth = 1;
-            ctx.setLineDash([3, 3]);
-            ctx.beginPath();
-            lassoPoints.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
-            ctx.stroke();
-            ctx.setLineDash([]);
-        }
-    }, [paintFrame, cuts, currentCutId, currentCut, isPlaying, scrubbing, currentTime, lassoPoints, selection, selectedText, animLayer]);
+    }, [paintFrame, cuts, currentCutId, currentCut, isPlaying, scrubbing, currentTime, selection, selectedText, animLayer, view.zoom]);
 
     // Boiling is motion, so it is invisible on a still frame; the phase is advanced slowly
     // while editing to preview it. That preview redraws the whole layer, though, so it stops
