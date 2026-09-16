@@ -17,7 +17,7 @@ import { ProjectPicker, ProgressOverlay, SettingsModal, HelpModal, VideoImportMo
 import { tr, loadLang, saveLang, setLangValue } from './i18n';
 import { moveLayer } from './core/layerOps.js';
 import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, patchLayer } from './core/layerOps.js';
-import { closeLassoPath, lassoBounds, applyResize, cutOutPolygon, selectionStrokes } from './core/lassoOps.js';
+import { closeLassoPath, lassoBounds, applyResize, cutOutPolygon, selectionStrokes, applyWarpDrag } from './core/lassoOps.js';
 import { pushAlong } from './core/liquify.js';
 import { shapePoints } from './core/shapeStroke.js';
 import { EXPORT_FPS } from './core/recordClock.js';
@@ -2030,7 +2030,10 @@ export default function App() {
             const hit = hitTestSelection(pos);
             if (hit) {
                 beginGesture(e);
-                selectionDragRef.current = { hit, startPos: { x: pos.x, y: pos.y }, startSel: { ...selection } };
+                // Ctrl inside the selection adjusts skew and bend by dragging instead of moving
+                // it (#175); the handles keep resizing either way.
+                const kind = hit.type === 'move' && e.ctrlKey ? { type: 'warp' } : hit;
+                selectionDragRef.current = { hit: kind, startPos: { x: pos.x, y: pos.y }, startSel: { ...selection } };
                 e.preventDefault();
                 return;
             }
@@ -2185,6 +2188,9 @@ export default function App() {
                 setSelection(s => s ? ({ ...s, tx: startSel.tx + dx, ty: startSel.ty + dy }) : s);
             } else if (hit.type === 'resize') {
                 const next = applyResize(hit.handle, startSel, dx, dy);
+                setSelection(s => s ? ({ ...s, ...next }) : s);
+            } else if (hit.type === 'warp') {
+                const next = applyWarpDrag(startSel, dx, dy);
                 setSelection(s => s ? ({ ...s, ...next }) : s);
             }
             return;
@@ -3721,7 +3727,7 @@ export default function App() {
                                 number fields: the value means nothing in itself and the eye is on
                                 the canvas. Rotation is stored in radians, as layer animation does. */}
                             {[['rot', tr('회전'), 180, 180 / Math.PI], ['skew', tr('기울기'), 100, 100], ['bend', tr('곡률'), 100, 100]].map(([key, label, range, scale]) => (
-                                <label key={key} className="mode-slider" title={tr('드래그해 조정, 두 번 눌러 0으로')}>
+                                <label key={key} className="mode-slider" title={tr('드래그해 조정, 두 번 눌러 0으로. 기울기·곡률은 Ctrl 누르고 선택 영역을 끌어도 됩니다')}>
                                     <span>{label}</span>
                                     <input type="range" min={-range} max={range} value={Math.round((selection[key] || 0) * scale)}
                                         onChange={e => setSelection(s => s && ({ ...s, [key]: +e.target.value / scale }))}

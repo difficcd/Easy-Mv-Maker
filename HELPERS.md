@@ -254,6 +254,8 @@ Lasso selection: closing the path, bounding it, lifting the pixels.
 | `lassoBounds` | The pixel rectangle a lasso covers, clamped to the canvas. Returned as integers because it indexes into image data: the left and top round down and the right and bottom round up, so a region is never clipped by a fraction of a pixel. |
 | `MIN_SELECTION_SIZE` | Smallest a selection may be dragged to, in pixels. Below this it is impossible to grab again. |
 | `selectionStrokes` | The erase-hole and paste strokes that put a floating selection back into a layer. Skew and bend ride on the paste, and only when set, so an unadjusted paste is byte-identical to one from before the fields existed. |
+| `applyWarpDrag` | Skew and bend from a Ctrl-drag inside the selection, scaled so the picture follows the pointer: half the height sideways is skew 1, half the height up is bend 1. Clamped to the sliders' range. |
+| `WARP_LIMIT` | Furthest a drag can push skew or bend — the sliders' range, so the two agree. |
 
 ## `src/core/recordClock.js`
 

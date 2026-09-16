@@ -184,3 +184,28 @@ export function selectionStrokes(sel, eraseId, pasteId) {
     if (sel.bend) paste.bend = sel.bend;
     return { erase, paste };
 }
+
+/** Furthest a drag can push skew or bend. The same as the sliders' range, so the two agree. */
+export const WARP_LIMIT = 1;
+
+/**
+ * Skew and bend from a Ctrl-drag inside the selection (#175).
+ *
+ * Both are scaled so the picture follows the pointer: a skew of 1 moves the top edge sideways by
+ * half the height, so dragging sideways by half the height gives skew 1 and the top edge lands
+ * under the pen; a bend of 1 lifts the middle by half the height, so dragging up by that gives
+ * bend 1. Up is negative y on a canvas, hence the sign on dy.
+ *
+ * @param {{th: number, skew?: number, bend?: number}} startSel the selection when the drag began
+ * @param {number} dx pointer movement since then
+ * @param {number} dy
+ * @returns {{skew: number, bend: number}}
+ */
+export function applyWarpDrag(startSel, dx, dy) {
+    const half = Math.max(1, (startSel.th || 0) / 2);
+    const clamp = (v) => Math.max(-WARP_LIMIT, Math.min(WARP_LIMIT, v));
+    return {
+        skew: clamp((startSel.skew || 0) + dx / half),
+        bend: clamp((startSel.bend || 0) - dy / half),
+    };
+}

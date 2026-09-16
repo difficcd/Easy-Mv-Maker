@@ -101,7 +101,7 @@ const EN = {
     '탭해서 글을 놓습니다. 있는 글을 탭하면 편집': 'Tap to place text. Tap existing text to edit it',
     '닫힌 영역을 탭해 채웁니다': 'Tap a closed area to fill it',
     '곡률': 'Bend',
-    '드래그해 조정, 두 번 눌러 0으로': 'Drag to adjust, double-tap to reset',
+    '드래그해 조정, 두 번 눌러 0으로. 기울기·곡률은 Ctrl 누르고 선택 영역을 끌어도 됩니다': 'Drag to adjust, double-tap to reset. Tilt and bend can also be set by Ctrl-dragging the selection',
     '색을 뿌립니다': 'Sprays colour',
     '부드럽게 뿌리는 에어브러시': 'Soft-spray airbrush',
     '그려진 걸 퍼뜨립니다': 'Smudges what is already drawn',
