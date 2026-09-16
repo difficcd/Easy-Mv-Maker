@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { frameStorage, frameLoad, imageExt, imageExtFromType, audioExt, videoExt, packMedia } from '../src/core/projectAssets.js';
+import { frameStorage, frameLoad, imageExt, imageExtFromType, audioExt, videoExt, packMedia, unpackMedia } from '../src/core/projectAssets.js';
 
 const blobEntry = () => ({ blob: new Blob(['x']), url: null });
 const urlEntry = () => ({ blob: null, url: 'data:image/webp;base64,AA' });
@@ -126,4 +126,15 @@ test('packMedia: a self-contained file embeds the dataURL, made from the Blob if
     const out = await packMedia(meta, { id: 'v', ext: 'webm', blob: new Blob(['x']), toDataUrl: async () => 'data:made' });
     assert.equal(out.dataUrl, 'data:made');
     assert.equal('blob' in out, false);
+});
+
+test('unpackMedia: gives back whichever shape the file holds, and counts a missing asset', async () => {
+    const blob = new Blob(['x']);
+    assert.deepEqual(await unpackMedia({ blob }, '__audio__', { fetchAsset: async () => { throw new Error('no'); } }), { blob, dataUrl: null, missing: 0 });
+    assert.deepEqual(await unpackMedia({ dataUrl: 'data:x' }, '__audio__', { fetchAsset: async () => { throw new Error('no'); } }), { blob: null, dataUrl: 'data:x', missing: 0 });
+    const fetched = await unpackMedia({ asset: true, ext: 'mp3' }, '__audio__', { assetBase: '/p/1', fetchAsset: async (u) => { assert.equal(u, '/p/1/asset/__audio__'); return blob; } });
+    assert.deepEqual(fetched, { blob, dataUrl: null, missing: 0 });
+    assert.deepEqual(await unpackMedia({ asset: true }, '__video__', { assetBase: '/p/1', fetchAsset: async () => { throw new Error('404'); } }), { blob: null, dataUrl: null, missing: 1 });
+    assert.deepEqual(await unpackMedia({ asset: true }, '__video__', { fetchAsset: async () => blob }), { blob: null, dataUrl: null, missing: 0 }, 'an asset with no base to fetch from is simply absent');
+    assert.deepEqual(await unpackMedia(undefined, 'x', { fetchAsset: async () => blob }), { blob: null, dataUrl: null, missing: 0 });
 });

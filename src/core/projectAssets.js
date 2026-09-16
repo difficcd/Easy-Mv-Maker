@@ -290,3 +290,28 @@ export async function packMedia(meta, { id, ext, assetSink = null, blobsOk = fal
     }
     return { ...meta, dataUrl: dataUrl || (toDataUrl && blob ? await toDataUrl(blob) : null) };
 }
+
+/**
+ * How a media track comes back out of a project: the reverse of packMedia, in the same three
+ * shapes. Returns whichever the file holds - a Blob, or a dataURL - and leaves converting to
+ * the other to the caller, since the audio element wants a URL and the video track a Blob.
+ * `missing` is 1 when the file said "asset" and the asset could not be fetched, so the caller
+ * can count it among the things that failed to load.
+ *
+ * Audio and video each read the three shapes their own way, in a different order, before this.
+ *
+ * @param {{blob?: Blob, asset?: boolean, dataUrl?: string} | null | undefined} field
+ * @param {string} id the asset id, e.g. '__audio__'
+ * @param {{assetBase?: string | null, fetchAsset: (url: string) => Promise<Blob>}} args
+ * @returns {Promise<{blob: Blob | null, dataUrl: string | null, missing: number}>}
+ */
+export async function unpackMedia(field, id, { assetBase = null, fetchAsset }) {
+    if (!field) return { blob: null, dataUrl: null, missing: 0 };
+    if (typeof Blob !== 'undefined' && field.blob instanceof Blob) return { blob: field.blob, dataUrl: null, missing: 0 };
+    if (field.asset && assetBase) {
+        try { return { blob: await fetchAsset(`${assetBase}/asset/${id}`), dataUrl: null, missing: 0 }; }
+        catch { return { blob: null, dataUrl: null, missing: 1 }; }
+    }
+    if (field.dataUrl) return { blob: null, dataUrl: field.dataUrl, missing: 0 };
+    return { blob: null, dataUrl: null, missing: 0 };
+}
