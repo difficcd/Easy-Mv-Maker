@@ -1,4 +1,4 @@
-import { swayWeightAt } from './canvasUtils.js';
+import { swayWeightAt, swayDispAt } from './canvasUtils.js';
 import { shearSlices } from './shearSlices.js';
 
 /**
@@ -31,13 +31,20 @@ export const SWAY_SLICES = 64;
  *
  * @param {object} args
  * @param {Array<number | {p: number, w: number}>} args.profile
- * @param {number} args.disp full displacement in pixels, at weight 1
+ * @param {number} args.disp full displacement in pixels, at weight 1, when there is no lag
  * @param {number} args.span the canvas edge along the axis
+ * @param {{amp: number, speed: number, curve?: number[]|null, time: number, lag?: number}} [args.wave]
  * @param {number} [args.slices]
  * @returns {Array<{a0: number, len: number, k: number, m: number}>}
  */
-export function swaySlices({ profile, disp, span, slices = SWAY_SLICES }) {
-    return shearSlices((pos) => disp * swayWeightAt(profile, pos / span), 0, span, slices);
+export function swaySlices({ profile, disp, span, wave, slices = SWAY_SLICES }) {
+    // Without a lag the displacement is one number for the whole span and `disp` is it. With
+    // one, the phase differs at every position, so it has to be asked for per slice - which is
+    // also why the slices exist at all.
+    const at = (wave && wave.lag)
+        ? (pos) => swayDispAt(pos / span, wave) * swayWeightAt(profile, pos / span)
+        : (pos) => disp * swayWeightAt(profile, pos / span);
+    return shearSlices(at, 0, span, slices);
 }
 
 /**
@@ -51,14 +58,16 @@ export function swaySlices({ profile, disp, span, slices = SWAY_SLICES }) {
  * @param {object} args
  * @param {Array<number | {p: number, w: number}>} args.profile
  * @param {'x'|'y'} args.axis which way the slices run
- * @param {number} args.disp
+ * @param {number} args.disp the displacement everywhere, when there is no lag
+ * @param {{amp: number, speed: number, curve?: number[]|null, time: number, lag?: number}} [args.wave]
+ *   what the sway is doing, for when the lag makes that differ along the axis
  * @param {number} args.cw
  * @param {number} args.ch
  */
-export function drawSwayed(ctx, src, { profile, axis, disp, cw, ch }) {
+export function drawSwayed(ctx, src, { profile, axis, disp, wave, cw, ch }) {
     const vertical = axis === 'y';
     const span = vertical ? ch : cw;
-    for (const { a0, len, k, m } of swaySlices({ profile, disp, span })) {
+    for (const { a0, len, k, m } of swaySlices({ profile, disp, span, wave })) {
         ctx.save();
         // The coordinate along the axis is left untouched (diagonal term 1, that off-diagonal 0),
         // so the slices butt together without gaps.

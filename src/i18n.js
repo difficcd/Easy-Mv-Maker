@@ -183,6 +183,7 @@ const EN = {
     '속도': 'Speed',
     '흔들림': 'Shake',
     '노이즈': 'Noise',
+    '끝이 뿌리보다 이만큼 늦게 움직입니다. 0이면 전체가 동시에 흔들립니다': 'The tip moves this many seconds after the root. 0 sways the whole thing at once',
     '애니': 'Anim',
     '파츠 애니메이션 — 이동 · 회전 · 흔들림 · 모자이크': 'Part animation — move, rotate, sway, mosaic',
     '이 기능 어디 있나': 'Where is it?',

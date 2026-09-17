@@ -1215,7 +1215,7 @@ export function computeCutAnim(ac, time, cw = CANVAS_W, ch = CANVAS_H) {
     return { alpha: Math.max(0, alpha), sx, sy, tx, ty };
 }
 
-export const LAYER_ANIM_DEFAULT = { mode: 'progress', speed: 1, count: 0, tx: 0, ty: 0, rot: 0, scale: 0, pivotX: 0.5, pivotY: 0.5, path: null, ease: 'linear', easePower: 2, swayAmount: 0, swaySpeed: 1, swayCurve: null, swayProfile: null, swayAxis: 'y', keys: null, mosaic: 0, mosaicMin: 0, mosaicFrom: 0, mosaicTo: 1, mosaicSpeed: 1, mosaicRect: null };
+export const LAYER_ANIM_DEFAULT = { mode: 'progress', speed: 1, count: 0, tx: 0, ty: 0, rot: 0, scale: 0, pivotX: 0.5, pivotY: 0.5, path: null, ease: 'linear', easePower: 2, swayAmount: 0, swaySpeed: 1, swayCurve: null, swayProfile: null, swayAxis: 'y', swayLag: 0, keys: null, mosaic: 0, mosaicMin: 0, mosaicFrom: 0, mosaicTo: 1, mosaicSpeed: 1, mosaicRect: null };
 
 // Easing applied to a 0..1 progress. type: linear | in (slow→fast) | out (fast→slow)
 // | inout. power (>=1) is the user-adjustable strength/weight.
@@ -1407,6 +1407,43 @@ export function curveToWave(pts, samples = 64) {
 // Sway profile: smoothly interpolates the weights (-1..1) of control points along the axis.
 // Zero holds that point still; a negative weight bends it the other way, so one stretch can
 // bend one direction while the next bends back.
+/**
+ * The sway waveform at a moment: a plain sine, or the curve the user drew.
+ *
+ * @param {number} time seconds
+ * @param {number} speed cycles a second
+ * @param {number[] | null | undefined} curve
+ * @returns {number} -1..1
+ */
+export function swayWaveAt(time, speed, curve) {
+    const sp = speed || 1;
+    return (curve && curve.length > 1) ? sampleWave(curve, sp * time) : Math.sin(2 * Math.PI * sp * time);
+}
+
+/**
+ * How far the sway has pushed the drawing at one position along its axis.
+ *
+ * The lag is the whole point. Without it every point along the spine moves in phase - the root
+ * and the tip reach the far side at the same instant - which is a flag, not hair. Real hair
+ * trails: the tip is still going one way as the root starts back, and that delay is what reads
+ * as weight.
+ *
+ * Expressed as seconds at the far end, so it is a number with a meaning rather than a dial:
+ * `lag` of 0.2 means the tip is doing what the root did a fifth of a second ago.
+ *
+ * Analytic rather than simulated, and that is a deliberate limit. A spring chain would need
+ * state carried between frames, and every frame here is a pure function of its time - scrubbing
+ * backwards and exporting both re-ask for arbitrary moments, and a simulation would answer them
+ * differently from playback. A travelling wave has the delay and the settle without the state.
+ *
+ * @param {number} p01 position along the axis, 0 at the root
+ * @param {{amp: number, speed: number, curve?: number[] | null, time: number, lag?: number}} o
+ * @returns {number} displacement in pixels
+ */
+export function swayDispAt(p01, { amp, speed, curve, time, lag }) {
+    return amp * swayWaveAt(time - (lag || 0) * p01, speed, curve);
+}
+
 export function swayWeightAt(profile, p) {
     const n = profile?.length || 0;
     if (!n) return 1;
@@ -1798,10 +1835,7 @@ export function computeLayerAnim(layer, ac, time, cw = CANVAS_W, ch = CANVAS_H) 
     // toward the far end from the pivot — anchor the pivot at the top of the hair for a natural swing.
     // Sway 1 is a plain sine wave; sway 2 follows the waveform of a curve the user drew.
     const sway = a.swayAmount || 0;
-    const wave = !sway ? 0
-        : (a.swayCurve && a.swayCurve.length > 1)
-            ? sampleWave(a.swayCurve, (a.swaySpeed || 1) * time)
-            : Math.sin(2 * Math.PI * (a.swaySpeed || 1) * time);
+    const wave = !sway ? 0 : swayWaveAt(time, a.swaySpeed, a.swayCurve);
     const shear = (sway / 100) * wave;
     // With a per-point profile, the bend varies along the axis instead of being a single shear.
     // The renderer handles it as a slice warp, so only the values it needs are passed on.
@@ -1818,6 +1852,9 @@ export function computeLayerAnim(layer, ac, time, cw = CANVAS_W, ch = CANVAS_H) 
     return {
         tx, ty, rot, sc, alpha, shear: prof ? 0 : shear, px: (a.pivotX ?? 0.5) * cw, py: (a.pivotY ?? 0.5) * ch,
         swayProfile: prof, swayAxis: axis, swayDisp, mosaic, mosaicRect: a.mosaicRect || null,
+        // The renderer needs these rather than one number, because with a lag the displacement
+        // is different at every point along the axis.
+        swayWave: prof ? { amp: (sway / 100) * (axis === 'y' ? ch : cw), speed: a.swaySpeed || 1, curve: a.swayCurve || null, time, lag: a.swayLag || 0 } : null,
     };
 }
 
