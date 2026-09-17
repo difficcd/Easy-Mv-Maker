@@ -1,5 +1,5 @@
 import React from 'react';
-import { Trash2, AlertTriangle } from 'lucide-react';
+import { Trash2, AlertTriangle, Settings, Film, Waves, Lasso } from 'lucide-react';
 import { tr } from '../i18n';
 import { TOOL_PREFIX } from '../core/shortcuts.js';
 import { targetCanvasFor } from '../canvas/canvasUtils';
@@ -195,11 +195,53 @@ export function SettingsModal({
 }
 
 // Shortcut and gesture help.
+/**
+ * Where the features are.
+ *
+ * Most of what this app does is behind a 12px icon that does not say what is inside it, and the
+ * same three things kept being reported as missing: the camera, the mosaic effect, the rotate
+ * handle. Each one existed and was three levels down. Finding them meant reading the source.
+ *
+ * So the icons are drawn here rather than named, because the problem is recognising one on the
+ * row - a written "the gear" is only useful to someone who already knows which button that is.
+ */
+function WhereIsIt() {
+    const Ico = ({ children }) => (
+        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 18, height: 18, verticalAlign: '-4px', borderRadius: 4, background: 'hsl(var(--ui-h) var(--ui-s) 24%)', margin: '0 2px' }}>{children}</span>
+    );
+    const Row = ({ what, where }) => (
+        <div style={{ display: 'flex', gap: 8, padding: '2px 0' }}>
+            <span style={{ width: 132, flexShrink: 0, color: '#9aa' }}>{what}</span>
+            <span style={{ flex: 1 }}>{where}</span>
+        </div>
+    );
+    const cutGear = <><Ico><Settings size={11} /></Ico> {tr('컷 줄의')}</>;
+    const layerFilm = <><Ico><Film size={11} /></Ico> {tr('레이어 줄의')}</>;
+    return (
+        <>
+            <b style={{ color: '#9aa' }}>{tr('이 기능 어디 있나')}</b>
+            <Row what={tr('카메라 무브')} where={<>{cutGear} → {tr('카메라')}</>} />
+            <Row what={tr('필름 노이즈')} where={<>{cutGear} → {tr('카메라')} → {tr('노이즈')}</>} />
+            <Row what={tr('컷 등장·퇴장')} where={<>{cutGear} → {tr('컷 애니메이션')}</>} />
+            <Row what={tr('파츠 애니메이션')} where={<>{layerFilm} {tr('(이동·회전·크기·경로)')}</>} />
+            <Row what={tr('모자이크 효과')} where={<>{layerFilm} → {tr('모자이크')}</>} />
+            <Row what={tr('흔들림 (머리카락)')} where={<>{layerFilm} → {tr('흔들')} · {tr('모양')}</>} />
+            <Row what={tr('자글자글 모션')} where={<><Ico><Waves size={11} /></Ico> {tr('레이어 줄의')}</>} />
+            <Row what={tr('선택 영역 회전')} where={<><Ico><Lasso size={11} /></Ico> {tr('올가미로 선택 후, 위쪽에 달린 동그란 손잡이를 끄세요')}</>} />
+            <div style={{ marginTop: 4, color: '#888' }}>{tr('컷 줄의 아이콘은 그 컷을 먼저 선택해야 보입니다.')}</div>
+        </>
+    );
+}
+
 export function HelpModal({ keymap, onClose }) {
     return (
         <Modal title={tr('단축키 · 제스처')} onClose={onClose} width={460} maxHeight="80vh"
             panelStyle={{ fontSize: 12.5, color: '#ccc', lineHeight: 1.7 }}>
-            <b style={{ color: '#9aa' }}>{tr('키보드')}</b>
+            {/* First, not last. Shortcuts are reference you look up deliberately; "where is it"
+                is what someone opens this dialog *because* of, and at the bottom it was below
+                the fold - which is the same failure the section exists to fix. */}
+            <WhereIsIt />
+            <div style={{ marginTop: 10 }}><b style={{ color: '#9aa' }}>{tr('키보드')}</b></div>
             <div>{tr('Ctrl+Z 실행취소 · Ctrl+Shift+Z / Ctrl+Y 다시실행')}</div>
             <div>{tr('Ctrl+C 컷 복사 · Ctrl+V 붙여넣기 · Ctrl+D 다음 프레임 복제')}</div>
             <div>{tr('Ctrl+S 저장 · Esc 선택 취소 · Enter 선택 적용')}</div>
