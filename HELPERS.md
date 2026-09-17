@@ -734,6 +734,8 @@ The two tools that change pixels already on the canvas: the mosaic and the blur 
 | `blurMaskedRegion` | A blurred copy of one region with everything the brush missed erased. Several light passes rather than one heavy one, and the mask is blurred too — a hard mask leaves a seam that reads as a second stroke. |
 | `grainTile` | A square of monochrome noise centred on mid grey, built once. Centred because `overlay` leaves mid grey alone, so the average pixel is unchanged and turning the grain up adds texture instead of fogging the picture. |
 | `drawGrain` | Blits that tile over the frame with an offset hashed from the quantised time — deterministic, so the export grains the same way the preview did. Drawn *outside* the camera transform: grain is on the film, not in the scene. |
+| `pixelateCanvas` | A pixelated copy of a canvas in two blits — shrink with smoothing on (which averages each block), then the caller blows it back up with smoothing off. The per-pixel `mosaic` above is for a one-off stamp; this is what the renderer can afford every frame. |
+| `pixelateSize` | The shrunk size for a block, never below 1×1 — a zero-sized canvas makes the draw throw. `null` when the block is too small to change anything. |
 
 ## `src/canvas/sceneRender.js`
 

@@ -361,6 +361,7 @@ export default function App() {
     // Reused inside the composite loop; see the mask path in paintFrame.
     const maskScratchRef = useRef(null);
     const grainTileRef = useRef(/** @type {HTMLCanvasElement|null} */(null)); // built once, blitted per frame
+    const mosaicScratchRef = useRef(null);   // the small canvas a mosaic effect shrinks a layer into
     const dataUrlCacheRef = useRef(new Map()); // id -> {imageData, url}; avoids re-encoding bitmaps each autosave
     const liveRef = useRef({}); // latest {cuts, copiedCut, selection} for safe bitmap GC from effects
     const textAreaRef = useRef(null);
@@ -1819,7 +1820,7 @@ export default function App() {
         // floating selection's hole cut out of the layer it was lifted from: canvas/sceneRender.
         drawScene(ctx, scene, {
             cw: CANVAS_W, ch: CANVAS_H, flattenClipGroup, hiddenByGesture, selection,
-            bitmapEntry: (id) => bitmapStoreRef.current.get(id), maskScratchRef,
+            bitmapEntry: (id) => bitmapStoreRef.current.get(id), maskScratchRef, mosaicScratchRef,
         });
 
         // Text objects live outside paint layers ("text layer").

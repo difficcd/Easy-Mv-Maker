@@ -292,6 +292,10 @@ export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCaptur
                 <NumIn label="X" value={Math.round((a.pivotX ?? 0.5) * 100)} onChange={v => updLayerAnim(cut.id, layer.id, { pivotX: v / 100 })} step={5} w={46} suffix="%" title={tr('기준점 X (%)')} />
                 <NumIn label="Y" value={Math.round((a.pivotY ?? 0.5) * 100)} onChange={v => updLayerAnim(cut.id, layer.id, { pivotY: v / 100 })} step={5} w={46} suffix="%" title={tr('기준점 Y (%)')} />
             </div>
+            <div style={R('#8bd')} title={tr('컷이 흐르는 동안 레이어가 점점 모자이크가 됩니다. 0이면 끕니다. 재생 방식이 왕복이면 흐려졌다 돌아옵니다.')}>
+                <span style={{ width: 24, flexShrink: 0 }}>{tr('모자이크')}</span>
+                <NumIn label={tr('블록')} value={a.mosaic || 0} onChange={v => updLayerAnim(cut.id, layer.id, { mosaic: Math.max(0, v) })} step={2} min={0} w={46} suffix="px" title={tr('가장 커졌을 때의 블록 크기')} />
+            </div>
             <div style={R('#8bd')} title={tr('머리카락·천처럼 계속 흔들리는 효과. 기준점 Y를 위(0)로 두면 아래가 크게 흔들립니다.')}>
                 <span style={{ width: 24, flexShrink: 0 }}>{tr('흔들')}</span>
                 <NumIn label={tr('강도')} value={a.swayAmount || 0} onChange={v => updLayerAnim(cut.id, layer.id, { swayAmount: v })} min={0} w={46} title={tr('흔들림 강도')} />
