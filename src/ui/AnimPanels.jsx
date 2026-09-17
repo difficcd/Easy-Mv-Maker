@@ -2,7 +2,8 @@ import { Circle } from 'lucide-react';
 import React from 'react';
 import { ANIM_DEFAULT, LAYER_ANIM_DEFAULT } from '../canvas/canvasUtils';
 import { CAMERA_DEFAULT, CAMERA_PRESETS, resolveCamera } from '../core/camera.js';
-import { randomId } from '../core/ids.js';
+import { randomId } from '../core/ids.js';
+
 import { upsertKey, patchKey, removeKey, snapProgress } from '../core/keyframes.js';
 import { readStored, writeStored, arrayCodec } from '../core/persist.js';
 import { NumField } from './NumField';
@@ -137,6 +138,11 @@ export function CameraPanel({ cut, updCutCamera, cameraCapture, setCameraCapture
                 </select>
                 <NumIn value={c.easePower} onChange={v => set({ easePower: Math.max(0.1, v) })} step={0.5} min={0.1} w={48} title={tr('가감속 세기')}
                     label={<span style={{ color: c.ease === 'linear' ? '#555' : '#aaa' }}>{tr('가중치')}</span>} />
+            </div>
+            <div style={R()}>
+                <span style={{ width: 34, color: '#aaa', flexShrink: 0 }}>{tr('흔들림')}</span>
+                <NumIn value={c.shake || 0} onChange={v => set({ shake: Math.max(0, v) })} step={2} min={0} w={54} label={tr('세기')} suffix="px" title={tr('손으로 든 것처럼 흔들립니다. 0이면 끕니다')} />
+                <NumIn value={c.shakeSpeed ?? 6} onChange={v => set({ shakeSpeed: Math.max(0.1, v) })} step={1} min={0.1} w={54} label={tr('속도')} title={tr('초당 흔들리는 횟수')} />
             </div>
             <div style={R()}>
                 <button className="button" style={{ flex: 1, height: 26, background: capturing ? 'var(--accent)' : undefined }}
