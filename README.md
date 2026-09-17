@@ -10,8 +10,8 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=000" alt="React 18">
-  <img src="https://img.shields.io/badge/Vite-6-646CFF?logo=vite&logoColor=fff" alt="Vite 6">
+  <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=000" alt="React 19">
+  <img src="https://img.shields.io/badge/Vite-8-646CFF?logo=vite&logoColor=fff" alt="Vite 8">
   <img src="https://img.shields.io/badge/TypeScript-checkJs-3178C6?logo=typescript&logoColor=fff" alt="TypeScript checkJs">
   <img src="https://img.shields.io/badge/HTML5%20Canvas-2D-E34F26?logo=html5&logoColor=fff" alt="HTML5 Canvas 2D">
   <img src="https://img.shields.io/badge/Express-API-000000?logo=express&logoColor=fff" alt="Express API">
@@ -24,12 +24,16 @@
 
 <p align="center"><sub>The accent colour above is user-set — one colour drives the whole UI.</sub></p>
 
+<p align="center">
+  <a href="https://github.com/difficcd/Easy-Mv-Maker/wiki"><b>User guide (wiki)</b></a> — the camera, part animation and effects, importing video, exporting, working with a lot of cuts
+</p>
+
 ## Features
 
 **Drawing**
 - Dot pen, marker, airbrush (blur / boiling-line modes), eraser, bucket fill, lasso, text, liquify (pushes pixels along with the pen)
 - Shape tool: straight line, curve, rectangle and ellipse. Each is stored as an ordinary stroke, so it takes the current brush, erases, and boils with its layer
-- Lasso selection: move, resize, rotate, tilt and bend (sliders, or Ctrl-drag inside the selection); Ctrl+T selects the whole layer
+- Lasso selection: move, resize, rotate (a handle above the selection, or a slider), tilt and bend (sliders, or Ctrl-drag inside the selection); Ctrl+T selects the whole layer
 - Move tool moves what is selected — a tapped text, otherwise the active layer; texts never ride along with a layer
 - Fill matches the clicked colour, so you can paint over an already-filled area
 - Pen draws; finger pans and pinch-zooms (palm rejection)
@@ -37,11 +41,13 @@
 
 **Motion and effects**
 - Boiling line — a shimmer applied to strokes you already drew, with amplitude, wavelength and minimum-width settings
-- Mosaic and blur
+- Camera per cut: pan, zoom, tilt, a drawn path, presets, and a handheld shake — the whole frame moves and every layer follows
+- Layer effects with a start/end window inside the cut: mosaic (block size, speed, an optional region that moves with the layer) and static — the lines tear, fringe red and cyan and snow, only where there is ink, so it works on a transparent background
 - Cut animation (in/out, deform, move, easing) + part animation (lasso a region: move / rotate / scale / path)
 - Keyframe tweening — shape morphing via a distance field, with centroid alignment
-- Sway that follows a curve you draw, plus a bend profile using per-slice shear
+- Sway that follows a curve you draw, with a lag so the tips trail the root, plus a bend profile using per-slice shear
 - Motion presets, text animation, rich text
+- Every effect is a pure function of the time — nothing random — so the export repaints exactly what playback showed
 
 **Timeline and structure**
 - Multi-track timeline: drag, resize, snap, loop playback, part grouping
@@ -53,12 +59,13 @@
 **I/O**
 - Autosave, `.emv` save/open, server save
 - Automatic server backup every 5 minutes, keeping the newest 12 — runs in the background without blocking the UI
-- Video import from a local file or URL: frame extraction, scene-change detection, audio track
+- Video import from a local file or URL: frame extraction, scene-change detection, audio track (with a mute that lifts itself for the export)
 - Imports match the source video's own size by default, so a vertical shorts clip fills the canvas instead of being letterboxed; landscape and portrait presets are there too
 - WebM/MP4 export recorded on a fixed frame grid (no judder from sampling the paint loop), PWA, Android packaging
 
 **UI**
 - English, Korean and Japanese, switchable in Settings
+- The help dialog opens with a "where is it" list: each effect and the row, icon and panel it lives in
 - Dockable panels: drag a panel by its header to the left or right edge to dock it there, or drop it in the middle to pull it out as a floating window. The arrangement is remembered
 - Tab hides every panel to leave just the canvas, and restores exactly what was open
 - Dragging the playhead scrubs with animation, so you see the motion rather than static artwork sliding past
@@ -100,7 +107,7 @@ The same steps run in CI on every push and pull request.
 | `scripts/stroke-writes.mjs` | a write that adds a stroke to a layer without going through `commitStroke` |
 | `scripts/i18n-check.mjs` | a `tr()` literal with no English entry |
 
-Around 1,050 unit tests cover the pure modules under `src/core`, `src/canvas`, `src/engine` and
+Around 1,150 unit tests cover the pure modules under `src/core`, `src/canvas`, `src/engine` and
 `src/export` — geometry, easing, keyframe sampling, the cuts reducer, layer-tree moves, lasso
 cut-out, timeline snapping, the time-scale bake, GIF and zip writers. They use Node's built-in
 runner because none of it needs a DOM or a framework. The functions that genuinely need a 2D
@@ -146,7 +153,8 @@ npm run android:open     # open Android Studio -> run / build APK
 
 ```
 src/
-  App.jsx          the component: gesture dispatch, paint loop, wiring (~3,100 lines)
+  App.jsx          the component: the paint loop and the wiring (~2,400 lines)
+  tools/           the drawing tools as a dispatch table: what each one does on pointer down and move
   core/            pure logic - reducers, timeline geometry, lasso, shapes, persistence, export planning
   canvas/          anything that draws on a 2D context: strokes, text, sway slices, layer compositing
   engine/          evaluating one frame: which cuts are on, what each layer looks like at time t
@@ -154,14 +162,14 @@ src/
   hooks/           App state that has been given its own home: the canvas view, the layer cache, playback,
                    audio, history, autosave, panels, tool settings, shortcuts, the drag gestures
   ui/              panels and modals
-  i18n.js          the English dictionary (~640 entries) and the tr() lookup; i18n.ja.js the Japanese one
+  i18n.js          the English dictionary (~710 entries) and the tr() lookup; i18n.ja.js the Japanese one
   globals.d.ts     ambient declarations (EyeDropper, Capacitor, File System Access…)
 server/index.js    project storage + backup rotation + video/audio import API
 scripts/           the check guards above, the hot-path benchmark, font subsetting
 test/              unit tests (node --test) and the smoke test
 ```
 
-Nothing under `core/`, `engine/` or `export/` touches a canvas or React - where one of them
+Nothing under `core/`, `engine/` or `export/` touches a canvas or React, and `tools/` touches neither React nor a context it owns - where one of them
 needs an `ImageData`, it takes a constructor as an argument. `canvas/` draws on a context it is
 handed rather than one it owns. That split is what keeps the tests framework-free. [ARCHITECTURE.md](ARCHITECTURE.md)
 is the map to read before editing `App.jsx`, and [HELPERS.md](HELPERS.md) lists every shared
