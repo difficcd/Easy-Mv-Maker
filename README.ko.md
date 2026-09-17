@@ -146,9 +146,12 @@ scripts/hook-baseline.mjs`.
 SDK가 있다면 로컬에서:
 
 ```bash
-npm run android:sync     # 웹 빌드 + 동기화
-npm run android:open     # Android Studio 열기 -> 실행 / APK 빌드
+npm run android:sync     # 웹 빌드 + android/ 로 동기화
+npm run android:open     # Android Studio 열기 -> 실행, 또는 Build > Generate Signed Bundle / APK
 ```
+
+`npx cap sync`가 `dist/`를 `android/`로 복사합니다. 기기에서 라이브 리로드가 필요하면 Capacitor의
+`server.url`을 잠시 쓰되, 그대로 배포하지는 마세요.
 
 ## 구조
 

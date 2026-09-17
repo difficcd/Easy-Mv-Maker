@@ -150,9 +150,12 @@ this repository on purpose.
 Locally, if you do have the SDK:
 
 ```bash
-npm run android:sync     # build web + sync
-npm run android:open     # open Android Studio -> run / build APK
+npm run android:sync     # build web + sync into android/
+npm run android:open     # open Android Studio -> run, or Build > Generate Signed Bundle / APK
 ```
+
+`npx cap sync` copies `dist/` into `android/`. For live reload on a device, set Capacitor's
+`server.url` temporarily — and do not ship with it.
 
 ## Layout
 

@@ -36,8 +36,9 @@ server/data/
 # Dev-server output, written when the server is started with its log redirected.
 *.log
 
-# Screenshot written by the boot smoke test when it fails; CI keeps it as an artifact.
+# Screenshots written by the smoke tests when they fail; CI keeps them as artifacts.
 smoke-failure.png
+draw-smoke-failure.png
 
 # Scratch harness for comparing two builds visually. Not part of the project: it needs two
 # builds served on two ports, and it is a technique rather than a check.
