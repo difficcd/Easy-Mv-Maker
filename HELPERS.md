@@ -1075,6 +1075,30 @@ the narrowest.
 |---|---|
 | `useServerStorage` | Save, open and delete server projects; snapshot every five minutes and rotate. Takes `buildData` and `restore` as functions rather than reaching for the document itself, because building one reads most of App's state and restoring one writes most of it - threading either in would make the seam wider than the thing it separates. |
 
+## `src/hooks/useSelectionGesture.js`
+
+Dragging a floating selection: what is under the pointer, and what a drag from there does.
+
+| | |
+|---|---|
+| `useSelectionGesture` | `hitTest` (knob, handle, inside, nothing - also used for the cursor), `begin` (starts a move / resize / rotate drag, or a warp with Ctrl), `move`, `end`. |
+
+## `src/hooks/useLayerDrag.js`
+
+The move tool on a layer: a shifted copy on the overlay while the original is hidden, the offset committed on lift.
+
+| | |
+|---|---|
+| `useLayerDrag` | `begin(e, pos, cutId, layerIds)`, `move`, `end` (dispatches moveLayers), `renderPreview`. |
+
+## `src/hooks/usePathCapture.js`
+
+Recording a path with the pen - a camera move, a part's path, its sway curve, or the mosaic rectangle - and turning the points into whichever it was.
+
+| | |
+|---|---|
+| `usePathCapture` | Holds `cameraCapture` / `pathCapture`; `active`, `begin`, `move`, `end`. |
+
 ## `src/hooks/useLiquifyTool.js`
 
 The liquify brush: the layer's pixels are pushed around in a copy and stamped back when the pen lifts.
