@@ -332,6 +332,7 @@ export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCaptur
                 <span style={{ width: 24, flexShrink: 0 }}>{tr('흔들')}</span>
                 <NumIn label={tr('강도')} value={a.swayAmount || 0} onChange={v => updLayerAnim(cut.id, layer.id, { swayAmount: v })} min={0} w={46} title={tr('흔들림 강도')} />
                 <NumIn label={tr('속도')} value={a.swaySpeed || 1} onChange={v => updLayerAnim(cut.id, layer.id, { swaySpeed: v })} step={0.1} min={0.1} w={46} title={tr('흔들림 속도')} />
+                <NumIn label={tr('지연')} value={round2(a.swayLag || 0)} onChange={v => updLayerAnim(cut.id, layer.id, { swayLag: Math.max(0, v) })} step={0.05} min={0} w={46} suffix="s" title={tr('끝이 뿌리보다 이만큼 늦게 움직입니다. 0이면 전체가 동시에 흔들립니다')} />
             </div>
             {/* Sway 2: draw a curve to define the shape of the sway; without one it falls back
                 to a plain sine wave. */}

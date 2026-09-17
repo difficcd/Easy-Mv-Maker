@@ -76,7 +76,7 @@ export function drawScene(ctx, scene, { cw, ch, flattenClipGroup, hiddenByGestur
             if (shrunk) ctx.imageSmoothingEnabled = false;
 
             if (la?.swayProfile && !mask) {
-                drawSwayed(ctx, src, { profile: la.swayProfile, axis: la.swayAxis, disp: la.swayDisp, cw, ch });
+                drawSwayed(ctx, src, { profile: la.swayProfile, axis: la.swayAxis, disp: la.swayDisp, wave: la.swayWave, cw, ch });
             } else if (!mask) {
                 ctx.drawImage(src, 0, 0, cw, ch);
             } else {
