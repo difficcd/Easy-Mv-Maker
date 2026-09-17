@@ -135,18 +135,26 @@ export function blurMaskedRegion(src, bounds, pts, rad, makeCanvas) {
 // --- static ------------------------------------------------------------------------------
 //
 // The "noise" the user meant, and not the one that was first built. Film grain is a fine, even
-// texture over a frame. This is a broken signal: the whole picture wobbles and its colour channels
-// come apart so every edge fringes red one side and cyan the other, there is snow over all of it,
-// and now and then a frame goes badly wrong and tears in bands. It crackles rather than shimmers.
+// texture over a frame. This is a broken signal: the picture wobbles and its colour channels come
+// apart so every edge fringes red one side and cyan the other, there is snow, and now and then a
+// frame goes badly wrong and tears in bands. It crackles rather than shimmers.
 //
-// All of it outside the camera transform and over the finished frame, for the same reason the
-// grain was: it is what happens to the signal, not to the scene.
+// Per layer, not per frame. It started over the whole frame and was moved: "the noise should go
+// along the lines - the whole canvas must not shake, only where the lines are". Applied to a
+// layer's own pixels the ink itself tears and fringes, the snow sits on the strokes and nowhere
+// else, and the sway, the mask and the part transform all act on the glitched drawing. That is
+// the same reason the mosaic is per layer, and the opposite of the old grain, which was over the
+// frame precisely because it was not part of the drawing.
 //
-// A pre-rendered noise tile is still used, for the snow. The tearing is a handful of band copies,
-// and the fringing comes from the two halves of the colour split being added back together with
-// a sideways offset between them - `lighter` of a red-only copy and a cyan-only copy of the same
-// band is the band itself where they line up, and colour where they do not. That is what a real
-// chroma tear looks like, and it works on a black-and-white drawing because the paper is white.
+// The fringing is the non-obvious part, and it works on black ink. The layer is split into a
+// red-only copy and a cyan-only copy - multiply by a solid colour keeps one channel - and put
+// back as `lighter` of the two with a sideways offset between them. Where the halves line up
+// they sum to the picture; where they do not, the ink is red or cyan.
+//
+// A layer canvas is transparent where there is no ink, and multiply-filling a transparent pixel
+// paints it - so each half is masked back to the layer's own alpha with destination-in, or the
+// whole layer would come out solid red. Alpha surviving is also what lets this run on a
+// transparent background, which the whole-frame version could not.
 
 /** Edge of the noise tile. Larger means fewer blits per frame and a longer period before it repeats. */
 const TILE = 512;
@@ -162,7 +170,7 @@ const hash = (a, b = 0) => {
 const unit = (a, b) => hash(a, b) / 0x100000000;   // 0..1
 
 /**
- * A square of monochrome noise centred on mid grey.
+ * A square of monochrome noise centred on mid grey, built once and reused for the snow.
  *
  * @param {() => HTMLCanvasElement} makeCanvas
  * @returns {HTMLCanvasElement}
@@ -183,53 +191,42 @@ export function grainTile(makeCanvas) {
 }
 
 /**
- * Broken-signal static over the finished frame.
+ * A copy of a layer with broken-signal static on it, alpha preserved.
  *
- * Three things, and the first two cover the *whole* frame - "it only does part of the picture"
- * was the report against the first version, which tore a few bands and left the rest clean.
+ * `amount` is perceptual: the visible magnitudes follow its square root, so a third of the dial
+ * is a clearly visible third of the effect. Linear, everything sat near zero until the top of
+ * the range - "the strength does not seem to do much".
  *
- *   split    the whole picture's colour channels pulled apart sideways, so every edge fringes
- *            red one side and cyan the other. Small on a quiet frame, wide on a bad one.
- *   jitter   the whole picture knocked sideways and down by a pixel or two, differently each
- *            frame. This is most of what reads as 지지직.
- *   tears    a few horizontal bands shoved further sideways than the rest, on the bad frames.
+ * Intermittent by design: at full amount roughly half the frames are bad, at a low amount the
+ * occasional one. Static on every frame is a filter; static that comes and goes is a fault.
  *
- * Plus snow over all of it.
+ * Deterministic in time, like the shake and the mosaic: the export repaints these frames.
  *
- * "Bad frames" are rolled per frame from a hash, so it flickers: mostly a mild wobble, then a
- * frame that goes badly wrong. Deterministic in time, like the shake and the mosaic, so the
- * export gets the same bad frames the preview showed.
- *
- * Cost: the split is the whole frame drawn twice more with a colour multiply each, about six
- * full-frame operations. That is the price of doing it everywhere, and it is only paid on cuts
- * that have static turned on.
- *
- * @param {CanvasRenderingContext2D} ctx the frame, already painted
+ * @param {HTMLCanvasElement | ImageBitmap} src the layer as painted, full frame size
  * @param {HTMLCanvasElement} tile from grainTile, for the snow
- * @param {{cw: number, ch: number, amount: number, seconds: number,
- *   band: {current: any}, red: {current: any}, cyan: {current: any},
- *   scratch: (ref: any, w: number, h: number) => {canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D}}} o
- *   three scratch slots: a copy of the frame, and its two colour halves
+ * @param {{cw: number, ch: number, amount: number, seconds: number}} o
+ * @param {{copy: {current: any}, red: {current: any}, cyan: {current: any}, out: {current: any}}} refs
+ *   four scratch slots; the halves are read while the output is written, so none can share
+ * @param {(ref: any, w: number, h: number) => {canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D}} scratch
+ * @returns {HTMLCanvasElement | null} null when there is nothing to do
  */
-export function drawStatic(ctx, tile, { cw, ch, amount, seconds, band, red, cyan, scratch }) {
-    if (!(amount > 0)) return;
+export function staticCanvas(src, tile, { cw, ch, amount, seconds }, refs, scratch) {
+    if (!(amount > 0)) return null;
     const a = Math.min(1, amount);
+    const v = Math.sqrt(a);
     const step = Math.floor((Number.isFinite(seconds) ? seconds : 0) * STATIC_FPS);
-    const frame = ctx.canvas;
 
     // How bad this frame is: a quiet wobble most of the time, a real fault now and then.
-    const bad = unit(step, 1) < a * 0.45;
-    const split = Math.max(1, Math.round((bad ? 6 : 1.5) * a + (bad ? unit(step, 2) * 10 * a : 0)));
-    const jx = Math.round((unit(step, 5) * 2 - 1) * (bad ? 14 : 3) * a);
-    const jy = Math.round((unit(step, 6) * 2 - 1) * (bad ? 4 : 1) * a);
+    const bad = unit(step, 1) < 0.15 + a * 0.4;
+    const split = Math.max(1, Math.round((bad ? 6 : 2) * v + (bad ? unit(step, 2) * 10 * v : 0)));
+    const jx = Math.round((unit(step, 5) * 2 - 1) * (bad ? 14 : 3) * v);
+    const jy = Math.round((unit(step, 6) * 2 - 1) * (bad ? 4 : 1) * v);
 
-    // The frame lifted out whole, then rebuilt from its two colour halves with the halves pulled
-    // apart. multiply by a solid colour keeps one channel; `lighter` of the two is the picture
-    // where they overlap and colour where they do not.
-    const { canvas: copy, ctx: cctx } = scratch(band, cw, ch);
+    const { canvas: copy, ctx: cctx } = scratch(refs.copy, cw, ch);
     cctx.globalCompositeOperation = 'source-over';
     cctx.clearRect(0, 0, cw, ch);
-    cctx.drawImage(frame, 0, 0);
+    cctx.drawImage(src, 0, 0);
+
     const half = (ref, colour) => {
         const { canvas, ctx: hctx } = scratch(ref, cw, ch);
         hctx.globalCompositeOperation = 'source-over';
@@ -238,46 +235,53 @@ export function drawStatic(ctx, tile, { cw, ch, amount, seconds, band, red, cyan
         hctx.globalCompositeOperation = 'multiply';
         hctx.fillStyle = colour;
         hctx.fillRect(0, 0, cw, ch);
+        // The fill painted the transparent pixels too. Back to the layer's own alpha.
+        hctx.globalCompositeOperation = 'destination-in';
+        hctx.drawImage(copy, 0, 0);
         hctx.globalCompositeOperation = 'source-over';
         return canvas;
     };
-    const r = half(red, '#ff0000');
-    const c = half(cyan, '#00ffff');
+    const r = half(refs.red, '#ff0000');
+    const c = half(refs.cyan, '#00ffff');
 
-    ctx.save();
-    ctx.clearRect(0, 0, cw, ch);
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.drawImage(r, jx - split, jy);
-    ctx.drawImage(c, jx + split, jy);
-    ctx.restore();
+    const { canvas: out, ctx: octx } = scratch(refs.out, cw, ch);
+    octx.globalCompositeOperation = 'source-over';
+    octx.clearRect(0, 0, cw, ch);
+    octx.globalCompositeOperation = 'lighter';
+    octx.drawImage(r, jx - split, jy);
+    octx.drawImage(c, jx + split, jy);
+    octx.globalCompositeOperation = 'source-over';
 
-    // On a bad frame, a few bands shoved further than the rest. Read from the copy, not the
-    // frame, since the frame has just been rewritten.
+    // On a bad frame, a few bands shoved further than the rest, from the untouched copy.
     if (bad) {
         const bands = 1 + Math.floor(unit(step, 3) * 3);
         for (let k = 0; k < bands; k++) {
             const y = Math.floor(unit(step, 10 + k * 3) * ch);
             const h = Math.max(4, Math.floor(6 + unit(step, 11 + k * 3) * 60));
-            const dx = Math.round((unit(step, 12 + k * 3) * 2 - 1) * 80 * a);
+            const dx = Math.round((unit(step, 12 + k * 3) * 2 - 1) * 80 * v);
             const bh = Math.min(h, ch - y);
-            if (bh > 0) ctx.drawImage(copy, 0, y, cw, bh, dx, y, cw, bh);
+            if (bh <= 0) continue;
+            octx.clearRect(0, y, cw, bh);
+            octx.drawImage(copy, 0, y, cw, bh, dx, y, cw, bh);
         }
     }
 
-    // Snow over everything: coarse bright specks, heavier on a bad frame.
+    // Snow on the strokes and nowhere else: source-atop paints only where there is already ink.
     if (tile) {
         const ox = hash(step, 7) % TILE, oy = hash(step, 8) % TILE;
         const scale = 3;
-        ctx.save();
-        ctx.globalCompositeOperation = 'screen';
-        ctx.globalAlpha = a * (bad ? 0.45 : 0.2);
-        ctx.imageSmoothingEnabled = false;
+        octx.globalCompositeOperation = 'source-atop';
+        octx.globalAlpha = v * (bad ? 0.55 : 0.25);
+        octx.imageSmoothingEnabled = false;
         const size = TILE * scale;
         for (let yy = -(oy * scale) % size; yy < ch; yy += size) {
-            for (let xx = -(ox * scale) % size; xx < cw; xx += size) ctx.drawImage(tile, xx, yy, size, size);
+            for (let xx = -(ox * scale) % size; xx < cw; xx += size) octx.drawImage(tile, xx, yy, size, size);
         }
-        ctx.restore();
+        octx.globalAlpha = 1;
+        octx.imageSmoothingEnabled = true;
+        octx.globalCompositeOperation = 'source-over';
     }
+    return out;
 }
 
 /**

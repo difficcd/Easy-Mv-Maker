@@ -35,6 +35,7 @@ import { visibleCutsAt } from './selectCuts.js';
 
 /**
  * @typedef {object} Scene
+ * @property {number} time the moment this scene is of, in seconds
  * @property {{cx: number, cy: number, zoom: number, rot: number} | null} camera
  * @property {EvaluatedCut[]} cuts bottom track first, which is drawing order
  */
@@ -65,6 +66,9 @@ export function evaluateFrame(cuts, t, { playing, currentCutId, cw, ch }) {
     const camera = camCut ? computeCamera(camCut.camera, cutProgress(camCut, t), cw, ch, t - camCut.startTime) : null;
 
     return {
+        // The moment this scene is of. The static needs seconds since its cut began, and the
+        // renderer has no other way to know what t was.
+        time: t,
         camera,
         cuts: active.map(cut => ({
             cut,

@@ -44,34 +44,20 @@ shot — one sine reads as a pendulum. It runs on real seconds rather than progr
 so the same setting wobbles at the same rate in a one-second cut and a ten-second one, and it is
 not eased with the move, because a shake that slows to a stop reads as the camera being set down.
 
-## Noise (static)
-
-A broken-signal look over the whole frame: the picture wobbles, its colour channels come apart so
-every edge fringes red on one side and cyan on the other, there is snow, and now and then a frame
-tears sideways in bands. It flickers — most frames are a mild wobble, then one goes badly wrong.
-
-It is drawn over the finished frame and outside the camera transform, because it is what happens
-to the *signal*, not to the scene: it must not zoom or shake with the picture.
-
-**It is skipped when exporting on a transparent background.** The blend it uses paints into
-transparent pixels, so a PNG sequence meant as an overlay would come out opaque — which is the
-whole reason that export mode exists.
-
-It has the same timing controls the mosaic effect has — see *Effects over time* below.
-
 ## Effects over time
 
-Shake is constant. Noise, like the mosaic effect on a layer, has a window:
+Shake is constant. The layer effects — mosaic and noise, on the [Part animation](Part-animation) page — have a window:
 
 - **Start / End** — where in the cut it happens, with the cut as 0 to 1. The gap is its duration.
 - **Speed** — how quickly it arrives inside that window. Above 1 it gets there early and holds.
 - **From** — start already this far applied, and deepen from there.
 
 Outside the window it is off — nothing before the start, nothing after the end. "Come on and
-stay" is an end of 1. The mosaic's "there and back" mode still works on top of this.
+stay" is an end of 1. The mosaic's "there and back" mode still works on top of this. Noise has
+only start and end: it is at its strength the moment the window opens, with no ramp.
 
 ## Everything is deterministic
 
-Shake, noise, and every other animation here is a pure function of the time. Nothing is random.
+Shake, the layer effects, and every other animation here is a pure function of the time. Nothing is random.
 That is not a stylistic choice: the export repaints the same frames through the same functions,
 and anything random would shake or tear differently in the file than it did on screen.
