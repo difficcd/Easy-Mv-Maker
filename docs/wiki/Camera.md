@@ -67,8 +67,8 @@ Shake is constant. Noise, like the mosaic effect on a layer, has a window:
 - **Speed** — how quickly it arrives inside that window. Above 1 it gets there early and holds.
 - **From** — start already this far applied, and deepen from there.
 
-Outside the window it *holds* — nothing before, whatever it reached after. Coming back is what the
-cut's "there and back" mode is for, and that still works.
+Outside the window it is off — nothing before the start, nothing after the end. "Come on and
+stay" is an end of 1. The mosaic's "there and back" mode still works on top of this.
 
 ## Everything is deterministic
 

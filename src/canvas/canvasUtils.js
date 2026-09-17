@@ -1248,8 +1248,11 @@ const MIN_CUT_SECONDS = 0.0001;
  *   min..max    the values it runs between. A non-zero `min` starts the effect already applied
  *               and deepens it, which scaling from nothing cannot express.
  *
- * Outside the window it holds: `min` before, whatever it reached after. Holding rather than
- * snapping back is what makes "come on over the first second and stay" expressible.
+ * Outside the window it is `min` - off, usually - on both sides. That is what "start" and "end"
+ * mean to anyone reading the panel, and the first version got it wrong: it held whatever it had
+ * reached after `to`, so setting an end of 0.5 left the static running to the end of the cut,
+ * which was reported as "the end control does nothing". "Come on and stay" is still expressible:
+ * set the end to 1.
  *
  * @param {number} t01 progress through the cut
  * @param {{from?: number, to?: number, speed?: number, min?: number, max?: number,
@@ -1262,8 +1265,10 @@ export function effectAt(t01, { from = 0, to = 1, speed = 1, min = 0, max = 0, e
     const a = Math.max(0, Math.min(1, from));
     const b = Math.max(a, Math.min(1, to));
     const span = b - a;
-    // A zero-length window is a step, not a division by zero: nothing before it, all of it after.
-    let p = span <= 0 ? (t01 >= b ? 1 : 0) : (t01 - a) / span;
+    // Off outside the window. Before the start there is nothing yet; after the end it has ended.
+    if (t01 < a || t01 > b) return lo;
+    // A zero-length window is a single moment, not a division by zero.
+    let p = span <= 0 ? 1 : (t01 - a) / span;
     p = Math.max(0, Math.min(1, p * Math.max(0.01, speed)));
     return lo + (max - lo) * applyEase(p, ease, easePower);
 }

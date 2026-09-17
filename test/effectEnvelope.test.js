@@ -26,20 +26,34 @@ test('a window delays the start and finishes early', () => {
     assert.equal(at(0.75, o), 100);
 });
 
-test('outside the window it holds rather than snapping back', () => {
-    // "Come on over the first second and stay" is the case this exists for. Returning is what
-    // mode: 'return' is for, and that is a different control.
+test('outside the window it is off, on both sides', () => {
+    // The first version held whatever it had reached after `to`, so an end of 0.5 left the
+    // static running to the end of the cut - reported as "the end control does nothing". Start
+    // and end mean what they say; "come on and stay" is an end of 1.
     const o = { from: 0.1, to: 0.3 };
-    assert.equal(at(0.31, o), 100);
-    assert.equal(at(1, o), 100);
-    assert.equal(at(0.05, o), 0);
+    assert.equal(at(0.05, o), 0, 'before the start');
+    assert.equal(at(0.31, o), 0, 'just after the end');
+    assert.equal(at(1, o), 0, 'long after the end');
+    assert.equal(at(0.3, o), 100, 'at the end itself, still on');
 });
 
-test('speed above 1 arrives early and then holds', () => {
+test('an end of 1 is "come on and stay"', () => {
+    const o = { from: 0.2, to: 1 };
+    assert.equal(at(0.99, o), 100 * ((0.99 - 0.2) / 0.8));
+    assert.equal(at(1, o), 100);
+});
+
+test('the minimum is what shows outside the window, not zero', () => {
+    const o = { from: 0.4, to: 0.6, min: 20 };
+    assert.equal(at(0.1, o), 20);
+    assert.equal(at(0.9, o), 20);
+});
+
+test('speed above 1 arrives early and then holds until the end', () => {
     const o = { speed: 2 };
     assert.equal(at(0.25, o), 50);
     assert.equal(at(0.5, o), 100);
-    assert.equal(at(0.9, o), 100, 'should have held at the top');
+    assert.equal(at(0.9, o), 100, 'should have held at the top, still inside the window');
 });
 
 test('speed below 1 has not arrived by the end of the window', () => {
@@ -59,17 +73,18 @@ test('a minimum above the maximum is clamped rather than inverting the effect', 
     assert.equal(at(1, { min: 500 }), 100);
 });
 
-test('a zero-length window is a step, not a division by zero', () => {
+test('a zero-length window is a single moment, not a division by zero', () => {
     const o = { from: 0.5, to: 0.5 };
     assert.equal(at(0.49, o), 0);
     assert.equal(at(0.5, o), 100);
+    assert.equal(at(0.51, o), 0);
     assert.ok(Number.isFinite(at(0.5, o)));
 });
 
 test('a window given backwards does not run time in reverse', () => {
-    // to < from is a typo, not an instruction. It collapses to a step at `from`.
+    // to < from is a typo, not an instruction. It collapses to a moment at `from`.
     const o = { from: 0.8, to: 0.2 };
-    for (const t of [0, 0.5, 0.79]) assert.equal(at(t, o), 0);
+    for (const t of [0, 0.5, 0.79, 0.81, 1]) assert.equal(at(t, o), 0);
     assert.equal(at(0.8, o), 100);
 });
 
