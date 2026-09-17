@@ -891,11 +891,11 @@ export default function App() {
         // added fields are written down and tested.
         docEpochRef.current++;   // opening a project: anything still running belongs to the old one
         dispatchCuts(replaceCuts(migrateCuts(data.cuts)));
-        cutList.setActivePartId(null);
+        cutList.reset();   // none of it names anything in the document being opened (#241)
         const s = projectSettings(data);
         if (s.canvas) setCanvasSize(s.canvas);
         setNumTracks(s.numTracks); setCurrentCutId(s.currentCutId); setCurrentTime(0);
-        setOnionPrev(s.onionPrev); setOnionNext(s.onionNext); tl.setPps(s.pps); cutList.setExpandedCuts(new Set());
+        setOnionPrev(s.onionPrev); setOnionNext(s.onionNext); tl.setPps(s.pps);
         setCopiedCut(null); // clipboard may reference bitmaps from the old project
         clearLayerCache(); // Clear cache on new project
         // The audio lives in useAudioTrack, and so does putting it back: the element, the
@@ -951,8 +951,8 @@ export default function App() {
         bitmapStoreRef.current.clear();
         docEpochRef.current++;   // starting over
         dispatchCuts(replaceCuts([firstCut()]));
-        setNumTracks(2); setCurrentCutId(1); setCurrentTime(0); cutList.setExpandedCuts(new Set());
-        setCopiedCut(null); cutList.setSelectedCutIds(new Set()); cutList.setActivePartId(null);
+        setNumTracks(2); setCurrentCutId(1); setCurrentTime(0);
+        setCopiedCut(null); cutList.reset();
         clearLayerCache();
         forgetProject();
         detachMedia(audioRef.current);
