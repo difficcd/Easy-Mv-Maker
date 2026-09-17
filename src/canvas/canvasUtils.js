@@ -1,5 +1,6 @@
 import { tr } from '../i18n.js';
 import { withAlpha } from '../core/colour.js';
+import { catmullThrough } from '../core/catmullRom.js';
 // textLayout imports nothing of its own, so this cannot make a cycle.
 import { charProgress } from './textLayout.js';
 import { drawWarped, isWarped } from './warpRender.js';
@@ -404,15 +405,43 @@ function chaikin(pts) {
     out.push(pts[pts.length - 1]);
     return out;
 }
-// Smooth a raw hand stroke: resample to uniform spacing, then round corners with Chaikin. The
-// caller renders the result as a Catmull-Rom spline, so the final curve is genuinely smooth.
-function smoothPoints(pts, passes) {
+// Raw samples further apart than this, on average, are "sparse": a stroke drawn zoomed out,
+// where one screen pixel of pen travel is several canvas pixels, or a fast one.
+const SPARSE_SPACING = 4;
+
+/**
+ * Smooth a raw hand stroke: resample to uniform spacing, then round corners with Chaikin. The
+ * caller renders the result as a Catmull-Rom spline, so the final curve is genuinely smooth.
+ *
+ * Sparse input is run through a Catmull-Rom spline first. The resample puts points every 2px
+ * *along the polyline*, so with raw samples 30px apart it lays fourteen points down each
+ * straight run between them - and Chaikin, which cuts corners by a quarter of the neighbouring
+ * segments, then rounds each corner by half a pixel and leaves the runs straight. That is the
+ * "curve made of straight lines" a stroke drawn zoomed out came out as: the smoothing was
+ * running at the resample's scale, not the stroke's. Interpolating through the raw samples
+ * before resampling gives the corner-cutting a curve to work on. Catmull-Rom rather than
+ * Chaikin on the raw points because it passes through them - a circle stays the size it was
+ * drawn, where corner-cutting would pull it inward.
+ *
+ * @param {Array<{x: number, y: number, pressure?: number}>} pts
+ * @param {number} [passes]
+ */
+export function smoothPoints(pts, passes) {
     if (!pts || pts.length < 3) return pts || [];
-    let cur = resamplePts(pts, 2);
+    let raw = pts;
+    const mean = strokeLength(pts) / (pts.length - 1);
+    if (mean > SPARSE_SPACING) raw = catmullThrough(pts, Math.min(16, Math.ceil(mean / 2)));
+    let cur = resamplePts(raw, 2);
     if (cur.length < 3) cur = pts.slice();
     const iters = passes != null ? passes : 3; // one more corner-cut pass = smoother
     for (let k = 0; k < iters; k++) cur = chaikin(cur);
     return cur;
+}
+/** Length of a polyline. */
+function strokeLength(pts) {
+    let len = 0;
+    for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+    return len;
 }
 
 // Boiling-line effect: displaces a smooth path along its normal to give a hand-drawn wobble.
