@@ -25,8 +25,10 @@
 <p align="center"><sub>The accent colour above is user-set — one colour drives the whole UI.</sub></p>
 
 <p align="center">
-  <a href="https://github.com/difficcd/Easy-Mv-Maker/wiki"><b>User guide (wiki)</b></a> — getting started, the camera, part animation and effects, importing video, exporting, working with a lot of cuts · <a href="https://github.com/difficcd/Easy-Mv-Maker/wiki/Home-ko">한국어</a>
+  <a href="https://github.com/difficcd/Easy-Mv-Maker/wiki"><b>User guide (wiki)</b></a> — getting started, the camera, part animation and effects, importing video, exporting, working with a lot of cuts · <a href="https://github.com/difficcd/Easy-Mv-Maker/wiki/Home-ko">Korean wiki</a>
 </p>
+
+<p align="center">Korean README: <a href="README.ko.md">README.ko.md</a></p>
 
 ## Features
 
