@@ -191,35 +191,6 @@ export function grainTile(makeCanvas) {
 }
 
 /**
- * A square of blue-green specks on nothing, for the colour static.
- *
- * Sparse, unlike the grain: a tile that covered every pixel would read as a tint, not as static.
- * Roughly a third of the pixels are a saturated colour between green and blue - the cold half of
- * the wheel, the colours a bad signal actually puts on a line - and the rest are transparent.
- *
- * @param {() => HTMLCanvasElement} makeCanvas
- * @returns {HTMLCanvasElement}
- */
-export function colourTile(makeCanvas) {
-    const c = makeCanvas();
-    c.width = TILE; c.height = TILE;
-    const ctx = c.getContext('2d');
-    const img = ctx.createImageData(TILE, TILE);
-    const d = img.data;
-    for (let i = 0; i < d.length; i += 4) {
-        if (Math.random() > 0.3) continue;   // alpha stays 0
-        // Green to blue through cyan: green and blue full or partial, never red.
-        const m = Math.random();
-        d[i] = 0;
-        d[i + 1] = m < 0.5 ? 255 : Math.floor(255 * (1 - (m - 0.5) * 2));
-        d[i + 2] = m < 0.5 ? Math.floor(255 * m * 2) : 255;
-        d[i + 3] = 255;
-    }
-    ctx.putImageData(img, 0, 0);
-    return c;
-}
-
-/**
  * A copy of a layer with broken-signal static on it, alpha preserved.
  *
  * `amount` is perceptual: the visible magnitudes follow its square root, so a third of the dial
@@ -233,14 +204,15 @@ export function colourTile(makeCanvas) {
  *
  * @param {HTMLCanvasElement | ImageBitmap} src the layer as painted, full frame size
  * @param {HTMLCanvasElement} tile from grainTile, for the snow
- * @param {{cw: number, ch: number, amount: number, seconds: number, colour?: number, colourTile?: HTMLCanvasElement | null}} o
- *   `colour` 0..1 adds blue-green specks on the ink, on top of the grey snow
+ * @param {{cw: number, ch: number, amount: number, seconds: number, colour?: number}} o
+ *   `colour` 0..1 is the chromatic fringe: a red copy of the ink shifted one way and a blue one
+ *   the other, behind the line, so a dark line on a light ground splits red | ink | blue
  * @param {{copy: {current: any}, red: {current: any}, cyan: {current: any}, out: {current: any}}} refs
  *   four scratch slots; the halves are read while the output is written, so none can share
  * @param {(ref: any, w: number, h: number) => {canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D}} scratch
  * @returns {HTMLCanvasElement | null} null when there is nothing to do
  */
-export function staticCanvas(src, tile, { cw, ch, amount, seconds, colour = 0, colourTile: ctile = null }, refs, scratch) {
+export function staticCanvas(src, tile, { cw, ch, amount, seconds, colour = 0 }, refs, scratch) {
     if (!(amount > 0)) return null;
     const a = Math.min(1, amount);
     const v = Math.sqrt(a);
@@ -312,22 +284,36 @@ export function staticCanvas(src, tile, { cw, ch, amount, seconds, colour = 0, c
         octx.globalCompositeOperation = 'source-over';
     }
 
-    // Colour static: blue-green specks on the lines, the same source-atop rule as the snow, so
-    // the empty canvas stays empty. It was first built over the whole frame and corrected -
-    // "colour noise means blue/green laid on the lines, per layer, not across the canvas".
-    if (ctile && colour > 0) {
+    // The colour fringe - "the red and blue to either side when a signal breaks up". The
+    // channel split above cannot produce it on black ink: multiplying black by red is black, so
+    // the two halves are identical and their sum is the line unchanged. On the old whole-frame
+    // version the colour came from the white ground being split, not the ink. So the fringe is
+    // built the other way round: a solid red silhouette of the ink shifted one way and a solid
+    // blue one the other, put *behind* the line with destination-over. Where the line covers
+    // them nothing shows; where they stick out past it, red on one side and blue on the other.
+    // Silhouettes rather than tints, so it works for ink of any colour, black included.
+    if (colour > 0) {
         const cv = Math.sqrt(Math.min(1, colour));
-        const ox = hash(step, 17) % TILE, oy = hash(step, 18) % TILE;
-        const scale = 3;
-        octx.globalCompositeOperation = 'source-atop';
-        octx.globalAlpha = cv * (bad ? 0.9 : 0.55);
-        octx.imageSmoothingEnabled = false;
-        const size = TILE * scale;
-        for (let yy = -(oy * scale) % size; yy < ch; yy += size) {
-            for (let xx = -(ox * scale) % size; xx < cw; xx += size) octx.drawImage(ctile, xx, yy, size, size);
-        }
+        const fringe = Math.max(1, Math.round(split * (1 + cv) + 2 * cv));
+        const silhouette = (ref, fill) => {
+            const { canvas, ctx: sctx } = scratch(ref, cw, ch);
+            sctx.globalCompositeOperation = 'source-over';
+            sctx.clearRect(0, 0, cw, ch);
+            sctx.drawImage(copy, 0, 0);
+            sctx.globalCompositeOperation = 'source-in';   // the ink's alpha, one flat colour
+            sctx.fillStyle = fill;
+            sctx.fillRect(0, 0, cw, ch);
+            sctx.globalCompositeOperation = 'source-over';
+            return canvas;
+        };
+        // The red and cyan slots are free again: the split was summed into `out` above.
+        const rs = silhouette(refs.red, '#ff2020');
+        const bs = silhouette(refs.cyan, '#2040ff');
+        octx.globalCompositeOperation = 'destination-over';
+        octx.globalAlpha = cv * (bad ? 1 : 0.85);
+        octx.drawImage(rs, jx - fringe, jy);
+        octx.drawImage(bs, jx + fringe, jy);
         octx.globalAlpha = 1;
-        octx.imageSmoothingEnabled = true;
         octx.globalCompositeOperation = 'source-over';
     }
     return out;
