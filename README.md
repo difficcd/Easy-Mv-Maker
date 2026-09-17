@@ -118,6 +118,9 @@ end to end.
 npm run bench      # measures the pure hot paths
 ```
 
+Measurements of the canvas-side effects, with what was changed and why, live under
+[docs/perf/](docs/perf/) — one file per investigation.
+
 Worth knowing before adding memoisation: measured against a 16.7ms frame, the per-render derived
 values are not where the time goes. Aggregating parts over 1,000 cuts costs 0.026ms, `strokeSig`
 under a microsecond, flattening 100 layers 0.017ms. Wrapping those in `useMemo` would add more

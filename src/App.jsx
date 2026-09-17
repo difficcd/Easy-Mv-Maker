@@ -361,11 +361,10 @@ export default function App() {
     // Reused inside the composite loop; see the mask path in paintFrame.
     const maskScratchRef = useRef(null);
     const grainTileRef = useRef(/** @type {HTMLCanvasElement|null} */(null)); // built once, blitted per frame
-    // The static's four scratch slots: a copy of the layer, its red and cyan halves, and the
-    // output. Four plain refs, not one holding four - see the mosaic's, above, for how that went.
+    // The static's two scratch slots: a copy of the layer and the output. Its colour halves are
+    // kept per layer inside pixelEffects, since they only change when the layer does. Two plain
+    // refs, not one holding two - see the mosaic's, above, for how that went.
     const staticCopyRef = useRef(null);
-    const staticRedRef = useRef(null);
-    const staticCyanRef = useRef(null);
     const staticOutRef = useRef(null);
     // Two slots: the shrunken copy, and - when only a region is pixelated - the composed layer.
     // Separate, because composing reads the small one while writing the full one.
@@ -1850,7 +1849,7 @@ export default function App() {
             cw: CANVAS_W, ch: CANVAS_H, flattenClipGroup, hiddenByGesture, selection,
             bitmapEntry: (id) => bitmapStoreRef.current.get(id), maskScratchRef,
             mosaicScratch: { full: mosaicFullRef, small: mosaicSmallRef },
-            staticScratch: { copy: staticCopyRef, red: staticRedRef, cyan: staticCyanRef, out: staticOutRef },
+            staticScratch: { copy: staticCopyRef, out: staticOutRef },
             // Built on first use, not at mount: most projects never turn the static on.
             staticTile: (grainTileRef.current ||= grainTile(() => document.createElement('canvas'))),
         });

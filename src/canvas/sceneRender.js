@@ -25,8 +25,8 @@ import { pixelateCanvas, pixelateRegion, clampRegion, staticCanvas } from './pix
  * @param {{current: any}} deps.maskScratchRef a scratch canvas slot for the mask
  * @param {{full: {current: any}, small: {current: any}}} deps.mosaicScratch scratch slots for
  *   the mosaic: the shrunken copy, and the composed layer when only a region is pixelated
- * @param {{copy: {current: any}, red: {current: any}, cyan: {current: any}, out: {current: any}}} deps.staticScratch
- *   four slots for the static; see staticCanvas for why none can be shared
+ * @param {{copy: {current: any}, out: {current: any}}} deps.staticScratch
+ *   two slots for the static: the copy of the source and the output
  * @param {HTMLCanvasElement | null} deps.staticTile the noise tile, built once by the caller
  */
 export function drawScene(ctx, scene, { cw, ch, flattenClipGroup, hiddenByGesture, selection, bitmapEntry, maskScratchRef, mosaicScratch, staticScratch, staticTile }) {
