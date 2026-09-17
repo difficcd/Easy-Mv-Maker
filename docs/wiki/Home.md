@@ -1,6 +1,9 @@
 # Easy MV Maker
 
-A frame-by-frame animation and music-video tool, built for a tablet and a pen.
+A frame-by-frame animation and music-video tool. It runs in the browser, on a PC with a mouse
+or on a tablet with a pen.
+
+한국어: **[홈](홈)**
 
 This wiki is for the explanations that are too long for the app itself. The in-app help — the **?**
 button in the top bar — stays short on purpose: it lists the shortcuts, the gestures, and where
@@ -8,10 +11,12 @@ each feature lives. Anything that needs a paragraph of *why* belongs here instea
 
 ## Pages
 
+- **[Getting started](Getting-started)** — draw a frame, make the next one, play, save, export:
+  the whole loop once through.
 - **[Part animation](Part-animation)** — moving a layer on its own: move, rotate, scale, a drawn
-  path, keyframes, sway for hair and cloth, the mosaic effect, the boiling line.
-- **[Camera](Camera)** — presets, a drawn path, zoom and tilt, shake, static, and the timing
-  controls the effects share.
+  path, keyframes, sway for hair and cloth, the mosaic and noise effects, the boiling line.
+- **[Camera](Camera)** — presets, a drawn path, zoom and tilt, shake, and the timing controls
+  the effects share.
 - **[Importing video](Importing-video)** — as frames to trace over, or as a reference track
   underneath; duplicates, parts, and scene detection.
 - **[Exporting](Exporting)** — video, GIF or PNG sequence, and which one you get and why.
@@ -27,7 +32,7 @@ Two that catch people out:
 
 - the **camera move** is behind the camera icon on a *cut* row, along with that cut's timing and
   its animation;
-- **part animation** — move, rotate, sway, mosaic — is behind the film icon on a *layer* row.
+- **part animation** — move, rotate, sway, mosaic, noise — is behind the film icon on a *layer* row.
 
 ## A thing worth knowing before you start
 
