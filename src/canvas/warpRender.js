@@ -150,6 +150,30 @@ export function warpedOutline(box, samples = 24) {
     return pts.map(p => warpPoint(box, p));
 }
 
+/**
+ * How far above the top edge the rotate knob floats, in **screen** pixels.
+ *
+ * Screen rather than canvas, like every other piece of chrome here: measured in canvas pixels it
+ * would sit further and further out as the view zoomed in, and end up off screen for a selection
+ * near the top edge.
+ */
+export const ROTATE_STEM_PX = 26;
+
+/**
+ * Where the rotate knob sits for a box, following the warp like everything else.
+ *
+ * Taken through `warpPoint` from a point straight above the top-middle, so the knob orbits with
+ * the box: rotate the selection and the knob goes round with it, which is what makes it read as
+ * attached rather than as a button that happens to be up there.
+ *
+ * @param {{x: number, y: number, w: number, h: number, rot?: number, skew?: number, bend?: number}} box
+ * @param {number} zoom
+ * @returns {{x: number, y: number}}
+ */
+export function rotateKnob(box, zoom) {
+    return warpPoint(box, { x: box.x + box.w / 2, y: box.y - ROTATE_STEM_PX / (zoom || 1) });
+}
+
 /** The eight resize handles, on the warped box, named by compass point. */
 export function warpedHandles(box) {
     const { x, y, w, h } = box;

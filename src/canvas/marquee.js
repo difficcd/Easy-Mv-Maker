@@ -44,7 +44,7 @@ export function drawMarquee(ctx, pts, zoom, closed = false) {
  * @param {number} y
  * @param {number} zoom
  */
-export function drawHandle(ctx, x, y, zoom) {
+export function drawHandle(ctx, x, y, zoom, round = false) {
     const z = zoom || 1;
     const hs = HANDLE_PX / z;
     ctx.save();
@@ -53,7 +53,10 @@ export function drawHandle(ctx, x, y, zoom) {
     ctx.strokeStyle = 'rgba(0, 0, 0, 0.9)';
     ctx.lineWidth = 1.5 / z;
     ctx.beginPath();
-    ctx.rect(x - hs, y - hs, hs * 2, hs * 2);
+    // Round for the rotate knob, square for the resize handles. The shape is the only thing
+    // saying they do different things, since both are white at the same size.
+    if (round) ctx.arc(x, y, hs, 0, Math.PI * 2);
+    else ctx.rect(x - hs, y - hs, hs * 2, hs * 2);
     ctx.fill();
     ctx.stroke();
     ctx.restore();

@@ -6,7 +6,7 @@
 // was a one-pixel accent line that vanished on light artwork and shrank with the zoom.
 
 import { drawMarquee, drawHandle } from './marquee.js';
-import { drawWarped, warpedOutline, warpedHandles } from './warpRender.js';
+import { drawWarped, warpedOutline, warpedHandles, rotateKnob } from './warpRender.js';
 import { accentSoft } from './canvasUtils.js';
 
 /** The rectangle around a selected text, as a marquee. */
@@ -28,7 +28,26 @@ export function drawTextSelection(ctx, box, zoom) {
 export function drawFloatingSelection(ctx, src, box, zoom) {
     if (src) drawWarped(ctx, src, src.width, src.height, box);
     drawMarquee(ctx, warpedOutline(box), zoom, true);
-    for (const hd of warpedHandles(box)) drawHandle(ctx, hd.x, hd.y, zoom);
+
+    // The rotate knob, on a stem from the top-middle handle. Drawn before the handles so the
+    // stem passes under that handle rather than over it.
+    const handles = warpedHandles(box);
+    const top = handles.find(hd => hd.id === 'n');
+    const knob = rotateKnob(box, zoom);
+    if (top) {
+        const z = zoom || 1;
+        ctx.save();
+        ctx.setLineDash([]);
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.9)';
+        ctx.lineWidth = 1.5 / z;
+        ctx.beginPath();
+        ctx.moveTo(top.x, top.y);
+        ctx.lineTo(knob.x, knob.y);
+        ctx.stroke();
+        ctx.restore();
+    }
+    for (const hd of handles) drawHandle(ctx, hd.x, hd.y, zoom);
+    drawHandle(ctx, knob.x, knob.y, zoom, true);
 }
 
 /**

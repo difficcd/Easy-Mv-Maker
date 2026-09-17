@@ -309,6 +309,7 @@ Lasso selection: closing the path, bounding it, lifting the pixels.
 | `closeLassoPath` | Close a freehand path into a polygon. If the ends are far apart the path is left as drawn and joined back to the start, adding an edge. |
 | `cutOutPolygon` | The pixels inside a lasso, and the hole they leave, from one pass — they describe the same set from both sides, and a mask that drifts from its selection leaves a ghost in the layer. Only non-transparent pixels are lifted, and the inside test is at the pixel centre so a boundary on the grid is not a coin toss. | Also returns `painted`: where the taken pixels sit inside the box, tracked in the same pass.
 | `cropImageData` | A rectangle of one image as a new image. What the lasso needs after a cut: the loop drawn is looser than the artwork in it, so the floating box is cropped to `painted` (#231). The *hole* is not — that is the full loop, and shrinking it leaves a ring of the original behind. |
+| `applyRotateDrag` | Rotation from dragging the knob above a selection: the angle swept about the centre since the drag *began*, so it cannot drift and grabbing the knob off-centre does not make the box jump. Folded into [-pi, pi), the range the slider shows. |
 | `lassoBounds` | The pixel rectangle a lasso covers, clamped to the canvas. Returned as integers because it indexes into image data: the left and top round down and the right and bottom round up, so a region is never clipped by a fraction of a pixel. |
 | `MIN_SELECTION_SIZE` | Smallest a selection may be dragged to, in pixels. Below this it is impossible to grab again. |
 | `selectionStrokes` | The erase-hole and paste strokes that put a floating selection back into a layer. Skew and bend ride on the paste, and only when set, so an unadjusted paste is byte-identical to one from before the fields existed. |
@@ -765,6 +766,7 @@ Skew and bend for a pasted bitmap — the two adjustments a lasso selection carr
 | `warpPoint` | Where a point of the unwarped box lands once bend, skew and rotation are applied — the same order as `drawWarped`, so an outline computed here sits on the picture. |
 | `warpedOutline` | The outline of a warped box as a closed polygon, sampled along the top and bottom so the bend shows as a curve. |
 | `warpedHandles` | The eight resize handles on the warped box, named by compass point. |
+| `rotateKnob` | Where the rotate knob sits, taken through `warpPoint` so it orbits with the box instead of hovering above it. `ROTATE_STEM_PX` is how far above the top edge, in screen pixels — in canvas pixels it would drift off screen as the view zoomed in. |
 
 ## `src/canvas/textLayout.js`
 

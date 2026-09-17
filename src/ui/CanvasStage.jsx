@@ -90,6 +90,11 @@ export function CanvasStage({
  */
 export function canvasCursor({ spaceDown, selection, hoverHandle, tool }) {
     if (spaceDown) return 'grab';
-    if (selection) return hoverHandle ? `${hoverHandle}-resize` : 'move';
+    if (selection) {
+        // There is no rotate cursor in CSS, so the knob takes the grab hand - which at least
+        // does not claim it moves the selection, which is what it said before.
+        if (hoverHandle === 'rotate') return 'grab';
+        return hoverHandle ? `${hoverHandle}-resize` : 'move';
+    }
     return tool === 'fill' ? 'cell' : 'crosshair';
 }
