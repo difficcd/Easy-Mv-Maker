@@ -315,6 +315,19 @@ export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCaptur
                     <NumIn label={tr('속도')} value={round2(a.mosaicSpeed ?? 1)} onChange={v => updLayerAnim(cut.id, layer.id, { mosaicSpeed: Math.max(0.01, v) })} step={0.25} min={0.01} w={46} suffix="x" title={tr('구간 안에서 도달하는 속도. 1보다 크면 일찍 도달하고 유지합니다')} />
                 </div>
             )}
+            {!!a.mosaic && (
+                <div style={R('#8bd')}>
+                    <span style={{ width: 24, flexShrink: 0 }} />
+                    <button className="small-btn"
+                        style={{ background: pathCapture && pathCapture.mode === 'mosaicRect' && pathCapture.layerId === layer.id ? 'var(--accent-soft)' : undefined }}
+                        title={tr('캔버스에 사각형을 그려 그 부분만 모자이크합니다. 지정하지 않으면 레이어 전체입니다')}
+                        onClick={() => setPathCapture(p => (p && p.mode === 'mosaicRect' && p.layerId === layer.id)
+                            ? null : { cutId: cut.id, layerId: layer.id, mode: 'mosaicRect' })}>
+                        {a.mosaicRect ? tr('영역 다시') : tr('영역 지정')}
+                    </button>
+                    {a.mosaicRect && <button className="small-btn" onClick={() => updLayerAnim(cut.id, layer.id, { mosaicRect: null })} title={tr('레이어 전체로 되돌립니다')}>{tr('영역 해제')}</button>}
+                </div>
+            )}
             <div style={R('#8bd')} title={tr('머리카락·천처럼 계속 흔들리는 효과. 기준점 Y를 위(0)로 두면 아래가 크게 흔들립니다.')}>
                 <span style={{ width: 24, flexShrink: 0 }}>{tr('흔들')}</span>
                 <NumIn label={tr('강도')} value={a.swayAmount || 0} onChange={v => updLayerAnim(cut.id, layer.id, { swayAmount: v })} min={0} w={46} title={tr('흔들림 강도')} />
