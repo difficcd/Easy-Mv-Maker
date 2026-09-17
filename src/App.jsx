@@ -280,6 +280,7 @@ export default function App() {
     const {
         audioRef, audioB64Ref, audioCtxRef, audioSourceRef, audioDestRef,
         audioAsBlob, restoreAudio, loadAudioUrl, handleAudioUpload, handleDeleteAudio, loadYoutubeAudio,
+        muted: audioMuted, setMuted: setAudioMuted,
     } = useAudioTrack({ audioUrl, dispatchMedia, setLinkPrompt: notices.setLinkPrompt });
     // Make failures visible. Once the browser blocks dialogs, alert is swallowed and the app
     // looks like it simply did nothing - which is exactly why one bug here took so long to find.
@@ -2336,6 +2337,7 @@ export default function App() {
                 cutDragMovedRef={cutDragMovedRef} cutDragTimerRef={cutDragTimerRef} cuts={cuts}
                 draggingCutData={draggingCutData} fmt={fmt} goToScene={goToScene} handleAddTrack={handleAddTrack}
                 handleDeleteAudio={handleDeleteAudio} handleDeleteTrack={handleDeleteTrack}
+                audioMuted={audioMuted} setAudioMuted={setAudioMuted}
                 handlePlayPause={handlePlayPause} handleStop={handleStop} isPlaying={isPlaying} loopPlay={loopPlay}
                 makePartFromSelection={makePartFromSelection} marquee={cutList.marquee} maxTime={maxTime}
                 transparentBg={transparentBg} setTransparentBg={setTransparentBg}

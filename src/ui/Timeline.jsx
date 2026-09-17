@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, Grid3x3, Pause, Play, Plus, Repeat, Square, Trash2, Eye, EyeOff, Settings } from 'lucide-react';
+import { ChevronDown, ChevronUp, Grid3x3, Pause, Play, Plus, Repeat, Square, Trash2, Eye, EyeOff, Settings, Volume2, VolumeX } from 'lucide-react';
 import { safeArray, accentSoft } from '../canvas/canvasUtils';
 import { tr } from '../i18n';
 import { PLAYBACK_RATES, RATE_DEFAULT } from '../core/playbackRate.js';
@@ -15,7 +15,7 @@ import { nextId } from '../core/ids.js';
 export function Timeline({
     activePartId, audioData, audioFile, currentCutId,
     currentTime, cutDragArmedRef, cutDragMovedRef, cutDragTimerRef, cuts,
-    draggingCutData, fmt, goToScene, handleAddTrack, handleDeleteAudio,
+    draggingCutData, fmt, goToScene, handleAddTrack, handleDeleteAudio, audioMuted, setAudioMuted,
     handleDeleteTrack, handlePlayPause, handleStop, isPlaying, loopPlay,
     makePartFromSelection, marquee, maxTime, numTracks,
     onTimelinePointerDown, parts, playbackRate, openPlaybackSettings,
@@ -200,7 +200,15 @@ export function Timeline({
                                     title={tr('트랙 접기 — 재생바로 보냅니다. 소리는 계속 재생됩니다.')}>
                                     <EyeOff size={10} />
                                 </button>
-                                <span>Audio</span><button className="icon-btn del-btn" onClick={e => { e.stopPropagation(); handleDeleteAudio(); }} title={tr('오디오 삭제')}><Trash2 size={9} /></button></div>
+                                <span>Audio</span>
+                                {/* Monitoring only. The export always contains the track, so this
+                                    cannot silently produce a video with no music. */}
+                                <button className="icon-btn" onClick={e => { e.stopPropagation(); setAudioMuted(v => !v); }}
+                                    title={audioMuted ? tr('소리 켜기 (내보내기에는 항상 들어갑니다)') : tr('소리 끄기 — 듣지 않고 그릴 때. 내보내기에는 그대로 들어갑니다')}
+                                    style={audioMuted ? { color: 'var(--accent-hi)' } : undefined}>
+                                    {audioMuted ? <VolumeX size={9} /> : <Volume2 size={9} />}
+                                </button>
+                                <button className="icon-btn del-btn" onClick={e => { e.stopPropagation(); handleDeleteAudio(); }} title={tr('오디오 삭제')}><Trash2 size={9} /></button></div>
                             <div className="cut-block" style={{ left: `${xAtTime(audioData.startTime, pps)}px`, width: `${(audioData.endTime - audioData.startTime) * pps}px`, background: '#374151', borderColor: '#4b5563', cursor: draggingCutData?.cutId === 'audio' ? 'grabbing' : 'grab', touchAction: 'none' }}
                                 onPointerDown={e => { e.stopPropagation(); cutDragMovedRef.current = false; clearTimeout(cutDragTimerRef.current); cutDragArmedRef.current = e.pointerType !== 'touch'; if (e.pointerType === 'touch') cutDragTimerRef.current = setTimeout(() => { cutDragArmedRef.current = true; }, 350); try { e.currentTarget.setPointerCapture(e.pointerId); } catch { } setDraggingCutData({ cutId: 'audio', startX: e.clientX, startY: e.clientY, initialStart: audioData.startTime, initialTrack: 0 }); }}>
                                 <div className="rh rh-left" style={{ touchAction: 'none' }} onPointerDown={e => { e.stopPropagation(); try { e.target.setPointerCapture(e.pointerId); } catch { } setResizingData({ cutId: 'audio', edge: 'left', startX: e.clientX, initialStart: audioData.startTime, initialEnd: audioData.endTime, initialOffset: audioData.offset }); }} />
