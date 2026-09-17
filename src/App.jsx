@@ -45,6 +45,7 @@ import { drawTextSelection, drawFloatingSelection, drawMotionPath } from './canv
 import { createBitmapStore } from './canvas/bitmapStore.js';
 import { regionBounds, rectBounds, mosaic, blurMaskedRegion } from './canvas/pixelEffects.js';
 import { useLayerCache } from './hooks/useLayerCache.js';
+import { useVideoImportState } from './hooks/useVideoImportState.js';
 import { useGesture } from './hooks/useGesture.js';
 import { useLiveOverlay } from './hooks/useLiveOverlay.js';
 import { useLiquifyTool } from './hooks/useLiquifyTool.js';
@@ -256,7 +257,6 @@ export default function App() {
     // Video overlay track: play the original video underneath the drawing layers (no per-frame
     // cuts) - for drawing over a video. Like audio, but painted onto the canvas each frame.
     const { videoOverlay } = media; // { name, startTime, endTime, offset, duration, w, h, cuts? }
-    const [sceneDetect, setSceneDetect] = useState(null);   // { done, total } while auto-detecting scene cuts
     // Which media rows are folded away in the timeline. Purely a view setting - the audio still
     // plays and the video still draws; this is only about giving the cut tracks the height back.
     const [hiddenTracks, setHiddenTracks] = useStored('mv_hidden_tracks', { audio: false, video: false }, {
@@ -266,15 +266,10 @@ export default function App() {
     });
     const toggleTrackHidden = (which) => setHiddenTracks(h => ({ ...h, [which]: !h[which] }));
     const [showToolKeys, setShowToolKeys] = useState(false);
-    const sceneStopRef = useRef(false);   // set to ask a running scene detection to stop
-    const [sceneCfg, setSceneCfg] = useState(null);         // scene-detect settings modal { threshold, rangeOn, startText, endText }
+    // Everything bringing a video into the project remembers. The logic stays here; what it
+    // keeps does not.
+    const vid = useVideoImportState();
     const [autoSceneDetect, setAutoSceneDetect] = useStored('mv_auto_scene', true, onOffCodec);
-    const videoElRef = useRef(null);      // hidden <video> element that decodes/plays the overlay
-    const videoBlobRef = useRef(null);    // the video Blob, for saving
-    const [videoImport, setVideoImport] = useState(null); // {file, fps, maxFrames} dialog
-    const [recentVideos, setRecentVideos] = useState([]); // fetched/opened videos, reusable without re-downloading
-    const [videoBusy, setVideoBusy] = useState(null); // {done, total} while extracting
-    const [videoBusyBg, setVideoBusyBg] = useState(false); // extraction moved to a background chip
     // YouTube link input. A native prompt fails silently once blocked, so this asks in-app.
     const [linkPrompt, setLinkPrompt] = useState(null); // {kind:'video'|'audio'}
 
@@ -287,7 +282,6 @@ export default function App() {
     const [appError, setAppError] = useState(null);
     const [toast, setToast] = useState(null);            // unobtrusive notice
     useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 3000); return () => clearTimeout(t); }, [toast]);
-    const videoStopRef = useRef(false);
     const isExporting = useRef(false);
     const mediaRecorderRef = useRef(null);
     const exportEndRef = useRef(0);
@@ -596,7 +590,7 @@ export default function App() {
         currentTimeRef, seekRef, isPlayingRef,
         playPause: handlePlayPause, stop: handleStop,
     } = usePlayback({
-        media: { audioRef, videoElRef, audioUrl, audioData, videoOverlay },
+        media: { audioRef, videoElRef: vid.elRef, audioUrl, audioData, videoOverlay },
         range: { playStart, playEnd, maxTime, loopPlay, playbackRate, anchorTime: currentCut?.startTime },
         paint: { pps, playheadRef, paintFrameRef, prefetchRef },
         recording: { isExporting, exportEndRef, exportStartRef, requestFrameRef, mediaRecorderRef },
@@ -682,13 +676,15 @@ export default function App() {
     // Paused: seek the overlay video to the scrubbed time so the canvas shows that frame (onseeked repaints).
     useEffect(() => {
         if (isPlaying) return;
-        const v = videoElRef.current; if (!v || !videoOverlay) return;
+        const v = vid.elRef.current; if (!v || !videoOverlay) return;
         if (currentTime >= videoOverlay.startTime && currentTime < videoOverlay.endTime) {
             const exp = (currentTime - videoOverlay.startTime) + videoOverlay.offset;
             const want = seekTarget(exp, v.duration);
             if (Math.abs(v.currentTime - want) > 0.03) { try { v.currentTime = want; } catch { } }
         }
-    }, [currentTime, isPlaying, videoOverlay]);
+        // vid.elRef is a ref and never changes identity; listed because the linter can no
+        // longer tell that from the name, now that it belongs to the video import's own state.
+    }, [currentTime, isPlaying, videoOverlay, vid.elRef]);
 
 
     // Make the speed being previewed at the film's real speed.
@@ -838,9 +834,9 @@ export default function App() {
             const meta = { name: audioFile?.name || tr('오디오'), startTime: audioData.startTime, endTime: audioData.endTime, offset: audioData.offset, duration: audioDuration };
             out.audio = await packMedia(meta, { id: '__audio__', ext: audioExt(audioB64Ref.current), assetSink, blobsOk, dataUrl: audioB64Ref.current, toBlob: audioAsBlob });
         }
-        if (videoOverlay && videoBlobRef.current) {
+        if (videoOverlay && vid.blobRef.current) {
             const meta = { name: videoOverlay.name, startTime: videoOverlay.startTime, endTime: videoOverlay.endTime, offset: videoOverlay.offset, duration: videoOverlay.duration, w: videoOverlay.w, h: videoOverlay.h, opacity: videoOverlay.opacity ?? 1, cuts: videoOverlay.cuts, cutStart: videoOverlay.cutStart, cutOffset: videoOverlay.cutOffset };
-            out.video = await packMedia(meta, { id: '__video__', ext: videoExt(videoBlobRef.current.type), assetSink, blobsOk, blob: videoBlobRef.current, toDataUrl: blobToDataURL });
+            out.video = await packMedia(meta, { id: '__video__', ext: videoExt(vid.blobRef.current.type), assetSink, blobsOk, blob: vid.blobRef.current, toDataUrl: blobToDataURL });
         }
         return out;
     };
@@ -920,17 +916,17 @@ export default function App() {
         let videoBlob = gotVideo.blob;
         if (!videoBlob && gotVideo.dataUrl) { try { videoBlob = await (await fetch(gotVideo.dataUrl)).blob(); } catch { } }
         if (videoBlob) {
-            videoBlobRef.current = videoBlob;
+            vid.blobRef.current = videoBlob;
             const url = URL.createObjectURL(videoBlob);
-            const v = videoElRef.current;
+            const v = vid.elRef.current;
             // The url here is ours (createObjectURL), but it goes through the same gate as the
             // audio so there is one rule about what may reach a media element, not two.
             const videoSrc = safeMediaSrc(url, 'video');
             if (v && videoSrc) { v.muted = true; v.playsInline = true; v.src = videoSrc; v.onseeked = () => requestRepaint(); v.onloadedmetadata = () => { try { v.currentTime = data.video.offset || 0; } catch { } }; }
             dispatchMedia(loadVideo({ name: data.video.name || tr('영상'), startTime: data.video.startTime ?? 0, endTime: data.video.endTime ?? (data.video.duration || 0), offset: data.video.offset ?? 0, duration: data.video.duration || 0, w: data.video.w || 0, h: data.video.h || 0, cuts: data.video.cuts, cutStart: data.video.cutStart, cutOffset: data.video.cutOffset }));
         } else {
-            videoBlobRef.current = null; dispatchMedia(clearVideo());
-            detachMedia(videoElRef.current);
+            vid.blobRef.current = null; dispatchMedia(clearVideo());
+            detachMedia(vid.elRef.current);
         }
             // Said once, after everything that could be loaded has been. A project that opens
             // with holes in it should say so - the alternative is blank frames that look like the
@@ -969,8 +965,8 @@ export default function App() {
         forgetProject();
         detachMedia(audioRef.current);
         audioB64Ref.current = null; dispatchMedia(clearAudio());
-        videoBlobRef.current = null; dispatchMedia(clearVideo()); setSceneCfg(null);
-        detachMedia(videoElRef.current);
+        vid.blobRef.current = null; dispatchMedia(clearVideo()); vid.setSceneCfg(null);
+        detachMedia(vid.elRef.current);
     };
     // Files, browser storage and the tabs that hold several documents at once. Called here
     // because it needs buildData, restore and resetToEmpty, and this is the first point at which
@@ -1814,7 +1810,7 @@ export default function App() {
         // Video overlay track: drawn underneath everything. The <video> element is kept at time t by
         // the playback loop (playing) or a paused-seek effect.
         if (videoOverlay && t >= videoOverlay.startTime && t < videoOverlay.endTime) {
-            drawVideoOverlay(ctx, videoElRef.current, videoOverlay, CANVAS_W, CANVAS_H, fitRect);
+            drawVideoOverlay(ctx, vid.elRef.current, videoOverlay, CANVAS_W, CANVAS_H, fitRect);
         }
 
         // Onion skin: the neighbouring drawings, faint, so a new one can be lined up against
@@ -1925,9 +1921,9 @@ export default function App() {
 
     // Lay a whole video under the drawing layers (overlay/rotoscope use). No frame cuts.
     const loadVideoOverlay = (blob, name, startAt = 0, offset = 0, clipDur = null) => {
-        videoBlobRef.current = blob;
+        vid.blobRef.current = blob;
         const url = URL.createObjectURL(blob);
-        const v = videoElRef.current || document.createElement('video');
+        const v = vid.elRef.current || document.createElement('video');
         v.muted = true; v.playsInline = true; v.src = url;
         v.onloadedmetadata = () => {
             const dur = clipDur != null ? Math.min(clipDur, Math.max(0, v.duration - offset)) : Math.max(0, v.duration - offset);
@@ -1945,7 +1941,7 @@ export default function App() {
     // Detect scene cuts (precise, with optional range + sensitivity) and store the markers. Runs on
     // the stored video blob so it can be re-run with different settings without re-importing.
     const runSceneDetect = ({ threshold = 14, rangeOn = false, startText = '0:00', endText = '', cutStart = null, cutOffset = null } = {}) => {
-        const blob = videoBlobRef.current; if (!blob) return;
+        const blob = vid.blobRef.current; if (!blob) return;
         const cs = cutStart != null ? cutStart : (videoOverlay?.startTime ?? 0);
         const co = cutOffset != null ? cutOffset : (videoOverlay?.offset ?? 0);
         const rStart = rangeOn ? parseClock(startText) : 0;
@@ -1953,25 +1949,25 @@ export default function App() {
         const rEnd = rangeOn && rEndRaw > rStart ? rEndRaw : null;
         // detectSceneCuts polls shouldStop between frames, so cancelling takes effect within one
         // seek rather than running the scan to the end and throwing the answer away.
-        sceneStopRef.current = false;
+        vid.sceneStopRef.current = false;
         const startedFor = docEpochRef.current;
-        setSceneDetect({ done: 0, total: 0 });
+        vid.setScene({ done: 0, total: 0 });
         detectSceneCuts(blob, {
             start: rStart, end: rEnd, threshold,
-            onProgress: (d, t) => setSceneDetect({ done: d, total: t }),
-            shouldStop: () => sceneStopRef.current,
+            onProgress: (d, t) => vid.setScene({ done: d, total: t }),
+            shouldStop: () => vid.sceneStopRef.current,
         })
             // A cancelled scan returns what it found so far; keeping a partial set of markers
             // would look like a finished detection that missed most of the cuts.
             // Same reasoning as the frame import: a scan of a long video outlives a project
             // switch, and its markers describe a video that is no longer loaded.
-            .then(cuts => { if (!sceneStopRef.current && docEpochRef.current === startedFor) dispatchMedia(setVideoCuts(cuts, cs, co)); })
+            .then(cuts => { if (!vid.sceneStopRef.current && docEpochRef.current === startedFor) dispatchMedia(setVideoCuts(cuts, cs, co)); })
             .catch(() => { })
-            .finally(() => { setSceneDetect(null); sceneStopRef.current = false; });
+            .finally(() => { vid.setScene(null); vid.sceneStopRef.current = false; });
     };
     const removeVideoOverlay = () => {
-        dispatchMedia(clearVideo()); videoBlobRef.current = null; setSceneCfg(null);
-        detachMedia(videoElRef.current);
+        dispatchMedia(clearVideo()); vid.blobRef.current = null; vid.setSceneCfg(null);
+        detachMedia(vid.elRef.current);
     };
     // Remember fetched/opened videos so they can be re-imported with different settings
     // without downloading again (session only — keeps at most 3 to bound memory).
@@ -1979,15 +1975,15 @@ export default function App() {
     // dropped right after extraction, so re-importing the same link re-downloads it.
     const openVideoImport = (file, name, src) => {
         // A new import must always raise the settings dialog. That dialog only shows while
-        // videoImport && !videoBusyBg, so if an earlier extraction was sent to the background and
+        // vid.cfg && !vid.busyBg, so if an earlier extraction was sent to the background and
         // then failed to finish cleanly, the flag stays true and no later import ever opens the
         // dialog again. Clearing it here at the start prevents that.
-        setVideoBusyBg(false);
+        vid.setBusyBg(false);
         const label = (name || file.name).replace(/\.[^.]+$/, '').slice(0, 24);
         const srcKey = src?.key || `f:${file.name}:${file.size}`;
-        setRecentVideos(p => [{ id: 'rv_' + nextId().toString(36), name: label, srcKey, url: src?.url || null },
+        vid.setRecent(p => [{ id: 'rv_' + nextId().toString(36), name: label, srcKey, url: src?.url || null },
         ...p.filter(v => v.srcKey !== srcKey)].slice(0, 3));
-        setVideoImport({ file, srcKey, label, fps: 4, maxFrames: 60, scale: 0.5, whole: true, withAudio: false, dedupe: 'exact', quality: 'compressed', rangeOn: false, startText: '0:00', endText: '', parts: 1, canvasMode: 'source', srcW: 0, srcH: 0 });
+        vid.setCfg({ file, srcKey, label, fps: 4, maxFrames: 60, scale: 0.5, whole: true, withAudio: false, dedupe: 'exact', quality: 'compressed', rangeOn: false, startText: '0:00', endText: '', parts: 1, canvasMode: 'source', srcW: 0, srcH: 0 });
         // Auto-suggest a part count from the video length (~1 part per 30s) so a long video comes
         // in already split. The user can still change it in the dialog.
         try {
@@ -1999,7 +1995,7 @@ export default function App() {
                 const sw = v.videoWidth || 0, sh = v.videoHeight || 0;
                 URL.revokeObjectURL(u);
                 const parts = Math.max(1, Math.min(30, Math.round(dur / 30)));
-                setVideoImport(vi => (vi && vi.file === file) ? { ...vi, durationSec: dur, parts, srcW: sw, srcH: sh } : vi);
+                vid.setCfg(vi => (vi && vi.file === file) ? { ...vi, durationSec: dur, parts, srcW: sw, srcH: sh } : vi);
             };
             v.src = u;
         } catch { }
@@ -2057,7 +2053,7 @@ export default function App() {
     const loadYoutubeVideo = async (presetUrl) => {
         const url = typeof presetUrl === 'string' ? presetUrl : null;
         if (!url) { setLinkPrompt({ kind: 'video' }); return; } // raise the input dialog and stop here
-        setVideoBusy({ done: 0, total: 0, fetching: true });
+        vid.setBusy({ done: 0, total: 0, fetching: true });
         try {
             const res = await fetch('/api/youtube-video?url=' + encodeURIComponent(url) + '&maxHeight=1080');
             if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || ('HTTP ' + res.status)); }
@@ -2067,15 +2063,15 @@ export default function App() {
         } catch (e) {
             console.error('[import]', e);
             setAppError(tr('영상 가져오기 실패: ') + e.message);
-        } finally { setVideoBusy(null); }
+        } finally { vid.setBusy(null); }
     };
 
     // Import a video as one cut per extracted frame (sequential on the current track).
     const runVideoImport = async () => {
-        const cfg = videoImport;
+        const cfg = vid.cfg;
         if (!cfg?.file) return;
         const startedFor = docEpochRef.current;
-        setVideoBusy({ done: 0, total: 0 });
+        vid.setBusy({ done: 0, total: 0 });
         try {
             const tgt = targetCanvasFor(cfg, CANVAS_W, CANVAS_H);
             const TW = tgt.w, TH = tgt.h;
@@ -2085,8 +2081,8 @@ export default function App() {
             const { opts, nativeRes: isNative } = extractOptionsFor(cfg, tgt, parseClock);
             const { frames, holds = [], skipped = 0, fps, width: fW, height: fH } = await extractVideoFrames(cfg.file, {
                 ...opts,
-                onProgress: (done, total, skipped) => setVideoBusy({ done, total, skipped }),
-                shouldStop: () => videoStopRef.current,
+                onProgress: (done, total, skipped) => vid.setBusy({ done, total, skipped }),
+                shouldStop: () => vid.stopRef.current,
             });
             if (!frames.length) { alert(tr('추출된 프레임이 없습니다.')); return; }
             // Extraction can take minutes and can be left running in the background, so the
@@ -2123,19 +2119,19 @@ export default function App() {
             // Aligned to the first imported frame; when only a range was imported, the audio is
             // clipped to that same range (offset rStart, duration rEnd-rStart).
             if (cfg.withAudio) loadAudioUrl(URL.createObjectURL(cfg.file), label + tr(' (영상 음원)'), made[0].startTime, opts.start, opts.end == null ? null : opts.end - opts.start);
-            setVideoImport(null);
+            vid.setCfg(null);
             setTimeout(gcBitmaps, 0); // replaced frames' bitmaps go too
         } catch (e) {
             console.error('[import]', e);
             setAppError(tr('영상 가져오기 실패: ') + e.message);
         } finally {
-            videoStopRef.current = false;
-            setVideoBusy(null);
-            setVideoBusyBg(false);
+            vid.stopRef.current = false;
+            vid.setBusy(null);
+            vid.setBusyBg(false);
         }
     };
     const { handleExport, handleExportFrames, handleExportPieces } = useExport({
-        paint: { canvasRef, paintFrameRef, currentTimeRef, renderStateRef, bitmapStoreRef, videoStopRef },
+        paint: { canvasRef, paintFrameRef, currentTimeRef, renderStateRef, bitmapStoreRef, videoStopRef: vid.stopRef },
         audio: { audioRef, audioCtxRef, audioSourceRef, audioDestRef, audioUrl, audioData },
         range: { playStart, playEnd, cw: CANVAS_W, ch: CANVAS_H, transparentBg, transparentFormat },
         doc: { buildData, restore, invalidateCutsUsing, decodeFrameBitmap, paintFrame },
@@ -2243,7 +2239,7 @@ export default function App() {
     return (
         <div className="app-container">
             <audio ref={audioRef} style={{ display: 'none' }} />
-            <video ref={videoElRef} muted playsInline style={{ display: 'none' }} />
+            <video ref={vid.elRef} muted playsInline style={{ display: 'none' }} />
             <ProgressOverlay progress={loadProgress} />
             {showSettings && (
                 <SettingsModal
@@ -2269,7 +2265,7 @@ export default function App() {
                     onDelete={(stamp) => doBackupDelete(stamp)}
                     onClose={() => setBackupList(null)} />
             )}
-            <Notices videoBusy={videoBusy} videoBusyBg={videoBusyBg} setVideoBusyBg={setVideoBusyBg} videoStopRef={videoStopRef}
+            <Notices videoBusy={vid.busy} videoBusyBg={vid.busyBg} setVideoBusyBg={vid.setBusyBg} videoStopRef={vid.stopRef}
                 backupProg={backupProg} toast={toast} setToast={setToast} appError={appError} setAppError={setAppError} />
             {linkPrompt && (
                 <LinkPromptModal
@@ -2282,20 +2278,20 @@ export default function App() {
                         if (kind === 'audio') loadYoutubeAudio(url); else loadYoutubeVideo(url);
                     }} />
             )}
-            {videoImport && !(videoBusyBg && videoBusy) && (
+            {vid.cfg && !(vid.busyBg && vid.busy) && (
                 <VideoImportModal
-                    videoImport={videoImport} setVideoImport={setVideoImport}
-                    videoBusy={videoBusy} setVideoBusyBg={setVideoBusyBg} videoStopRef={videoStopRef}
+                    videoImport={vid.cfg} setVideoImport={vid.setCfg}
+                    videoBusy={vid.busy} setVideoBusyBg={vid.setBusyBg} videoStopRef={vid.stopRef}
                     runVideoImport={runVideoImport}
                     loadVideoOverlay={loadVideoOverlay} loadAudioUrl={loadAudioUrl} parseClock={parseClock}
                     setShowHelp={setShowHelp} canvasW={CANVAS_W} canvasH={CANVAS_H} setCanvasSize={setCanvasSize} />
             )}
-            {sceneCfg && videoOverlay && (
-                <SceneDetectModal sceneCfg={sceneCfg} setSceneCfg={setSceneCfg}
-                    sceneDetect={sceneDetect} runSceneDetect={runSceneDetect}
+            {vid.sceneCfg && videoOverlay && (
+                <SceneDetectModal sceneCfg={vid.sceneCfg} setSceneCfg={vid.setSceneCfg}
+                    sceneDetect={vid.scene} runSceneDetect={runSceneDetect}
                     autoSceneDetect={autoSceneDetect} setAutoSceneDetect={setAutoSceneDetect}
                     videoOpacity={videoOverlay.opacity ?? 1} setVideoOpacity={v => dispatchMedia(setVideoOpacity(v))}
-                    cancelSceneDetect={() => { sceneStopRef.current = true; }}
+                    cancelSceneDetect={() => { vid.sceneStopRef.current = true; }}
                     hasCuts={!!videoOverlay.cuts?.length} clearVideoCuts={() => dispatchMedia(clearVideoCuts())} />
             )}
             {showToolKeys && (
@@ -2310,7 +2306,7 @@ export default function App() {
                 doServerBackup={doServerBackup} openBackupList={openBackupList} backupBusy={backupBusy}
                 handleAudioUpload={handleAudioUpload} loadYoutubeAudio={loadYoutubeAudio}
                 handleDeleteAudio={handleDeleteAudio} audioFile={audioFile} openVideoImport={openVideoImport}
-                loadYoutubeVideo={loadYoutubeVideo} videoFileRef={videoFileRef} recentVideos={recentVideos}
+                loadYoutubeVideo={loadYoutubeVideo} videoFileRef={videoFileRef} recentVideos={vid.recent}
                 reimportRecent={reimportRecent} serverAvailable={serverAvailable} setToast={setToast}
                 canvasW={CANVAS_W} canvasH={CANVAS_H}
                 setCanvasSize={setCanvasSize} setShowHelp={setShowHelp} setShowSettings={setShowSettings}
@@ -2365,13 +2361,13 @@ export default function App() {
                 parts={parts}
                 playbackRate={playbackRate} playheadRef={playheadRef} pps={pps}
                 openPlaybackSettings={() => { setSettingsTab('play'); setShowSettings(true); }}
-                removeVideoOverlay={removeVideoOverlay} renamePart={renamePart} sceneDetect={sceneDetect}
+                removeVideoOverlay={removeVideoOverlay} renamePart={renamePart} sceneDetect={vid.scene}
                 hiddenTracks={hiddenTracks} toggleTrackHidden={toggleTrackHidden}
-                openVideoSettings={() => setSceneCfg(c => c || { threshold: 14, rangeOn: false, startText: '0:00', endText: '' })}
+                openVideoSettings={() => vid.setSceneCfg(c => c || { threshold: 14, rangeOn: false, startText: '0:00', endText: '' })}
                 seekToTime={seekToTime} selectPart={selectPart} selectedCutIds={selectedCutIds}
                 setCurrentCutId={setCurrentCutId} setCurrentTime={setCurrentTime} addCuts={cs => dispatchCuts(addCuts(cs))}
                 setDraggingCutData={setDraggingCutData} setLoopPlay={setLoopPlay} setPlaybackRate={setPlaybackRate}
-                setResizingData={setResizingData} setSceneCfg={setSceneCfg} setSelectedCutIds={setSelectedCutIds}
+                setResizingData={setResizingData} setSceneCfg={vid.setSceneCfg} setSelectedCutIds={setSelectedCutIds}
                 setShowBottom={setShowBottom} showBottom={showBottom} snapLinePos={snapLinePos}
                 startTimelinePan={startTimelinePan} timelineH={timelineH} timelineRef={timelineRef} tlWin={tlWin}
                 ungroupPart={ungroupPart} videoOverlay={videoOverlay} zoomTimelineAt={zoomTimelineAt} />
