@@ -317,19 +317,27 @@ export function useExport({ paint, audio, range, doc, report, recording }) {
         const tracks = [...stream.getVideoTracks()];
         if (audioRef.current && audioUrl && !audioSourceRef.current) { try { audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)(); audioDestRef.current = audioCtxRef.current.createMediaStreamDestination(); audioSourceRef.current = audioCtxRef.current.createMediaElementSource(audioRef.current); audioSourceRef.current.connect(audioDestRef.current); audioSourceRef.current.connect(audioCtxRef.current.destination); } catch (e) { } }
         if (audioDestRef.current) tracks.push(...audioDestRef.current.stream.getAudioTracks());
+        // Monitoring mute is about this sitting, not about the film. The recorder taps the same
+        // element, so leaving it muted would hand it silence and the video would come out with
+        // no music - and nothing would say so. Lifted for the recording and put back after.
+        const wasMuted = !!audioRef.current?.muted;
+        if (wasMuted) audioRef.current.muted = false;
+        const unmute = () => { if (wasMuted && audioRef.current) audioRef.current.muted = true; };
+
         let mr;
         try {
             mr = startRecorder(tracks, mimeType, (blob) => {
                 downloadBlob(blob, `mv_export.${ext}`);
                 alert(tr('완료!'));
                 isExporting.current = false; requestFrameRef.current = null;
+                unmute();
             }, {
                 // Asked for explicitly: the browser's own choice is about 2.5 Mbps whatever the
                 // canvas size, which starves a 1080p drawing (#229).
                 videoBitsPerSecond: videoBitrate({ width: canvas.width, height: canvas.height, fps: EXPORT_FPS, mimeType }),
                 audioBitsPerSecond: AUDIO_BITRATE,
             });
-        } catch (e) { alert(tr('녹화를 시작할 수 없습니다: ') + e.message); return; }
+        } catch (e) { unmute(); alert(tr('녹화를 시작할 수 없습니다: ') + e.message); return; }
         exportEndRef.current = playEnd; isExporting.current = true; mediaRecorderRef.current = mr; setIsPlaying(true);
     };
 

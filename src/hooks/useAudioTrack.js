@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { loadAudio, setAudioDuration, setAudioClip, clearAudio } from '../core/mediaReducer.js';
 import { detachMedia, safeMediaSrc } from '../core/mediaEl.js';
 import { fetchAsset } from '../core/api.js';
@@ -28,7 +28,23 @@ import { tr } from '../i18n';
  * @param {(p: any) => void} deps.setLinkPrompt asks for a YouTube URL when none was given
  */
 export function useAudioTrack({ audioUrl, dispatchMedia, setLinkPrompt }) {
+
     const audioRef = useRef(/** @type {HTMLAudioElement | null} */(null));
+
+    /**
+     * Monitoring off: draw to picture without the music, without unloading the track.
+     *
+     * It mutes the *element*, which is what anyone listening hears. It is deliberately not part
+     * of the document and is not saved - it is about this sitting, not about the film.
+     *
+     * The export has to undo it, and that is not optional. Once the element is routed into a
+     * MediaElementAudioSourceNode the recorder taps the same output, so a muted element would
+     * hand the recorder silence and the video would come out with no music at all - a silent
+     * failure of exactly the kind this app keeps producing. useExport lifts it for the duration
+     * of a recording and puts it back.
+     */
+    const [muted, setMuted] = useState(false);
+    useEffect(() => { const el = audioRef.current; if (el) el.muted = muted; }, [muted]);
     const audioB64Ref = useRef(/** @type {string | null} */(null));
     const audioBlobRef = useRef(/** @type {{src: string|null, blob: Blob|null}} */({ src: null, blob: null }));
     // The export recorder mixes the audio into the captured stream through these. Created once,
@@ -145,5 +161,6 @@ export function useAudioTrack({ audioUrl, dispatchMedia, setLinkPrompt }) {
     return {
         audioRef, audioB64Ref, audioBlobRef, audioCtxRef, audioSourceRef, audioDestRef,
         audioAsBlob, restoreAudio, loadAudioUrl, handleAudioUpload, handleDeleteAudio, loadYoutubeAudio,
+        muted, setMuted,
     };
 }

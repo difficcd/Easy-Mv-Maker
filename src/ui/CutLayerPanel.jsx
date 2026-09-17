@@ -1,9 +1,10 @@
 import React from 'react';
-import { Plus, FolderPlus, Trash2, Copy, CopyPlus, ClipboardPaste, Eye, EyeOff, Settings, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, FolderPlus, Trash2, Copy, CopyPlus, ClipboardPaste, Eye, EyeOff, Settings, Video, ChevronDown, ChevronRight } from 'lucide-react';
 import { safeArray } from '../canvas/canvasUtils';
 import { CutAnimPanel, CameraPanel } from './AnimPanels';
 import { LayerRows } from './LayerRows';
-import { tr } from '../i18n';
+import { tr } from '../i18n';
+
 import { inReadingOrder } from '../core/cutSelection.js';
 
 // CUT / LAYER panel: the cut list, each cut's layer tree, cut animation and text list.
@@ -76,7 +77,16 @@ export function CutLayerPanel({
                                 <div style={{ display: 'flex', gap: 4 }}>
                                     <button className="icon-btn" onClick={e => { e.stopPropagation(); handleDuplicateCut(cut.id); }} title={tr('다음 프레임으로 복제 (Ctrl+D)')}><CopyPlus size={12} /></button>
                                     <button className="icon-btn" onClick={e => { e.stopPropagation(); handleCopyCut(cut.id); }} title={tr('컷 복사 (Ctrl+C)')}><Copy size={12} /></button>
-                                    <button className="icon-btn" onClick={e => { e.stopPropagation(); toggleCutSettings(cut.id); }} title={tr('설정')}><Settings size={12} /></button>
+                                    {/* The gear opens the cut's timing, its animation *and* its
+                                        camera. The camera was reported as missing because nothing
+                                        out here said it was in there - so the tooltip names what
+                                        is behind the button, and a cut that has a camera move
+                                        shows it instead of a gear rather than hiding the fact. */}
+                                    <button className="icon-btn" onClick={e => { e.stopPropagation(); toggleCutSettings(cut.id); }}
+                                        title={tr('설정 — 시간 · 애니메이션 · 카메라')}
+                                        style={cut.camera ? { color: 'var(--accent-hi)' } : undefined}>
+                                        {cut.camera ? <Video size={12} /> : <Settings size={12} />}
+                                    </button>
                                     <button className="icon-btn del-btn" onClick={e => { e.stopPropagation(); handleDeleteCut(cut.id); }}><Trash2 size={12} /></button>
                                 </div>
                             </div>
