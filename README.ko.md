@@ -170,7 +170,7 @@ src/
   globals.d.ts     앰비언트 선언 (EyeDropper, Capacitor, File System Access…)
 server/index.js    프로젝트 저장 + 백업 순환 + 영상/음원 가져오기 API
 scripts/           위 검사 가드들, 핫패스 벤치마크, 폰트 서브셋
-test/              단위 테스트 (node --test)와 스모크 테스트
+test/              단위 테스트 (node --test), src/ 구조를 그대로 — src/core는 test/core — 그리고 smoke/
 ```
 
 `core/`, `engine/`, `export/` 아래 어떤 것도 캔버스나 React를 건드리지 않고, `tools/`는 React도

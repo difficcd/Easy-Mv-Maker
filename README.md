@@ -174,7 +174,7 @@ src/
   globals.d.ts     ambient declarations (EyeDropper, Capacitor, File System Access…)
 server/index.js    project storage + backup rotation + video/audio import API
 scripts/           the check guards above, the hot-path benchmark, font subsetting
-test/              unit tests (node --test) and the smoke test
+test/              unit tests (node --test), mirroring src/ - test/core for src/core and so on - plus smoke/
 ```
 
 Nothing under `core/`, `engine/` or `export/` touches a canvas or React, and `tools/` touches neither React nor a context it owns - where one of them
