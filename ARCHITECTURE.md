@@ -5,13 +5,14 @@
 > hundred lines away, and the timeline gutter width had seven copies. `npm run check` fails when
 > a shared export is missing from that index, so it cannot quietly go out of date.
 
-Frame-by-frame MV/animation app. Vite + React 18, single big component. Capacitor wraps it for Android.
+Frame-by-frame MV/animation app. Vite + React 19. Capacitor wraps it for Android.
 
 ## Files
 
-`App.jsx` is still the component, but the logic worth testing has been moved out of it. **Put new
-pure logic in a module, not in App.jsx** — anything that is a function of its arguments belongs
-next to its tests.
+App.jsx is around 2,400 lines and shrinking; it is mostly wiring now — which hook owns what, and
+which component gets which props. **Put new pure logic in a module, not in App.jsx** — anything
+that is a function of its arguments belongs next to its tests. See [#234] for where the rest of
+App is going and why.
 
 The folders say what a file is allowed to touch, which is the quickest way to know where
 something belongs:
@@ -20,11 +21,25 @@ something belongs:
 src/
   App.jsx  main.jsx  i18n.js  db.js  *.css      the component, boot, strings, storage
   core/     pure logic — no React, no DOM, no canvas. Every file here has tests.
+  engine/   what a frame *is* at time t. Pure; no canvas.
   canvas/   drawing. Pure apart from the 2D context it is handed.
+  tools/    what each drawing tool does on pointer down and move.
+  export/   turning the timeline into a file: zip, gif, the recorder.
   ui/       components.
   hooks/    React hooks that wire state to behaviour.
 test/       one file per module, same name
 ```
+
+Two of those are newer than the rest and worth knowing about before you go looking in App:
+
+**`engine/` and `canvas/` are the two halves of drawing a frame.** `evaluateFrame(cuts, t, …)`
+works out what the frame *is* — which cuts, their animation, their layer groups, texts, camera —
+with no canvas involved and tests over it. `canvas/sceneRender.drawScene` then draws that answer.
+`paintFrame` in App is the two calls plus the parts that genuinely need the live canvas.
+
+**`tools/canvasTools.js` is one entry per drawing tool**, each `{down, move}` over a context
+object App assembles per event (`toolCtx`). Adding a tool is adding an entry, and the context is
+the list of what a tool may touch.
 
 A file in `core/` importing React or reaching for `document` is the sign it is in the wrong
 folder — or that the part which needs them should stay behind in the component and be passed in.
@@ -64,6 +79,24 @@ know storage exists at all, because reading it is `useStored`'s decoder.
 - `numInput.js` — the rules behind a number field that can be typed into.
 - `bitmapRefs.js` — `collectUsedBitmapIds` / `unusedBitmapIds`. Every reference source is named in
   one place; miss one and the collector frees pixels undo or paste still needs.
+- `playRange.js` — where the content starts and ends. Playback, the dimming and both exports use
+  this one answer, so what you watch is what comes out.
+- `frameExport.js` / `exportQueue.js` — the size, rate and frame count a frame export comes out
+  at, and the per-piece range for the multi-file queue.
+- `recordClock.js` — the fixed frame grid a video recording is painted on (#156).
+- `catmullRom.js` — the spline behind the curve ruler; passes through every anchor.
+- `colour.js` — `withAlpha`, which replaces an existing alpha rather than appending a second one.
+- `liquify.js` — `pushAlong`, the forward warp the liquify brush applies.
+- `document.js` / `cutSelection.js` / `keyframes.js` — making a cut, which cuts a click selects,
+  and animation keys.
+
+**engine/** — what a frame *is*, with no canvas anywhere near it.
+
+- `evaluateFrame.js` — `evaluateFrame(cuts, t, opts)` returns the resolved scene at time `t`:
+  which cuts, their animation, their layer groups, their texts, the camera. This is the entry
+  point the render path was aiming at; `paintFrame` and the frame export both call it.
+- `selectCuts.js` — which cuts a frame is made of, and the onion-skin neighbours.
+- `pendingBitmaps.js` — which bitmaps a frame needs that are not decoded yet.
 
 **canvas/**
 
@@ -75,11 +108,37 @@ know storage exists at all, because reading it is `useStored`'s decoder.
   video import sizing (`targetCanvasFor`, `extractVideoFrames`). Constants: `CANVAS_W=1920`,
   `CANVAS_H=1080`, `DEFAULT_CUT_DURATION`, `FONT_PRESETS`.
 - `textRender.js` — measuring and drawing text: `measureTextBox`, `textNeedsBox`, `revealLines`
-  (typing), `drawTextObject`.
+  (typing), `drawTextObject`. Line breaking is `textLayout.js`.
+- `sceneRender.js` — `drawScene`, the other half of `engine/evaluateFrame`: it draws the answer
+  and decides nothing. Also the video reference, the onion skin and the scene's texts.
+- `layerComposite.js` — one layer onto the frame, with its clip group and opacity.
+- `bitmapStore.js` — the pixels behind fill / lasso / paste strokes: store, decode, clone, trim.
+  The Map is `bitmapStoreRef`; this owns it.
+- `pixelEffects.js` — the mosaic and the blur brush: `regionBounds`, `rectBounds`, `mosaic`,
+  `blurMaskedRegion`. The first three are pure and tested.
+- `marquee.js` / `editChrome.js` — the lasso loop while it is drawn, and everything drawn *over*
+  a frame to show what is selected: the selection box, the handles, the motion path, the curve
+  anchors, the mosaic rectangle. All sized in screen pixels (divide by `view.zoom`), or they
+  shrink until they cannot be grabbed.
+- `warpRender.js` / `shearSlices.js` / `swayRender.js` — a selection's rotate/skew/bend outline,
+  the slice stack that draws a sheared bitmap, and the sway deformation.
 
-**ui/** — panels split out of App.jsx: `AnimPanels.jsx` (`CutAnimPanel`, `LayerAnimPanel`,
-`JitterPanel`), `CutLayerPanel.jsx`, `ColorPanel.jsx`, `ToolsPanel.jsx`, `Timeline.jsx`,
-`TopBar.jsx`, `Modals.jsx`, and `NumField.jsx` — **use NumField for any new numeric field.**
+**ui/** — everything App used to return inline. Panels: `AnimPanels.jsx` (`CutAnimPanel`,
+`LayerAnimPanel`, `JitterPanel`), `CutLayerPanel.jsx` + `LayerRows.jsx`, `ColorPanel.jsx`,
+`ToolsPanel.jsx`, `Timeline.jsx`, `TopBar.jsx`, `TextEditor.jsx`, `SwaySpine.jsx`. Dialogs:
+`Modals.jsx` over `Modal.jsx`. And the chrome:
+
+- `CanvasStage.jsx` — the scrolling area, the zoomed stage, and the two canvases. There are two
+  because the lower one is the document and the upper one is whatever the pointer is doing right
+  now; drawing the second onto the first would repaint the scene at pointer rate. `canvasCursor`
+  is here too, and the order of its checks is load-bearing.
+- `PanelDock.jsx` — where a panel is, as against what it contains. App builds the three panels
+  once and hands them over as `panelEls`, which is what lets one be dragged between the docks
+  and a floating window without being rebuilt.
+- `DocTabs.jsx` — the project tabs, and the mode bar that floats over them as a pill.
+- `Notices.jsx` — the background chips, the frame-extraction chip, the failure banner. None of
+  them stops the work underneath; that is the rule they share.
+- `NumField.jsx` — **use NumField for any new numeric field.**
 
 **hooks/** — state that belongs together, lifted out of App so its wiring is somewhere with a
 name. Each takes what it cannot own as arguments, and the rule for what it cannot own is the same
@@ -112,6 +171,23 @@ needs a document takes those two functions rather than the document.
 - `useTextDrag.js` — grabbing a text on the canvas and dragging it, one document write per frame.
 - `useShortcuts.js` — the keydown listener; which key means what is `core/shortcuts.shortcutFor`.
 - `useDropdown.js` — a menu that closes on a press outside it (the File and Media menus).
+- `usePanelVisibility.js` — which panels are on screen, and the Tab that folds them away. Folding
+  is not "close everything": the second press puts back exactly what was open, and it restores
+  the timeline's scroll, because that container is unmounted while folded and comes back at zero.
+- `useAppearance.js` — the accent colour, the chrome's saturation, and the recent-colour list.
+- `useGesture.js` — **what is happening between the pen going down and coming back up:** the
+  stroke, the lasso loop, the layers or selection being dragged, the path being recorded, the
+  layer the stroke commits to, plus `begin`/`end` for pointer capture. Only one is ever live.
+- `useLiveOverlay.js` — the overlay canvas and the incremental drawing of a stroke on it. Only
+  the new tail each frame; the count that tracks it must be exactly right or the tail is drawn
+  from the wrong place.
+- `useLiquifyTool.js` / `useCurveTool.js` / `useMosaicTool.js` — three tools that keep their own
+  in-progress state, each `begin / to / end`.
+- `useExport.js` — the three exports: a recorded video, a GIF or PNG sequence, and several `.emv`
+  files painted into one. All paint through the app's own paint path.
+- `useVideoImportState.js` — what bringing a video in remembers. The logic stays in App.
+- `useNotices.js` — progress, toast, error banner, and the YouTube link prompt.
+- `useDialogs.js` — which dialog is open, and the rebinding two of them share.
 
 - `server/index.js` — Express file-backed project DB on :8787, files under `server/data/`.
   Proxied at `/api` (vite.config).
@@ -130,7 +206,13 @@ needs a document takes those two functions rather than the document.
 - Animations apply **only while `isPlaying`** (editing is at rest); export captures them via playback.
 
 ## App.jsx key handlers (search these names)
-- Drawing: `startDraw`/`onDraw`/`stopDraw` (palm rejection: ignore `pointerType==='touch'`; path capture via `pathCapture`/`pathPtsRef`).
+- Drawing: `startDraw`/`onDraw`/`stopDraw`. Each does the cross-cutting part — palm rejection
+  (ignore `pointerType==='touch'`), the eyedropper, a path being recorded, a floating selection,
+  a text under the pointer — and then hands over to `TOOLS[etool]` in `tools/canvasTools.js`.
+  Gesture state is `gesture.*` from `useGesture`; path capture is `pathCapture`/`gesture.pathPts`.
+  **`stopDraw` is deliberately not a tool table.** The end of a gesture is decided by which
+  gesture is in flight, not by which tool is selected, and the tool can be changed while the pen
+  is down — dispatching the end on the current tool would finish the wrong thing.
 - Selection (lasso): `liftLassoSelection`, `selectAllAsLasso` (Ctrl+T), `takeSelectionStrokes` →
   `commitSelectionImpl` / `extractSelectionToPart` (lasso → new layer). A selection carries `rot`,
   `skew`, `bend`; `canvas/warpRender` draws it and `canvas/editChrome` its marquee.
@@ -140,7 +222,8 @@ needs a document takes those two functions rather than the document.
   (`appendLayer`, `appendFolder`, `removeLayerTree`); drag-and-drop is `useLayerDnD`.
 - Anim updaters: `updCutAnim`, `updLayerAnim`. The panels take free numeric input (`NumField`);
   the old fixed-value dropdowns and their option lists are gone.
-- Gestures: `beginGesture`/`endGesture` wrap pointer capture — **always use them.**
+- Gestures: `gesture.begin`/`gesture.end` (from `useGesture`) wrap pointer capture — **always
+  use them.**
   `setPointerCapture` and `releasePointerCapture` *throw* on a pointer that has already gone, and
   optional chaining does not help (it guards a missing method, not a throw). An uncaught throw out
   of a pointer handler takes the whole app down; it has happened.
@@ -157,62 +240,47 @@ needs a document takes those two functions rather than the document.
   in `useServerStorage`, the debounced write in `useAutosave`.
 - History: `useHistory`. It owns the stack and the refs; App passes the snapshot and a predicate
   for "not now, a gesture is in progress".
-- Export: `renderFrameRange` paints a range and hands each frame to a capture function, so the
-  multi-piece export can run it once per piece into one writer. `captureFrame` decides what a
-  format wants from a painted canvas. Video recording paints on a fixed frame grid
-  (`core/recordClock`) into a stream that takes frames on request (`export/recorder`).
+- Export: all three are `hooks/useExport.js`. `renderFrameRange` paints a range and hands each
+  frame to a capture function, so the multi-piece export can run it once per piece into one
+  writer; `captureFrame` decides what a format wants from a painted canvas. Video recording
+  paints on a fixed frame grid (`core/recordClock`) into a stream that takes frames on request
+  (`export/recorder`). The five refs that say an export is running stay in App, because
+  `usePlayback` reads them every frame — recording and playback are one clock.
 - Keys: `useShortcuts` with an actions table; `core/shortcuts.shortcutFor` is the rule set.
 
-## Where the render path is going
+## The render path
 
-`paintFrame` is 193 lines and does two jobs at once: working out what the frame looks like at
-time `t`, and drawing it. Everything that needs a frame — playback, scrubbing, export, thumbnails,
-onion skin — reaches into that one function, so anything they should share has to be shared by
-being in it.
-
-The direction is to split those two jobs:
+This used to be a section about where the render path was *going*. It has arrived, so here is
+what it is.
 
 ```
-project state
-      ↓  evaluate(project, t)
-resolved scene at time t          ← pure, no canvas, testable
-      ↓  render(ctx, scene)
+cuts, t
+   ↓  engine/evaluateFrame(cuts, t, opts)
+the scene at time t        ← pure, no canvas, tested
+   ↓  canvas/sceneRender.drawScene(ctx, scene, …)
 canvas
 ```
 
-Export then stops being a special path and becomes the same two calls in a loop:
+`paintFrame` in App is those two calls plus the parts that genuinely need the live canvas: the
+boiling phase, holding the previous frame while a bitmap decodes rather than flashing white, the
+camera transform, and the chrome drawn over the top (selection box, handles, motion path).
 
-```js
-for (let t = 0; t < end; t += 1 / 30) { render(ctx, evaluate(project, t)); }
-```
-
-### Done
-
-`engine/selectCuts.js` — which cuts a frame is made of, and the onion-skin neighbours. Each of
-those was written out twice, and copies of a boundary comparison disagreeing is a flicker at a cut
-seam rather than an obvious bug.
-
-### Next, in order
-
-1. **Animation.** `computeCutAnim` is currently called twice per cut per frame — once in the layer
-   pass, once in the text pass — and the same transform is written out either side. Evaluating a
-   cut once and handing the result to both passes removes the duplicate work and the duplicate
-   code together.
-2. **Compositing.** Clip groups, sway slices, the selection mask and the layer-drag exclusion are
-   the parts that genuinely need a canvas. They stay in the renderer; what moves out is the
-   deciding.
-3. **One entry point.** `evaluate(project, t)` returning a scene, with the renderer walking it.
+Export is the same two calls in a loop rather than a second renderer — `renderFrameRange` in
+`useExport` paints through `paintFrameRef`, so nothing can drift from what the user watched. A
+parallel renderer is a thing that agrees with the real one until it quietly does not, and the
+first anyone hears of it is an export that looks wrong.
 
 ### What is deliberately staying put
 
-The draw pipeline — `startDraw` / `onDraw` / `stopDraw` — is not part of this. It is pointer
-handling and live-stroke state, it has the most refs of anything in the component, and it has
-nothing to do with rendering a frame at a time. Moving it would be the riskiest change in the
-codebase for the least benefit.
+`startDraw` / `onDraw` / `stopDraw` are not part of this and never were. They are pointer
+handling and live-stroke state, and they have nothing to do with rendering a frame. What has
+changed since that was first written is that the per-tool half *has* moved out, to
+`tools/canvasTools.js`; what stays is the cross-cutting part, which is the part that has to
+decide between modes before any tool sees the event.
 
 ## Run and verify
-- Web + API: `npm run dev` (web :5173 with LAN host + QR, api :8787).
-- `npm run check` — typecheck, tests, then four checks that each exist because something went
+- Web + API: `npm run dev` (web with LAN host + QR, api :8787).
+- `npm run check` — typecheck, tests, then five checks that each exist because something went
   wrong once, then the build. **Run this before reporting done.**
   - `hook-baseline` — hook-dependency warnings may not grow. Most of the remaining ones are
     deliberate; the baseline pins them rather than demanding zero.
@@ -223,6 +291,10 @@ codebase for the least benefit.
   - `unused-imports` — a name imported and never used, or imported twice. The other checks
     cannot see these: `unreachable` asks what App's own names reach and an import is not one of
     them. Twenty-eight had piled up in App.jsx alone, left behind by the extractions.
+  - `stroke-writes` — every write that adds a stroke to a layer goes through `commitStroke`,
+    which refuses an id naming no layer and reveals the layer it writes to. Both failures are
+    silent and both shipped, four times: the lasso paste and the mosaic evaporated, the bucket
+    fill and the eraser landed invisibly. Its test drives it with all four bugs as they shipped.
   - `i18n-check` — every `tr()` string is translated, or the English UI shows Korean.
 - `npm test` alone runs the suite (Node's built-in runner, no test framework dependency).
 - Build: `npm run build`. Android: `npm run android:sync` then `android:open`.
