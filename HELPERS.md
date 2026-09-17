@@ -978,6 +978,14 @@ Whether the project-storage API is reachable, re-checked with a backoff.
 |---|---|
 | `useServerProbe` | Polls with `nextProbeDelay` backoff and resets on window focus. Checking only once was the original bug: a server that was down at load stayed "down" all session, so the menus never rendered and clicking did nothing. |
 
+## `src/hooks/useVideoImportState.js`
+
+What bringing a video into the project remembers.
+
+| | |
+|---|---|
+| `useVideoImportState` | The hidden `<video>` and its bytes, the import dialog, extraction progress and whether it went to a background chip, the list of videos already fetched, the scene detector's progress and settings, and the two stop flags. The *logic* stays in App — it reads the document, the bitmap store and the paint path. The two stop flags are refs, because they are read inside loops that are already running. |
+
 ## `src/hooks/useToolSettings.js`
 
 What the pen is set to: which tool, what colour, how wide, how hard.
