@@ -10,10 +10,9 @@ import { inReadingOrder } from '../core/cutSelection.js';
 // CUT / LAYER panel: the cut list, each cut's layer tree, cut animation and text list.
 // The rows of each tree are LayerRows; everything they need arrives as the `layerRows` bundle
 // and is passed straight through, because none of it is this panel's business.
-// Two thresholds, because the two rows have different budgets - measured in the browser at the
-// default 270px panel, where the cut row takes "Settings" comfortably and the layer row, which
-// carries a thumbnail and six buttons, clips the layer's own name to fit "Anim".
-const CUT_LABEL_W = 240;
+// Measured in the browser: at the default 270px panel the layer row - a thumbnail and six
+// buttons - clips the layer's own name to fit a word next to the film icon. So the label waits
+// for room, and below this the icon stands alone. A clipped layer name is worse than either.
 const LAYER_LABEL_W = 330;
 
 export function CutLayerPanel({
@@ -33,7 +32,6 @@ export function CutLayerPanel({
     const showingText = rightTab === 'text' && !!textEditorBody;
     // Wide enough to name the buttons that open a panel. Below it they go back to being icons,
     // because a clipped label is worse than no label.
-    const wideCut = rightW >= CUT_LABEL_W;
     const wideLayer = rightW >= LAYER_LABEL_W;
     const tab = (id, label, active, onClose) => (
         <div key={id} onClick={() => setRightTab(id)}
@@ -92,11 +90,16 @@ export function CutLayerPanel({
                                         out here said it was in there - so the tooltip names what
                                         is behind the button, and a cut that has a camera move
                                         shows it instead of a gear rather than hiding the fact. */}
+                                    {/* A camera, always. It opens the cut's timing and animation
+                                        as well, so the icon under-describes what is behind it -
+                                        but a gear described none of it, and the camera is the
+                                        thing people came looking for. Tinted when this cut
+                                        actually has a camera move, so the list still shows at a
+                                        glance which ones do. The tooltip names all three. */}
                                     <button className="icon-btn" onClick={e => { e.stopPropagation(); toggleCutSettings(cut.id); }}
                                         title={tr('설정 — 시간 · 애니메이션 · 카메라')}
-                                        style={{ ...(cut.camera ? { color: 'var(--accent-hi)' } : null), ...(wideCut ? { width: 'auto', padding: '0 5px', gap: 3 } : null) }}>
-                                        {cut.camera ? <Video size={12} /> : <Settings size={12} />}
-                                        {wideCut && <span style={{ fontSize: 9.5 }}>{tr('설정')}</span>}
+                                        style={cut.camera ? { color: 'var(--accent-hi)' } : undefined}>
+                                        <Video size={12} />
                                     </button>
                                     <button className="icon-btn del-btn" onClick={e => { e.stopPropagation(); handleDeleteCut(cut.id); }}><Trash2 size={12} /></button>
                                 </div>
