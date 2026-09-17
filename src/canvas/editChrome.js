@@ -120,3 +120,19 @@ export function drawCurveAnchors(ctx, pts, zoom) {
     }
     ctx.restore();
 }
+
+/**
+ * The rectangle a mosaic effect is confined to, while that layer's panel is open.
+ *
+ * Only while the panel is open, like the motion path: it is a setting, not part of the picture,
+ * and leaving it on screen would put a dashed box into every frame the user is looking at.
+ *
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {{x: number, y: number, w: number, h: number} | null | undefined} rect
+ * @param {number} zoom
+ */
+export function drawMosaicRegion(ctx, rect, zoom) {
+    if (!rect) return;
+    const { x, y, w, h } = rect;
+    drawMarquee(ctx, [{ x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h }], zoom, true);
+}

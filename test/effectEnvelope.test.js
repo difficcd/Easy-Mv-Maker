@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { effectAt, mosaicBlockAt, LAYER_ANIM_DEFAULT } from '../src/canvas/canvasUtils.js';
+import { clampRegion } from '../src/canvas/pixelEffects.js';
 
 const linear = { ease: 'linear', easePower: 1 };
 const at = (t, o) => effectAt(t, { max: 100, ...linear, ...o });
@@ -98,4 +99,32 @@ test('there-and-back still follows the shared swing, not the window', () => {
 test('no mosaic set is no mosaic, whatever the window says', () => {
     assert.equal(mosaicBlockAt(anim({ mosaicFrom: 0, mosaicTo: 1 }), 0.5, 0.5), 0);
     assert.equal(mosaicBlockAt(null, 0.5, 0.5), 0);
+});
+
+// --- the mosaic's region (#183) ---
+
+test('a region dragged backwards still comes back as a rectangle', () => {
+    // Dragging up-left is as ordinary as dragging down-right, and a negative width draws
+    // nothing at all rather than failing.
+    const forward = clampRegion({ x: 10, y: 10, w: 40, h: 20 }, 1920, 1080);
+    const backward = clampRegion({ x: 50, y: 30, w: -40, h: -20 }, 1920, 1080);
+    assert.deepEqual(forward, { x: 10, y: 10, w: 40, h: 20 });
+    assert.deepEqual(backward, forward);
+});
+
+test('a region is clipped to the canvas', () => {
+    // Started off the edge, or dragged past it - both routine with a pen.
+    assert.deepEqual(clampRegion({ x: -50, y: -50, w: 100, h: 100 }, 1920, 1080), { x: 0, y: 0, w: 50, h: 50 });
+    assert.deepEqual(clampRegion({ x: 1900, y: 1060, w: 500, h: 500 }, 1920, 1080), { x: 1900, y: 1060, w: 20, h: 20 });
+});
+
+test('a region too small to pixelate is refused rather than returned empty', () => {
+    // An accidental tap must not set a region that silently shows nothing.
+    assert.equal(clampRegion({ x: 10, y: 10, w: 1, h: 40 }, 1920, 1080), null);
+    assert.equal(clampRegion({ x: 10, y: 10, w: 0, h: 0 }, 1920, 1080), null);
+    assert.equal(clampRegion(null, 1920, 1080), null);
+});
+
+test('a region entirely off the canvas is nothing, not a negative rectangle', () => {
+    assert.equal(clampRegion({ x: 3000, y: 3000, w: 100, h: 100 }, 1920, 1080), null);
 });

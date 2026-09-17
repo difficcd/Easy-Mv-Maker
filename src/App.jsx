@@ -41,9 +41,9 @@ import { scaleProjectTimes, bakePlan } from './core/timeScale.js';
 import { drawScene, drawVideoOverlay, drawOnionCut, drawSceneTexts } from './canvas/sceneRender.js';
 import { warpedOutline, warpedHandles, rotateKnob } from './canvas/warpRender.js';
 import { drawMarquee, HANDLE_GRAB_PX } from './canvas/marquee.js';
-import { drawTextSelection, drawFloatingSelection, drawMotionPath } from './canvas/editChrome.js';
+import { drawTextSelection, drawFloatingSelection, drawMotionPath, drawMosaicRegion } from './canvas/editChrome.js';
 import { createBitmapStore } from './canvas/bitmapStore.js';
-import { regionBounds, rectBounds, mosaic, blurMaskedRegion, grainTile, drawGrain } from './canvas/pixelEffects.js';
+import { regionBounds, rectBounds, mosaic, blurMaskedRegion, grainTile, drawGrain, clampRegion } from './canvas/pixelEffects.js';
 import { useLayerCache } from './hooks/useLayerCache.js';
 import { useTimelineView } from './hooks/useTimelineView.js';
 import { useCutListUi } from './hooks/useCutListUi.js';
@@ -361,7 +361,9 @@ export default function App() {
     // Reused inside the composite loop; see the mask path in paintFrame.
     const maskScratchRef = useRef(null);
     const grainTileRef = useRef(/** @type {HTMLCanvasElement|null} */(null)); // built once, blitted per frame
-    const mosaicScratchRef = useRef(null);   // the small canvas a mosaic effect shrinks a layer into
+    // Two slots: the shrunken copy, and - when only a region is pixelated - the composed layer.
+    // Separate, because composing reads the small one while writing the full one.
+    const mosaicScratchRef = useRef({ full: { current: null }, small: { current: null } });
     const dataUrlCacheRef = useRef(new Map()); // id -> {imageData, url}; avoids re-encoding bitmaps each autosave
     const liveRef = useRef({}); // latest {cuts, copiedCut, selection} for safe bitmap GC from effects
     const textAreaRef = useRef(null);
@@ -1612,7 +1614,22 @@ export default function App() {
                 return;
             }
             if (pathCapture && pts.length > 1) {
-                if (pathCapture.mode === 'sway') {
+                if (pathCapture.mode === 'mosaicRect') {
+                    // The whole drag, not its two ends: a rectangle dragged out by hand is what
+                    // the pointer covered, and the bounding box of that is forgiving about a
+                    // curved drag or a slip at the end.
+                    const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+                    const x = Math.min(...xs), y = Math.min(...ys);
+                    const rect = { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y };
+                    // Refused rather than stored when it is too small to pixelate - an
+                    // accidental tap would otherwise set a region that shows nothing and give
+                    // no clue why the effect stopped.
+                    if (clampRegion(rect, CANVAS_W, CANVAS_H)) {
+                        updLayerAnim(pathCapture.cutId, pathCapture.layerId, { mosaicRect: rect });
+                    } else {
+                        notices.setToast(tr('영역이 너무 작습니다'));
+                    }
+                } else if (pathCapture.mode === 'sway') {
                     // Sway from a drawn curve: the curve is stored as a waveform, and how far it
                     // actually swung becomes the default strength.
                     const w = curveToWave(pts);
@@ -1880,7 +1897,9 @@ export default function App() {
         if (!isPlaying) {
             const cc = currentCut;
             for (const l of (cc?.layers || [])) {
-                drawMotionPath(ctx, l.anim?.path, !!animLayer && animLayer.cutId === cc.id && animLayer.layerId === l.id);
+                const open = !!animLayer && animLayer.cutId === cc.id && animLayer.layerId === l.id;
+                drawMotionPath(ctx, l.anim?.path, open);
+                if (open) drawMosaicRegion(ctx, l.anim?.mosaicRect, view.zoom);
             }
         }
 

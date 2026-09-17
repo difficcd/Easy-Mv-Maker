@@ -9,7 +9,7 @@
 import { applyCutAnim, imageDataCanvas, scratchCanvas } from './canvasUtils.js';
 import { applyPartTransform, drawMaskedLayer } from './layerComposite.js';
 import { drawSwayed } from './swayRender.js';
-import { pixelateCanvas } from './pixelEffects.js';
+import { pixelateCanvas, pixelateRegion, clampRegion } from './pixelEffects.js';
 
 /**
  * @param {CanvasRenderingContext2D} ctx
@@ -23,7 +23,8 @@ import { pixelateCanvas } from './pixelEffects.js';
  * @param {{cutId: any, sourceLayerId: any, maskBitmapId: any, x: number, y: number} | null} deps.selection
  * @param {(id: any) => {imageBitmap?: any, imageData?: any} | undefined} deps.bitmapEntry
  * @param {{current: any}} deps.maskScratchRef a scratch canvas slot for the mask
- * @param {{current: any}} deps.mosaicScratchRef the small canvas a mosaic effect shrinks a layer into
+ * @param {{full: {current: any}, small: {current: any}}} deps.mosaicScratchRef scratch slots for
+ *   the mosaic: the shrunken copy, and the composed layer when only a region is pixelated
  */
 export function drawScene(ctx, scene, { cw, ch, flattenClipGroup, hiddenByGesture, selection, bitmapEntry, maskScratchRef, mosaicScratchRef }) {
     for (const { cut: ac, anim, groups } of scene.cuts) {
@@ -58,13 +59,21 @@ export function drawScene(ctx, scene, { cw, ch, flattenClipGroup, hiddenByGestur
             // the selection mask, the part transform - then works on the blocks, which is what
             // makes the effect look like it belongs to the drawing and not like a filter laid
             // over the shot.
+            // A region pixelates only part of the layer and keeps the rest; without one the
+            // whole layer goes through the cheaper two-blit path.
+            const region = la?.mosaic >= 2 ? clampRegion(la.mosaicRect, cw, ch) : null;
             const src = la?.mosaic >= 2
-                ? (pixelateCanvas(layerCanvas, la.mosaic, mosaicScratchRef, scratchCanvas) || layerCanvas)
+                ? (region
+                    ? (pixelateRegion(layerCanvas, la.mosaic, region, mosaicScratchRef, scratchCanvas, cw, ch) || layerCanvas)
+                    : (pixelateCanvas(layerCanvas, la.mosaic, mosaicScratchRef.small, scratchCanvas) || layerCanvas))
                 : layerCanvas;
             // Blown back up with smoothing off; on the way down it was on, which is what averages
             // each block rather than point-sampling one pixel out of it.
-            const blocky = src !== layerCanvas;
-            if (blocky) ctx.imageSmoothingEnabled = false;
+            // The whole-layer path hands back the shrunken canvas, which is then blown up here
+            // with smoothing off. The region path has already composed a full-size image, so it
+            // must be drawn 1:1 and smoothed like any other layer.
+            const shrunk = src !== layerCanvas && !region;
+            if (shrunk) ctx.imageSmoothingEnabled = false;
 
             if (la?.swayProfile && !mask) {
                 drawSwayed(ctx, src, { profile: la.swayProfile, axis: la.swayAxis, disp: la.swayDisp, cw, ch });
@@ -75,7 +84,7 @@ export function drawScene(ctx, scene, { cw, ch, flattenClipGroup, hiddenByGestur
                 // them is safe - which is why they are separate helpers rather than two slots.
                 drawMaskedLayer(ctx, src, mask, selection, scratchCanvas(maskScratchRef, cw, ch));
             }
-            if (blocky) ctx.imageSmoothingEnabled = true;
+            if (shrunk) ctx.imageSmoothingEnabled = true;
             ctx.restore();
         }
         ctx.restore();

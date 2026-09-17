@@ -256,3 +256,64 @@ export function pixelateCanvas(src, block, scratchRef, scratch) {
     ctx.drawImage(src, 0, 0, size.w, size.h);
     return canvas;
 }
+
+/**
+ * The part of a rectangle that is actually on the canvas, rounded to whole pixels.
+ *
+ * A region is dragged out by hand, so it routinely starts off the edge or is dragged backwards.
+ * Both have to come back as something the drawing code can use or not at all - never as a
+ * negative width, which silently draws nothing.
+ *
+ * @param {{x: number, y: number, w: number, h: number} | null | undefined} rect
+ * @param {number} cw @param {number} ch
+ * @returns {{x: number, y: number, w: number, h: number} | null}
+ */
+export function clampRegion(rect, cw, ch) {
+    if (!rect) return null;
+    const x0 = Math.max(0, Math.min(cw, Math.floor(Math.min(rect.x, rect.x + rect.w))));
+    const y0 = Math.max(0, Math.min(ch, Math.floor(Math.min(rect.y, rect.y + rect.h))));
+    const x1 = Math.max(0, Math.min(cw, Math.ceil(Math.max(rect.x, rect.x + rect.w))));
+    const y1 = Math.max(0, Math.min(ch, Math.ceil(Math.max(rect.y, rect.y + rect.h))));
+    const w = x1 - x0, h = y1 - y0;
+    return (w < 2 || h < 2) ? null : { x: x0, y: y0, w, h };
+}
+
+/**
+ * A copy of a layer with one rectangle of it pixelated, the rest untouched.
+ *
+ * Built as a whole-size canvas rather than handed back as "original plus a patch", because
+ * everything downstream - the sway warp, the selection mask, the part transform - takes one
+ * image. Giving them two would mean teaching each of them about the region.
+ *
+ * The small canvas is a *second* scratch. Reusing the full-size one would mean reading and
+ * writing the same canvas in one operation.
+ *
+ * @param {HTMLCanvasElement | ImageBitmap} src
+ * @param {number} block
+ * @param {{x: number, y: number, w: number, h: number}} rect already clamped
+ * @param {{full: {current: any}, small: {current: any}}} refs
+ * @param {(ref: any, w: number, h: number) => {canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D}} scratch
+ * @param {number} cw @param {number} ch
+ * @returns {HTMLCanvasElement | null}
+ */
+export function pixelateRegion(src, block, rect, refs, scratch, cw, ch) {
+    const size = pixelateSize(rect.w, rect.h, block);
+    if (!size) return null;
+
+    const { canvas: small, ctx: sctx } = scratch(refs.small, size.w, size.h);
+    sctx.clearRect(0, 0, size.w, size.h);
+    sctx.imageSmoothingEnabled = true;
+    sctx.drawImage(src, rect.x, rect.y, rect.w, rect.h, 0, 0, size.w, size.h);
+
+    const { canvas: full, ctx: fctx } = scratch(refs.full, cw, ch);
+    fctx.clearRect(0, 0, cw, ch);
+    fctx.imageSmoothingEnabled = true;
+    fctx.drawImage(src, 0, 0);
+    // Cleared first: the blocks replace what was there rather than sitting over it, or a
+    // half-transparent drawing shows its own unpixelated edges through them.
+    fctx.clearRect(rect.x, rect.y, rect.w, rect.h);
+    fctx.imageSmoothingEnabled = false;
+    fctx.drawImage(small, 0, 0, size.w, size.h, rect.x, rect.y, rect.w, rect.h);
+    fctx.imageSmoothingEnabled = true;
+    return full;
+}

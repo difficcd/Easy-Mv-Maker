@@ -100,8 +100,10 @@ export function DocTabs({
                     )}
                     {pathCapture && (
                         <CaptureGroup
-                            label={pathCapture.mode === 'sway' ? tr('흔들림 곡선') : tr('이동 경로')}
-                            hint={pathCapture.mode === 'sway' ? tr('물결치듯 곡선을 그리세요 — 그 모양·크기대로 흔들립니다') : tr('펜으로 이동 경로를 그리세요')}
+                            label={pathCapture.mode === 'sway' ? tr('흔들림 곡선') : pathCapture.mode === 'mosaicRect' ? tr('모자이크 영역') : tr('이동 경로')}
+                            hint={pathCapture.mode === 'sway' ? tr('물결치듯 곡선을 그리세요 — 그 모양·크기대로 흔들립니다')
+                                : pathCapture.mode === 'mosaicRect' ? tr('모자이크를 걸 사각형을 드래그하세요')
+                                    : tr('펜으로 이동 경로를 그리세요')}
                             onCancel={() => setPathCapture(null)} />
                     )}
                 </div>

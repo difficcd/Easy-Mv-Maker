@@ -690,6 +690,7 @@ What is drawn over the frame while editing and never while playing.
 | `drawFloatingSelection` | A floating selection's pixels exactly as the paste will draw them, warp included, with the marquee and handles following the warp. |
 | `drawTextSelection` | The rectangle around a selected text, as the same marquee the selection uses. |
 | `drawMotionPath` | A part's recorded motion path, dashed with a dot at its start; brighter for the part being edited. |
+| `drawMosaicRegion` | The rectangle a mosaic effect is confined to, drawn only while that layer's panel is open — it is a setting, not part of the picture. |
 | `drawMosaicMarquee` | The rectangle the mosaic tool is dragging out: a tint (colour passed in, so the function stays testable) with the same screen-sized marquee round it. |
 | `drawCurveAnchors` | The curve ruler's anchors, screen-sized, the first one marked as the end the curve is drawn from. |
 
@@ -738,6 +739,8 @@ The two tools that change pixels already on the canvas: the mosaic and the blur 
 | `drawGrain` | Blits that tile over the frame with an offset hashed from the quantised time — deterministic, so the export grains the same way the preview did. Drawn *outside* the camera transform: grain is on the film, not in the scene. |
 | `pixelateCanvas` | A pixelated copy of a canvas in two blits — shrink with smoothing on (which averages each block), then the caller blows it back up with smoothing off. The per-pixel `mosaic` above is for a one-off stamp; this is what the renderer can afford every frame. |
 | `pixelateSize` | The shrunk size for a block, never below 1×1 — a zero-sized canvas makes the draw throw. `null` when the block is too small to change anything. |
+| `pixelateRegion` | A copy of a layer with one rectangle pixelated and the rest untouched. Composed to a full-size canvas because everything downstream — sway, mask, part transform — takes one image; handing them a patch would mean teaching each about the region. |
+| `clampRegion` | A hand-dragged rectangle clipped to the canvas and rounded, or `null` when it is too small. Dragged backwards or off the edge are both routine, and a negative width silently draws nothing. |
 
 ## `src/canvas/sceneRender.js`
 
