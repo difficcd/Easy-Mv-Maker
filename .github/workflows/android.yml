@@ -49,7 +49,14 @@ jobs:
           distribution: temurin
           java-version: '21'
 
+      # `packages` has to be set. The action defaults it to `tools platform-tools`, and `tools`
+      # - the old SDK Tools package - was withdrawn from Google's repository, so sdkmanager
+      # exits 1 with "Failed to find package 'tools'" and the whole job dies before Gradle runs.
+      # This built fine on 2026-09-07 and broke without a commit touching it, which is the drift
+      # #4 was opened to catch.
       - uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
 
       - run: npm ci
 
