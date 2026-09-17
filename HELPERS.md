@@ -1010,6 +1010,14 @@ What bringing a video into the project remembers.
 |---|---|
 | `useVideoImportState` | The hidden `<video>` and its bytes, the import dialog, extraction progress and whether it went to a background chip, the list of videos already fetched, the scene detector's progress and settings, and the two stop flags. The *logic* stays in App — it reads the document, the bitmap store and the paint path. The two stop flags are refs, because they are read inside loops that are already running. |
 
+## `src/hooks/useTimelineView.js`
+
+How the timeline is being looked at.
+
+| | |
+|---|---|
+| `useTimelineView` | The zoom (`pps`, plus `ppsRef` for handlers that must not close over a stale one), the visible pixel `win` that drives virtualisation, and `scrubbing` / `snapLinePos`. The window is the load-bearing part: rendering every cut block and ruler tick of a long film is tens of thousands of DOM nodes and stalls the whole app, so only one screen either side is rendered, recomputed on a frame rather than per scroll event. |
+
 ## `src/hooks/useToolSettings.js`
 
 What the pen is set to: which tool, what colour, how wide, how hard.
