@@ -18,7 +18,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "check": "npm run typecheck && npm test && node scripts/hook-baseline.mjs && node scripts/helper-index.mjs && node scripts/unreachable.mjs && node scripts/unused-imports.mjs && node scripts/stroke-writes.mjs && node scripts/i18n-check.mjs && npm run build",
-    "smoke": "node test/smoke/boot.mjs"
+    "smoke": "node test/smoke/boot.mjs && node test/smoke/draw.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.2",
