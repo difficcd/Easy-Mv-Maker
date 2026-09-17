@@ -45,6 +45,8 @@ import { drawTextSelection, drawFloatingSelection, drawMotionPath } from './canv
 import { createBitmapStore } from './canvas/bitmapStore.js';
 import { regionBounds, rectBounds, mosaic, blurMaskedRegion } from './canvas/pixelEffects.js';
 import { useLayerCache } from './hooks/useLayerCache.js';
+import { useNotices } from './hooks/useNotices.js';
+import { useDialogs } from './hooks/useDialogs.js';
 import { useVideoImportState } from './hooks/useVideoImportState.js';
 import { useGesture } from './hooks/useGesture.js';
 import { useLiveOverlay } from './hooks/useLiveOverlay.js';
@@ -209,6 +211,10 @@ export default function App() {
     // The document. Changes go through cutsReducer's named actions - see that file for why, and
     // prefer a named action to patchCut/patchCuts when adding one.
     const [cuts, dispatchCuts] = React.useReducer(cutsReducer, [firstCut()]);
+    // What the app is telling the user - a running job, a passing message, a failure that stays.
+    const notices = useNotices();
+    // Which dialog is open, and the dialogs.rebinding two of them share.
+    const dialogs = useDialogs();
     const [numTracks, setNumTracks] = useState(2);
     const [onionPrev, setOnionPrev] = useState(false);
     const [onionNext, setOnionNext] = useState(false);
@@ -265,23 +271,18 @@ export default function App() {
         encode: JSON.stringify,
     });
     const toggleTrackHidden = (which) => setHiddenTracks(h => ({ ...h, [which]: !h[which] }));
-    const [showToolKeys, setShowToolKeys] = useState(false);
     // Everything bringing a video into the project remembers. The logic stays here; what it
     // keeps does not.
     const vid = useVideoImportState();
     const [autoSceneDetect, setAutoSceneDetect] = useStored('mv_auto_scene', true, onOffCodec);
     // YouTube link input. A native prompt fails silently once blocked, so this asks in-app.
-    const [linkPrompt, setLinkPrompt] = useState(null); // {kind:'video'|'audio'}
 
     const {
         audioRef, audioB64Ref, audioCtxRef, audioSourceRef, audioDestRef,
         audioAsBlob, restoreAudio, loadAudioUrl, handleAudioUpload, handleDeleteAudio, loadYoutubeAudio,
-    } = useAudioTrack({ audioUrl, dispatchMedia, setLinkPrompt });
+    } = useAudioTrack({ audioUrl, dispatchMedia, setLinkPrompt: notices.setLinkPrompt });
     // Make failures visible. Once the browser blocks dialogs, alert is swallowed and the app
     // looks like it simply did nothing - which is exactly why one bug here took so long to find.
-    const [appError, setAppError] = useState(null);
-    const [toast, setToast] = useState(null);            // unobtrusive notice
-    useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 3000); return () => clearTimeout(t); }, [toast]);
     const isExporting = useRef(false);
     const mediaRecorderRef = useRef(null);
     const exportEndRef = useRef(0);
@@ -309,7 +310,6 @@ export default function App() {
     const [activePartId, setActivePartId] = useState(null); // scope playback and editing to one part (null = all)
     const lassoClipRef = useRef(null); // copied lasso pixels: { bitmapId, w, h }
     const [hasLassoClip, setHasLassoClip] = useState(false);
-    const [showHelp, setShowHelp] = useState(false);
     const fileHandleRef = useRef(null);
     // Shared by both document hooks: the server backup falls back to it for a name, and the
     // local save writes it. Owned here because the two hooks cannot both create it.
@@ -397,7 +397,6 @@ export default function App() {
     // an app that decided at load time is an app that never notices the server starting.
     const serverAvailable = useServerProbe();
 
-    const [loadProgress, setLoadProgress] = useState(null); // {label, done, total}; total 0 means the length is unknown
     // The lang state exists only to trigger a redraw; lookups read the module variable.
     // Nothing here is memoised, so changing it re-renders the whole tree in the new language.
     const [lang, setLang] = useState(loadLang);
@@ -410,9 +409,6 @@ export default function App() {
         decode: (raw) => keymapFrom(JSON.parse(raw)),
         encode: JSON.stringify,
     });
-    const [showSettings, setShowSettings] = useState(false); // settings dialog (shortcuts and theme)
-    const [settingsTab, setSettingsTab] = useState('theme'); // open on the theme tab
-    const [rebinding, setRebinding] = useState(null);  // id of the action waiting to be rebound
     // The view - zoom and offset - and every gesture that changes it, from a hook. It only needs
     // the element the wheel listens on.
     const { view, setView, zoomCanvas, resetView, spaceDown, spaceDownRef, panningRef, lastInteractRef,
@@ -493,7 +489,7 @@ export default function App() {
         const source = renderLassoSource();
         if (!source) return;
         const b = paintedBounds(source.ctx.getImageData(0, 0, CANVAS_W, CANVAS_H).data, CANVAS_W, CANVAS_H);
-        if (!b) { setToast(tr('이 레이어에는 아직 그린 것이 없습니다')); return; }
+        if (!b) { notices.setToast(tr('이 레이어에는 아직 그린 것이 없습니다')); return; }
         handleSetTool('lasso');
         liftLassoSelection([{ x: b.x, y: b.y }, { x: b.x + b.w, y: b.y }, { x: b.x + b.w, y: b.y + b.h }, { x: b.x, y: b.y + b.h }], source);
     };
@@ -529,7 +525,7 @@ export default function App() {
         const bitmapId = cloneBitmapId(clip.bitmapId, bmpCache); // independent copy per paste
         const x = Math.round(CANVAS_W / 2 - clip.w / 2), y = Math.round(CANVAS_H / 2 - clip.h / 2);
         commitStrokeToLayer(currentCutId, layer.id, { id: nextId(), tool: 'paste', bitmapId, x, y, w: clip.w, h: clip.h });
-        setToast(tr('붙여넣었습니다 — 캔버스 가운데'));
+        notices.setToast(tr('붙여넣었습니다 — 캔버스 가운데'));
     };
 
 
@@ -703,7 +699,7 @@ export default function App() {
         recordLiveHistory();
         dispatchCuts(replaceCuts(scaleProjectTimes(cuts, plan.factor)));
         setPlaybackRate(RATE_DEFAULT);
-        setToast(plan.stranded.length
+        notices.setToast(plan.stranded.length
             ? tr('{0}배 길이로 굳혔습니다 · 음원/영상 트랙은 늘어나지 않으니 위치를 다시 맞춰주세요 · Ctrl+Z로 취소', plan.factor.toFixed(2).replace(/\.?0+$/, ''))
             : tr('{0}배 길이로 굳혔습니다 · Ctrl+Z로 취소', plan.factor.toFixed(2).replace(/\.?0+$/, '')));
     };
@@ -867,8 +863,8 @@ export default function App() {
         const assetCount = (assetBase && Array.isArray(data.assets)) ? data.assets.length : 0;
         const bmpCount = data.bitmaps ? Object.keys(data.bitmaps).length : 0;
         const total = assetCount + bmpCount;
-        const { heavy, tick } = makeLoadProgress(total, p => setLoadProgress({ label, ...p }));
-        if (heavy) setLoadProgress({ label, done: 0, total });
+        const { heavy, tick } = makeLoadProgress(total, p => notices.setProgress({ label, ...p }));
+        if (heavy) notices.setProgress({ label, done: 0, total });
         // Externalized frame assets (server projects): fetch one at a time and keep as a Blob
         // (off-heap). Bounded memory — one frame in flight.
         let missingAssets = 0;
@@ -933,8 +929,8 @@ export default function App() {
             // work was lost. Deliberately not "not found on the server": this counts a missing
             // server asset and a frame that would not decode out of a local file, and only one of
             // those has a server in it.
-            if (missingAssets) setAppError(tr('{0}개의 파일을 불러오지 못해 비어 있습니다.', missingAssets));
-        } finally { setLoadProgress(null); restoreBusyRef.current = false; }
+            if (missingAssets) notices.setError(tr('{0}개의 파일을 불러오지 못해 비어 있습니다.', missingAssets));
+        } finally { notices.setProgress(null); restoreBusyRef.current = false; }
         return true;
     };
 
@@ -950,7 +946,7 @@ export default function App() {
         doServerBackup, openBackupList, doBackupRestore, doBackupDelete,
     } = useServerStorage({
         serverAvailable, buildData, restore,
-        setLoadProgress, setAppError, setToast,
+        setLoadProgress: notices.setProgress, setAppError: notices.setError, setToast: notices.setToast,
         liveRef, localNameRef,
     });
 
@@ -979,7 +975,7 @@ export default function App() {
         storageInfo, didRecoverRef,
     } = useLocalDocuments({
         buildData, restore, resetToEmpty,
-        setAppError, setToast, setLoadProgress, fileHandleRef, localNameRef,
+        setAppError: notices.setError, setToast: notices.setToast, setLoadProgress: notices.setProgress, fileHandleRef, localNameRef,
     });
 
     // Debounced autosave to IndexedDB, so a refresh or a crash never costs work. It waits for
@@ -1087,7 +1083,7 @@ export default function App() {
         const s = window.prompt(tr('"{0}" → "{1}" 사이에 넣을 중간 프레임 개수 (1~12)', A.name, B.name), '3');
         if (!s) return;
         const n = Math.max(1, Math.min(12, Math.round(+s) || 3));
-        setLoadProgress({ label: tr('중간 프레임 만드는 중'), done: 0, total: n });
+        notices.setProgress({ label: tr('중간 프레임 만드는 중'), done: 0, total: n });
         await new Promise(r => setTimeout(r, 30)); // paint the bar once before starting
         try {
             const make = morphPrepare(flattenCutToImageData(A), flattenCutToImageData(B));
@@ -1100,12 +1096,12 @@ export default function App() {
                 const nc = mkCut({ id: nextId(), name: `${A.name}~${i + 1}`, startTime: st, endTime: st + dur, track: A.track });
                 nc.layers[0].strokes.push({ id: nextId(), tool: 'paste', bitmapId, x: 0, y: 0 });
                 newCuts.push(nc);
-                setLoadProgress({ label: tr('중간 프레임 만드는 중'), done: i + 1, total: n });
+                notices.setProgress({ label: tr('중간 프레임 만드는 중'), done: i + 1, total: n });
                 await new Promise(r => setTimeout(r, 0)); // yield to the UI between frames so it does not look frozen
             }
             dispatchCuts(insertCutsShifting(A.track, A.endTime, n * dur, newCuts));
         } catch (e) { alert(tr('트위닝 실패: ') + e.message); }
-        finally { setLoadProgress(null); }
+        finally { notices.setProgress(null); }
     };
 
     const handleDuplicateCut = (id) => {
@@ -1284,6 +1280,10 @@ export default function App() {
 
     // Rebinding: while waiting, whatever combination is pressed is captured verbatim, ahead of
     // any other handling.
+    // Named out of the bundle so the dependency list can be the two things this actually uses.
+    // Listing `dialogs` instead would re-subscribe the window listener every time any dialog
+    // opened or closed.
+    const { rebinding, setRebinding } = dialogs;
     useEffect(() => {
         if (!rebinding) return;
         const h = (e) => {
@@ -1302,7 +1302,7 @@ export default function App() {
         };
         window.addEventListener('keydown', h, true);
         return () => window.removeEventListener('keydown', h, true);
-    }, [rebinding, setKeymap]);
+    }, [rebinding, setRebinding, setKeymap]);
 
     // Track the timeline's visible px window (scroll + resize) to drive virtualization.
     useEffect(() => {
@@ -2052,7 +2052,7 @@ export default function App() {
     // Local-only: pull a video by URL through the API, then reuse the frame-import dialog.
     const loadYoutubeVideo = async (presetUrl) => {
         const url = typeof presetUrl === 'string' ? presetUrl : null;
-        if (!url) { setLinkPrompt({ kind: 'video' }); return; } // raise the input dialog and stop here
+        if (!url) { notices.setLinkPrompt({ kind: 'video' }); return; } // raise the input dialog and stop here
         vid.setBusy({ done: 0, total: 0, fetching: true });
         try {
             const res = await fetch('/api/youtube-video?url=' + encodeURIComponent(url) + '&maxHeight=1080');
@@ -2062,7 +2062,7 @@ export default function App() {
             openVideoImport(file, 'YT ' + (url.match(/(?:v=|youtu\.be\/|shorts\/)([\w-]{6,})/)?.[1] || tr('영상')), { url, key: 'yt:' + url });
         } catch (e) {
             console.error('[import]', e);
-            setAppError(tr('영상 가져오기 실패: ') + e.message);
+            notices.setError(tr('영상 가져오기 실패: ') + e.message);
         } finally { vid.setBusy(null); }
     };
 
@@ -2090,7 +2090,7 @@ export default function App() {
             // answer: putting them in the project that happens to be open now would be writing
             // into a document the user never asked to change.
             if (docEpochRef.current !== startedFor) {
-                setAppError(tr('다른 프로젝트를 여는 동안 영상 프레임 추출이 끝나 결과를 버렸습니다. 프로젝트를 연 뒤 다시 가져오세요.'));
+                notices.setError(tr('다른 프로젝트를 여는 동안 영상 프레임 추출이 끝나 결과를 버렸습니다. 프로젝트를 연 뒤 다시 가져오세요.'));
                 return;
             }
             // Re-importing the same source replaces its old frames instead of piling up duplicates.
@@ -2123,7 +2123,7 @@ export default function App() {
             setTimeout(gcBitmaps, 0); // replaced frames' bitmaps go too
         } catch (e) {
             console.error('[import]', e);
-            setAppError(tr('영상 가져오기 실패: ') + e.message);
+            notices.setError(tr('영상 가져오기 실패: ') + e.message);
         } finally {
             vid.stopRef.current = false;
             vid.setBusy(null);
@@ -2135,7 +2135,7 @@ export default function App() {
         audio: { audioRef, audioCtxRef, audioSourceRef, audioDestRef, audioUrl, audioData },
         range: { playStart, playEnd, cw: CANVAS_W, ch: CANVAS_H, transparentBg, transparentFormat },
         doc: { buildData, restore, invalidateCutsUsing, decodeFrameBitmap, paintFrame },
-        report: { setLoadProgress, setAppError, setCurrentTime, setIsPlaying },
+        report: { setLoadProgress: notices.setProgress, setAppError: notices.setError, setCurrentTime, setIsPlaying },
         recording: { isExporting, exportEndRef, exportStartRef, requestFrameRef, mediaRecorderRef },
     });
 
@@ -2240,20 +2240,20 @@ export default function App() {
         <div className="app-container">
             <audio ref={audioRef} style={{ display: 'none' }} />
             <video ref={vid.elRef} muted playsInline style={{ display: 'none' }} />
-            <ProgressOverlay progress={loadProgress} />
-            {showSettings && (
+            <ProgressOverlay progress={notices.progress} />
+            {dialogs.settings && (
                 <SettingsModal
-                    tab={settingsTab} setTab={setSettingsTab}
-                    onClose={() => { setShowSettings(false); setRebinding(null); }}
+                    tab={dialogs.settingsTab} setTab={dialogs.setSettingsTab}
+                    onClose={dialogs.closeSettings}
                     themeColor={themeColor} setThemeColor={setThemeColor} themeRecent={themeRecent} defaultTheme={DEFAULT_THEME}
                     uiSat={uiSat} setUiSat={setUiSat}
                     keymap={keymap} setKeymap={setKeymap} defaultKeys={DEFAULT_KEYS} keyLabels={KEY_LABELS} conflicts={findConflicts(keymap)}
                     videoOpacity={videoOverlay ? (videoOverlay.opacity ?? 1) : null} setVideoOpacity={v => dispatchMedia(setVideoOpacity(v))}
-                    setShowToolKeys={setShowToolKeys}
+                    setShowToolKeys={dialogs.setToolKeys}
                     lang={lang} changeLang={changeLang}
                     playbackRate={playbackRate} setPlaybackRate={setPlaybackRate} playbackRates={PLAYBACK_RATES}
                     bakeInfo={bakeInfo} bakePlaybackSpeed={bakePlaybackSpeed}
-                    rebinding={rebinding} setRebinding={setRebinding} />
+                    rebinding={dialogs.rebinding} setRebinding={dialogs.setRebinding} />
             )}
             {serverProjects !== null && <ProjectPicker title={tr('서버에서 열기')} items={serverProjects} onOpen={doServerOpen} onDelete={doServerDelete} onClose={() => setServerProjects(null)} />}
             {localProjects !== null && <ProjectPicker title={tr('로컬에서 열기')} items={localProjects} onOpen={doLocalOpen} onDelete={doLocalDelete} onClose={() => setLocalProjects(null)} />}
@@ -2266,15 +2266,15 @@ export default function App() {
                     onClose={() => setBackupList(null)} />
             )}
             <Notices videoBusy={vid.busy} videoBusyBg={vid.busyBg} setVideoBusyBg={vid.setBusyBg} videoStopRef={vid.stopRef}
-                backupProg={backupProg} toast={toast} setToast={setToast} appError={appError} setAppError={setAppError} />
-            {linkPrompt && (
+                backupProg={backupProg} toast={notices.toast} setToast={notices.setToast} appError={notices.error} setAppError={notices.setError} />
+            {notices.linkPrompt && (
                 <LinkPromptModal
-                    title={linkPrompt.kind === 'audio' ? tr('유튜브 음원 가져오기') : tr('유튜브 영상 프레임 가져오기')}
+                    title={notices.linkPrompt.kind === 'audio' ? tr('유튜브 음원 가져오기') : tr('유튜브 영상 프레임 가져오기')}
                     placeholder="https://www.youtube.com/watch?v=..."
-                    onClose={() => setLinkPrompt(null)}
+                    onClose={() => notices.setLinkPrompt(null)}
                     onSubmit={(url) => {
-                        const kind = linkPrompt.kind;
-                        setLinkPrompt(null);
+                        const kind = notices.linkPrompt.kind;
+                        notices.setLinkPrompt(null);
                         if (kind === 'audio') loadYoutubeAudio(url); else loadYoutubeVideo(url);
                     }} />
             )}
@@ -2284,7 +2284,7 @@ export default function App() {
                     videoBusy={vid.busy} setVideoBusyBg={vid.setBusyBg} videoStopRef={vid.stopRef}
                     runVideoImport={runVideoImport}
                     loadVideoOverlay={loadVideoOverlay} loadAudioUrl={loadAudioUrl} parseClock={parseClock}
-                    setShowHelp={setShowHelp} canvasW={CANVAS_W} canvasH={CANVAS_H} setCanvasSize={setCanvasSize} />
+                    setShowHelp={dialogs.setHelp} canvasW={CANVAS_W} canvasH={CANVAS_H} setCanvasSize={setCanvasSize} />
             )}
             {vid.sceneCfg && videoOverlay && (
                 <SceneDetectModal sceneCfg={vid.sceneCfg} setSceneCfg={vid.setSceneCfg}
@@ -2294,12 +2294,12 @@ export default function App() {
                     cancelSceneDetect={() => { vid.sceneStopRef.current = true; }}
                     hasCuts={!!videoOverlay.cuts?.length} clearVideoCuts={() => dispatchMedia(clearVideoCuts())} />
             )}
-            {showToolKeys && (
+            {dialogs.toolKeys && (
                 <ToolKeysModal keymap={keymap} setKeymap={setKeymap} defaultKeys={DEFAULT_KEYS} keyLabels={KEY_LABELS}
-                    conflicts={findConflicts(keymap)} rebinding={rebinding} setRebinding={setRebinding}
-                    onClose={() => { setShowToolKeys(false); setRebinding(null); }} />
+                    conflicts={findConflicts(keymap)} rebinding={dialogs.rebinding} setRebinding={dialogs.setRebinding}
+                    onClose={dialogs.closeToolKeys} />
             )}
-            {showHelp && <HelpModal keymap={keymap} onClose={() => setShowHelp(false)} />}
+            {dialogs.help && <HelpModal keymap={keymap} onClose={() => dialogs.setHelp(false)} />}
             <TopBar
                 doNew={doNew} doSave={doSave} doOpen={doOpen} doLocalSave={doLocalSave}
                 openLocalList={openLocalList} doServerSave={doServerSave} openServerList={openServerList}
@@ -2307,9 +2307,9 @@ export default function App() {
                 handleAudioUpload={handleAudioUpload} loadYoutubeAudio={loadYoutubeAudio}
                 handleDeleteAudio={handleDeleteAudio} audioFile={audioFile} openVideoImport={openVideoImport}
                 loadYoutubeVideo={loadYoutubeVideo} videoFileRef={videoFileRef} recentVideos={vid.recent}
-                reimportRecent={reimportRecent} serverAvailable={serverAvailable} setToast={setToast}
+                reimportRecent={reimportRecent} serverAvailable={serverAvailable} setToast={notices.setToast}
                 canvasW={CANVAS_W} canvasH={CANVAS_H}
-                setCanvasSize={setCanvasSize} setShowHelp={setShowHelp} setShowSettings={setShowSettings}
+                setCanvasSize={setCanvasSize} setShowHelp={dialogs.setHelp} setShowSettings={dialogs.setSettings}
                 keymap={keymap} view={view} zoomCanvas={zoomCanvas} resetView={resetView} autoSavedAt={autoSavedAt}
                 autosaveErr={autosaveErr} backupAt={backupAt} storageInfo={storageInfo} handleExport={handleExport}
                 doSplitSave={doSplitSave} handleExportPieces={handleExportPieces} />
@@ -2360,7 +2360,7 @@ export default function App() {
                 numTracks={numTracks} onTimelinePointerDown={onTimelinePointerDown}
                 parts={parts}
                 playbackRate={playbackRate} playheadRef={playheadRef} pps={pps}
-                openPlaybackSettings={() => { setSettingsTab('play'); setShowSettings(true); }}
+                openPlaybackSettings={() => dialogs.openSettings('play')}
                 removeVideoOverlay={removeVideoOverlay} renamePart={renamePart} sceneDetect={vid.scene}
                 hiddenTracks={hiddenTracks} toggleTrackHidden={toggleTrackHidden}
                 openVideoSettings={() => vid.setSceneCfg(c => c || { threshold: 14, rangeOn: false, startText: '0:00', endText: '' })}

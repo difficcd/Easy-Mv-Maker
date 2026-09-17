@@ -835,6 +835,14 @@ The curve ruler: tap out anchors, and a smooth line is fitted through them.
 |---|---|
 | `useCurveTool` | Owns the anchors, whether one is being fine-tuned by dragging, and the count the mode bar shows. What it commits is an ordinary brush stroke, so nothing downstream has to learn that a curve exists. |
 
+## `src/hooks/useDialogs.js`
+
+Which dialog is open, and the state one of them owns.
+
+| | |
+|---|---|
+| `useDialogs` | Settings, the tool-key list and help, plus the settings tab and the action waiting to be rebound. `openSettings(tab)` opens it on a tab; `closeSettings` and `closeToolKeys` also abandon a rebinding in progress — leaving one armed means the next key pressed anywhere is swallowed. That pair of lines was written out twice before. |
+
 ## `src/hooks/useExport.js`
 
 Getting the movie out: a recorded video, a GIF or PNG sequence, or several `.emv` files painted into one file.
@@ -959,6 +967,14 @@ that lives here rather than on a server" and all three go through `buildData` an
 | | |
 |---|---|
 | `useLocalDocuments` | Owns the local pickers, the tab list and their in-memory snapshots. Takes `buildData`, `restore` and `resetToEmpty` as functions: the first two because building a document reads most of App's state and restoring one writes most of it, the third for the same reason from the other end - emptying the document is App's business. |
+
+## `src/hooks/useNotices.js`
+
+What the app is telling the user: a running job, a passing message, a failure that stays.
+
+| | |
+|---|---|
+| `useNotices` | `progress`, `toast`, `error` and the YouTube `linkPrompt`, with the toast's three-second timer — re-armed when it is replaced, so a second toast gets its own three seconds. The error stays until dismissed because it used to be an alert, and a blocked alert looked exactly like nothing having happened. |
 
 ## `src/hooks/usePanelLayout.js`
 
