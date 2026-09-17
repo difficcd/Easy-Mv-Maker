@@ -1215,7 +1215,7 @@ export function computeCutAnim(ac, time, cw = CANVAS_W, ch = CANVAS_H) {
     return { alpha: Math.max(0, alpha), sx, sy, tx, ty };
 }
 
-export const LAYER_ANIM_DEFAULT = { mode: 'progress', speed: 1, count: 0, tx: 0, ty: 0, rot: 0, scale: 0, pivotX: 0.5, pivotY: 0.5, path: null, ease: 'linear', easePower: 2, swayAmount: 0, swaySpeed: 1, swayCurve: null, swayProfile: null, swayAxis: 'y', keys: null, mosaic: 0 };
+export const LAYER_ANIM_DEFAULT = { mode: 'progress', speed: 1, count: 0, tx: 0, ty: 0, rot: 0, scale: 0, pivotX: 0.5, pivotY: 0.5, path: null, ease: 'linear', easePower: 2, swayAmount: 0, swaySpeed: 1, swayCurve: null, swayProfile: null, swayAxis: 'y', keys: null, mosaic: 0, mosaicMin: 0, mosaicFrom: 0, mosaicTo: 1, mosaicSpeed: 1 };
 
 // Easing applied to a 0..1 progress. type: linear | in (slow→fast) | out (fast→slow)
 // | inout. power (>=1) is the user-adjustable strength/weight.
@@ -1228,6 +1228,61 @@ export const LAYER_ANIM_DEFAULT = { mode: 'progress', speed: 1, count: 0, tx: 0,
 // The floor is the whole reason it is not just (end - start). A cut can be dragged to zero
 // length, and every one of these divides by it.
 const MIN_CUT_SECONDS = 0.0001;
+
+/**
+ * An effect that runs between two values over part of a cut.
+ *
+ * The mosaic and the film grain were both asked for the same three things - how long, how fast,
+ * and between which values - so they are the same question and get one answer.
+ *
+ *   from..to    where in the cut it happens, as fractions. The duration is the gap between them.
+ *   speed       how quickly it gets there once started. Above 1 it arrives early and holds;
+ *               below 1 it is still on its way when the window closes.
+ *   min..max    the values it runs between. A non-zero `min` starts the effect already applied
+ *               and deepens it, which scaling from nothing cannot express.
+ *
+ * Outside the window it holds: `min` before, whatever it reached after. Holding rather than
+ * snapping back is what makes "come on over the first second and stay" expressible.
+ *
+ * @param {number} t01 progress through the cut
+ * @param {{from?: number, to?: number, speed?: number, min?: number, max?: number,
+ *   ease?: string, easePower?: number}} o
+ * @returns {number}
+ */
+export function effectAt(t01, { from = 0, to = 1, speed = 1, min = 0, max = 0, ease, easePower } = {}) {
+    if (!(max > 0)) return 0;
+    const lo = Math.max(0, Math.min(max, min));
+    const a = Math.max(0, Math.min(1, from));
+    const b = Math.max(a, Math.min(1, to));
+    const span = b - a;
+    // A zero-length window is a step, not a division by zero: nothing before it, all of it after.
+    let p = span <= 0 ? (t01 >= b ? 1 : 0) : (t01 - a) / span;
+    p = Math.max(0, Math.min(1, p * Math.max(0.01, speed)));
+    return lo + (max - lo) * applyEase(p, ease, easePower);
+}
+
+/**
+ * The mosaic block size at a moment in a cut, in pixels. Under 2 means no mosaic.
+ *
+ * @param {any} a a layer animation
+ * @param {number} t01 progress through the cut
+ * @param {number} prog the layer's eased progress, for `mode: 'return'`
+ * @returns {number}
+ */
+export function mosaicBlockAt(a, t01, prog) {
+    const max = a?.mosaic || 0;
+    if (!(max > 0)) return 0;
+    // There-and-back keeps using the shared swing, so the control that already says "come back"
+    // goes on meaning that, and the window only says when the swing may happen.
+    if (a.mode === 'return') {
+        const lo = Math.max(0, Math.min(max, a.mosaicMin || 0));
+        return lo + (max - lo) * Math.max(0, Math.min(1, prog));
+    }
+    return effectAt(t01, {
+        from: a.mosaicFrom, to: a.mosaicTo, speed: a.mosaicSpeed,
+        min: a.mosaicMin, max, ease: a.ease, easePower: a.easePower,
+    });
+}
 
 /**
  * A cut's length in seconds, never zero.
@@ -1758,7 +1813,7 @@ export function computeLayerAnim(layer, ac, time, cw = CANVAS_W, ch = CANVAS_H) 
     // Mosaic as an effect rather than a stamp: the block grows with the same eased progress the
     // move and the scale use, so "over the cut" and "there and back" mean the same thing here as
     // they do for everything else on this panel.
-    const mosaic = Math.max(0, (a.mosaic || 0) * prog);
+    const mosaic = mosaicBlockAt(a, t, prog);
     if (tx === 0 && ty === 0 && rot === 0 && sc === 1 && shear === 0 && !prof && alpha === 1 && mosaic < 2) return null;
     return {
         tx, ty, rot, sc, alpha, shear: prof ? 0 : shear, px: (a.pivotX ?? 0.5) * cw, py: (a.pivotY ?? 0.5) * ch,

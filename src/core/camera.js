@@ -42,6 +42,11 @@ export const CAMERA_DEFAULT = {
      * shot looks like as a shot.
      */
     noise: 0,
+    /** The same three controls the mosaic has: where in the cut, how fast, and from what. */
+    noiseMin: 0,
+    noiseFrom: 0,
+    noiseTo: 1,
+    noiseSpeed: 1,
 };
 
 /**
