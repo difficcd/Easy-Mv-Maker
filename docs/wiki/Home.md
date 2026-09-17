@@ -8,6 +8,13 @@ each feature lives. Anything that needs a paragraph of *why* belongs here instea
 
 ## Pages
 
+- **[Part animation](Part-animation)** — moving a layer on its own: move, rotate, scale, a drawn
+  path, keyframes, sway for hair and cloth, the mosaic effect, the boiling line.
+- **[Camera](Camera)** — presets, a drawn path, zoom and tilt, shake, static, and the timing
+  controls the effects share.
+- **[Importing video](Importing-video)** — as frames to trace over, or as a reference track
+  underneath; duplicates, parts, and scene detection.
+- **[Exporting](Exporting)** — video, GIF or PNG sequence, and which one you get and why.
 - **[Working with a lot of cuts](Working-with-a-lot-of-cuts)** — why a long project gets slow, how
   to split one up, and how to put it back together.
 

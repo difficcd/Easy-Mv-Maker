@@ -221,7 +221,7 @@ function WhereIsIt() {
         <>
             <b style={{ color: '#9aa' }}>{tr('이 기능 어디 있나')}</b>
             <Row what={tr('카메라 무브')} where={<>{cutGear} → {tr('카메라')}</>} />
-            <Row what={tr('필름 노이즈')} where={<>{cutGear} → {tr('카메라')} → {tr('노이즈')}</>} />
+            <Row what={tr('노이즈 (지지직)')} where={<>{cutGear} → {tr('카메라')} → {tr('노이즈')}</>} />
             <Row what={tr('컷 등장·퇴장')} where={<>{cutGear} → {tr('컷 애니메이션')}</>} />
             <Row what={tr('파츠 애니메이션')} where={<>{layerFilm} {tr('(이동·회전·크기·경로)')}</>} />
             <Row what={tr('모자이크 효과')} where={<>{layerFilm} → {tr('모자이크')}</>} />
