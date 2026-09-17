@@ -132,42 +132,37 @@ export function blurMaskedRegion(src, bounds, pts, rad, makeCanvas) {
     return blurred;
 }
 
-// --- film grain ---------------------------------------------------------------------------
+// --- static ------------------------------------------------------------------------------
 //
-// Grain sits on the film, not in the scene, so it is drawn over the finished frame and outside
-// the camera transform. Inside it, the grain would zoom and shake with the picture, which reads
-// as dirt on the artwork rather than as film.
+// The "noise" the user meant, and not the one that was first built. Film grain is a fine, even
+// texture over a frame. This is a broken signal: the picture tears sideways in bands, the colour
+// channels come apart at the tear so the edges fringe red on one side and cyan on the other, and
+// there is snow. It crackles rather than shimmers - most frames are clean and then one is not.
 //
-// A pre-rendered tile, blitted a few times with a moving offset. The obvious implementation -
-// walk the frame's ImageData and perturb every pixel - is two million pixels a frame in
-// JavaScript, which is not affordable on a repaint.
+// All of it outside the camera transform and over the finished frame, for the same reason the
+// grain was: it is what happens to the signal, not to the scene.
 //
-// Measured in Chrome at 1920x1080, per frame, after warm-up:
-//
-//   15 blits, overlay       4.9 ms      what this does
-//    1 blit,  overlay       3.3 ms      a tile big enough to cover the frame in one go
-//   15 blits, source-over   1.6 ms
-//
-// So the composite mode is the cost, not the number of blits: `overlay` over the frame is ~3 ms
-// whatever it is made of. That rules out buying much by growing the tile, and growing it is not
-// free anyway - building one is a 31 ms stall at 512 and scales with its area, so a 1024 tile
-// trades a 93 ms hitch the first time grain is switched on for 0.7 ms a frame. Not worth it.
-//
-// ~5 ms is affordable here because paintFrame does not run per pointer move: a stroke in progress
-// goes to the live overlay (hooks/useLiveOverlay), and this repaints on document changes and on
-// playback frames. At 30fps it is a sixth of the budget.
+// A pre-rendered noise tile is still used, for the snow. The tearing is a handful of band copies,
+// and the fringing comes from the two halves of the colour split being added back together with
+// a sideways offset between them - `lighter` of a red-only copy and a cyan-only copy of the same
+// band is the band itself where they line up, and colour where they do not. That is what a real
+// chroma tear looks like, and it works on a black-and-white drawing because the paper is white.
 
-/** Edge of the noise tile. See the measurements above before changing it. */
+/** Edge of the noise tile. Larger means fewer blits per frame and a longer period before it repeats. */
 const TILE = 512;
-/** How often the grain is re-seeded. Film grain changes per frame; faster than this is just noise. */
-const GRAIN_FPS = 24;
+/** How often the static is re-rolled. Faster than this and it stops reading as flicker. */
+const STATIC_FPS = 24;
+
+/** A cheap integer hash, so every frame's tears are decided the same way on export as on screen. */
+const hash = (a, b = 0) => {
+    let h = Math.imul(a ^ 0x9E3779B1, 0x85EBCA6B) ^ Math.imul(b + 0x1b873593, 0xC2B2AE35);
+    h ^= h >>> 15; h = Math.imul(h, 0x2C1B3C6D); h ^= h >>> 12;
+    return h >>> 0;
+};
+const unit = (a, b) => hash(a, b) / 0x100000000;   // 0..1
 
 /**
- * A square of monochrome noise centred on mid grey, for compositing in `overlay`.
- *
- * Centred rather than starting at black because `overlay` leaves mid grey alone: the average
- * pixel then comes out unchanged and only the variation shows, so turning the grain up adds
- * texture instead of fogging the picture.
+ * A square of monochrome noise centred on mid grey.
  *
  * @param {() => HTMLCanvasElement} makeCanvas
  * @returns {HTMLCanvasElement}
@@ -179,7 +174,6 @@ export function grainTile(makeCanvas) {
     const img = ctx.createImageData(TILE, TILE);
     const d = img.data;
     for (let i = 0; i < d.length; i += 4) {
-        // One value for all three channels: coloured grain reads as sensor noise, not film.
         const v = 128 + ((Math.random() * 2 - 1) * 110);
         d[i] = d[i + 1] = d[i + 2] = v;
         d[i + 3] = 255;
@@ -189,32 +183,85 @@ export function grainTile(makeCanvas) {
 }
 
 /**
- * Lay the tile over the whole frame, offset by an amount that changes with time.
+ * Broken-signal static over the finished frame.
  *
- * The offset is a hash of the quantised time rather than a random number, for the same reason
- * the camera shake is: the export repaints these frames, and grain that differed between the
- * preview and the file would be a difference nobody could explain.
+ * Intermittent by design: at full amount roughly half the frames tear, at a low amount only the
+ * occasional one. Static that is on every frame is a filter; static that comes and goes is a
+ * fault, and the fault is what the effect is for.
  *
- * @param {CanvasRenderingContext2D} ctx
- * @param {HTMLCanvasElement} tile from grainTile
- * @param {{cw: number, ch: number, amount: number, seconds: number}} o
- *   `amount` is 0..1, the opacity of the grain
+ * Deterministic in time, like the shake and the mosaic: the export repaints these frames.
+ *
+ * @param {CanvasRenderingContext2D} ctx the frame, already painted; also the source of the tears
+ * @param {HTMLCanvasElement} tile from grainTile, for the snow
+ * @param {{cw: number, ch: number, amount: number, seconds: number,
+ *   band: {current: any}, red: {current: any}, cyan: {current: any},
+ *   scratch: (ref: any, w: number, h: number) => {canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D}}} o
+ *   three scratch slots: the band being torn, and its two colour halves
  */
-export function drawGrain(ctx, tile, { cw, ch, amount, seconds }) {
-    if (!tile || !(amount > 0)) return;
-    const step = Math.floor((Number.isFinite(seconds) ? seconds : 0) * GRAIN_FPS);
-    const ox = Math.imul(step, 0x9E3779B1) >>> 0;
-    const oy = Math.imul(step ^ 0x5bf03635, 0x85EBCA6B) >>> 0;
-    const sx = -(ox % TILE), sy = -(oy % TILE);
+export function drawStatic(ctx, tile, { cw, ch, amount, seconds, band, red, cyan, scratch }) {
+    if (!(amount > 0)) return;
+    const a = Math.min(1, amount);
+    const step = Math.floor((Number.isFinite(seconds) ? seconds : 0) * STATIC_FPS);
+    const frame = ctx.canvas;
 
-    ctx.save();
-    ctx.globalCompositeOperation = 'overlay';
-    ctx.globalAlpha = Math.min(1, amount);
-    ctx.imageSmoothingEnabled = false;
-    for (let y = sy; y < ch; y += TILE) {
-        for (let x = sx; x < cw; x += TILE) ctx.drawImage(tile, x, y);
+    // --- tears: sideways-shifted bands with the colour split at the tear ---
+    // How many this frame. Rolled per frame so it flickers: none on most, several on a few.
+    const roll = unit(step, 1);
+    const bands = roll < 1 - a * 0.6 ? 0 : 1 + Math.floor(unit(step, 2) * (1 + a * 3));
+    for (let k = 0; k < bands; k++) {
+        const y = Math.floor(unit(step, 10 + k * 3) * ch);
+        const h = Math.max(4, Math.floor(6 + unit(step, 11 + k * 3) * 70 * a));
+        const dx = Math.round((unit(step, 12 + k * 3) * 2 - 1) * 60 * a);
+        const split = Math.max(1, Math.round(2 + a * 10));
+        const bh = Math.min(h, ch - y);
+        if (bh <= 0) continue;
+
+        // The band, lifted out first. Reading the frame while writing a shifted copy of the same
+        // rows into it would smear; the copy has to come from somewhere else.
+        const { canvas: bandC, ctx: bctx } = scratch(band, cw, bh);
+        bctx.clearRect(0, 0, cw, bh);
+        bctx.drawImage(frame, 0, y, cw, bh, 0, 0, cw, bh);
+
+        // Its two colour halves. multiply by a solid colour keeps only that channel.
+        const half = (ref, colour) => {
+            const { canvas, ctx: hctx } = scratch(ref, cw, bh);
+            hctx.globalCompositeOperation = 'source-over';
+            hctx.clearRect(0, 0, cw, bh);
+            hctx.drawImage(bandC, 0, 0);
+            hctx.globalCompositeOperation = 'multiply';
+            hctx.fillStyle = colour;
+            hctx.fillRect(0, 0, cw, bh);
+            hctx.globalCompositeOperation = 'source-over';
+            return canvas;
+        };
+        const r = half(red, '#ff0000');
+        const c = half(cyan, '#00ffff');
+
+        // Put the band back shifted, as the sum of its halves with the halves pulled apart.
+        // Where they overlap that is the picture; where they do not, it is red or cyan.
+        ctx.save();
+        ctx.beginPath(); ctx.rect(0, y, cw, bh); ctx.clip();
+        ctx.clearRect(0, y, cw, bh);
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.drawImage(r, dx - split, y);
+        ctx.drawImage(c, dx + split, y);
+        ctx.restore();
     }
-    ctx.restore();
+
+    // --- snow: coarse bright specks, on every frame but faint, stronger on torn ones ---
+    if (tile) {
+        const ox = hash(step, 3) % TILE, oy = hash(step, 4) % TILE;
+        const scale = 3;   // blown up: snow is coarse, grain is fine, and this is not grain
+        ctx.save();
+        ctx.globalCompositeOperation = 'screen';
+        ctx.globalAlpha = a * (bands ? 0.35 : 0.12);
+        ctx.imageSmoothingEnabled = false;
+        const size = TILE * scale;
+        for (let yy = -(oy * scale) % size; yy < ch; yy += size) {
+            for (let xx = -(ox * scale) % size; xx < cw; xx += size) ctx.drawImage(tile, xx, yy, size, size);
+        }
+        ctx.restore();
+    }
 }
 
 /**

@@ -147,7 +147,7 @@ export function CameraPanel({ cut, updCutCamera, cameraCapture, setCameraCapture
             <div style={R()}>
                 <span style={{ width: 34, color: '#aaa', flexShrink: 0 }}>{tr('노이즈')}</span>
                 <NumIn value={round2(c.noise || 0)} onChange={v => set({ noise: Math.max(0, Math.min(1, v)) })} step={0.05} min={0} w={54} label={tr('세기')}
-                    title={tr('필름 그레인. 투명 배경으로 내보낼 때는 적용되지 않습니다')} />
+                    title={tr('지지직 — 화면이 찢어지고 색이 갈라지는 TV 노이즈. 투명 배경으로 내보낼 때는 적용되지 않습니다')} />
                 <NumIn value={round2(c.noiseMin || 0)} onChange={v => set({ noiseMin: Math.max(0, Math.min(1, v)) })} step={0.05} min={0} w={54} label={tr('시작값')}
                     title={tr('처음부터 이만큼은 노이즈로 시작합니다')} />
             </div>
