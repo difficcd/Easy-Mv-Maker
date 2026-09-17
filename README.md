@@ -1,8 +1,8 @@
 <h1 align="center">Easy MV Maker</h1>
 
 <p align="center">
-  Timeline-based frame-animation and drawing studio with a built-in canvas,<br>
-  made for the Galaxy Tab — the pen draws, the finger navigates.
+  Timeline-based frame-animation and drawing studio with a built-in canvas.<br>
+  Runs in the browser, on a PC or a tablet — a pen or a mouse draws, a finger navigates.
 </p>
 
 <p align="center">
@@ -25,7 +25,7 @@
 <p align="center"><sub>The accent colour above is user-set — one colour drives the whole UI.</sub></p>
 
 <p align="center">
-  <a href="https://github.com/difficcd/Easy-Mv-Maker/wiki"><b>User guide (wiki)</b></a> — the camera, part animation and effects, importing video, exporting, working with a lot of cuts
+  <a href="https://github.com/difficcd/Easy-Mv-Maker/wiki"><b>User guide (wiki)</b></a> — getting started, the camera, part animation and effects, importing video, exporting, working with a lot of cuts · <a href="https://github.com/difficcd/Easy-Mv-Maker/wiki/%ED%99%88">한국어</a>
 </p>
 
 ## Features
