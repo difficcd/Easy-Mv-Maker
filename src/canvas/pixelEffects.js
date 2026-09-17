@@ -135,9 +135,9 @@ export function blurMaskedRegion(src, bounds, pts, rad, makeCanvas) {
 // --- static ------------------------------------------------------------------------------
 //
 // The "noise" the user meant, and not the one that was first built. Film grain is a fine, even
-// texture over a frame. This is a broken signal: the picture tears sideways in bands, the colour
-// channels come apart at the tear so the edges fringe red on one side and cyan on the other, and
-// there is snow. It crackles rather than shimmers - most frames are clean and then one is not.
+// texture over a frame. This is a broken signal: the whole picture wobbles and its colour channels
+// come apart so every edge fringes red one side and cyan the other, there is snow over all of it,
+// and now and then a frame goes badly wrong and tears in bands. It crackles rather than shimmers.
 //
 // All of it outside the camera transform and over the finished frame, for the same reason the
 // grain was: it is what happens to the signal, not to the scene.
@@ -185,18 +185,31 @@ export function grainTile(makeCanvas) {
 /**
  * Broken-signal static over the finished frame.
  *
- * Intermittent by design: at full amount roughly half the frames tear, at a low amount only the
- * occasional one. Static that is on every frame is a filter; static that comes and goes is a
- * fault, and the fault is what the effect is for.
+ * Three things, and the first two cover the *whole* frame - "it only does part of the picture"
+ * was the report against the first version, which tore a few bands and left the rest clean.
  *
- * Deterministic in time, like the shake and the mosaic: the export repaints these frames.
+ *   split    the whole picture's colour channels pulled apart sideways, so every edge fringes
+ *            red one side and cyan the other. Small on a quiet frame, wide on a bad one.
+ *   jitter   the whole picture knocked sideways and down by a pixel or two, differently each
+ *            frame. This is most of what reads as 지지직.
+ *   tears    a few horizontal bands shoved further sideways than the rest, on the bad frames.
  *
- * @param {CanvasRenderingContext2D} ctx the frame, already painted; also the source of the tears
+ * Plus snow over all of it.
+ *
+ * "Bad frames" are rolled per frame from a hash, so it flickers: mostly a mild wobble, then a
+ * frame that goes badly wrong. Deterministic in time, like the shake and the mosaic, so the
+ * export gets the same bad frames the preview showed.
+ *
+ * Cost: the split is the whole frame drawn twice more with a colour multiply each, about six
+ * full-frame operations. That is the price of doing it everywhere, and it is only paid on cuts
+ * that have static turned on.
+ *
+ * @param {CanvasRenderingContext2D} ctx the frame, already painted
  * @param {HTMLCanvasElement} tile from grainTile, for the snow
  * @param {{cw: number, ch: number, amount: number, seconds: number,
  *   band: {current: any}, red: {current: any}, cyan: {current: any},
  *   scratch: (ref: any, w: number, h: number) => {canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D}}} o
- *   three scratch slots: the band being torn, and its two colour halves
+ *   three scratch slots: a copy of the frame, and its two colour halves
  */
 export function drawStatic(ctx, tile, { cw, ch, amount, seconds, band, red, cyan, scratch }) {
     if (!(amount > 0)) return;
@@ -204,57 +217,60 @@ export function drawStatic(ctx, tile, { cw, ch, amount, seconds, band, red, cyan
     const step = Math.floor((Number.isFinite(seconds) ? seconds : 0) * STATIC_FPS);
     const frame = ctx.canvas;
 
-    // --- tears: sideways-shifted bands with the colour split at the tear ---
-    // How many this frame. Rolled per frame so it flickers: none on most, several on a few.
-    const roll = unit(step, 1);
-    const bands = roll < 1 - a * 0.6 ? 0 : 1 + Math.floor(unit(step, 2) * (1 + a * 3));
-    for (let k = 0; k < bands; k++) {
-        const y = Math.floor(unit(step, 10 + k * 3) * ch);
-        const h = Math.max(4, Math.floor(6 + unit(step, 11 + k * 3) * 70 * a));
-        const dx = Math.round((unit(step, 12 + k * 3) * 2 - 1) * 60 * a);
-        const split = Math.max(1, Math.round(2 + a * 10));
-        const bh = Math.min(h, ch - y);
-        if (bh <= 0) continue;
+    // How bad this frame is: a quiet wobble most of the time, a real fault now and then.
+    const bad = unit(step, 1) < a * 0.45;
+    const split = Math.max(1, Math.round((bad ? 6 : 1.5) * a + (bad ? unit(step, 2) * 10 * a : 0)));
+    const jx = Math.round((unit(step, 5) * 2 - 1) * (bad ? 14 : 3) * a);
+    const jy = Math.round((unit(step, 6) * 2 - 1) * (bad ? 4 : 1) * a);
 
-        // The band, lifted out first. Reading the frame while writing a shifted copy of the same
-        // rows into it would smear; the copy has to come from somewhere else.
-        const { canvas: bandC, ctx: bctx } = scratch(band, cw, bh);
-        bctx.clearRect(0, 0, cw, bh);
-        bctx.drawImage(frame, 0, y, cw, bh, 0, 0, cw, bh);
+    // The frame lifted out whole, then rebuilt from its two colour halves with the halves pulled
+    // apart. multiply by a solid colour keeps one channel; `lighter` of the two is the picture
+    // where they overlap and colour where they do not.
+    const { canvas: copy, ctx: cctx } = scratch(band, cw, ch);
+    cctx.globalCompositeOperation = 'source-over';
+    cctx.clearRect(0, 0, cw, ch);
+    cctx.drawImage(frame, 0, 0);
+    const half = (ref, colour) => {
+        const { canvas, ctx: hctx } = scratch(ref, cw, ch);
+        hctx.globalCompositeOperation = 'source-over';
+        hctx.clearRect(0, 0, cw, ch);
+        hctx.drawImage(copy, 0, 0);
+        hctx.globalCompositeOperation = 'multiply';
+        hctx.fillStyle = colour;
+        hctx.fillRect(0, 0, cw, ch);
+        hctx.globalCompositeOperation = 'source-over';
+        return canvas;
+    };
+    const r = half(red, '#ff0000');
+    const c = half(cyan, '#00ffff');
 
-        // Its two colour halves. multiply by a solid colour keeps only that channel.
-        const half = (ref, colour) => {
-            const { canvas, ctx: hctx } = scratch(ref, cw, bh);
-            hctx.globalCompositeOperation = 'source-over';
-            hctx.clearRect(0, 0, cw, bh);
-            hctx.drawImage(bandC, 0, 0);
-            hctx.globalCompositeOperation = 'multiply';
-            hctx.fillStyle = colour;
-            hctx.fillRect(0, 0, cw, bh);
-            hctx.globalCompositeOperation = 'source-over';
-            return canvas;
-        };
-        const r = half(red, '#ff0000');
-        const c = half(cyan, '#00ffff');
+    ctx.save();
+    ctx.clearRect(0, 0, cw, ch);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.drawImage(r, jx - split, jy);
+    ctx.drawImage(c, jx + split, jy);
+    ctx.restore();
 
-        // Put the band back shifted, as the sum of its halves with the halves pulled apart.
-        // Where they overlap that is the picture; where they do not, it is red or cyan.
-        ctx.save();
-        ctx.beginPath(); ctx.rect(0, y, cw, bh); ctx.clip();
-        ctx.clearRect(0, y, cw, bh);
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.drawImage(r, dx - split, y);
-        ctx.drawImage(c, dx + split, y);
-        ctx.restore();
+    // On a bad frame, a few bands shoved further than the rest. Read from the copy, not the
+    // frame, since the frame has just been rewritten.
+    if (bad) {
+        const bands = 1 + Math.floor(unit(step, 3) * 3);
+        for (let k = 0; k < bands; k++) {
+            const y = Math.floor(unit(step, 10 + k * 3) * ch);
+            const h = Math.max(4, Math.floor(6 + unit(step, 11 + k * 3) * 60));
+            const dx = Math.round((unit(step, 12 + k * 3) * 2 - 1) * 80 * a);
+            const bh = Math.min(h, ch - y);
+            if (bh > 0) ctx.drawImage(copy, 0, y, cw, bh, dx, y, cw, bh);
+        }
     }
 
-    // --- snow: coarse bright specks, on every frame but faint, stronger on torn ones ---
+    // Snow over everything: coarse bright specks, heavier on a bad frame.
     if (tile) {
-        const ox = hash(step, 3) % TILE, oy = hash(step, 4) % TILE;
-        const scale = 3;   // blown up: snow is coarse, grain is fine, and this is not grain
+        const ox = hash(step, 7) % TILE, oy = hash(step, 8) % TILE;
+        const scale = 3;
         ctx.save();
         ctx.globalCompositeOperation = 'screen';
-        ctx.globalAlpha = a * (bands ? 0.35 : 0.12);
+        ctx.globalAlpha = a * (bad ? 0.45 : 0.2);
         ctx.imageSmoothingEnabled = false;
         const size = TILE * scale;
         for (let yy = -(oy * scale) % size; yy < ch; yy += size) {
