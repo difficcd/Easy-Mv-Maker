@@ -1222,7 +1222,7 @@ export function computeCutAnim(ac, time, cw = CANVAS_W, ch = CANVAS_H) {
     return { alpha: Math.max(0, alpha), sx, sy, tx, ty };
 }
 
-export const LAYER_ANIM_DEFAULT = { mode: 'progress', speed: 1, count: 0, tx: 0, ty: 0, rot: 0, scale: 0, pivotX: 0.5, pivotY: 0.5, path: null, ease: 'linear', easePower: 2, swayAmount: 0, swaySpeed: 1, swayCurve: null, swayProfile: null, swayAxis: 'y', swayLag: 0, keys: null, mosaic: 0, mosaicMin: 0, mosaicFrom: 0, mosaicTo: 1, mosaicSpeed: 1, mosaicRect: null };
+export const LAYER_ANIM_DEFAULT = { mode: 'progress', speed: 1, count: 0, tx: 0, ty: 0, rot: 0, scale: 0, pivotX: 0.5, pivotY: 0.5, path: null, ease: 'linear', easePower: 2, swayAmount: 0, swaySpeed: 1, swayCurve: null, swayProfile: null, swayAxis: 'y', swayLag: 0, keys: null, mosaic: 0, mosaicMin: 0, mosaicFrom: 0, mosaicTo: 1, mosaicSpeed: 1, mosaicRect: null, noise: 0, noiseFrom: 0, noiseTo: 1 };
 
 // Easing applied to a 0..1 progress. type: linear | in (slow→fast) | out (fast→slow)
 // | inout. power (>=1) is the user-adjustable strength/weight.
@@ -1860,10 +1860,15 @@ export function computeLayerAnim(layer, ac, time, cw = CANVAS_W, ch = CANVAS_H) 
     // move and the scale use, so "over the cut" and "there and back" mean the same thing here as
     // they do for everything else on this panel.
     const mosaic = mosaicBlockAt(a, t, prog);
-    if (tx === 0 && ty === 0 && rot === 0 && sc === 1 && shear === 0 && !prof && alpha === 1 && mosaic < 2) return null;
+    // Static is a gate, not a ramp: it is at its strength the moment its window opens. The
+    // mosaic ramps because "gradually pixelate" is a thing; "gradually more broken signal" reads
+    // as the strength control not working, which is how it was reported.
+    const nf = Math.max(0, Math.min(1, a.noiseFrom ?? 0)), nt = Math.max(nf, Math.min(1, a.noiseTo ?? 1));
+    const noise = (a.noise > 0 && t >= nf && t <= nt) ? Math.min(1, a.noise) : 0;
+    if (tx === 0 && ty === 0 && rot === 0 && sc === 1 && shear === 0 && !prof && alpha === 1 && mosaic < 2 && !noise) return null;
     return {
         tx, ty, rot, sc, alpha, shear: prof ? 0 : shear, px: (a.pivotX ?? 0.5) * cw, py: (a.pivotY ?? 0.5) * ch,
-        swayProfile: prof, swayAxis: axis, swayDisp, mosaic, mosaicRect: a.mosaicRect || null,
+        swayProfile: prof, swayAxis: axis, swayDisp, mosaic, mosaicRect: a.mosaicRect || null, noise,
         // The renderer needs these rather than one number, because with a lag the displacement
         // is different at every point along the axis.
         swayWave: prof ? { amp: (sway / 100) * (axis === 'y' ? ch : cw), speed: a.swaySpeed || 1, curve: a.swayCurve || null, time, lag: a.swayLag || 0 } : null,

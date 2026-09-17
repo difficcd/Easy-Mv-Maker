@@ -43,7 +43,7 @@ import { warpedOutline, warpedHandles, rotateKnob } from './canvas/warpRender.js
 import { drawMarquee, HANDLE_GRAB_PX } from './canvas/marquee.js';
 import { drawTextSelection, drawFloatingSelection, drawMotionPath, drawMosaicRegion } from './canvas/editChrome.js';
 import { createBitmapStore } from './canvas/bitmapStore.js';
-import { regionBounds, rectBounds, mosaic, blurMaskedRegion, grainTile, drawStatic, clampRegion } from './canvas/pixelEffects.js';
+import { regionBounds, rectBounds, mosaic, blurMaskedRegion, grainTile, clampRegion } from './canvas/pixelEffects.js';
 import { useLayerCache } from './hooks/useLayerCache.js';
 import { useTimelineView } from './hooks/useTimelineView.js';
 import { useCutListUi } from './hooks/useCutListUi.js';
@@ -98,7 +98,7 @@ import {
     DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT,
     pointInPolygon, safeArray, hexToRgb, bucketFillTransparentRegion,
     imageDataToDataURL, dataURLToImageData, drawStrokesOnCtx, sizeCanvas, flattenLayersInUiOrder, extractVideoFrames, fitRect, detectSceneCuts, curveToWave, morphPrepare,
-    targetCanvasFor, imageDataCanvas, seekTarget, accentSoft, effectAt, cutProgress, scratchCanvas,
+    targetCanvasFor, imageDataCanvas, seekTarget, accentSoft,
 } from './canvas/canvasUtils';
 
 
@@ -361,11 +361,12 @@ export default function App() {
     // Reused inside the composite loop; see the mask path in paintFrame.
     const maskScratchRef = useRef(null);
     const grainTileRef = useRef(/** @type {HTMLCanvasElement|null} */(null)); // built once, blitted per frame
-    // The static's three scratch slots: a torn band, and its red and cyan halves. Three plain
-    // refs, not one holding three - see the mosaic's, above, for how that went.
-    const staticBandRef = useRef(null);
+    // The static's four scratch slots: a copy of the layer, its red and cyan halves, and the
+    // output. Four plain refs, not one holding four - see the mosaic's, above, for how that went.
+    const staticCopyRef = useRef(null);
     const staticRedRef = useRef(null);
     const staticCyanRef = useRef(null);
+    const staticOutRef = useRef(null);
     // Two slots: the shrunken copy, and - when only a region is pixelated - the composed layer.
     // Separate, because composing reads the small one while writing the full one.
     //
@@ -1849,33 +1850,14 @@ export default function App() {
             cw: CANVAS_W, ch: CANVAS_H, flattenClipGroup, hiddenByGesture, selection,
             bitmapEntry: (id) => bitmapStoreRef.current.get(id), maskScratchRef,
             mosaicScratch: { full: mosaicFullRef, small: mosaicSmallRef },
+            staticScratch: { copy: staticCopyRef, red: staticRedRef, cyan: staticCyanRef, out: staticOutRef },
+            // Built on first use, not at mount: most projects never turn the static on.
+            staticTile: (grainTileRef.current ||= grainTile(() => document.createElement('canvas'))),
         });
 
         // Text objects live outside paint layers ("text layer").
         drawSceneTexts(ctx, scene, { cw: CANVAS_W, ch: CANVAS_H, drawTextObject, textNeedsBox, measureTextBox });
         if (camAt) ctx.restore();
-
-        // Static, over the finished frame and outside the camera transform: it is what happens to
-        // the signal, not to the scene, so it must not zoom or shake with the picture.
-        //
-        // Skipped on a transparent background. `overlay` paints into fully transparent pixels,
-        // so grain would fill the empty area and a PNG sequence meant as an overlay would come
-        // out opaque - which is the whole reason that export mode exists.
-        // Through the same envelope the mosaic uses, so "over the first second and stay" means
-        // the same thing on both. Not inside computeCamera: that is playing-only, and grain is a
-        // look rather than a move - it should be visible while the frame is being worked on.
-        const cam = primary?.camera;
-        const grain = cam ? effectAt(cutProgress(primary, t), {
-            from: cam.noiseFrom, to: cam.noiseTo, speed: cam.noiseSpeed,
-            min: cam.noiseMin, max: cam.noise || 0, ease: cam.ease, easePower: cam.easePower,
-        }) : 0;
-        if (grain > 0 && !transparentBg) {
-            if (!grainTileRef.current) grainTileRef.current = grainTile(() => document.createElement('canvas'));
-            drawStatic(ctx, grainTileRef.current, {
-                cw: CANVAS_W, ch: CANVAS_H, amount: grain, seconds: t - primary.startTime,
-                band: staticBandRef, red: staticRedRef, cyan: staticCyanRef, scratch: scratchCanvas,
-            });
-        }
     }, [cuts, currentCutId, currentCut, onionPrev, onionNext, selection, layerCanvasCache, frameDecodeTick, videoOverlay, boilTick, dragTick, transparentBg]);
 
     paintFrameRef.current = paintFrame;

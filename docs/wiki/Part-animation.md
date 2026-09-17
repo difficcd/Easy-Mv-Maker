@@ -76,7 +76,21 @@ It is applied to the layer's own pixels, not laid over the frame, so the sway an
 movement act on the blocks. That is what makes it look like the drawing is pixelated rather than
 like a filter over the shot.
 
-Skipped on a transparent-background export, like the camera's static.
+## Noise (static)
+
+A broken-signal look on the layer's own lines: the ink wobbles, its colour comes apart so every
+edge fringes red on one side and cyan on the other, there is snow on the strokes, and now and
+then a frame tears sideways in bands. It flickers — most frames are a mild wobble, then one goes
+badly wrong.
+
+**Strength** is 0 to 1 and it is a gate, not a ramp: the moment the window opens the static is at
+that strength. **Start / End** are where in the cut it is on, as 0 to 1; an end of 1 keeps it on to
+the end of the cut.
+
+It is applied only where the layer has ink. Empty canvas stays empty, so it works on a transparent
+background and in a PNG-sequence export, and the sway, the mask and the part's movement all act
+on the glitched drawing. It began as an effect over the whole frame and was moved here for
+exactly that reason: the noise should follow the lines, not shake the canvas.
 
 ## Boiling line
 

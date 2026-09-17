@@ -145,21 +145,6 @@ export function CameraPanel({ cut, updCutCamera, cameraCapture, setCameraCapture
                 <NumIn value={c.shakeSpeed ?? 6} onChange={v => set({ shakeSpeed: Math.max(0.1, v) })} step={1} min={0.1} w={54} label={tr('속도')} title={tr('초당 흔들리는 횟수')} />
             </div>
             <div style={R()}>
-                <span style={{ width: 34, color: '#aaa', flexShrink: 0 }}>{tr('노이즈')}</span>
-                <NumIn value={round2(c.noise || 0)} onChange={v => set({ noise: Math.max(0, Math.min(1, v)) })} step={0.05} min={0} w={54} label={tr('세기')}
-                    title={tr('지지직 — 화면이 찢어지고 색이 갈라지는 TV 노이즈. 투명 배경으로 내보낼 때는 적용되지 않습니다')} />
-                <NumIn value={round2(c.noiseMin || 0)} onChange={v => set({ noiseMin: Math.max(0, Math.min(1, v)) })} step={0.05} min={0} w={54} label={tr('시작값')}
-                    title={tr('처음부터 이만큼은 노이즈로 시작합니다')} />
-            </div>
-            {!!c.noise && (
-                <div style={R()} title={tr('컷 전체를 0~1로 봤을 때 언제 시작해서 언제 끝나는지. 속도는 그 구간 안에서 얼마나 빨리 도달하는지입니다.')}>
-                    <span style={{ width: 34, flexShrink: 0 }} />
-                    <NumIn value={round2(c.noiseFrom ?? 0)} onChange={v => set({ noiseFrom: Math.max(0, Math.min(1, v)) })} step={0.1} min={0} w={46} label={tr('시작')} title={tr('컷의 몇 지점에서 시작할지 (0~1)')} />
-                    <NumIn value={round2(c.noiseTo ?? 1)} onChange={v => set({ noiseTo: Math.max(0, Math.min(1, v)) })} step={0.1} min={0} w={46} label={tr('끝')} title={tr('컷의 몇 지점에서 끝날지 (0~1)')} />
-                    <NumIn value={round2(c.noiseSpeed ?? 1)} onChange={v => set({ noiseSpeed: Math.max(0.01, v) })} step={0.25} min={0.01} w={46} label={tr('속도')} suffix="x" title={tr('구간 안에서 도달하는 속도. 1보다 크면 일찍 도달하고 유지합니다')} />
-                </div>
-            )}
-            <div style={R()}>
                 <button className="button" style={{ flex: 1, height: 26, background: capturing ? 'var(--accent)' : undefined }}
                     onClick={() => setCameraCapture(capturing ? null : { cutId: cut.id })}
                     title={tr('캔버스에 카메라가 지나갈 길을 그립니다')}>
@@ -315,6 +300,12 @@ export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCaptur
                     <NumIn label={tr('속도')} value={round2(a.mosaicSpeed ?? 1)} onChange={v => updLayerAnim(cut.id, layer.id, { mosaicSpeed: Math.max(0.01, v) })} step={0.25} min={0.01} w={46} suffix="x" title={tr('구간 안에서 도달하는 속도. 1보다 크면 일찍 도달하고 유지합니다')} />
                 </div>
             )}
+            <div style={R('#8bd')} title={tr('지지직 — 이 레이어의 선이 찢어지고 색이 갈라집니다. 선이 있는 곳에만 걸립니다')}>
+                <span style={{ width: 24, flexShrink: 0 }}>{tr('노이즈')}</span>
+                <NumIn label={tr('세기')} value={round2(a.noise || 0)} onChange={v => updLayerAnim(cut.id, layer.id, { noise: Math.max(0, Math.min(1, v)) })} step={0.1} min={0} w={46} title={tr('0~1. 켜는 순간 이 세기로 나옵니다')} />
+                <NumIn label={tr('시작')} value={round2(a.noiseFrom ?? 0)} onChange={v => updLayerAnim(cut.id, layer.id, { noiseFrom: Math.max(0, Math.min(1, v)) })} step={0.1} min={0} w={46} title={tr('컷의 몇 지점에서 켜질지 (0~1)')} />
+                <NumIn label={tr('끝')} value={round2(a.noiseTo ?? 1)} onChange={v => updLayerAnim(cut.id, layer.id, { noiseTo: Math.max(0, Math.min(1, v)) })} step={0.1} min={0} w={46} title={tr('컷의 몇 지점에서 꺼질지 (0~1). 계속 켜두려면 1')} />
+            </div>
             {!!a.mosaic && (
                 <div style={R('#8bd')}>
                     <span style={{ width: 24, flexShrink: 0 }} />

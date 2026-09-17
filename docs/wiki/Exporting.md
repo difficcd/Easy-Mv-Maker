@@ -40,8 +40,8 @@ decoding, so there are no dropped or duplicated frames.
 - **PNG sequence** — a zip of full-size lossless frames, numbered. This is what an editor wants for
   an overlay, and it is the only lossless path out.
 
-The mosaic effect and the camera's static are **skipped** on a transparent background, because
-the way they blend paints into transparent pixels and would make the overlay opaque.
+The layer effects — mosaic and noise — come through on a transparent background: both work on
+the layer's own pixels and leave empty canvas empty, so the overlay stays an overlay.
 
 ## Exporting several pieces as one
 

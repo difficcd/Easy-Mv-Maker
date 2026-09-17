@@ -9,11 +9,11 @@
 import { applyCutAnim, imageDataCanvas, scratchCanvas } from './canvasUtils.js';
 import { applyPartTransform, drawMaskedLayer } from './layerComposite.js';
 import { drawSwayed } from './swayRender.js';
-import { pixelateCanvas, pixelateRegion, clampRegion } from './pixelEffects.js';
+import { pixelateCanvas, pixelateRegion, clampRegion, staticCanvas } from './pixelEffects.js';
 
 /**
  * @param {CanvasRenderingContext2D} ctx
- * @param {{cuts: Array<{cut: any, anim: any, groups: any[]}>}} scene from engine/evaluateFrame
+ * @param {{time: number, cuts: Array<{cut: any, anim: any, groups: any[]}>}} scene from engine/evaluateFrame
  * @param {object} deps
  * @param {number} deps.cw
  * @param {number} deps.ch
@@ -25,8 +25,11 @@ import { pixelateCanvas, pixelateRegion, clampRegion } from './pixelEffects.js';
  * @param {{current: any}} deps.maskScratchRef a scratch canvas slot for the mask
  * @param {{full: {current: any}, small: {current: any}}} deps.mosaicScratch scratch slots for
  *   the mosaic: the shrunken copy, and the composed layer when only a region is pixelated
+ * @param {{copy: {current: any}, red: {current: any}, cyan: {current: any}, out: {current: any}}} deps.staticScratch
+ *   four slots for the static; see staticCanvas for why none can be shared
+ * @param {HTMLCanvasElement | null} deps.staticTile the noise tile, built once by the caller
  */
-export function drawScene(ctx, scene, { cw, ch, flattenClipGroup, hiddenByGesture, selection, bitmapEntry, maskScratchRef, mosaicScratch }) {
+export function drawScene(ctx, scene, { cw, ch, flattenClipGroup, hiddenByGesture, selection, bitmapEntry, maskScratchRef, mosaicScratch, staticScratch, staticTile }) {
     for (const { cut: ac, anim, groups } of scene.cuts) {
         ctx.save();
         if (anim) {
@@ -62,7 +65,7 @@ export function drawScene(ctx, scene, { cw, ch, flattenClipGroup, hiddenByGestur
             // A region pixelates only part of the layer and keeps the rest; without one the
             // whole layer goes through the cheaper two-blit path.
             const region = la?.mosaic >= 2 ? clampRegion(la.mosaicRect, cw, ch) : null;
-            const src = la?.mosaic >= 2
+            let src = la?.mosaic >= 2
                 ? (region
                     ? (pixelateRegion(layerCanvas, la.mosaic, region, mosaicScratch, scratchCanvas, cw, ch) || layerCanvas)
                     : (pixelateCanvas(layerCanvas, la.mosaic, mosaicScratch.small, scratchCanvas) || layerCanvas))
@@ -72,9 +75,27 @@ export function drawScene(ctx, scene, { cw, ch, flattenClipGroup, hiddenByGestur
             // The whole-layer path hands back the shrunken canvas, which is then blown up here
             // with smoothing off. The region path has already composed a full-size image, so it
             // must be drawn 1:1 and smoothed like any other layer.
-            const shrunk = src !== layerCanvas && !region;
+            let shrunk = src !== layerCanvas && !region;
+
+            // Static after the mosaic, so the blocks tear too. It wants a full-size source, so a
+            // shrunken mosaic is blown back up first - which is what the shrunk flag was for.
+            let staticSrc = src;
+            if (la?.noise > 0 && staticTile) {
+                if (shrunk) {
+                    const { canvas: up, ctx: uctx } = scratchCanvas(staticScratch.copy, cw, ch);
+                    uctx.imageSmoothingEnabled = false;
+                    uctx.clearRect(0, 0, cw, ch);
+                    uctx.drawImage(src, 0, 0, cw, ch);
+                    uctx.imageSmoothingEnabled = true;
+                    staticSrc = up;
+                    shrunk = false;
+                }
+                const glitched = staticCanvas(staticSrc, staticTile, { cw, ch, amount: la.noise, seconds: scene.time - ac.startTime }, staticScratch, scratchCanvas);
+                if (glitched) staticSrc = glitched;
+            }
             if (shrunk) ctx.imageSmoothingEnabled = false;
 
+            src = staticSrc;
             if (la?.swayProfile && !mask) {
                 drawSwayed(ctx, src, { profile: la.swayProfile, axis: la.swayAxis, disp: la.swayDisp, wave: la.swayWave, cw, ch });
             } else if (!mask) {
