@@ -73,6 +73,7 @@ Camera moves: presets, drawn paths, and the transform they resolve to.
 | `CAMERA_DEFAULT` | No camera at all: the default, and what every existing project has. |
 | `CAMERA_PRESETS` | The fixed moves. Each returns the same shape a hand-drawn camera produces, so nothing downstream has to know which one it came from. Keyed by id; the label is a translation key resolved by the UI. |
 | `computeCamera` | Where the camera is at a normalised time through the cut. |
+| `cameraShake` | A handheld wobble: two sine waves per axis at ratios that never line up, so it does not visibly repeat, and the axes out of phase so it is not a diagonal slide. Deterministic — the export repaints the same frames, so anything random would shake differently in the file than on screen. Driven by seconds, not by progress through the cut. |
 | `resolveCamera` | Resolve a camera setting into the path and zoom range actually used. A drawn path wins over the preset's own, so somebody can pick "ken burns" for its zoom and then replace the movement without losing the zoom. |
 | `zoomForDrift` | The smallest zoom at which a camera may sit that far off centre without the frame running off the artwork. |
 

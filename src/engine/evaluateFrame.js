@@ -60,7 +60,9 @@ export function evaluateFrame(cuts, t, { playing, currentCutId, cw, ch }) {
     // A shot belongs to the cut on the lowest active track: that is the base scene, and the tracks
     // above it are parts of the same shot rather than shots of their own.
     const camCut = playing ? active.find(c => c.camera) : null;
-    const camera = camCut ? computeCamera(camCut.camera, cutProgress(camCut, t), cw, ch) : null;
+    // Elapsed seconds as well as progress: the shake is per-second, so that one setting wobbles
+    // at the same rate in a short cut and a long one.
+    const camera = camCut ? computeCamera(camCut.camera, cutProgress(camCut, t), cw, ch, t - camCut.startTime) : null;
 
     return {
         camera,

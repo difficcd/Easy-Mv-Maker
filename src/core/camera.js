@@ -32,7 +32,40 @@ export const CAMERA_DEFAULT = {
     rotTo: 0,
     ease: 'inout',
     easePower: 2,
+    /** Handheld wobble, in canvas pixels of maximum displacement. 0 is off. */
+    shake: 0,
+    /** Roughly how many wobbles a second. */
+    shakeSpeed: 6,
 };
+
+/**
+ * A handheld wobble at a moment in time.
+ *
+ * Two sine waves per axis at ratios that do not divide into each other, with the axes out of
+ * phase. One sine is a pendulum and reads as mechanical; summing two that never line up gives a
+ * path that does not visibly repeat over the length of a shot, which is what "handheld" means
+ * here. The weights add to 1, so `amp` really is the furthest it goes.
+ *
+ * Deterministic, and that is a requirement rather than a convenience: the export paints the same
+ * frames again through the same function, so anything random here would shake differently in the
+ * file than it did on screen.
+ *
+ * Driven by seconds rather than by progress through the cut, so the same setting wobbles at the
+ * same rate in a one-second cut and a ten-second one.
+ *
+ * @param {number} seconds since the cut began
+ * @param {number} amp maximum displacement in canvas pixels
+ * @param {number} speed wobbles a second
+ * @returns {{dx: number, dy: number}}
+ */
+export function cameraShake(seconds, amp, speed) {
+    if (!amp || !Number.isFinite(amp) || !Number.isFinite(seconds)) return { dx: 0, dy: 0 };
+    const w = seconds * (Number.isFinite(speed) ? speed : 6) * Math.PI * 2;
+    return {
+        dx: amp * (Math.sin(w) * 0.6 + Math.sin(w * 2.37 + 1.7) * 0.4),
+        dy: amp * (Math.sin(w * 1.31 + 0.6) * 0.6 + Math.sin(w * 2.91 + 3.1) * 0.4),
+    };
+}
 
 /**
  * The smallest zoom at which a camera may sit `drift` off centre without the frame running off
@@ -134,7 +167,8 @@ function panPreset(cw, ch, dx, dy) {
  *
  * @param {typeof CAMERA_DEFAULT | null | undefined} cam
  * @param {number} cw @param {number} ch
- * @returns {{path: {x:number,y:number}[], zoomFrom: number, zoomTo: number, rotFrom: number, rotTo: number} | null}
+ * @returns {{path: {x:number,y:number}[], zoomFrom: number, zoomTo: number, rotFrom: number,
+ *   rotTo: number, shake: number, shakeSpeed: number} | null}
  */
 export function resolveCamera(cam, cw, ch) {
     if (!cam) return null;
@@ -150,10 +184,14 @@ export function resolveCamera(cam, cw, ch) {
 
     // Nothing to do is worth detecting: it lets the renderer skip the transform entirely rather
     // than multiplying by an identity matrix on every frame of every cut that has no camera.
-    const still = (!path || path.length < 2) && zoomFrom === 1 && zoomTo === 1 && rotFrom === 0 && rotTo === 0;
+    const shake = num(cam.shake, preset?.shake, 0);
+    const shakeSpeed = num(cam.shakeSpeed, preset?.shakeSpeed, 6);
+    // Shake counts as a move. Left out of this test, a camera with nothing but a wobble set
+    // would resolve to null and the wobble would never be applied.
+    const still = (!path || path.length < 2) && zoomFrom === 1 && zoomTo === 1 && rotFrom === 0 && rotTo === 0 && !shake;
     if (still) return null;
 
-    return { path: path || [{ x: cw / 2, y: ch / 2 }], zoomFrom, zoomTo, rotFrom, rotTo };
+    return { path: path || [{ x: cw / 2, y: ch / 2 }], zoomFrom, zoomTo, rotFrom, rotTo, shake, shakeSpeed };
 }
 
 /** First of the three that is an actual number: the user's value, the preset's, then the base. */
@@ -169,10 +207,13 @@ const num = (v, fallback, base) => {
  * @param {typeof CAMERA_DEFAULT | null | undefined} cam
  * @param {number} t01 0 at the start of the cut, 1 at the end
  * @param {number} cw @param {number} ch
+ * @param {number} [seconds] elapsed since the cut began; drives the shake, so that the same
+ *   setting wobbles at the same rate whatever the cut's length. Falling back to t01 keeps an
+ *   old caller working, at the cost of the wobble being per-cut rather than per-second.
  * @returns {{cx: number, cy: number, zoom: number, rot: number} | null} null when there is no
  *   camera move, so the caller skips the transform rather than applying an identity
  */
-export function computeCamera(cam, t01, cw, ch) {
+export function computeCamera(cam, t01, cw, ch, seconds = t01) {
     const r = resolveCamera(cam, cw, ch);
     if (!r) return null;
 
@@ -181,9 +222,12 @@ export function computeCamera(cam, t01, cw, ch) {
     const p = applyEase(Math.max(0, Math.min(1, t01)), cam.ease ?? 'inout', cam.easePower ?? 2);
 
     const c = r.path.length > 1 ? samplePath(r.path, p) : r.path[0];
+    // The wobble rides on top of the move, and is not eased with it: easing a shake would make it
+    // slow down into the end of the shot, which reads as the camera being set down.
+    const { dx, dy } = cameraShake(seconds, r.shake, r.shakeSpeed);
     return {
-        cx: c.x,
-        cy: c.y,
+        cx: c.x + dx,
+        cy: c.y + dy,
         zoom: r.zoomFrom + (r.zoomTo - r.zoomFrom) * p,
         rot: (r.rotFrom + (r.rotTo - r.rotFrom) * p) * Math.PI / 180,
     };
