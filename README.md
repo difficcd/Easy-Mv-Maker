@@ -42,7 +42,7 @@
 **Motion and effects**
 - Boiling line — a shimmer applied to strokes you already drew, with amplitude, wavelength and minimum-width settings
 - Camera per cut: pan, zoom, tilt, a drawn path, presets, and a handheld shake — the whole frame moves and every layer follows
-- Layer effects with a start/end window inside the cut: mosaic (block size, speed, an optional region that moves with the layer) and static — the lines tear, fringe red and cyan and snow, only where there is ink, so it works on a transparent background
+- Layer effects with a start/end window inside the cut: mosaic (block size, speed, an optional region that moves with the layer) and static — the lines tear, fringe red and cyan and snow, only where there is ink, so it works on a transparent background; the static is available on texts too
 - Cut animation (in/out, deform, move, easing) + part animation (lasso a region: move / rotate / scale / path)
 - Keyframe tweening — shape morphing via a distance field, with centroid alignment
 - Sway that follows a curve you draw, with a lag so the tips trail the root, plus a bend profile using per-slice shear
