@@ -87,8 +87,10 @@ badly wrong.
 that strength. **Start / End** are where in the cut it is on, as 0 to 1; an end of 1 keeps it on to
 the end of the cut.
 
-**Colour** adds blue and green specks on the lines, on top of the grey snow — the tint a bad
-signal puts on an edge. Like the rest of the static it stays on the ink.
+**Colour** is the chromatic fringe — the line splits, red to one side and blue to the other,
+like a signal breaking up. It is a red and a blue silhouette of the ink laid behind the line and
+shifted apart, so it works on black ink and on a white background, and it grows with the
+tearing on a bad frame.
 
 It is applied only where the layer has ink. Empty canvas stays empty, so it works on a transparent
 background and in a PNG-sequence export, and the sway, the mask and the part's movement all act
