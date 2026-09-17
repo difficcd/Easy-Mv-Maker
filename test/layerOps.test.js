@@ -500,3 +500,32 @@ test('commitStroke: a placement decides where the stroke lands, and the reveal s
     assert.deepEqual(r.layers[0].strokes.map(s => s.id), ['paint', 'ink']);
     assert.equal(r.layers[0].visible, true);
 });
+
+// --- a move takes the mosaic region with it ---
+
+test('offsetLayers moves the mosaic region with the drawing', () => {
+    // The region says which part of *this drawing* is pixelated. Left behind, the drawing walks
+    // out from under its own mosaic.
+    const cut = { layers: [{
+        id: 'a', strokes: [{ points: [{ x: 10, y: 10 }] }],
+        anim: { mosaic: 40, mosaicRect: { x: 100, y: 200, w: 300, h: 150 } },
+    }] };
+    const out = offsetLayers(cut, ['a'], 25, -15);
+    assert.deepEqual(out.layers[0].anim.mosaicRect, { x: 125, y: 185, w: 300, h: 150 });
+});
+
+test('offsetLayers leaves a layer without a region alone', () => {
+    const cut = { layers: [{ id: 'a', strokes: [], anim: { mosaic: 40 } }] };
+    const out = offsetLayers(cut, ['a'], 25, -15);
+    assert.deepEqual(out.layers[0].anim, { mosaic: 40 });
+    const noAnim = offsetLayers({ layers: [{ id: 'a', strokes: [] }] }, ['a'], 5, 5);
+    assert.equal(noAnim.layers[0].anim, undefined);
+});
+
+test('offsetLayers does not move the motion path', () => {
+    // Where the part travels is a statement about the frame, not about the drawing, and it has
+    // always worked that way. Pinned so the region change above does not quietly grow.
+    const path = [{ x: 0, y: 0 }, { x: 50, y: 50 }];
+    const cut = { layers: [{ id: 'a', strokes: [], anim: { path } }] };
+    assert.deepEqual(offsetLayers(cut, ['a'], 25, -15).layers[0].anim.path, path);
+});

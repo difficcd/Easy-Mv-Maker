@@ -170,6 +170,12 @@ export function insertFill(strokes, fill, overPaint) {
  *
  *  - A stroke is either a path or a placed bitmap, and they carry position differently: one in
  *    every point, the other in a single x/y. Both have to move.
+ *  - So does the mosaic effect's region, which is in canvas coordinates. It says which part of
+ *    *this drawing* is pixelated - a face, usually - so leaving it behind while the drawing walks
+ *    out from under it is the whole of the bug it was reported as.
+ *
+ *    `anim.path` is deliberately not moved with them. That is where the part travels, which is a
+ *    statement about the frame rather than about the drawing, and it has always worked that way.
  *  - Only coordinates change, so the cached canvas signature - built from stroke count and the
  *    last stroke's identity - does not notice, and the layer would keep drawing at its old
  *    position. Bumping rev is what invalidates it.
@@ -193,6 +199,9 @@ export function offsetLayers(cut, layerIds, dx, dy) {
             strokes: (Array.isArray(l.strokes) ? l.strokes : []).map(st => st.points
                 ? { ...st, points: st.points.map(p => ({ ...p, x: p.x + dx, y: p.y + dy })) }
                 : { ...st, x: (st.x || 0) + dx, y: (st.y || 0) + dy }),
+            ...(l.anim?.mosaicRect
+                ? { anim: { ...l.anim, mosaicRect: { ...l.anim.mosaicRect, x: l.anim.mosaicRect.x + dx, y: l.anim.mosaicRect.y + dy } } }
+                : null),
         })),
     };
 }
