@@ -221,6 +221,39 @@ export function selectionStrokes(sel, eraseId, pasteId) {
     return { erase, paste };
 }
 
+const TWO_PI = Math.PI * 2;
+
+/** An angle folded into [-pi, pi), which is the range the rotation slider shows. */
+const normaliseAngle = (a) => {
+    const m = (a + Math.PI) % TWO_PI;
+    return (m < 0 ? m + TWO_PI : m) - Math.PI;
+};
+
+/**
+ * Rotation from dragging the knob above the selection.
+ *
+ * Measured as the angle the pointer has swept about the box's centre **since the drag began**,
+ * added to the rotation the box already had. Taken from the start rather than accumulated per
+ * move, so it cannot drift, and grabbing the knob anywhere on it does not make the box jump to
+ * meet the pointer.
+ *
+ * The result is folded into [-pi, pi). Past half a turn the raw difference flips sign, which
+ * would be a problem if the value meant anything - it does not: a rotation is modulo a full
+ * turn, so the picture is identical either way, and folding keeps the number in the range the
+ * slider displays instead of letting it wander.
+ *
+ * @param {{tx: number, ty: number, tw: number, th: number, rot?: number}} startSel
+ * @param {{x: number, y: number}} startPos where the drag began
+ * @param {{x: number, y: number}} pos where the pointer is now
+ * @returns {{rot: number}}
+ */
+export function applyRotateDrag(startSel, startPos, pos) {
+    const cx = startSel.tx + startSel.tw / 2;
+    const cy = startSel.ty + startSel.th / 2;
+    const swept = Math.atan2(pos.y - cy, pos.x - cx) - Math.atan2(startPos.y - cy, startPos.x - cx);
+    return { rot: normaliseAngle((startSel.rot || 0) + swept) };
+}
+
 /** Furthest a drag can push skew or bend. The same as the sliders' range, so the two agree. */
 export const WARP_LIMIT = 1;
 

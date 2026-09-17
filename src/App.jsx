@@ -20,7 +20,7 @@ import { tr, loadLang, saveLang, setLangValue } from './i18n';
 import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, patchLayer, nextLayerId, appendLayer, appendFolder, removeLayerTree } from './core/layerOps.js';
 import { mkCut, firstCut } from './core/document.js';
 import { selectionAfterClick, cutsToCopy } from './core/cutSelection.js';
-import { closeLassoPath, lassoBounds, applyResize, cutOutPolygon, cropImageData, selectionStrokes, applyWarpDrag, paintedBounds } from './core/lassoOps.js';
+import { closeLassoPath, lassoBounds, applyResize, cutOutPolygon, cropImageData, selectionStrokes, applyWarpDrag, applyRotateDrag, paintedBounds } from './core/lassoOps.js';
 import { TOOLS } from './tools/canvasTools.js';
 import { useTimelineGestures } from './hooks/useTimelineGestures.js';
 import { useTextDrag } from './hooks/useTextDrag.js';
@@ -39,7 +39,7 @@ import { fetchAsset } from './core/api.js';
 import { PLAYBACK_RATES, RATE_DEFAULT, playbackRateCodec } from './core/playbackRate.js';
 import { scaleProjectTimes, bakePlan } from './core/timeScale.js';
 import { drawScene, drawVideoOverlay, drawOnionCut, drawSceneTexts } from './canvas/sceneRender.js';
-import { warpedOutline, warpedHandles } from './canvas/warpRender.js';
+import { warpedOutline, warpedHandles, rotateKnob } from './canvas/warpRender.js';
 import { drawMarquee, HANDLE_GRAB_PX } from './canvas/marquee.js';
 import { drawTextSelection, drawFloatingSelection, drawMotionPath } from './canvas/editChrome.js';
 import { createBitmapStore } from './canvas/bitmapStore.js';
@@ -1307,8 +1307,13 @@ export default function App() {
         if (!selection) return null;
         const box = { x: selection.tx, y: selection.ty, w: selection.tw, h: selection.th, rot: selection.rot, skew: selection.skew, bend: selection.bend };
         const grab = HANDLE_GRAB_PX / view.zoom;
+        const near = (p) => Math.abs(pos.x - p.x) <= grab && Math.abs(pos.y - p.y) <= grab;
+        // The knob first. It sits on a stem above the top-middle handle, and at a small zoom the
+        // two grab squares overlap - whichever is tested first wins, and rotate is the one with
+        // nowhere else to go, while the top handle can still be reached from just inside it.
+        if (near(rotateKnob(box, view.zoom))) return { type: 'rotate' };
         for (const hd of warpedHandles(box)) {
-            if (Math.abs(pos.x - hd.x) <= grab && Math.abs(pos.y - hd.y) <= grab) return { type: 'resize', handle: hd.id };
+            if (near(hd)) return { type: 'resize', handle: hd.id };
         }
         return pointInPolygon([pos.x, pos.y], warpedOutline(box).map(p => [p.x, p.y])) ? { type: 'move' } : null;
     };
@@ -1520,7 +1525,7 @@ export default function App() {
         if (!gesture.drawing.current) {
             if (!selection) { if (hoverHandle) setHoverHandle(null); return; }
             const hit = hitTestSelection(getPos(e));
-            const next = hit?.type === 'resize' ? hit.handle : null;
+            const next = hit?.type === 'resize' ? hit.handle : hit?.type === 'rotate' ? 'rotate' : null;
             if (next !== hoverHandle) setHoverHandle(next);   // guarded: this runs on every move
             return;
         }
@@ -1552,6 +1557,9 @@ export default function App() {
                 setSelection(s => s ? ({ ...s, ...next }) : s);
             } else if (hit.type === 'warp') {
                 const next = applyWarpDrag(startSel, dx, dy);
+                setSelection(s => s ? ({ ...s, ...next }) : s);
+            } else if (hit.type === 'rotate') {
+                const next = applyRotateDrag(startSel, startPos, pos);
                 setSelection(s => s ? ({ ...s, ...next }) : s);
             }
             return;
