@@ -680,8 +680,6 @@ const EN = {
         'White — click to make it transparent (shown as a checkerboard)',
     '프레임 내보내는 중': 'Exporting frames',
     '내보내기 실패: ': 'Export failed: ',
-        'This will export {0} frames as PNGs. It uses a lot of memory and takes a while. Continue?',
-        'The background is transparent, so this exports a PNG sequence (ZIP). Browsers cannot make video with an alpha channel.',
 
     // Camera, clipping, and the error messages that had been left untranslated. An error is
     // the worst place to fall back to Korean: it is read by somebody already confused.
