@@ -19,7 +19,7 @@ import { DockRail, DockSlot, FloatingPanels, DockHint, ReopenRight } from './ui/
 import { tr, loadLang, saveLang, setLangValue } from './i18n';
 import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, patchLayer, nextLayerId, appendLayer, appendFolder, removeLayerTree } from './core/layerOps.js';
 import { mkCut, firstCut } from './core/document.js';
-import { toggled, selectionAfterClick, cutsToCopy } from './core/cutSelection.js';
+import { selectionAfterClick, cutsToCopy } from './core/cutSelection.js';
 import { closeLassoPath, lassoBounds, applyResize, cutOutPolygon, selectionStrokes, applyWarpDrag, paintedBounds } from './core/lassoOps.js';
 import { TOOLS } from './tools/canvasTools.js';
 import { useTimelineGestures } from './hooks/useTimelineGestures.js';
@@ -45,6 +45,7 @@ import { drawTextSelection, drawFloatingSelection, drawMotionPath } from './canv
 import { createBitmapStore } from './canvas/bitmapStore.js';
 import { regionBounds, rectBounds, mosaic, blurMaskedRegion } from './canvas/pixelEffects.js';
 import { useLayerCache } from './hooks/useLayerCache.js';
+import { useCutListUi } from './hooks/useCutListUi.js';
 import { useNotices } from './hooks/useNotices.js';
 import { useDialogs } from './hooks/useDialogs.js';
 import { useVideoImportState } from './hooks/useVideoImportState.js';
@@ -302,13 +303,9 @@ export default function App() {
         busy: () => !!selection || !!textEdit,
         leaveCurve: () => { if (curve.anchorsRef.current) curve.commit(); },
     });
-    const [expandedCuts, setExpandedCuts] = useState(new Set());
-    const [collapsedCutIds, setCollapsedCutIds] = useState(new Set());
-    const [renamingCutId, setRenamingCutId] = useState(null);
-    const [selectedCutIds, setSelectedCutIds] = useState(new Set());
-    const [marquee, setMarquee] = useState(null); // rubber-band rect (content px) while drag-selecting cuts
-    const [activePartId, setActivePartId] = useState(null); // scope playback and editing to one part (null = all)
     const lassoClipRef = useRef(null); // copied lasso pixels: { bitmapId, w, h }
+    // What is picked in the cut list, and how much of it is unfolded. Cleared together.
+    const cutList = useCutListUi();
     const [hasLassoClip, setHasLassoClip] = useState(false);
     const fileHandleRef = useRef(null);
     // Shared by both document hooks: the server backup falls back to it for a name, and the
@@ -572,7 +569,7 @@ export default function App() {
     // Parts (scenes): cuts grouped by partId. Each video import is one part; cuts can also be
     // grouped manually. Selecting a part scopes playback (and dims the rest) to it.
     const parts = derivePartsFrom(cuts, tr('파트'));
-    const activePart = activePartId ? parts.find(p => p.id === activePartId) : null;
+    const activePart = cutList.activePartId ? parts.find(p => p.id === cutList.activePartId) : null;
     // Playback runs within the active part when one is selected, else across all content. The
     // exports use the same two numbers - see playRange.js for what that fixed.
     const { start: playStart, end: playEnd } = playRange({ cuts, audio: audioData, video: videoOverlay, part: activePart });
@@ -601,7 +598,7 @@ export default function App() {
         invalidateCutsUsing, requestFrameDecode, frameDecodeTick, requestRepaint,
     } = useLayerCache({
         store: bitmapStore.current, cuts, currentCutId, currentCut, currentTime, onionPrev, onionNext,
-        activePartId, isPlaying, isPlayingRef, canvasW: CANVAS_W, canvasH: CANVAS_H, hiddenByGesture,
+        activePartId: cutList.activePartId, isPlaying, isPlayingRef, canvasW: CANVAS_W, canvasH: CANVAS_H, hiddenByGesture,
         prefetchRef, boilPhaseRef,
     });
 
@@ -895,11 +892,11 @@ export default function App() {
         // added fields are written down and tested.
         docEpochRef.current++;   // opening a project: anything still running belongs to the old one
         dispatchCuts(replaceCuts(migrateCuts(data.cuts)));
-        setActivePartId(null);
+        cutList.setActivePartId(null);
         const s = projectSettings(data);
         if (s.canvas) setCanvasSize(s.canvas);
         setNumTracks(s.numTracks); setCurrentCutId(s.currentCutId); setCurrentTime(0);
-        setOnionPrev(s.onionPrev); setOnionNext(s.onionNext); setPps(s.pps); setExpandedCuts(new Set());
+        setOnionPrev(s.onionPrev); setOnionNext(s.onionNext); setPps(s.pps); cutList.setExpandedCuts(new Set());
         setCopiedCut(null); // clipboard may reference bitmaps from the old project
         clearLayerCache(); // Clear cache on new project
         // The audio lives in useAudioTrack, and so does putting it back: the element, the
@@ -955,8 +952,8 @@ export default function App() {
         bitmapStoreRef.current.clear();
         docEpochRef.current++;   // starting over
         dispatchCuts(replaceCuts([firstCut()]));
-        setNumTracks(2); setCurrentCutId(1); setCurrentTime(0); setExpandedCuts(new Set());
-        setCopiedCut(null); setSelectedCutIds(new Set()); setActivePartId(null);
+        setNumTracks(2); setCurrentCutId(1); setCurrentTime(0); cutList.setExpandedCuts(new Set());
+        setCopiedCut(null); cutList.setSelectedCutIds(new Set()); cutList.setActivePartId(null);
         clearLayerCache();
         forgetProject();
         detachMedia(audioRef.current);
@@ -1006,11 +1003,11 @@ export default function App() {
         dispatchCuts(addCuts([nc])); setCurrentCutId(nc.id); setCurrentTime(ns);
     };
     const handleDeleteCut = (id) => {
-        const ids = (selectedCutIds.size > 1 && selectedCutIds.has(id)) ? new Set(selectedCutIds) : new Set([id]);
+        const ids = (cutList.selectedCutIds.size > 1 && cutList.selectedCutIds.has(id)) ? new Set(cutList.selectedCutIds) : new Set([id]);
         const nc = cuts.filter(c => !ids.has(c.id));
         dispatchCuts(replaceCuts(nc));
         if (ids.has(currentCutId)) setCurrentCutId(nc.length > 0 ? nc[0].id : null);
-        setSelectedCutIds(new Set());
+        cutList.setSelectedCutIds(new Set());
     };
     // Clear all drawing + text in the current cut (every layer's strokes), keeping the layers.
     const handleClearCut = () => {
@@ -1021,8 +1018,6 @@ export default function App() {
         setSelectedText(null);
     };
     const updCutTime = (id, field, val) => { let v = Math.max(0, parseFloat(val) || 0); if (field === 'track') { v = Math.round(v); if (v >= numTracks) setNumTracks(v + 1); } dispatchCuts(updateCut(id, { [field]: v })); };
-    const toggleCutSettings = (id) => setExpandedCuts(p => toggled(p, id));
-    const toggleCutCollapse = (id) => setCollapsedCutIds(p => toggled(p, id));
     const renameCut = (id, name) => dispatchCuts(updateCut(id, { name }));
     const updCutAnim = (id, patch) => dispatchCuts(setCutAnim(id, patch));
     const updCutCamera = (id, patch) => dispatchCuts(setCutCamera(id, patch));
@@ -1032,13 +1027,13 @@ export default function App() {
     // Click a cut in the list: plain = select one, Ctrl/Cmd = toggle, Shift = range (timeline order).
     // Plain, Ctrl and Shift clicks are three selection rules; core/cutSelection has them.
     const handleCutClick = (e, id) => {
-        setSelectedCutIds(p => selectionAfterClick(p, cuts, currentCutId, id, { ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey }));
+        cutList.setSelectedCutIds(p => selectionAfterClick(p, cuts, currentCutId, id, { ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey }));
         setCurrentCutId(id);
     };
     const handleCopyCut = (id) => {
         // The whole multi-selection when this cut is in it, else just this one. Deep-copied,
         // so later edits to the originals do not reach the clipboard.
-        const arr = cutsToCopy(cuts, selectedCutIds, id).map(c => JSON.parse(JSON.stringify(c)));
+        const arr = cutsToCopy(cuts, cutList.selectedCutIds, id).map(c => JSON.parse(JSON.stringify(c)));
         if (arr.length) setCopiedCut(arr);
     };
     // Deep-clone a cut's contents: remap layer ids to 1..N (rewriting parentId so
@@ -1902,7 +1897,7 @@ export default function App() {
         }
     }, [layerCanvasCache, clearLiveOverlay, gesture]);
 
-    // Every way the timeline can be pointed at - scrub, marquee, middle-click pan, one-finger
+    // Every way the timeline can be pointed at - scrub, cutList.marquee, middle-click pan, one-finger
     // pan/tap, two-finger pinch - lives in useTimelineGestures, where the overlaps between them
     // are visible.
     const {
@@ -1915,7 +1910,7 @@ export default function App() {
         pps, setPps,
         setCurrentTime, currentTimeRef, isPlayingRef, seekRef,
         audioRef, audioUrl, audioData,
-        setScrubbing, setMarquee, selectedCutIds, setSelectedCutIds,
+        setScrubbing, setMarquee: cutList.setMarquee, selectedCutIds: cutList.selectedCutIds, setSelectedCutIds: cutList.setSelectedCutIds,
         videoOverlay,
     });
 
@@ -2013,13 +2008,13 @@ export default function App() {
         const left = cuts.filter(c => c.videoBatch !== batchId);
         dispatchCuts(removeBatch(batchId));
         if (!left.some(c => c.id === currentCutId)) setCurrentCutId(left[0]?.id ?? null);
-        setSelectedCutIds(new Set());
+        cutList.setSelectedCutIds(new Set());
         setTimeout(gcBitmaps, 0); // free the frame bitmaps right away
     };
 
     // Select a part: scope playback to it and jump the playhead to its start.
     const selectPart = (partId) => {
-        setActivePartId(partId);
+        cutList.setActivePartId(partId);
         const p = partId ? parts.find(x => x.id === partId) : null;
         if (p) {
             const first = cuts.filter(c => c.partId === partId).sort((a, b) => a.startTime - b.startTime)[0];
@@ -2030,12 +2025,12 @@ export default function App() {
     };
     // Group the currently-selected cuts into a new part.
     const makePartFromSelection = () => {
-        if (!selectedCutIds.size) { alert(tr('먼저 컷을 선택하세요 (타임라인에서 드래그 또는 Ctrl+클릭).')); return; }
+        if (!cutList.selectedCutIds.size) { alert(tr('먼저 컷을 선택하세요 (타임라인에서 드래그 또는 Ctrl+클릭).')); return; }
         const name = window.prompt(tr('새 파트 이름:'), tr('파트 {0}', parts.length + 1));
         if (name == null) return;
         const pid = 'part_' + nextId().toString(36);
-        dispatchCuts(assignPartTo(selectedCutIds, pid, name));
-        setActivePartId(pid);
+        dispatchCuts(assignPartTo(cutList.selectedCutIds, pid, name));
+        cutList.setActivePartId(pid);
     };
     const renamePart = (partId) => {
         const p = parts.find(x => x.id === partId); if (!p) return;
@@ -2046,7 +2041,7 @@ export default function App() {
     // Ungroup a part (cuts stay, just lose their part membership).
     const ungroupPart = (partId) => {
         dispatchCuts(ungroupPartAction(partId));
-        if (activePartId === partId) setActivePartId(null);
+        if (cutList.activePartId === partId) cutList.setActivePartId(null);
     };
 
     // Local-only: pull a video by URL through the API, then reuse the frame-import dialog.
@@ -2211,18 +2206,18 @@ export default function App() {
 
     const cutPanelEl = (
                 <CutLayerPanel
-                    collapsedCutIds={collapsedCutIds} copiedCut={copiedCut} currentCutId={currentCutId} cuts={cuts}
+                    collapsedCutIds={cutList.collapsedCutIds} copiedCut={copiedCut} currentCutId={currentCutId} cuts={cuts}
                     deleteTextObject={deleteTextObject} deleteVideoBatch={deleteVideoBatch}
-                    onListDrop={onListDrop} expandedCuts={expandedCuts} handleAddCut={handleAddCut}
+                    onListDrop={onListDrop} expandedCuts={cutList.expandedCuts} handleAddCut={handleAddCut}
                     handleAddFolder={handleAddFolder} handleAddLayer={handleAddLayer} handleCopyCut={handleCopyCut}
                     handleCutClick={handleCutClick} handleDeleteCut={handleDeleteCut}
                     handleDuplicateCut={handleDuplicateCut} handlePasteCut={handlePasteCut}
                     handleSetTool={handleSetTool} openEditText={openEditText} renameCut={renameCut}
-                    renamingCutId={renamingCutId} layerRows={layerRows} rightW={rightW}
-                    selectedCutIds={selectedCutIds} selectedText={selectedText}
-                    setRenamingCutId={setRenamingCutId} setSelectedText={setSelectedText}
-                    setShowRight={setShowRight} showRight={showRight} toggleCutCollapse={toggleCutCollapse}
-                    toggleCutSettings={toggleCutSettings} toggleTextVisible={toggleTextVisible}
+                    renamingCutId={cutList.renamingCutId} layerRows={layerRows} rightW={rightW}
+                    selectedCutIds={cutList.selectedCutIds} selectedText={selectedText}
+                    setRenamingCutId={cutList.setRenamingCutId} setSelectedText={setSelectedText}
+                    setShowRight={setShowRight} showRight={showRight} toggleCutCollapse={cutList.toggleCutCollapse}
+                    toggleCutSettings={cutList.toggleCutSettings} toggleTextVisible={toggleTextVisible}
                     updCutAnim={updCutAnim} updCutTime={updCutTime}
                     updCutCamera={updCutCamera} cameraCapture={cameraCapture} setCameraCapture={setCameraCapture}
                     canvasW={CANVAS_W} canvasH={CANVAS_H}
@@ -2348,13 +2343,13 @@ export default function App() {
             {showBottom && <div className="splitter-h" style={{ touchAction: 'none' }} onPointerDown={e => { try { e.currentTarget.setPointerCapture(e.pointerId); } catch { } startBottomResize(e.clientY); }} />}
 
             <Timeline
-                activePartId={activePartId} audioData={audioData} audioFile={audioFile}
+                activePartId={cutList.activePartId} audioData={audioData} audioFile={audioFile}
                 currentCutId={currentCutId} currentTime={currentTime} cutDragArmedRef={cutDragArmedRef}
                 cutDragMovedRef={cutDragMovedRef} cutDragTimerRef={cutDragTimerRef} cuts={cuts}
                 draggingCutData={draggingCutData} fmt={fmt} goToScene={goToScene} handleAddTrack={handleAddTrack}
                 handleDeleteAudio={handleDeleteAudio} handleDeleteTrack={handleDeleteTrack}
                 handlePlayPause={handlePlayPause} handleStop={handleStop} isPlaying={isPlaying} loopPlay={loopPlay}
-                makePartFromSelection={makePartFromSelection} marquee={marquee} maxTime={maxTime}
+                makePartFromSelection={makePartFromSelection} marquee={cutList.marquee} maxTime={maxTime}
                 transparentBg={transparentBg} setTransparentBg={setTransparentBg}
                 transparentFormat={transparentFormat} setTransparentFormat={setTransparentFormat}
                 numTracks={numTracks} onTimelinePointerDown={onTimelinePointerDown}
@@ -2364,10 +2359,10 @@ export default function App() {
                 removeVideoOverlay={removeVideoOverlay} renamePart={renamePart} sceneDetect={vid.scene}
                 hiddenTracks={hiddenTracks} toggleTrackHidden={toggleTrackHidden}
                 openVideoSettings={() => vid.setSceneCfg(c => c || { threshold: 14, rangeOn: false, startText: '0:00', endText: '' })}
-                seekToTime={seekToTime} selectPart={selectPart} selectedCutIds={selectedCutIds}
+                seekToTime={seekToTime} selectPart={selectPart} selectedCutIds={cutList.selectedCutIds}
                 setCurrentCutId={setCurrentCutId} setCurrentTime={setCurrentTime} addCuts={cs => dispatchCuts(addCuts(cs))}
                 setDraggingCutData={setDraggingCutData} setLoopPlay={setLoopPlay} setPlaybackRate={setPlaybackRate}
-                setResizingData={setResizingData} setSceneCfg={vid.setSceneCfg} setSelectedCutIds={setSelectedCutIds}
+                setResizingData={setResizingData} setSceneCfg={vid.setSceneCfg} setSelectedCutIds={cutList.setSelectedCutIds}
                 setShowBottom={setShowBottom} showBottom={showBottom} snapLinePos={snapLinePos}
                 startTimelinePan={startTimelinePan} timelineH={timelineH} timelineRef={timelineRef} tlWin={tlWin}
                 ungroupPart={ungroupPart} videoOverlay={videoOverlay} zoomTimelineAt={zoomTimelineAt} />
