@@ -95,12 +95,17 @@ jobs:
 
       # The runner image ships Google Chrome, which is what the test drives - no browser
       # download, no playwright install step.
-      - name: Boot smoke test
+      # Two: does the page come up, and does a drag still put ink on the canvas. The second
+      # exists because the unit suite stops at the edge of a canvas - over a thousand tests and
+      # none of them draw - and the draw pipeline is the part that has been refactored most.
+      - name: Smoke tests
         run: npm run smoke
 
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: smoke-failure
-          path: smoke-failure.png
+          path: |
+            smoke-failure.png
+            draw-smoke-failure.png
           if-no-files-found: ignore
