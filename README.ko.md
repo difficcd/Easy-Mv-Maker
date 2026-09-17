@@ -104,7 +104,7 @@ npm run smoke      # 빌드된 앱을 헤드리스 브라우저에서 띄워 선
 | `scripts/unreachable.mjs` | App 수준 이름 중 아무 데서도 닿지 않는 것 |
 | `scripts/unused-imports.mjs` | 파일 안 아무것도 쓰지 않는 import |
 | `scripts/stroke-writes.mjs` | `commitStroke`를 거치지 않고 레이어에 선을 추가하는 쓰기 |
-| `scripts/i18n-check.mjs` | 영어 항목 없는 `tr()` 리터럴 |
+| `scripts/i18n-check.mjs` | 영어 항목 없는 `tr()` 리터럴, 또는 소스에 키가 더는 없는 사전 항목 |
 
 단위 테스트 약 1,150개가 `src/core`, `src/canvas`, `src/engine`, `src/export`의 순수 모듈을
 덮습니다 — 기하, 이징, 키프레임 샘플링, 컷 리듀서, 레이어 트리 이동, 올가미 오려내기, 타임라인
