@@ -25,6 +25,7 @@ import { frameName, ZipWriter } from '../export/zip.js';
 import { GifWriter } from '../export/gif.js';
 import { downloadBlob } from '../export/download.js';
 import { pickRecordingType, frameSource, startRecorder } from '../export/recorder.js';
+import { videoBitrate, AUDIO_BITRATE } from '../core/recordBitrate.js';
 
 /**
  * @param {object} opts
@@ -322,6 +323,11 @@ export function useExport({ paint, audio, range, doc, report, recording }) {
                 downloadBlob(blob, `mv_export.${ext}`);
                 alert(tr('완료!'));
                 isExporting.current = false; requestFrameRef.current = null;
+            }, {
+                // Asked for explicitly: the browser's own choice is about 2.5 Mbps whatever the
+                // canvas size, which starves a 1080p drawing (#229).
+                videoBitsPerSecond: videoBitrate({ width: canvas.width, height: canvas.height, fps: EXPORT_FPS, mimeType }),
+                audioBitsPerSecond: AUDIO_BITRATE,
             });
         } catch (e) { alert(tr('녹화를 시작할 수 없습니다: ') + e.message); return; }
         exportEndRef.current = playEnd; isExporting.current = true; mediaRecorderRef.current = mr; setIsPlaying(true);

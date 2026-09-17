@@ -47,15 +47,20 @@ export function frameSource(canvas, fps) {
  * Tried first with the chosen type and again with none, because a browser that reports a type
  * as supported can still refuse it at construction. Throws only when both fail.
  *
+ * The bitrate is asked for explicitly. Left out, MediaRecorder picks its own - around 2.5 Mbps
+ * in Chrome whatever the canvas size - which is well under what a 1080p drawing needs (#229).
+ * The fallback construction keeps the rates, since a refused *mimeType* says nothing about them.
+ *
  * @param {MediaStreamTrack[]} tracks
  * @param {string} mimeType from pickRecordingType; may be empty
  * @param {(blob: Blob) => void} onDone
+ * @param {{videoBitsPerSecond?: number, audioBitsPerSecond?: number}} [rates] from core/recordBitrate
  * @returns {MediaRecorder}
  */
-export function startRecorder(tracks, mimeType, onDone) {
+export function startRecorder(tracks, mimeType, onDone, rates = {}) {
     let mr;
-    try { mr = new MediaRecorder(new MediaStream(tracks), mimeType ? { mimeType } : undefined); }
-    catch { mr = new MediaRecorder(new MediaStream(tracks)); }
+    try { mr = new MediaRecorder(new MediaStream(tracks), { ...rates, ...(mimeType ? { mimeType } : {}) }); }
+    catch { mr = new MediaRecorder(new MediaStream(tracks), rates); }
     const chunks = [];
     mr.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
     mr.onstop = () => onDone(new Blob(chunks, { type: mimeType || 'video/webm' }));
