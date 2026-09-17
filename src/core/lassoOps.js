@@ -127,14 +127,21 @@ export function applyResize(handle, startSel, dx, dy) {
  * @param {number} args.minY top edge
  * @param {number} args.w
  * @param {number} args.h
- * @param {(w: number, h: number) => {data: Uint8ClampedArray}} args.makeImageData
+ * @param {(w: number, h: number) => {data: Uint8ClampedArray, width: number, height: number}} args.makeImageData
  * @param {(pt: number[], poly: number[][]) => boolean} args.inside
- * @returns {{selection: {data: Uint8ClampedArray}, eraseMask: {data: Uint8ClampedArray}, hasContent: boolean}}
+ * @returns {{selection: {data: Uint8ClampedArray, width: number, height: number},
+ *   eraseMask: {data: Uint8ClampedArray, width: number, height: number}, hasContent: boolean,
+ *   painted: {x: number, y: number, w: number, h: number} | null}}
+ *   `painted` is where the taken pixels actually sit inside the box, relative to it, or null
+ *   when nothing was taken. The caller crops the selection to it; the mask is left alone.
  */
 export function cutOutPolygon({ layer, poly, minX, minY, w, h, makeImageData, inside }) {
     const selection = makeImageData(w, h);
     const eraseMask = makeImageData(w, h);
     let hasContent = false;
+    // Where the pixels actually landed inside the box, tracked in this loop because it already
+    // visits every one of them - a second pass to find out would cost the same as the cut.
+    let px0 = w, py0 = h, px1 = -1, py1 = -1;
     for (let y = 0; y < h; y++) {
         for (let x = 0; x < w; x++) {
             const i = (y * w + x) * 4;
@@ -150,9 +157,38 @@ export function cutOutPolygon({ layer, poly, minX, minY, w, h, makeImageData, in
             selection.data[i + 2] = layer.data[i + 2];
             selection.data[i + 3] = a;
             eraseMask.data[i + 3] = 255;
+            if (x < px0) px0 = x;
+            if (x > px1) px1 = x;
+            if (y < py0) py0 = y;
+            if (y > py1) py1 = y;
         }
     }
-    return { selection, eraseMask, hasContent };
+    const painted = px1 < 0 ? null : { x: px0, y: py0, w: px1 - px0 + 1, h: py1 - py0 + 1 };
+    return { selection, eraseMask, hasContent, painted };
+}
+
+/**
+ * A rectangle of one image, as a new image.
+ *
+ * What the lasso needs after a cut: the loop the user drew is nearly always looser than the
+ * artwork inside it, and the box it implies is what the handles and the marquee are drawn from.
+ * Left uncropped, a generous loop around a small drawing puts the handles out in empty space and
+ * rotation turns about a centre nowhere near the picture.
+ *
+ * The hole left behind is *not* cropped with it. That is the full loop, because that is what was
+ * lifted; shrinking it would leave a ring of the original artwork behind.
+ *
+ * @param {{data: Uint8ClampedArray, width: number, height: number}} src
+ * @param {{x: number, y: number, w: number, h: number}} box
+ * @param {(w: number, h: number) => {data: Uint8ClampedArray, width: number, height: number}} makeImageData
+ */
+export function cropImageData(src, box, makeImageData) {
+    const out = makeImageData(box.w, box.h);
+    for (let y = 0; y < box.h; y++) {
+        const from = ((y + box.y) * src.width + box.x) * 4;
+        out.data.set(src.data.subarray(from, from + box.w * 4), y * box.w * 4);
+    }
+    return out;
 }
 
 /**
