@@ -87,8 +87,8 @@ badly wrong.
 that strength. **Start / End** are where in the cut it is on, as 0 to 1; an end of 1 keeps it on to
 the end of the cut.
 
-**Colour** is the chromatic fringe — the line splits, red to one side and blue to the other,
-like a signal breaking up. It is a red and a blue silhouette of the ink laid behind the line and
+**Colour** is the chromatic fringe — the line splits, red to one side and cyan to the other,
+like a signal breaking up. It is a red and a cyan silhouette of the ink laid behind the line and
 shifted apart, so it works on black ink and on a white background, and it grows with the
 tearing on a bad frame.
 

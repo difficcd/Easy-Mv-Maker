@@ -184,7 +184,7 @@ const EN = {
     '흔들림': 'Shake',
     '노이즈': 'Noise',
     '색': 'Colour',
-    '0~1. 선 양옆으로 빨강·파랑이 갈라집니다': '0 to 1. The line splits red one side and blue the other',
+    '0~1. 선 양옆으로 빨강·청록이 갈라집니다': '0 to 1. The line splits red one side and cyan the other',
     '지지직 — 이 레이어의 선이 찢어지고 색이 갈라집니다. 선이 있는 곳에만 걸립니다': 'Static — the lines of this layer tear and their colours split. Only where there is ink',
     '0~1. 켜는 순간 이 세기로 나옵니다': '0 to 1. At this strength from the moment it turns on',
     '컷의 몇 지점에서 켜질지 (0~1)': 'Where in the cut it turns on (0-1)',
