@@ -77,16 +77,33 @@ export function useLocalDocuments({ buildData, restore, resetToEmpty, setAppErro
         downloadBlob(new Blob([json], { type: 'application/json' }), 'project.emv');
     };
 
+    /**
+     * What the progress overlay says while a document is being opened.
+     *
+     * Named, because the overlay blocks the screen and "opening a project" does not say *which*
+     * - and the one time that matters is exactly when several are in play: switching tabs,
+     * restoring a backup, or opening the wrong file by mistake, where the name is the only way
+     * to notice before it has replaced what was on screen.
+     *
+     * It stays a blocking overlay rather than becoming a corner chip like the video download.
+     * That chip means "carry on working"; opening replaces the document underneath, so there is
+     * nothing to carry on with, and saying otherwise would be the lie.
+     */
+    const openingLabel = (name, verb) => {
+        const base = verb || tr('프로젝트 여는 중');
+        return name ? `${base} — ${name}` : base;
+    };
+
     // A large .emv looks frozen during the read and parse alone, so that stretch shows just a
     // label with an indeterminate bar (total 0); restore then takes over with real progress.
-    const readAndRestore = async (getText) => {
-        setLoadProgress({ label: tr('파일 읽는 중'), done: 0, total: 0 });
+    const readAndRestore = async (getText, name) => {
+        setLoadProgress({ label: openingLabel(name, tr('파일 읽는 중')), done: 0, total: 0 });
         try {
             const text = await getText();
-            setLoadProgress({ label: tr('파일 분석 중'), done: 0, total: 0 });
+            setLoadProgress({ label: openingLabel(name, tr('파일 분석 중')), done: 0, total: 0 });
             await new Promise(r => setTimeout(r, 0)); // give the bar a chance to paint once
             const data = JSON.parse(text);
-            return await restore(data);
+            return await restore(data, null, openingLabel(name));
         } catch (err) {
             setLoadProgress(null);
             alert(tr('파일 오류: ') + err.message);
@@ -101,14 +118,14 @@ export function useLocalDocuments({ buildData, restore, resetToEmpty, setAppErro
                 // Only after the file is actually open. Set first, the handle pointed at a file
                 // that had not been loaded - and the next save would write whatever is on screen
                 // over it.
-                if (await readAndRestore(async () => (await h.getFile()).text())) fileHandleRef.current = h;
+                if (await readAndRestore(async () => (await h.getFile()).text(), h.name)) fileHandleRef.current = h;
                 return;
             } catch (e) { if (e.name === 'AbortError') return; }
         }
         const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.emv';
         inp.onchange = e => {
             const f = /** @type {HTMLInputElement} */ (e.target).files[0]; if (!f) return;
-            readAndRestore(() => new Promise((res, rej) => { const r = new FileReader(); r.onload = ev => res(ev.target.result); r.onerror = rej; r.readAsText(f); }));
+            readAndRestore(() => new Promise((res, rej) => { const r = new FileReader(); r.onload = ev => res(ev.target.result); r.onerror = rej; r.readAsText(f); }), f.name);
         };
         inp.click();
     };
@@ -188,7 +205,7 @@ export function useLocalDocuments({ buildData, restore, resetToEmpty, setAppErro
             const data = await loadProject(id);
             if (!data) { alert(tr('데이터가 없습니다.')); return; }
             // As in doServerOpen: the identity is only ours once the document is actually in.
-            if (!await restore(data)) return;
+            if (!await restore(data, null, openingLabel(name))) return;
             localIdRef.current = id; localNameRef.current = name || ''; setLocalProjects(null);
         }
         catch (e) { alert(tr('로컬 열기 실패: ') + e.message); }
@@ -217,7 +234,7 @@ export function useLocalDocuments({ buildData, restore, resetToEmpty, setAppErro
             catch (e) { setAppError(tr('현재 탭을 저장할 수 없어 탭을 바꾸지 않았습니다: ') + (e?.message || String(e))); return; }
             setActiveTabId(id);
             const doc = tabDocsRef.current[id];
-            if (doc) await restore(doc); else resetToEmpty();
+            if (doc) await restore(doc, null, openingLabel(tabs.find(t => t.id === id)?.name)); else resetToEmpty();
         } finally { tabBusyRef.current = false; }
     };
 
@@ -249,7 +266,7 @@ export function useLocalDocuments({ buildData, restore, resetToEmpty, setAppErro
             const target = rest[rest.length - 1];
             setActiveTabId(target.id);
             const doc = tabDocsRef.current[target.id];
-            if (doc) await restore(doc); else resetToEmpty();
+            if (doc) await restore(doc, null, openingLabel(target.name)); else resetToEmpty();
         }
     };
 
@@ -265,7 +282,7 @@ export function useLocalDocuments({ buildData, restore, resetToEmpty, setAppErro
             if (!meaningful) return;
             const when = data.savedAt ? new Date(data.savedAt).toLocaleString() : '';
             if (window.confirm(tr('이전에 자동저장된 작업이 있습니다{0}.\n복구할까요?', when ? ` (${when})` : ''))) {
-                restore(data);
+                restore(data, null, tr('자동저장 복구 중'));
             }
         }).catch(() => { }).finally(() => { didRecoverRef.current = true; });
         return () => { cancelled = true; };

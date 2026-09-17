@@ -34,7 +34,7 @@ const BACKUP_EVERY_MS = 5 * 60 * 1000;
  * @param {object} opts
  * @param {boolean} opts.serverAvailable whether the API answered its probe
  * @param {(includeAudio?: boolean, assetSink?: any[], blobsOk?: boolean) => Promise<any>} opts.buildData
- * @param {(data: any, assetBase?: string|null) => Promise<boolean>} opts.restore false if the
+ * @param {(data: any, assetBase?: string|null, label?: string) => Promise<boolean>} opts.restore false if the
  *   document did not go in, in which case the caller must not record the project's identity
  * @param {(p: any) => void} opts.setLoadProgress
  * @param {(m: string) => void} opts.setAppError
@@ -112,7 +112,8 @@ export function useServerStorage({
             const data = await apiFetch(`/api/projects/${id}`);
             // Only claim the identity if the document actually went in - otherwise the next save
             // would write this project's id over whatever is really on screen.
-            if (!await restore(data, `/api/projects/${id}`)) return; // assets come from this project
+            // Named in the overlay: it covers the screen, and which project is landing matters.
+            if (!await restore(data, `/api/projects/${id}`, name ? `${tr('프로젝트 여는 중')} — ${name}` : undefined)) return;
             serverIdRef.current = id; serverNameRef.current = name || '';
             setServerProjects(null);
         } catch (e) { alert(tr('서버에서 열기 실패: ') + e.message); }
@@ -189,7 +190,7 @@ export function useServerStorage({
         try {
             const key = getBackupKey();
             const data = await apiFetch(`/api/backups/${key}/${stamp}`);
-            if (!await restore(data, `/api/projects/${key}`)) return; // assets come from the same key
+            if (!await restore(data, `/api/projects/${key}`, tr('백업에서 되돌리는 중'))) return; // assets come from the same key
             setBackupList(null);
         } catch (e) { alert(tr('백업 복구 실패: ') + e.message); }
     };

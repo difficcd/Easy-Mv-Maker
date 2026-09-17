@@ -229,6 +229,8 @@ const EN = {
     '저장된 프로젝트가 없습니다.': 'No saved projects.',
     '데이터가 없습니다.': 'No data.',
     '프로젝트 여는 중': 'Opening the project',
+    '자동저장 복구 중': 'Recovering the autosave',
+    '백업에서 되돌리는 중': 'Restoring from a backup',
     '서버에 올리는 중': 'Uploading to the server',
     '파일 읽는 중': 'Reading the file',
     '파일 분석 중': 'Parsing the file',
