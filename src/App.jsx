@@ -20,7 +20,7 @@ import { tr, loadLang, saveLang, setLangValue } from './i18n';
 import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, patchLayer, nextLayerId, appendLayer, appendFolder, removeLayerTree } from './core/layerOps.js';
 import { mkCut, firstCut } from './core/document.js';
 import { selectionAfterClick, cutsToCopy } from './core/cutSelection.js';
-import { closeLassoPath, lassoBounds, applyResize, cutOutPolygon, cropImageData, selectionStrokes, applyWarpDrag, applyRotateDrag, paintedBounds } from './core/lassoOps.js';
+import { closeLassoPath, lassoBounds, cutOutPolygon, cropImageData, selectionStrokes, paintedBounds } from './core/lassoOps.js';
 import { TOOLS } from './tools/canvasTools.js';
 import { useTimelineGestures } from './hooks/useTimelineGestures.js';
 import { useTextDrag } from './hooks/useTextDrag.js';
@@ -39,16 +39,18 @@ import { fetchAsset } from './core/api.js';
 import { PLAYBACK_RATES, RATE_DEFAULT, playbackRateCodec } from './core/playbackRate.js';
 import { scaleProjectTimes, bakePlan } from './core/timeScale.js';
 import { drawScene, drawVideoOverlay, drawOnionCut, drawSceneTexts } from './canvas/sceneRender.js';
-import { warpedOutline, warpedHandles, rotateKnob } from './canvas/warpRender.js';
-import { drawMarquee, HANDLE_GRAB_PX } from './canvas/marquee.js';
+import { drawMarquee } from './canvas/marquee.js';
 import { drawTextSelection, drawFloatingSelection, drawMotionPath, drawMosaicRegion } from './canvas/editChrome.js';
 import { createBitmapStore } from './canvas/bitmapStore.js';
-import { regionBounds, rectBounds, mosaic, blurMaskedRegion, grainTile, clampRegion } from './canvas/pixelEffects.js';
+import { regionBounds, rectBounds, mosaic, blurMaskedRegion, grainTile } from './canvas/pixelEffects.js';
 import { useLayerCache } from './hooks/useLayerCache.js';
 import { useTimelineView } from './hooks/useTimelineView.js';
 import { useCutListUi } from './hooks/useCutListUi.js';
 import { useNotices } from './hooks/useNotices.js';
 import { useDialogs } from './hooks/useDialogs.js';
+import { useSelectionGesture } from './hooks/useSelectionGesture.js';
+import { useLayerDrag } from './hooks/useLayerDrag.js';
+import { usePathCapture } from './hooks/usePathCapture.js';
 import { useVideoImportState } from './hooks/useVideoImportState.js';
 import { useGesture } from './hooks/useGesture.js';
 import { useLiveOverlay } from './hooks/useLiveOverlay.js';
@@ -74,7 +76,7 @@ import { playRange, exportRange } from './core/playRange.js';
 import { brushUp, brushDown } from './core/brushSize.js';
 import {
     cutsReducer, replaceCuts, addCuts, updateCut, setCutAnim, setCutCamera, clearCut,
-    updateLayer, setLayerAnim, moveLayers, upsertText, deleteText, toggleTextVisible as toggleTextVisibleAction,
+    updateLayer, setLayerAnim, upsertText, deleteText, toggleTextVisible as toggleTextVisibleAction,
     assignPartTo, renamePart as renamePartAction, ungroupPart as ungroupPartAction, removeBatch,
     insertCutsShifting, deleteTrack, moveCutGroup, replaceBatchCuts, patchCut, patchCuts,
 } from './core/cutsReducer.js';
@@ -82,7 +84,6 @@ import { textNeedsBox, drawTextObject } from './canvas/textRender.js';
 import { migrateCuts, projectSettings, makeLoadProgress } from './core/projectFormat.js';
 import { imageExtFromType, audioExt, videoExt, collectBitmaps, loadBitmapStore, blobToDataURL, packMedia, unpackMedia } from './core/projectAssets.js';
 import { xAtTime } from './core/timelineZoom.js';
-import { preparePath } from './core/pathMotion.js';
 import { dragOnWindow } from './core/windowDrag.js';
 // Recording a camera path reuses the pen the way a part's motion path does; the two cannot be
 // active at once, and startDraw checks this one first because a camera is a property of the cut
@@ -105,7 +106,6 @@ import { DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_
 import { hexToRgb } from './core/colour.js';
 import { pointInPolygon, safeArray } from './core/geometry.js';
 import { flattenLayersInUiOrder } from './core/layerTree.js';
-import { curveToWave } from './core/sway.js';
 
 
 
@@ -425,10 +425,8 @@ export default function App() {
     // the element the wheel listens on.
     const { view, setView, zoomCanvas, resetView, spaceDown, spaceDownRef, panningRef, lastInteractRef,
         onAreaPointerDown, onAreaPointerMove, onAreaPointerUp } = useCanvasView({ canvasAreaRef });
-    const [pathCapture, setPathCapture] = useState(null); // {cutId, layerId} while recording a motion path
     // {cutId, layerId} while the sway profile is being dragged on the canvas rather than typed.
     const [spineEdit, setSpineEdit] = useState(null);
-    const [cameraCapture, setCameraCapture] = useState(null); // {cutId} while drawing a camera path
 
 
     const isDraggingOrResizingRef = useRef(false);
@@ -1213,21 +1211,6 @@ export default function App() {
         const pts = gesture.lasso.current; if (!pts || pts.length === 0) return;
         drawMarquee(ctx, pts, view.zoom);
     };
-    // Move preview: the shifted result is drawn on the overlay while paintFrame hides the
-    // original. It has to draw once on press too, or the screen flashes empty for a moment.
-    const renderLayerDragPreview = () => {
-        const d = gesture.layerDrag.current; if (!d) return;
-        const c2 = liveCtx(); if (!c2) return;
-        const cut = cuts.find(c => c.id === d.cutId); if (!cut) return;
-        clearLiveOverlay();
-        const ox = Math.round(d.dx), oy = Math.round(d.dy);
-        const order = flattenLayersInUiOrder(cut.layers || []).filter(l => l.type === 'layer' && d.layerIds.includes(l.id));
-        for (let i = order.length - 1; i >= 0; i--) {
-            const src = ensureLayerCanvas(cut.id, order[i]); // create it on the spot if it is not cached
-            if (src) c2.drawImage(src, ox, oy);
-        }
-    };
-
     // A finished stroke leaves the overlay and enters the document. Baked straight onto the
     // main canvas at the same coordinates first, and the overlay cleared at once, so the line
     // cannot disappear no matter how state updates and repaints are timed - the next normal
@@ -1328,20 +1311,15 @@ export default function App() {
     // The handles and the outline are where paintFrame draws them - on the warped box - and the
     // grab radius is in screen pixels, like their size. Measured in canvas pixels it shrank with
     // every zoom-out until a corner could not be caught at all.
-    const hitTestSelection = (pos) => {
-        if (!selection) return null;
-        const box = { x: selection.tx, y: selection.ty, w: selection.tw, h: selection.th, rot: selection.rot, skew: selection.skew, bend: selection.bend };
-        const grab = HANDLE_GRAB_PX / view.zoom;
-        const near = (p) => Math.abs(pos.x - p.x) <= grab && Math.abs(pos.y - p.y) <= grab;
-        // The knob first. It sits on a stem above the top-middle handle, and at a small zoom the
-        // two grab squares overlap - whichever is tested first wins, and rotate is the one with
-        // nowhere else to go, while the top handle can still be reached from just inside it.
-        if (near(rotateKnob(box, view.zoom))) return { type: 'rotate' };
-        for (const hd of warpedHandles(box)) {
-            if (near(hd)) return { type: 'resize', handle: hd.id };
-        }
-        return pointInPolygon([pos.x, pos.y], warpedOutline(box).map(p => [p.x, p.y])) ? { type: 'move' } : null;
-    };
+    // Three gestures that own themselves, like the tools above: a drag of the floating
+    // selection, a drag of a whole layer with the move tool, and recording a path with the
+    // pen. Each is begin / move / end over the shared gesture refs; the pointer handlers below
+    // say which one is happening rather than how each is done.
+    const selGesture = useSelectionGesture({ gesture, selection, setSelection, zoom: view.zoom });
+    const layerDrag = useLayerDrag({ gesture, cuts, dispatchCuts, setDragTick, liveCtx, clearLiveOverlay, ensureLayerCanvas });
+    const pathCap = usePathCapture({ gesture, dispatchCuts, updLayerAnim, notices, cw: CANVAS_W, ch: CANVAS_H });
+    const { pathCapture, setPathCapture, cameraCapture, setCameraCapture } = pathCap;
+
 
 
     // A press that claims the canvas. Every branch of startDraw that takes over the pointer does
@@ -1453,19 +1431,8 @@ export default function App() {
         // Recording a camera path. Checked before the part path because a camera belongs to the
         // cut, not to whichever layer is selected - and before the layer is resolved at all, so
         // it works on a cut whose active layer is a folder or hidden.
-        if (cameraCapture) {
-            gesture.begin(e);
-            gesture.pathPts.current = [pos];
-            e.preventDefault();
-            return;
-        }
-        // Recording a motion path for a part animation: capture the stroke as a path.
-        if (pathCapture) {
-            gesture.begin(e);
-            gesture.pathPts.current = [pos];
-            e.preventDefault();
-            return;
-        }
+        // Same for a part's motion path, sway curve or mosaic rectangle.
+        if (pathCap.active) { pathCap.begin(e, pos); return; }
         // Even if the active layer is a folder, hidden or invalid, this substitutes a real
         // drawable layer, so the stroke always survives and stays visible.
         const activeLayer = resolveDrawLayer(currentCut);
@@ -1476,19 +1443,7 @@ export default function App() {
 
         // Selection has priority over other interactions to avoid tool conflicts.
         if (selection) {
-            const hit = hitTestSelection(pos);
-            if (hit) {
-                gesture.begin(e);
-                // A drag adjusts skew and bend instead of moving or resizing when Ctrl is held
-                // (#175) - wherever it starts, handles included. Letting the handles keep
-                // resizing under Ctrl meant a drag begun on a corner resized and one begun a few
-                // pixels inward warped, which read as Ctrl working only sometimes.
-                const warp = e.ctrlKey || e.metaKey;
-                const kind = warp ? { type: 'warp' } : hit;
-                gesture.selectionDrag.current = { hit: kind, startPos: { x: pos.x, y: pos.y }, startSel: { ...selection } };
-                e.preventDefault();
-                return;
-            }
+            if (selGesture.begin(e, pos)) return;
             // Click outside selection commits by default (standard behavior).
             commitSelectionImpl(selection);
         }
@@ -1514,14 +1469,7 @@ export default function App() {
             const drawable = flattenLayersInUiOrder(currentCut?.layers || []).filter(l => l.type === 'layer');
             const act = resolveDrawLayer(currentCut);
             const ids = e.altKey ? drawable.map(l => l.id) : (act ? [act.id] : []);
-            if (ids.length) {
-                gesture.begin(e);
-                gesture.layerDrag.current = { cutId: currentCutId, layerIds: ids, startPos: { x: pos.x, y: pos.y }, dx: 0, dy: 0 };
-                renderLayerDragPreview();   // draw immediately on press so the screen does not flash empty
-                setDragTick(v => v + 1);    // hide the original
-                e.preventDefault();
-                return;
-            }
+            if (ids.length) { layerDrag.begin(e, pos, currentCutId, ids); return; }
         }
 
         if (etool === 'curve') {
@@ -1549,61 +1497,28 @@ export default function App() {
         // resizes looked like the one that moves.
         if (!gesture.drawing.current) {
             if (!selection) { if (hoverHandle) setHoverHandle(null); return; }
-            const hit = hitTestSelection(getPos(e));
+            const hit = selGesture.hitTest(getPos(e));
             const next = hit?.type === 'resize' ? hit.handle : hit?.type === 'rotate' ? 'rotate' : null;
             if (next !== hoverHandle) setHoverHandle(next);   // guarded: this runs on every move
             return;
         }
         const pos = getPos(e);
 
-        if (gesture.pathPts.current) { gesture.pathPts.current.push(pos); return; }
-
-        // Move preview: the overlay draws the shifted copy while paintFrame hides the original.
-        if (gesture.layerDrag.current) {
-            const d = gesture.layerDrag.current;
-            d.dx = pos.x - d.startPos.x; d.dy = pos.y - d.startPos.y;
-            renderLayerDragPreview();
-            setDragTick(v => v + 1); // redraw while keeping the original hidden
-            return;
-        }
+        if (pathCap.move(pos)) return;
+        if (layerDrag.move(pos)) return;
 
         if (etool === 'curve' && curve.dragTo(pos)) return;
 
         if (moveTextDrag(pos)) return;
 
-        if (gesture.selectionDrag.current && selection) {
-            const { hit, startPos, startSel } = gesture.selectionDrag.current;
-            const dx = pos.x - startPos.x;
-            const dy = pos.y - startPos.y;
-            if (hit.type === 'move') {
-                setSelection(s => s ? ({ ...s, tx: startSel.tx + dx, ty: startSel.ty + dy }) : s);
-            } else if (hit.type === 'resize') {
-                const next = applyResize(hit.handle, startSel, dx, dy);
-                setSelection(s => s ? ({ ...s, ...next }) : s);
-            } else if (hit.type === 'warp') {
-                const next = applyWarpDrag(startSel, dx, dy);
-                setSelection(s => s ? ({ ...s, ...next }) : s);
-            } else if (hit.type === 'rotate') {
-                const next = applyRotateDrag(startSel, startPos, pos);
-                setSelection(s => s ? ({ ...s, ...next }) : s);
-            }
-            return;
-        }
+        if (selGesture.move(pos)) return;
 
         TOOLS[etool]?.move?.(toolCtx(e, pos, null));
     };
 
     const stopDraw = () => {
-        // Committing a whole-layer move: the offset is added to every stroke coordinate.
-        if (gesture.layerDrag.current) {
-            const d = gesture.layerDrag.current; gesture.layerDrag.current = null;
-            gesture.end();
-            const dx = Math.round(d.dx), dy = Math.round(d.dy);
-            clearLiveOverlay();
-            if (dx || dy) dispatchCuts(moveLayers(d.cutId, d.layerIds, dx, dy));
-            setDragTick(v => v + 1);
-            return;
-        }
+        // A whole-layer move commits its offset into every stroke.
+        if (layerDrag.end()) return;
         // Curve ruler: one anchor placed or fine-tuned; the done button commits it.
         if (etool === 'curve' && curve.endDrag()) { gesture.end(); return; }
         // Liquify: the pushed pixels go back into the layer.
@@ -1619,54 +1534,8 @@ export default function App() {
             gesture.clearPending.current = true;
             return;
         }
-        // Finish recording a motion path → store it on the target layer's animation.
-        if (gesture.pathPts.current) {
-            const pts = gesture.pathPts.current;
-            gesture.pathPts.current = null;
-            gesture.end();
-            if (cameraCapture) {
-                // Evened out the same way a part path is, and for the same reason: the camera
-                // walks it by index, so uneven points would replay the drawing speed. A camera
-                // doing that is far more obvious than a part doing it, because the whole frame
-                // lurches rather than one drawing.
-                const path = preparePath(pts);
-                if (path.length > 1) dispatchCuts(setCutCamera(cameraCapture.cutId, { path }));
-                setCameraCapture(null);
-                return;
-            }
-            if (pathCapture && pts.length > 1) {
-                if (pathCapture.mode === 'mosaicRect') {
-                    // The whole drag, not its two ends: a rectangle dragged out by hand is what
-                    // the pointer covered, and the bounding box of that is forgiving about a
-                    // curved drag or a slip at the end.
-                    const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
-                    const x = Math.min(...xs), y = Math.min(...ys);
-                    const rect = { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y };
-                    // Refused rather than stored when it is too small to pixelate - an
-                    // accidental tap would otherwise set a region that shows nothing and give
-                    // no clue why the effect stopped.
-                    if (clampRegion(rect, CANVAS_W, CANVAS_H)) {
-                        updLayerAnim(pathCapture.cutId, pathCapture.layerId, { mosaicRect: rect });
-                    } else {
-                        notices.setToast(tr('영역이 너무 작습니다'));
-                    }
-                } else if (pathCapture.mode === 'sway') {
-                    // Sway from a drawn curve: the curve is stored as a waveform, and how far it
-                    // actually swung becomes the default strength.
-                    const w = curveToWave(pts);
-                    if (w) updLayerAnim(pathCapture.cutId, pathCapture.layerId, { swayCurve: w.wave, swayAmount: Math.max(1, Math.round(w.amp / 4)) });
-                    else alert(tr('거의 직선이라 흔들림을 만들 수 없습니다. 물결치듯 그려보세요.'));
-                } else {
-                    // Evened out before it is stored, not while it is played. The renderer walks
-                    // the path by index, so equal spacing is what makes the motion a constant
-                    // speed instead of a replay of how fast the pen was moving at each point.
-                    const path = preparePath(pts);
-                    if (path.length > 1) updLayerAnim(pathCapture.cutId, pathCapture.layerId, { path });
-                }
-            }
-            setPathCapture(null);
-            return;
-        }
+        // A recorded path becomes the camera's, or the part's path, sway curve or region.
+        if (pathCap.end()) return;
         // Commit the live overlay stroke into the layer data (one write), then clear the overlay
         // after the layer has repainted so there's no flicker.
         if (gesture.stroke.current) {
@@ -1683,7 +1552,7 @@ export default function App() {
             else clearLiveOverlay();
             return;
         }
-        gesture.selectionDrag.current = null;
+        selGesture.end();
         const endedTextDrag = endTextDrag();
         if (!gesture.drawing.current) return;
         gesture.end();

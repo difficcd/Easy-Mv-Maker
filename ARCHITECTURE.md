@@ -185,6 +185,10 @@ needs a document takes those two functions rather than the document.
 - `useGesture.js` — **what is happening between the pen going down and coming back up:** the
   stroke, the lasso loop, the layers or selection being dragged, the path being recorded, the
   layer the stroke commits to, plus `begin`/`end` for pointer capture. Only one is ever live.
+- `useSelectionGesture.js` / `useLayerDrag.js` / `usePathCapture.js` — the three drags that own
+  themselves: the floating selection (hit test, move, resize, rotate, warp), a whole layer with
+  the move tool (overlay preview, commit on lift), and recording a path (camera, part path, sway
+  curve, mosaic rectangle). App's pointer handlers say which is happening; these say how.
 - `useLiveOverlay.js` — the overlay canvas and the incremental drawing of a stroke on it. Only
   the new tail each frame; the count that tracks it must be exactly right or the tail is drawn
   from the wrong place.
@@ -216,7 +220,7 @@ needs a document takes those two functions rather than the document.
 - Drawing: `startDraw`/`onDraw`/`stopDraw`. Each does the cross-cutting part — palm rejection
   (ignore `pointerType==='touch'`), the eyedropper, a path being recorded, a floating selection,
   a text under the pointer — and then hands over to `TOOLS[etool]` in `tools/canvasTools.js`.
-  Gesture state is `gesture.*` from `useGesture`; path capture is `pathCapture`/`gesture.pathPts`.
+  Gesture state is `gesture.*` from `useGesture`; path capture is `usePathCapture` (over `gesture.pathPts`).
   **`stopDraw` is deliberately not a tool table.** The end of a gesture is decided by which
   gesture is in flight, not by which tool is selected, and the tool can be changed while the pen
   is down — dispatching the end on the current tool would finish the wrong thing.
