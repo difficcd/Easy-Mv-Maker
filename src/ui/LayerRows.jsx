@@ -41,8 +41,9 @@ function LayerThumbnail({ layer, cutId, layerCanvasCache }) {
  * @param {string|number|null} [props.parentId] whose children to draw; null is the root
  * @param {number} [props.depth] indent level, so a nested call lines its rows up
  * @param {any} props.rows everything a row needs - see the destructure below
+ * @param {boolean} [props.wide] the panel has room to name the buttons, not only draw them
  */
-export function LayerRows({ cut, parentId = null, depth = 0, rows }) {
+export function LayerRows({ cut, parentId = null, depth = 0, rows, wide = false }) {
     const {
         animLayer, currentTime, dispatchCuts, dragLayerInfo, dropInfo, handleDeleteLayer,
         handleSetActive, handleToggleFolder, handleToggleVisible, jitterLayer, layerCanvasCache,
@@ -110,9 +111,11 @@ export function LayerRows({ cut, parentId = null, depth = 0, rows }) {
                         </button>
                     )}
                     {!isFolder && (
-                        <button className="icon-btn" style={{ color: layer.anim ? 'var(--accent-soft)' : undefined }} title={tr('파츠 애니메이션')}
+                        <button className="icon-btn" title={tr('파츠 애니메이션 — 이동 · 회전 · 흔들림 · 모자이크')}
+                            style={{ ...(layer.anim ? { color: 'var(--accent-soft)' } : null), ...(wide ? { width: 'auto', padding: '0 5px', gap: 3 } : null) }}
                             onClick={e => { e.stopPropagation(); setAnimLayer(a => (a && a.cutId === cut.id && a.layerId === layer.id) ? null : { cutId: cut.id, layerId: layer.id }); }}>
                             <Film size={11} />
+                            {wide && <span style={{ fontSize: 9.5 }}>{tr('애니')}</span>}
                         </button>
                     )}
                     <button className="icon-btn del-btn" onClick={e => handleDeleteLayer(e, cut.id, layer.id)}><Trash2 size={11} /></button>
@@ -126,7 +129,7 @@ export function LayerRows({ cut, parentId = null, depth = 0, rows }) {
                         cutProgress={cutProgress(cut, currentTime)} />
                 )}
                 {dt === 'after' && <div className="drop-line" />}
-                {isFolder && !layer.collapsed && <LayerRows cut={cut} parentId={layer.id} depth={depth + 1} rows={rows} />}
+                {isFolder && !layer.collapsed && <LayerRows cut={cut} parentId={layer.id} depth={depth + 1} rows={rows} wide={wide} />}
             </div>
         );
     });

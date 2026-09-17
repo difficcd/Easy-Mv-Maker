@@ -183,6 +183,8 @@ const EN = {
     '속도': 'Speed',
     '흔들림': 'Shake',
     '노이즈': 'Noise',
+    '애니': 'Anim',
+    '파츠 애니메이션 — 이동 · 회전 · 흔들림 · 모자이크': 'Part animation — move, rotate, sway, mosaic',
     '이 기능 어디 있나': 'Where is it?',
     '카메라 무브': 'Camera move',
     '필름 노이즈': 'Film grain',
