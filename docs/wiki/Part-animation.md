@@ -87,9 +87,8 @@ badly wrong.
 that strength. **Start / End** are where in the cut it is on, as 0 to 1; an end of 1 keeps it on to
 the end of the cut.
 
-**Colour** adds coloured specks over the whole frame — on the empty canvas too, not only on the
-ink. It is the one thing the per-layer move gave up, kept as an option because it paints
-outside the lines, which the rest of the static deliberately does not.
+**Colour** adds blue and green specks on the lines, on top of the grey snow — the tint a bad
+signal puts on an edge. Like the rest of the static it stays on the ink.
 
 It is applied only where the layer has ink. Empty canvas stays empty, so it works on a transparent
 background and in a PNG-sequence export, and the sway, the mask and the part's movement all act

@@ -184,7 +184,7 @@ const EN = {
     '흔들림': 'Shake',
     '노이즈': 'Noise',
     '색': 'Colour',
-    '0~1. 화면 전체에 색색의 점이 튑니다. 선이 없는 곳에도': '0 to 1. Coloured specks over the whole frame, where there are no lines too',
+    '0~1. 선 위에 파랑·초록 점이 튑니다': '0 to 1. Blue and green specks on the lines',
     '지지직 — 이 레이어의 선이 찢어지고 색이 갈라집니다. 선이 있는 곳에만 걸립니다': 'Static — the lines of this layer tear and their colours split. Only where there is ink',
     '0~1. 켜는 순간 이 세기로 나옵니다': '0 to 1. At this strength from the moment it turns on',
     '컷의 몇 지점에서 켜질지 (0~1)': 'Where in the cut it turns on (0-1)',
