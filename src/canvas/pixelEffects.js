@@ -160,6 +160,23 @@ export function blurMaskedRegion(src, bounds, pts, rad, makeCanvas) {
 const TILE = 512;
 /** How often the static is re-rolled. Faster than this and it stops reading as flicker. */
 const STATIC_FPS = 24;
+/** The snow is shown at this many screen pixels per tile pixel: coarse specks, not fine grain. */
+const SNOW_SCALE = 3;
+
+/**
+ * The colour halves and silhouettes of a layer, kept between frames.
+ *
+ * Measured before this existed (Iris Xe, 1080p, one layer): the static cost 9-12ms a frame,
+ * and the two multiply halves and the two silhouettes - a copy, a fill and a mask each, all
+ * full-frame - were about half of it. None of them change from one frame to the next unless
+ * the layer itself does, and the layer cache already stamps a signature on its canvas when it
+ * re-rasterises. So they are kept per source canvas and rebuilt only when that signature
+ * moves. A source with no signature (the mosaic's blown-up scratch) is rebuilt every frame,
+ * as before. Weak, so a layer that is dropped takes its halves with it.
+ *
+ * @type {WeakMap<object, {sig: string, w: number, h: number, red: {current: any}, cyan: {current: any}, fr: {current: any}, fc: {current: any}}>}
+ */
+const halvesOf = new WeakMap();
 
 /** A cheap integer hash, so every frame's tears are decided the same way on export as on screen. */
 const hash = (a, b = 0) => {
@@ -187,7 +204,15 @@ export function grainTile(makeCanvas) {
         d[i + 3] = 255;
     }
     ctx.putImageData(img, 0, 0);
-    return c;
+    // Blown up to the size it is shown at, once, with smoothing off. The snow is then laid as a
+    // repeating pattern in a single fill, and a pattern cannot be told not to smooth - scaling
+    // it at draw time would blur the specks into a grey film. 1536px square: 9MB, built once.
+    const big = makeCanvas();
+    big.width = TILE * SNOW_SCALE; big.height = TILE * SNOW_SCALE;
+    const bctx = big.getContext('2d');
+    bctx.imageSmoothingEnabled = false;
+    bctx.drawImage(c, 0, 0, big.width, big.height);
+    return big;
 }
 
 /**
@@ -207,8 +232,8 @@ export function grainTile(makeCanvas) {
  * @param {{cw: number, ch: number, amount: number, seconds: number, colour?: number}} o
  *   `colour` 0..1 is the chromatic fringe: a red copy of the ink shifted one way and a blue one
  *   the other, behind the line, so a dark line on a light ground splits red | ink | blue
- * @param {{copy: {current: any}, red: {current: any}, cyan: {current: any}, out: {current: any}}} refs
- *   four scratch slots; the halves are read while the output is written, so none can share
+ * @param {{copy: {current: any}, out: {current: any}}} refs
+ *   two scratch slots: the copy of the source and the output. The halves live in halvesOf.
  * @param {(ref: any, w: number, h: number) => {canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D}} scratch
  * @returns {HTMLCanvasElement | null} null when there is nothing to do
  */
@@ -223,19 +248,31 @@ export function staticCanvas(src, tile, { cw, ch, amount, seconds, colour = 0 },
     const split = Math.max(1, Math.round((bad ? 6 : 2) * v + (bad ? unit(step, 2) * 10 * v : 0)));
     const jx = Math.round((unit(step, 5) * 2 - 1) * (bad ? 14 : 3) * v);
     const jy = Math.round((unit(step, 6) * 2 - 1) * (bad ? 4 : 1) * v);
+    const fringed = colour > 0;
 
     const { canvas: copy, ctx: cctx } = scratch(refs.copy, cw, ch);
     cctx.globalCompositeOperation = 'source-over';
     cctx.clearRect(0, 0, cw, ch);
     cctx.drawImage(src, 0, 0);
 
-    const half = (ref, colour) => {
+    // The derived copies, from the cache when the source has not changed since last frame.
+    const sig = /** @type {any} */ (src).dataset?.strokes;
+    let cache = halvesOf.get(src);
+    const stale = !cache || cache.w !== cw || cache.h !== ch || sig == null || cache.sig !== sig;
+    if (!cache) {
+        cache = { sig: '', w: cw, h: ch, red: { current: null }, cyan: { current: null }, fr: { current: null }, fc: { current: null } };
+        halvesOf.set(src, cache);
+    }
+    if (stale) { cache.sig = sig ?? ''; cache.w = cw; cache.h = ch; }
+
+    /** One channel of the ink: multiply by a solid colour keeps it, then back to the ink's alpha. */
+    const half = (ref, fill) => {
         const { canvas, ctx: hctx } = scratch(ref, cw, ch);
         hctx.globalCompositeOperation = 'source-over';
         hctx.clearRect(0, 0, cw, ch);
         hctx.drawImage(copy, 0, 0);
         hctx.globalCompositeOperation = 'multiply';
-        hctx.fillStyle = colour;
+        hctx.fillStyle = fill;
         hctx.fillRect(0, 0, cw, ch);
         // The fill painted the transparent pixels too. Back to the layer's own alpha.
         hctx.globalCompositeOperation = 'destination-in';
@@ -243,16 +280,35 @@ export function staticCanvas(src, tile, { cw, ch, amount, seconds, colour = 0 },
         hctx.globalCompositeOperation = 'source-over';
         return canvas;
     };
-    const r = half(refs.red, '#ff0000');
-    const c = half(refs.cyan, '#00ffff');
+    /** The ink's alpha in one flat colour. */
+    const silhouette = (ref, fill) => {
+        const { canvas, ctx: sctx } = scratch(ref, cw, ch);
+        sctx.globalCompositeOperation = 'source-over';
+        sctx.clearRect(0, 0, cw, ch);
+        sctx.drawImage(copy, 0, 0);
+        sctx.globalCompositeOperation = 'source-in';
+        sctx.fillStyle = fill;
+        sctx.fillRect(0, 0, cw, ch);
+        sctx.globalCompositeOperation = 'source-over';
+        return canvas;
+    };
+    const kept = (ref, build) => (stale || !ref.current ? build() : ref.current);
 
     const { canvas: out, ctx: octx } = scratch(refs.out, cw, ch);
     octx.globalCompositeOperation = 'source-over';
     octx.clearRect(0, 0, cw, ch);
-    octx.globalCompositeOperation = 'lighter';
-    octx.drawImage(r, jx - split, jy);
-    octx.drawImage(c, jx + split, jy);
-    octx.globalCompositeOperation = 'source-over';
+    if (fringed) {
+        // With the fringe on, the channel split is redundant - the silhouettes behind the line
+        // are the colour, and on dark ink the split never showed anyway. One draw, not eight.
+        octx.drawImage(copy, jx, jy);
+    } else {
+        const r = kept(cache.red, () => half(cache.red, '#ff0000'));
+        const c = kept(cache.cyan, () => half(cache.cyan, '#00ffff'));
+        octx.globalCompositeOperation = 'lighter';
+        octx.drawImage(r, jx - split, jy);
+        octx.drawImage(c, jx + split, jy);
+        octx.globalCompositeOperation = 'source-over';
+    }
 
     // On a bad frame, a few bands shoved further than the rest, from the untouched copy.
     if (bad) {
@@ -269,50 +325,41 @@ export function staticCanvas(src, tile, { cw, ch, amount, seconds, colour = 0 },
     }
 
     // Snow on the strokes and nowhere else: source-atop paints only where there is already ink.
+    // One pattern fill, re-rolled by moving the pattern's origin, instead of tiling the frame
+    // with four blits - the tile is already at screen scale, so nothing is resampled.
     if (tile) {
-        const ox = hash(step, 7) % TILE, oy = hash(step, 8) % TILE;
-        const scale = 3;
-        octx.globalCompositeOperation = 'source-atop';
-        octx.globalAlpha = v * (bad ? 0.55 : 0.25);
-        octx.imageSmoothingEnabled = false;
-        const size = TILE * scale;
-        for (let yy = -(oy * scale) % size; yy < ch; yy += size) {
-            for (let xx = -(ox * scale) % size; xx < cw; xx += size) octx.drawImage(tile, xx, yy, size, size);
+        const ox = (hash(step, 7) % TILE) * SNOW_SCALE, oy = (hash(step, 8) % TILE) * SNOW_SCALE;
+        const pat = octx.createPattern(tile, 'repeat');
+        if (pat) {
+            pat.setTransform(new DOMMatrix().translate(-ox, -oy));
+            octx.globalCompositeOperation = 'source-atop';
+            octx.globalAlpha = v * (bad ? 0.55 : 0.25);
+            octx.fillStyle = pat;
+            octx.fillRect(0, 0, cw, ch);
+            octx.globalAlpha = 1;
+            octx.globalCompositeOperation = 'source-over';
         }
-        octx.globalAlpha = 1;
-        octx.imageSmoothingEnabled = true;
-        octx.globalCompositeOperation = 'source-over';
     }
 
-    // The colour fringe - "the red and blue to either side when a signal breaks up". The
-    // channel split above cannot produce it on black ink: multiplying black by red is black, so
+    // The colour fringe - "the red and cyan to either side when a signal breaks up". The
+    // channel split cannot produce it on black ink: multiplying black by red is black, so
     // the two halves are identical and their sum is the line unchanged. On the old whole-frame
     // version the colour came from the white ground being split, not the ink. So the fringe is
     // built the other way round: a solid red silhouette of the ink shifted one way and a solid
-    // blue one the other, put *behind* the line with destination-over. Where the line covers
-    // them nothing shows; where they stick out past it, red on one side and blue on the other.
+    // cyan one the other, put *behind* the line with destination-over. Where the line covers
+    // them nothing shows; where they stick out past it, red on one side and cyan on the other.
     // Silhouettes rather than tints, so it works for ink of any colour, black included.
-    if (colour > 0) {
+    if (fringed) {
         const cv = Math.sqrt(Math.min(1, colour));
         const fringe = Math.max(1, Math.round(split * (1 + cv) + 2 * cv));
-        const silhouette = (ref, fill) => {
-            const { canvas, ctx: sctx } = scratch(ref, cw, ch);
-            sctx.globalCompositeOperation = 'source-over';
-            sctx.clearRect(0, 0, cw, ch);
-            sctx.drawImage(copy, 0, 0);
-            sctx.globalCompositeOperation = 'source-in';   // the ink's alpha, one flat colour
-            sctx.fillStyle = fill;
-            sctx.fillRect(0, 0, cw, ch);
-            sctx.globalCompositeOperation = 'source-over';
-            return canvas;
-        };
-        // The red and cyan slots are free again: the split was summed into `out` above.
-        const rs = silhouette(refs.red, '#ff2020');
-        const bs = silhouette(refs.cyan, '#2040ff');
+        // The whole-frame version's red and cyan, and translucent: pure colour at full
+        // strength read as two coloured shadows, not as a signal breaking up.
+        const rs = kept(cache.fr, () => silhouette(cache.fr, '#ff0000'));
+        const cs = kept(cache.fc, () => silhouette(cache.fc, '#00ffff'));
         octx.globalCompositeOperation = 'destination-over';
-        octx.globalAlpha = cv * (bad ? 1 : 0.85);
+        octx.globalAlpha = cv * (bad ? 0.8 : 0.55);
         octx.drawImage(rs, jx - fringe, jy);
-        octx.drawImage(bs, jx + fringe, jy);
+        octx.drawImage(cs, jx + fringe, jy);
         octx.globalAlpha = 1;
         octx.globalCompositeOperation = 'source-over';
     }
