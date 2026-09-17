@@ -3,7 +3,7 @@
 A frame-by-frame animation and music-video tool. It runs in the browser, on a PC with a mouse
 or on a tablet with a pen.
 
-한국어: **[홈](홈)**
+한국어: **[홈](Home-ko)**
 
 This wiki is for the explanations that are too long for the app itself. The in-app help — the **?**
 button in the top bar — stays short on purpose: it lists the shortcuts, the gestures, and where
