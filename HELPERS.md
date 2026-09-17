@@ -732,6 +732,8 @@ The two tools that change pixels already on the canvas: the mosaic and the blur 
 | `rectBounds` | The same for a dragged rectangle, whichever corner it was dragged from. |
 | `mosaic` | Averages each block of pixels over itself, in place. Alpha is averaged with the colour, so a partly transparent block fades rather than stamping a hard square onto nothing. |
 | `blurMaskedRegion` | A blurred copy of one region with everything the brush missed erased. Several light passes rather than one heavy one, and the mask is blurred too — a hard mask leaves a seam that reads as a second stroke. |
+| `grainTile` | A square of monochrome noise centred on mid grey, built once. Centred because `overlay` leaves mid grey alone, so the average pixel is unchanged and turning the grain up adds texture instead of fogging the picture. |
+| `drawGrain` | Blits that tile over the frame with an offset hashed from the quantised time — deterministic, so the export grains the same way the preview did. Drawn *outside* the camera transform: grain is on the film, not in the scene. |
 
 ## `src/canvas/sceneRender.js`
 

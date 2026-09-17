@@ -43,7 +43,7 @@ import { warpedOutline, warpedHandles, rotateKnob } from './canvas/warpRender.js
 import { drawMarquee, HANDLE_GRAB_PX } from './canvas/marquee.js';
 import { drawTextSelection, drawFloatingSelection, drawMotionPath } from './canvas/editChrome.js';
 import { createBitmapStore } from './canvas/bitmapStore.js';
-import { regionBounds, rectBounds, mosaic, blurMaskedRegion } from './canvas/pixelEffects.js';
+import { regionBounds, rectBounds, mosaic, blurMaskedRegion, grainTile, drawGrain } from './canvas/pixelEffects.js';
 import { useLayerCache } from './hooks/useLayerCache.js';
 import { useTimelineView } from './hooks/useTimelineView.js';
 import { useCutListUi } from './hooks/useCutListUi.js';
@@ -360,6 +360,7 @@ export default function App() {
     const playheadRef = useRef(null);        // moved imperatively during playback
     // Reused inside the composite loop; see the mask path in paintFrame.
     const maskScratchRef = useRef(null);
+    const grainTileRef = useRef(/** @type {HTMLCanvasElement|null} */(null)); // built once, blitted per frame
     const dataUrlCacheRef = useRef(new Map()); // id -> {imageData, url}; avoids re-encoding bitmaps each autosave
     const liveRef = useRef({}); // latest {cuts, copiedCut, selection} for safe bitmap GC from effects
     const textAreaRef = useRef(null);
@@ -1824,6 +1825,18 @@ export default function App() {
         // Text objects live outside paint layers ("text layer").
         drawSceneTexts(ctx, scene, { cw: CANVAS_W, ch: CANVAS_H, drawTextObject, textNeedsBox, measureTextBox });
         if (camAt) ctx.restore();
+
+        // Grain, over the finished frame and outside the camera transform: it is on the film,
+        // not in the scene, so it must not zoom or shake with the picture.
+        //
+        // Skipped on a transparent background. `overlay` paints into fully transparent pixels,
+        // so grain would fill the empty area and a PNG sequence meant as an overlay would come
+        // out opaque - which is the whole reason that export mode exists.
+        const grain = primary?.camera?.noise || 0;
+        if (grain > 0 && !transparentBg) {
+            if (!grainTileRef.current) grainTileRef.current = grainTile(() => document.createElement('canvas'));
+            drawGrain(ctx, grainTileRef.current, { cw: CANVAS_W, ch: CANVAS_H, amount: grain, seconds: t - primary.startTime });
+        }
     }, [cuts, currentCutId, currentCut, onionPrev, onionNext, selection, layerCanvasCache, frameDecodeTick, videoOverlay, boilTick, dragTick, transparentBg]);
 
     paintFrameRef.current = paintFrame;

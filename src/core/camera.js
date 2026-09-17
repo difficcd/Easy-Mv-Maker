@@ -36,6 +36,12 @@ export const CAMERA_DEFAULT = {
     shake: 0,
     /** Roughly how many wobbles a second. */
     shakeSpeed: 6,
+    /**
+     * Film grain over the finished frame, 0..1. Not part of the camera transform - grain is on
+     * the film, not in the scene - but it lives here because it is the same choice: what this
+     * shot looks like as a shot.
+     */
+    noise: 0,
 };
 
 /**

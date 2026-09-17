@@ -145,6 +145,11 @@ export function CameraPanel({ cut, updCutCamera, cameraCapture, setCameraCapture
                 <NumIn value={c.shakeSpeed ?? 6} onChange={v => set({ shakeSpeed: Math.max(0.1, v) })} step={1} min={0.1} w={54} label={tr('속도')} title={tr('초당 흔들리는 횟수')} />
             </div>
             <div style={R()}>
+                <span style={{ width: 34, color: '#aaa', flexShrink: 0 }}>{tr('노이즈')}</span>
+                <NumIn value={round2(c.noise || 0)} onChange={v => set({ noise: Math.max(0, Math.min(1, v)) })} step={0.05} min={0} w={54} label={tr('세기')}
+                    title={tr('필름 그레인. 투명 배경으로 내보낼 때는 적용되지 않습니다')} />
+            </div>
+            <div style={R()}>
                 <button className="button" style={{ flex: 1, height: 26, background: capturing ? 'var(--accent)' : undefined }}
                     onClick={() => setCameraCapture(capturing ? null : { cutId: cut.id })}
                     title={tr('캔버스에 카메라가 지나갈 길을 그립니다')}>
