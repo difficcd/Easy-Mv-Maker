@@ -422,6 +422,7 @@ began at zero.
 | | |
 |---|---|
 | `playRange` | The time range to play, or export. A selected part wins outright; otherwise the range spans everything that occupies time. An empty project gives 0..0, so callers read that as nothing to do rather than testing for emptiness themselves. |
+| `exportRange` | The play range with its start moved up to the first cut (within the selected part, if any): an intro on the music plays while working but is not exported. End untouched. |
 
 ## `src/core/partOps.js`
 

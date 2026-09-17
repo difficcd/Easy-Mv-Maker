@@ -51,6 +51,9 @@ flat.
 
 ## What is and is not in the export
 
+- The export **starts at the first cut**. Playback starts where the content starts, which can
+  be the music; an intro before any drawing is for working to, not for the file. The end is
+  wherever the content ends, music included.
 - Cut animations, part animations, the camera, and every effect play in the export exactly as
   they do under ▶. If it looked right playing, it looks right exported; they go through the same
   paint path, on purpose.

@@ -70,7 +70,7 @@ import { cloneCutContents as cloneCutContentsPure, placeCopies } from './core/cu
 import { DEFAULT_KEYS, KEY_LABELS, keyOf, keymapFrom, findConflicts } from './core/shortcuts.js';
 import { derivePartsFrom, deriveVideoBatches } from './core/partOps.js';
 import { importPlacement, buildImportedCuts, extractOptionsFor } from './core/videoCuts.js';
-import { playRange } from './core/playRange.js';
+import { playRange, exportRange } from './core/playRange.js';
 import { brushUp, brushDown } from './core/brushSize.js';
 import {
     cutsReducer, replaceCuts, addCuts, updateCut, setCutAnim, setCutCamera, clearCut,
@@ -584,6 +584,9 @@ export default function App() {
     // Playback runs within the active part when one is selected, else across all content. The
     // exports use the same two numbers - see playRange.js for what that fixed.
     const { start: playStart, end: playEnd } = playRange({ cuts, audio: audioData, video: videoOverlay, part: activePart });
+    // The export starts at the first cut, not at the music: an intro before any drawing is
+    // wanted while working and not in the file.
+    const { start: exportStart } = exportRange({ cuts, audio: audioData, video: videoOverlay, part: activePart });
 
     // Playback owns the clock: isPlaying, currentTime, and the refs the rAF loop reads instead
     // of state so it never runs on a stale closure. Everything passed in is an input - playback
@@ -2160,7 +2163,7 @@ export default function App() {
     const { handleExport, handleExportFrames, handleExportPieces } = useExport({
         paint: { canvasRef, paintFrameRef, currentTimeRef, renderStateRef, bitmapStoreRef, videoStopRef: vid.stopRef },
         audio: { audioRef, audioCtxRef, audioSourceRef, audioDestRef, audioUrl, audioData },
-        range: { playStart, playEnd, cw: CANVAS_W, ch: CANVAS_H, transparentBg, transparentFormat },
+        range: { playStart: exportStart, playEnd, cw: CANVAS_W, ch: CANVAS_H, transparentBg, transparentFormat },
         doc: { buildData, restore, invalidateCutsUsing, decodeFrameBitmap, paintFrame },
         report: { setLoadProgress: notices.setProgress, setAppError: notices.setError, setCurrentTime, setIsPlaying },
         recording: { isExporting, exportEndRef, exportStartRef, requestFrameRef, mediaRecorderRef },
