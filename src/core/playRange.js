@@ -46,3 +46,28 @@ export function playRange({ cuts, audio, video, part } = {}) {
     const start = starts.length ? Math.max(0, Math.min(...starts)) : 0;
     return { start: Math.min(start, end), end };
 }
+
+/**
+ * The range an export covers: the play range, but starting at the first cut.
+ *
+ * Playback starts where the content starts, which can be the music - an intro before the first
+ * drawing is something you want to hear while working. The export does not want it: "the
+ * start point is fixed to the first cut's start; everything else as it was". A film that opens
+ * with three seconds of blank frames is a film someone trims afterwards. Within a selected
+ * part it is the first cut of that part, for the same reason.
+ *
+ * The end is untouched. Music running past the last cut is a choice the user made on the
+ * timeline; an intro before the first cut is not one they can see.
+ *
+ * @param {Parameters<typeof playRange>[0]} [opts] the same options as playRange
+ * @returns {{start: number, end: number}}
+ */
+export function exportRange(opts = {}) {
+    const { start, end } = playRange(opts);
+    const { cuts, part } = opts;
+    const inRange = (Array.isArray(cuts) ? cuts : []).filter(c => c && Number.isFinite(c.startTime)
+        && (!part || (c.startTime < part.end && (c.endTime ?? c.startTime) > part.start)));
+    if (!inRange.length) return { start, end };
+    const first = Math.max(start, Math.min(...inRange.map(c => c.startTime)));
+    return { start: Math.min(first, end), end };
+}

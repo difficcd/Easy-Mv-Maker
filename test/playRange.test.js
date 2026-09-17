@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { playRange } from '../src/core/playRange.js';
+import { playRange, exportRange } from '../src/core/playRange.js';
 
 // The bugs this replaces, stated as the cases that used to come out wrong:
 //   - the frame and GIF export began at zero, not where the content begins
@@ -69,4 +69,22 @@ test('junk in the timeline does not become NaN in the range', () => {
         video: null,
     });
     assert.deepEqual(r, { start: 0, end: 4 });
+});
+
+test('the export starts at the first cut even when the music starts earlier', () => {
+    const cuts = [{ startTime: 3, endTime: 5 }, { startTime: 5, endTime: 8 }];
+    const audio = { startTime: 0, endTime: 10 };
+    assert.deepEqual(playRange({ cuts, audio }), { start: 0, end: 10 });
+    assert.deepEqual(exportRange({ cuts, audio }), { start: 3, end: 10 });
+});
+
+test('within a part, the export starts at that part\'s first cut', () => {
+    const cuts = [{ startTime: 0, endTime: 4 }, { startTime: 6, endTime: 9 }];
+    const part = { start: 5, end: 12 };
+    assert.deepEqual(exportRange({ cuts, part }), { start: 6, end: 12 });
+});
+
+test('with no cuts the export range is the play range', () => {
+    assert.deepEqual(exportRange({ audio: { startTime: 1, endTime: 4 } }), { start: 1, end: 4 });
+    assert.deepEqual(exportRange({}), { start: 0, end: 0 });
 });
