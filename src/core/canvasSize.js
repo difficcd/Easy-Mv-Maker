@@ -32,3 +32,21 @@ export function clampCanvasSize(w, h) {
     const fit = (n) => Math.round(Math.max(CANVAS_MIN_EDGE, Math.min(CANVAS_MAX_EDGE, n)));
     return { w: fit(nw), h: fit(nh) };
 }
+
+export const DEFAULT_CUT_DURATION = 1;
+
+export const CANVAS_W = 1920, CANVAS_H = 1080;
+
+// Which canvas a video import should land in. A vertical clip dropped into a landscape canvas
+// is mostly empty margin, so the import can either match the source or be pinned to one of the
+// two shapes people actually publish.
+export const targetCanvasFor = (cfg, curW, curH) => {
+    const mode = cfg?.canvasMode || 'source';
+    if (mode === 'landscape') return { w: 1920, h: 1080 };
+    if (mode === 'portrait') return { w: 1080, h: 1920 };
+    if (mode === 'source' && cfg?.srcW > 0 && cfg?.srcH > 0) {
+        // Even dimensions keep the frames off half-pixel resampling.
+        return { w: Math.round(cfg.srcW / 2) * 2, h: Math.round(cfg.srcH / 2) * 2 };
+    }
+    return { w: curW, h: curH };
+};

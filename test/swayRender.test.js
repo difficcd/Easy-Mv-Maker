@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { swaySlices, SWAY_SLICES } from '../src/canvas/swayRender.js';
-import { swayWeightAt } from '../src/canvas/canvasUtils.js';
+import { swayWeightAt } from '../src/core/sway.js';
 
 const SPAN = 1080;
 const DISP = 120;

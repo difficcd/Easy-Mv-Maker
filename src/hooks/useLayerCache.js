@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { layerKey, layerSig, sizeCanvas, scratchCanvas, drawStrokesOnCtx, safeArray } from '../canvas/canvasUtils.js';
+import { sizeCanvas, scratchCanvas } from '../canvas/scratch.js';
+import { drawStrokesOnCtx } from '../canvas/strokes.js';
+import { safeArray } from '../core/geometry.js';
+import { layerKey, layerSig } from '../core/layerTree.js';
 import { scanLayerBitmaps } from '../engine/pendingBitmaps.js';
 import { cutsToCache } from '../engine/selectCuts.js';
 import { layerKeysUsingBitmaps, keysWithPhases, prefetchWindow } from '../core/decodeBudget.js';

@@ -1,5 +1,6 @@
 import { ChevronDown, ChevronUp, Grid3x3, Pause, Play, Plus, Repeat, Square, Trash2, Eye, EyeOff, Settings, Volume2, VolumeX } from 'lucide-react';
-import { safeArray, accentSoft } from '../canvas/canvasUtils';
+import { accentSoft } from '../canvas/editChrome.js';
+import { safeArray } from '../core/geometry.js';
 import { tr } from '../i18n';
 import { PLAYBACK_RATES, RATE_DEFAULT } from '../core/playbackRate.js';
 import { TRACK_GUTTER, timeAtX, xAtTime } from '../core/timelineZoom.js';

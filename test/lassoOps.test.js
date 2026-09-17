@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { closeLassoPath, lassoBounds, applyResize, MIN_SELECTION_SIZE, selectionStrokes, applyWarpDrag, WARP_LIMIT, paintedBounds } from '../src/core/lassoOps.js';
-import { pointInPolygon } from '../src/canvas/canvasUtils.js';
+import { pointInPolygon } from '../src/core/geometry.js';
 
 const P = (x, y) => ({ x, y });
 

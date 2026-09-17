@@ -38,3 +38,22 @@ export function withAlpha(colour, alpha) {
     if (fn) return `${fn[1]}(${fn[2].split('/')[0].trim()} / ${a})`;
     return c;   // a named colour, or something this does not know: better opaque than broken
 }
+
+export function hexToRgb(hex) {
+    const h = String(hex || '').trim();
+    if (!h.startsWith('#')) return { r: 0, g: 0, b: 0 };
+    const s = h.slice(1);
+    if (s.length === 3) {
+        const r = parseInt(s[0] + s[0], 16);
+        const g = parseInt(s[1] + s[1], 16);
+        const b = parseInt(s[2] + s[2], 16);
+        return { r: r | 0, g: g | 0, b: b | 0 };
+    }
+    if (s.length === 6) {
+        const r = parseInt(s.slice(0, 2), 16);
+        const g = parseInt(s.slice(2, 4), 16);
+        const b = parseInt(s.slice(4, 6), 16);
+        return { r: r | 0, g: g | 0, b: b | 0 };
+    }
+    return { r: 0, g: 0, b: 0 };
+}

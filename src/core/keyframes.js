@@ -1,3 +1,4 @@
+import { applyEase } from './easing.js';
 // Editing a part's keyframe list: the rules the panel applies before a list is stored.
 //
 // Two rules, both easy to lose inside a click handler. The list is always sorted by position,
@@ -45,4 +46,25 @@ export function patchKey(keys, i, patch) {
 /** The list without the key at index `i`; null once it is empty. */
 export function removeKey(keys, i) {
     return keysOrNull(keys.filter((_, j) => j !== i));
+}
+
+// Keyframe tweening: interpolates between the times you set, with per-segment easing.
+// This is tweening in the original animation sense of the word.
+export function sampleKeys(keys, p) {
+    const n = keys.length;
+    if (p <= keys[0].p) return keys[0];
+    if (p >= keys[n - 1].p) return keys[n - 1];
+    for (let i = 0; i < n - 1; i++) {
+        const k0 = keys[i], k1 = keys[i + 1];
+        if (p >= k0.p && p <= k1.p) {
+            const span = Math.max(1e-6, k1.p - k0.p);
+            const u = applyEase((p - k0.p) / span, k0.ease || 'linear', k0.easePower ?? 2);
+            const mix = (x, y) => (x ?? 0) + ((y ?? 0) - (x ?? 0)) * u;
+            return {
+                tx: mix(k0.tx, k1.tx), ty: mix(k0.ty, k1.ty), rot: mix(k0.rot, k1.rot),
+                scale: mix(k0.scale, k1.scale), op: mix(k0.op ?? 1, k1.op ?? 1),
+            };
+        }
+    }
+    return keys[n - 1];
 }

@@ -15,7 +15,7 @@
 // into frame. Every preset that moves the centre therefore zooms in first, and the amount is
 // chosen so the travel stays inside what the zoom buys.
 
-import { applyEase, samplePath } from '../canvas/canvasUtils.js';
+import { applyEase, samplePath } from './easing.js';
 
 /** No camera at all: the default, and what every existing project has. */
 export const CAMERA_DEFAULT = {

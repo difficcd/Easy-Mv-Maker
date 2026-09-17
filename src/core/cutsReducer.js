@@ -22,7 +22,9 @@
 import { offsetLayers, mergeDown } from './layerOps.js';
 import { assignPart, renamePartIn, ungroupPartIn, removeVideoBatch } from './partOps.js';
 import { CAMERA_DEFAULT } from './camera.js';
-import { ANIM_DEFAULT, LAYER_ANIM_DEFAULT, safeArray } from '../canvas/canvasUtils.js';
+import { ANIM_DEFAULT } from './cutAnim.js';
+import { safeArray } from './geometry.js';
+import { LAYER_ANIM_DEFAULT } from './layerAnim.js';
 
 // ── action creators ────────────────────────────────────────────────────────
 

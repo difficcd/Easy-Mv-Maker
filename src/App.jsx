@@ -94,12 +94,18 @@ import { evaluateFrame } from './engine/evaluateFrame.js';
 import { pendingBitmapIds } from './engine/pendingBitmaps.js';
 import { unusedBitmapIds } from './core/bitmapRefs.js';
 import { dragCut, resizeCut } from './core/cutOps.js';
-import {
-    DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT,
-    pointInPolygon, safeArray, hexToRgb, bucketFillTransparentRegion,
-    imageDataToDataURL, dataURLToImageData, drawStrokesOnCtx, sizeCanvas, flattenLayersInUiOrder, extractVideoFrames, fitRect, detectSceneCuts, curveToWave, morphPrepare,
-    targetCanvasFor, imageDataCanvas, seekTarget, accentSoft,
-} from './canvas/canvasUtils';
+import { accentSoft } from './canvas/editChrome.js';
+import { bucketFillTransparentRegion } from './canvas/fill.js';
+import { imageDataToDataURL, dataURLToImageData } from './canvas/imageCodec.js';
+import { morphPrepare } from './canvas/morph.js';
+import { sizeCanvas, imageDataCanvas } from './canvas/scratch.js';
+import { drawStrokesOnCtx } from './canvas/strokes.js';
+import { extractVideoFrames, fitRect, detectSceneCuts, seekTarget } from './canvas/videoFrames.js';
+import { DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT, targetCanvasFor } from './core/canvasSize.js';
+import { hexToRgb } from './core/colour.js';
+import { pointInPolygon, safeArray } from './core/geometry.js';
+import { flattenLayersInUiOrder } from './core/layerTree.js';
+import { curveToWave } from './core/sway.js';
 
 
 

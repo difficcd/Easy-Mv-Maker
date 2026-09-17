@@ -24,7 +24,7 @@ import { useState, useRef, useEffect } from 'react';
 import { apiFetch, putAsset } from '../core/api.js';
 import { readStored, writeStored } from '../core/persist.js';
 import { randomId } from '../core/ids.js';
-import { safeArray } from '../canvas/canvasUtils.js';
+import { safeArray } from '../core/geometry.js';
 import { tr } from '../i18n.js';
 
 /** How often the automatic backup wakes up. */

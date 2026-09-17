@@ -1,3 +1,4 @@
+import { CANVAS_H, CANVAS_W } from '../core/canvasSize.js';
 // Putting one layer onto the frame: where it sits, and how a floating selection is cut out of it.
 //
 // Both of these lived inside the composite loop in paintFrame, which is the hottest code in the
@@ -95,4 +96,24 @@ export function drawMaskedLayer(ctx, layerCanvas, mask, at, scratch) {
     tctx.drawImage(mask, Math.round(at.x), Math.round(at.y));
     tctx.globalCompositeOperation = 'source-over';
     ctx.drawImage(tmp, 0, 0);
+}
+
+/**
+ * Put a cut's animation onto a 2D context. The caller owns the save/restore.
+ *
+ * Move, scale and rotate all pivot on the centre of the frame, which is why the origin goes there
+ * and comes back. Written out at both places that draw a cut - the artwork and the text over it -
+ * and if the two ever disagreed about the pivot, a cut animation would slide its text off its
+ * drawing, which reads as a text placement bug rather than an animation one.
+ *
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {{tx:number, ty:number, sx:number, sy:number} | null | undefined} anim
+ * @param {number} [cw]
+ * @param {number} [ch]
+ */
+export function applyCutAnim(ctx, anim, cw = CANVAS_W, ch = CANVAS_H) {
+    if (!anim) return;
+    ctx.translate(cw / 2 + anim.tx, ch / 2 + anim.ty);
+    ctx.scale(anim.sx, anim.sy);
+    ctx.translate(-cw / 2, -ch / 2);
 }

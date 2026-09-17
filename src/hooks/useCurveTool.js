@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { catmullThrough } from '../core/catmullRom.js';
-import { drawStrokesOnCtx } from '../canvas/canvasUtils';
+import { drawStrokesOnCtx } from '../canvas/strokes.js';
 import { drawCurveAnchors } from '../canvas/editChrome.js';
 import { nextId } from '../core/ids.js';
 

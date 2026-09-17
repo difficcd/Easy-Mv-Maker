@@ -1,7 +1,8 @@
 import React from 'react';
 import { tr } from '../i18n';
 import { NumField, clampNum } from './NumField';
-import { FONT_PRESETS, fontGroups, TEXT_ANIM_DEFAULT } from '../canvas/canvasUtils';
+import { FONT_PRESETS, fontGroups } from '../core/fonts.js';
+import { TEXT_ANIM_DEFAULT } from '../core/textAnim.js';
 
 /**
  * The text editor, which is a tab in the cut panel rather than a window over the canvas.
