@@ -23,10 +23,10 @@ import { pixelateCanvas, pixelateRegion, clampRegion } from './pixelEffects.js';
  * @param {{cutId: any, sourceLayerId: any, maskBitmapId: any, x: number, y: number} | null} deps.selection
  * @param {(id: any) => {imageBitmap?: any, imageData?: any} | undefined} deps.bitmapEntry
  * @param {{current: any}} deps.maskScratchRef a scratch canvas slot for the mask
- * @param {{full: {current: any}, small: {current: any}}} deps.mosaicScratchRef scratch slots for
+ * @param {{full: {current: any}, small: {current: any}}} deps.mosaicScratch scratch slots for
  *   the mosaic: the shrunken copy, and the composed layer when only a region is pixelated
  */
-export function drawScene(ctx, scene, { cw, ch, flattenClipGroup, hiddenByGesture, selection, bitmapEntry, maskScratchRef, mosaicScratchRef }) {
+export function drawScene(ctx, scene, { cw, ch, flattenClipGroup, hiddenByGesture, selection, bitmapEntry, maskScratchRef, mosaicScratch }) {
     for (const { cut: ac, anim, groups } of scene.cuts) {
         ctx.save();
         if (anim) {
@@ -64,8 +64,8 @@ export function drawScene(ctx, scene, { cw, ch, flattenClipGroup, hiddenByGestur
             const region = la?.mosaic >= 2 ? clampRegion(la.mosaicRect, cw, ch) : null;
             const src = la?.mosaic >= 2
                 ? (region
-                    ? (pixelateRegion(layerCanvas, la.mosaic, region, mosaicScratchRef, scratchCanvas, cw, ch) || layerCanvas)
-                    : (pixelateCanvas(layerCanvas, la.mosaic, mosaicScratchRef.small, scratchCanvas) || layerCanvas))
+                    ? (pixelateRegion(layerCanvas, la.mosaic, region, mosaicScratch, scratchCanvas, cw, ch) || layerCanvas)
+                    : (pixelateCanvas(layerCanvas, la.mosaic, mosaicScratch.small, scratchCanvas) || layerCanvas))
                 : layerCanvas;
             // Blown back up with smoothing off; on the way down it was on, which is what averages
             // each block rather than point-sampling one pixel out of it.

@@ -605,6 +605,13 @@ export function sizeCanvas(cnv, w, h) {
  * @returns {{ canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D }}
  */
 export function scratchCanvas(ref, w, h) {
+    // Named, because the mistake is always the same one and the error it used to give was
+    // "Cannot read properties of undefined (reading 'current')" from inside the composite loop -
+    // a stack four frames deep with nothing in it saying which slot was wrong. Passing an object
+    // that holds refs instead of a ref is how the mosaic shipped broken.
+    if (!ref || typeof ref !== 'object' || !('current' in ref)) {
+        throw new TypeError('scratchCanvas needs a ref ({current}), got ' + (ref ? `{${Object.keys(ref)}}` : String(ref)));
+    }
     const canvas = ref.current || (ref.current = document.createElement('canvas'));
     const ctx = /** @type {CanvasRenderingContext2D} */ (canvas.getContext('2d'));
     if (!sizeCanvas(canvas, w, h)) ctx.clearRect(0, 0, w, h);

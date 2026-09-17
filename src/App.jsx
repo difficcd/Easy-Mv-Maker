@@ -363,7 +363,12 @@ export default function App() {
     const grainTileRef = useRef(/** @type {HTMLCanvasElement|null} */(null)); // built once, blitted per frame
     // Two slots: the shrunken copy, and - when only a region is pixelated - the composed layer.
     // Separate, because composing reads the small one while writing the full one.
-    const mosaicScratchRef = useRef({ full: { current: null }, small: { current: null } });
+    //
+    // Two refs rather than one ref holding two, which is what this was and it never worked: the
+    // pair then lives at `ref.current`, and every reader asking for `ref.small` got undefined
+    // and threw on the first frame the mosaic was on.
+    const mosaicFullRef = useRef(null);
+    const mosaicSmallRef = useRef(null);
     const dataUrlCacheRef = useRef(new Map()); // id -> {imageData, url}; avoids re-encoding bitmaps each autosave
     const liveRef = useRef({}); // latest {cuts, copiedCut, selection} for safe bitmap GC from effects
     const textAreaRef = useRef(null);
@@ -1837,7 +1842,8 @@ export default function App() {
         // floating selection's hole cut out of the layer it was lifted from: canvas/sceneRender.
         drawScene(ctx, scene, {
             cw: CANVAS_W, ch: CANVAS_H, flattenClipGroup, hiddenByGesture, selection,
-            bitmapEntry: (id) => bitmapStoreRef.current.get(id), maskScratchRef, mosaicScratchRef,
+            bitmapEntry: (id) => bitmapStoreRef.current.get(id), maskScratchRef,
+            mosaicScratch: { full: mosaicFullRef, small: mosaicSmallRef },
         });
 
         // Text objects live outside paint layers ("text layer").
