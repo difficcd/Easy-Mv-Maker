@@ -1,6 +1,7 @@
 import { Circle } from 'lucide-react';
 import React from 'react';
-import { ANIM_DEFAULT, LAYER_ANIM_DEFAULT } from '../canvas/canvasUtils';
+import { ANIM_DEFAULT } from '../core/cutAnim.js';
+import { LAYER_ANIM_DEFAULT } from '../core/layerAnim.js';
 import { CAMERA_DEFAULT, CAMERA_PRESETS, resolveCamera } from '../core/camera.js';
 import { randomId } from '../core/ids.js';
 
@@ -8,7 +9,7 @@ import { upsertKey, patchKey, removeKey, snapProgress } from '../core/keyframes.
 import { readStored, writeStored, arrayCodec } from '../core/persist.js';
 import { NumField } from './NumField';
 import { tr } from '../i18n';
-import { swayPointAt, swayWeightAt } from '../canvas/canvasUtils';
+import { swayPointAt, swayWeightAt } from '../core/sway.js';
 
 // Animation control panels, split out of App.jsx so editing the (frequently-tweaked)
 // animation UI doesn't require loading the whole component.

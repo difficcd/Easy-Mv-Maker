@@ -1,4 +1,4 @@
-// Unit tests for the pure helpers in canvasUtils.
+// Unit tests for the small pure helpers that used to share canvasUtils.js.
 //
 // These run on Node's built-in test runner with no extra dependency: everything under test is
 // plain maths on plain objects, so there is nothing to mock and no DOM to stand up. The functions
@@ -10,9 +10,20 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-    pointInPolygon, dist, safeArray, hexToRgb, fitRect, layerKey, strokeSig, applyEase, triwave, swayWeightAt, sampleWave, sampleKeys, targetCanvasFor, computeCutAnim, flattenLayersInUiOrder, sizeCanvas, dilateMask, FONT_PRESETS, fontGroups, cutDuration, cutProgress, scratchCanvas, layerSig, seekTarget, applyCutAnim, sortSwayProfile,
-} from '../src/canvas/canvasUtils.js';
+import { dilateMask } from '../src/canvas/fill.js';
+import { applyCutAnim } from '../src/canvas/layerComposite.js';
+import { sizeCanvas, scratchCanvas } from '../src/canvas/scratch.js';
+import { fitRect, seekTarget } from '../src/canvas/videoFrames.js';
+import { targetCanvasFor } from '../src/core/canvasSize.js';
+import { hexToRgb } from '../src/core/colour.js';
+import { computeCutAnim } from '../src/core/cutAnim.js';
+import { cutDuration, cutProgress } from '../src/core/cutTime.js';
+import { applyEase, triwave } from '../src/core/easing.js';
+import { FONT_PRESETS, fontGroups } from '../src/core/fonts.js';
+import { pointInPolygon, dist, safeArray } from '../src/core/geometry.js';
+import { sampleKeys } from '../src/core/keyframes.js';
+import { layerKey, strokeSig, flattenLayersInUiOrder, layerSig } from '../src/core/layerTree.js';
+import { swayWeightAt, sampleWave, sortSwayProfile } from '../src/core/sway.js';
 
 const near = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) < eps, `${a} ≈ ${b}`);
 

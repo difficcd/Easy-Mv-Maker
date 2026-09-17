@@ -2,7 +2,7 @@ import React from 'react';
 import { Trash2, AlertTriangle, Settings, Film, Waves, Lasso } from 'lucide-react';
 import { tr } from '../i18n';
 import { TOOL_PREFIX } from '../core/shortcuts.js';
-import { targetCanvasFor } from '../canvas/canvasUtils';
+import { targetCanvasFor } from '../core/canvasSize.js';
 import { Modal } from './Modal.jsx';
 import { fmt, parseClock } from '../core/timeCode.js';
 import { NumField, clampNum } from './NumField.jsx';

@@ -7,7 +7,8 @@
 
 import { drawMarquee, drawHandle } from './marquee.js';
 import { drawWarped, warpedOutline, warpedHandles, rotateKnob } from './warpRender.js';
-import { accentSoft } from './canvasUtils.js';
+
+import { withAlpha } from '../core/colour.js';
 
 /** The rectangle around a selected text, as a marquee. */
 export function drawTextSelection(ctx, box, zoom) {
@@ -136,3 +137,13 @@ export function drawMosaicRegion(ctx, rect, zoom) {
     const { x, y, w, h } = rect;
     drawMarquee(ctx, [{ x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h }], zoom, true);
 }
+
+// A 2D canvas context cannot read CSS variables, so the computed value is read out instead.
+// That keeps on-canvas furniture such as selection outlines and paths on the theme colour.
+export const accentSoft = (alpha = 1) => {
+    const v = getComputedStyle(document.documentElement).getPropertyValue('--accent-soft').trim() || '#7c8cff';
+    // The alpha is applied by core/colour, which knows the hex the stylesheet's default is
+    // as well as the hsl the theme writes. This used to handle only hsl and drop the alpha
+    // silently for anything else.
+    return withAlpha(v, alpha);
+};

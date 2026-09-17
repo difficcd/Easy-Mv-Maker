@@ -6,7 +6,8 @@
 // canvas for a clip group (the cache's), which layers a gesture is drawing itself, and the
 // selection whose mask applies. Nothing here reads state.
 
-import { applyCutAnim, imageDataCanvas, scratchCanvas } from './canvasUtils.js';
+import { applyCutAnim } from './layerComposite.js';
+import { imageDataCanvas, scratchCanvas } from './scratch.js';
 import { applyPartTransform, drawMaskedLayer } from './layerComposite.js';
 import { drawSwayed } from './swayRender.js';
 import { pixelateCanvas, pixelateRegion, clampRegion, staticCanvas } from './pixelEffects.js';

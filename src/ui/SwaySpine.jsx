@@ -1,5 +1,5 @@
 import React from 'react';
-import { swayWeightAt, swayPointAt, sortSwayProfile } from '../canvas/canvasUtils';
+import { swayWeightAt, swayPointAt, sortSwayProfile } from '../core/sway.js';
 import { tr } from '../i18n';
 
 // Placing the points a sway bends around, on the drawing.

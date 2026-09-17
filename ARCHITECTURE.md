@@ -89,6 +89,13 @@ know storage exists at all, because reading it is `useStored`'s decoder.
 - `liquify.js` — `pushAlong`, the forward warp the liquify brush applies.
 - `document.js` / `cutSelection.js` / `keyframes.js` — making a cut, which cuts a click selects,
   and animation keys.
+- Animation, in one place per kind (they used to share `canvas/canvasUtils.js`): `cutTime.js`
+  (`cutDuration`, `cutProgress`), `easing.js` (`applyEase`, `SWING`/`swing`, `effectAt`,
+  `samplePath`), `cutAnim.js` (`computeCutAnim`), `layerAnim.js` (`computeLayerAnim`,
+  `LAYER_ANIM_DEFAULT`), `sway.js`, `textAnim.js` (`computeTextAnim`), `keyframes.js`
+  (`sampleKeys`). `layerTree.js` reads a cut's layers: order, cache keys, signatures.
+  `canvasSize.js` holds `CANVAS_W/H` and `targetCanvasFor`; `fonts.js` the text fonts;
+  `geometry.js` and `colour.js` the small helpers.
 
 **engine/** — what a frame *is*, with no canvas anywhere near it.
 
@@ -100,13 +107,13 @@ know storage exists at all, because reading it is `useStored`'s decoder.
 
 **canvas/**
 
-- `canvasUtils.js` — the big one. Geometry (`pointInPolygon`, `dist`, `fitRect`), colour
-  (`hexToRgb`), fill (`bucketFillTransparentRegion`, `dilateMask`), canvas (`drawStrokesOnCtx`,
-  `sizeCanvas`, `layerKey`, `imageDataToDataURL`, `flattenLayersInUiOrder`), animation
-  (`ANIM_DEFAULT`/`computeCutAnim`, `LAYER_ANIM_DEFAULT`/`computeLayerAnim`,
-  `TEXT_ANIM_DEFAULT`/`computeTextAnim`, `applyEase`, `triwave`, `samplePath`, `sampleKeys`),
-  video import sizing (`targetCanvasFor`, `extractVideoFrames`). Constants: `CANVAS_W=1920`,
-  `CANVAS_H=1080`, `DEFAULT_CUT_DURATION`, `FONT_PRESETS`.
+- `strokes.js` — strokes become pixels: `smoothPoints` (resample → Chaikin → Catmull-Rom, with a
+  spline pass first for sparse input), the boiling line, and `drawStrokesOnCtx` for every brush.
+- `scratch.js` — `sizeCanvas`, `scratchCanvas` (one canvas per plain `{current}` ref),
+  `imageDataCanvas`, `resetCtx`.
+- `fill.js` — `bucketFillTransparentRegion`, `dilateMask`. `imageCodec.js` — ImageData ⇄ data URL.
+- `videoFrames.js` — `extractVideoFrames`, `detectSceneCuts`, `fitRect`. `morph.js` — the
+  distance-field morph behind tweening.
 - `textRender.js` — measuring and drawing text: `measureTextBox`, `textNeedsBox`, `revealLines`
   (typing), `drawTextObject`. Line breaking is `textLayout.js`.
 - `sceneRender.js` — `drawScene`, the other half of `engine/evaluateFrame`: it draws the answer

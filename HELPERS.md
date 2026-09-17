@@ -62,6 +62,9 @@ and not to what a file can say - and a file is the easier of the two to get a wr
 | `CANVAS_MIN_EDGE` | 64px. Below this there is nothing to draw on. |
 | `CANVAS_MAX_EDGE` | 8192px. A canvas costs width x height x 4 bytes and is held more than once, so 8192 square is already 268MB a copy. |
 | `clampCanvasSize` | A size the app can actually allocate, or null when there isn't one here. Half a size counts as none: a width with no height gives a canvas of NaN, which fails far away from here. |
+| `DEFAULT_CUT_DURATION` | How long a new cut lasts, in seconds. |
+| `CANVAS_W` | The document's pixel size, 1920x1080. The canvas element is scaled by CSS; drawing coordinates are always these. |
+| `targetCanvasFor` | Which canvas a video import should land in. A vertical clip dropped into a landscape canvas is mostly empty margin, so the import can match the source instead, or be pinned to one of the two shapes people actually publish. |
 
 ## `src/core/camera.js`
 
@@ -138,6 +141,7 @@ Putting an alpha on a colour that came from the theme.
 | | |
 |---|---|
 | `withAlpha` | `colour` at `alpha`, in a form a canvas can parse: hex becomes rgba, an hsl/rgb function takes a slash alpha, one that already carries an alpha has it replaced rather than appended. Handling only hsl dropped the alpha silently for the stylesheet's hex defaults. |
+| `hexToRgb` | A #rrggbb string as {r, g, b}. |
 
 ## `src/core/cutClone.js`
 
@@ -299,6 +303,7 @@ Editing a part's keyframe list: sorted by position, one key per instant, null wh
 | `keysOrNull` | The stored form: sorted, or null for nothing. |
 | `snapProgress` | Progress clamped to the cut and rounded to a whole percent. |
 | `KEY_SNAP` | Two keys closer than this are the same instant. |
+| `sampleKeys` | This is tweening in the original animation sense of the word. |
 
 ## `src/core/lassoOps.js`
 
@@ -619,72 +624,6 @@ The pixels strokes point at - fills, pastes, video frames - and the rules for de
 |---|---|
 | `createBitmapStore` | The store: `store` (drawn pixels, bitmap follows), `storeBlob` (a frame kept compressed, decoded lazily), `decodeFrame` (no larger than the canvas), `touch`/`trim`/`setHot` (the LRU over decoded frames, via decodeBudget), `clone` (a copy under a fresh id, shared within one operation). Takes createImageBitmap and ImageData as arguments so it is tested in Node. |
 
-## `src/canvas/canvasUtils.js`
-
-The drawing engine: strokes, canvases, animation, video frames. The big one.
-
-| | |
-|---|---|
-| `accentSoft` | That keeps on-canvas furniture such as selection outlines and paths on the theme colour. |
-| `ANIM_DEFAULT` | A cut animation with nothing turned on. Every field is present, so a stored animation never has to be merged against a shape that might be missing keys. |
-| `applyEase` | The easing curves. Everything animated should go through this rather than its own. |
-| `bucketFillTransparentRegion` | Flood fill across the transparent region under a point, with a tolerance and an optional spread so the fill creeps under the anti-aliased edge of a line instead of leaving a halo. |
-| `CANVAS_W` | The document's pixel size, 1920x1080. The canvas element is scaled by CSS; drawing coordinates are always these. |
-| `applyCutAnim` | Put a cut animation onto a context; the caller owns the save/restore. Written out at both places that draw a cut - the artwork and the text over it - and if the two disagreed about the pivot, an animation would slide a text off its own drawing. |
-| `computeCutAnim` | A cut's animation at a given absolute time. Returns null when the cut is at rest, so callers can skip the save/transform entirely rather than applying an identity one. |
-| `smoothPoints` | A raw hand stroke resampled to 2px and corner-cut three times, ready to render as a Catmull-Rom; sparse input (zoomed-out or fast strokes) is interpolated through a Catmull-Rom first so the corner-cutting works at the stroke's scale, not the resample's. |
-| `computeLayerAnim` | A layer (part) animation resolved to one instant: the offset, rotation, scale, alpha and sway to draw it with. |
-| `effectAt` | An effect that runs between two values over part of a cut: a `from..to` window, a `speed` within it, and a `min..max` range. The mosaic and the film grain were asked the same three questions, so they share one answer. Outside the window it *holds* rather than snapping back — coming back is what `mode: 'return'` is for. |
-| `mosaicBlockAt` | The block size at a moment, over `effectAt`. `mode: 'return'` keeps using the shared swing, so the control that already means "come back" goes on meaning it. |
-| `computeTextAnim` | A text animation resolved to one instant. Returns the entrance, exit and emphasis values, how much of the string is revealed, and — when the characters own the entrance — the progress they divide between them. |
-| `textAnimStep` | What one entrance or exit contributes at eased presence `e`. Shared so a staggered character cannot move differently from the block it belongs to. `dir` is +1 entering, -1 leaving, and only the vertical motions read it. |
-| `charAnimAt` | One character's share of a staggered entrance. The whole of that character's entrance, not something added on top of the block's - `computeTextAnim` leaves the block at rest when a stagger is set. |
-| `charFxAt` | Where one character is coming from, on top of whatever entrance is playing: scatter, drop, zigzag, spin, pop. This is what makes typing read as characters arriving separately rather than a line sliding in as one, and it is an entrance in its own right - no block entrance need be chosen. |
-| `charNoise` | A stable pseudo-random value for one character. Stable is the point: Math.random would give a character a new direction every frame and the text would boil. |
-| `cutDuration` | A cut's length in seconds, never zero - a cut can be dragged to zero length and everything that animates divides by it. |
-| `cutProgress` | How far through a cut a moment is, 0 to 1, clamped. Animations are evaluated for cuts merely near the playhead, so times outside the cut are routine and extrapolating would overshoot. |
-| `curveToWave` | The returned amp (px) is how far that curve actually swung, and is used as the default strength. |
-| `dataURLToImageData` | Decode a dataURL back to pixels. The synchronous counterpart of imageDataToDataURL, for the stored bitmaps a project restores. |
-| `DEFAULT_CUT_DURATION` | How long a new cut lasts, in seconds. |
-| `detectSceneCuts` | Find where a video changes scene, by stepping through it and comparing frames. Refines each hit to the exact boundary, reports progress, and can be stopped part way. |
-| `dilateMask` | Grow a bitmask outwards by r pixels (square structuring element, done separably so it stays O(w*h) whatever r is). Used to bleed a bucket fill under the line that bounds it. |
-| `dist` | Distance between two points. |
-| `drawStrokesOnCtx` | Draw a list of strokes onto a context: the one place that knows what each tool looks like. Clears first unless told not to, and takes the boiling options so a roughened layer draws its own phase. |
-| `openVideoFile` | Open a video file for frame-by-frame reading: the element, its duration, a clamped seek and a release. Both readers set one up the same way and tore it down the same way, and two copies of an object URL's lifetime is two chances to leak one. |
-| `seekTarget` | Where a seek should land. Never the very last frame: seeking to exactly the duration fires no `seeked` event in some browsers, so the promise waiting for one never settles and the import stops halfway with no error. |
-| `extractVideoFrames` | Pull frames out of a video file at a given rate, optionally over a range, scaled, encoded as WebP or PNG, with near-duplicate frames merged. Reports progress and can be stopped part way. |
-| `fitRect` | Letterbox rect: fit source into destination preserving aspect ratio. |
-| `flattenForCanvas` | The layers to draw, bottom first, with folders resolved and hidden branches dropped. |
-| `flattenLayersInUiOrder` | The layer tree flattened the way the panel shows it, so an index in the list means the same thing to the UI and to the renderer. |
-| `FONT_PRESETS` | the app with no Japanese on screen downloads no Japanese. |
-| `fontGroups` | The presets in the order they should appear, as [group, fonts] pairs. |
-| `hexToRgb` | A #rrggbb string as {r, g, b}. |
-| `imageDataCanvas` | A canvas holding an ImageData, ready to draw. `putImageData` ignores the transform, composite mode and alpha, so anything that scales or blends ImageData needs this. Reused - valid until the next call. |
-| `imageDataToDataURL` | Encode pixels as a dataURL, through a reused canvas — allocating one per call is the trap sizeCanvas exists for. |
-| `LAYER_ANIM_DEFAULT` | A part animation with nothing turned on, every field present for the same reason ANIM_DEFAULT has them. |
-| `layerKey` | The cache key for one baked layer. Keyed per (cut, layer) because layer ids are **not** unique across cuts - each cut numbers from 1 - and keying by layer id alone caused cross-cut collisions and an infinite cache-rebuild loop. |
-| `morphPrepare` | Morph the pixel distribution of one frame into another by interpolating signed distance fields, so the shape moves and grows rather than one crossfading into the other. Computes the fields once and returns a function that makes a single in-between frame, which is what lets the tweening dialog show progress and yield between frames. |
-| `pointInPolygon` | Whether a point is inside a polygon, by ray casting. What decides if a lasso caught something. |
-| `safeArray` | Anything-to-array, for fields that older projects may not have at all. |
-| `sampleKeys` | This is tweening in the original animation sense of the word. |
-| `samplePath` | Sample a polyline path at normalized position s in [0,1]. |
-| `sampleWave` | Samples the waveform cyclically over 0..1 with linear interpolation. |
-| `sizeCanvas` | Resizes only when the size differs. Assigning `canvas.width` reallocates the backing store even when the value is unchanged - 8MB at 1920x1080, and the measured 79MB/s that ran the tab out of memory. |
-| `scratchCanvas` | A full-size scratch canvas kept in a ref: allocated once, then sized and cleared for reuse. Three places in the composite path did this by hand and disagreed about the clear - two cleared after a resize, which the resize had already done. Reuse is not a micro-optimisation here: a fresh canvas is 8MB per masked layer per frame. |
-| `resetCtx` | A shared canvas's context put back to its default state — a resize resets these, a reuse does not, and the last user leaves them dirty. |
-| `strokeSig` | A cheap change signature for a layer's strokes, used to invalidate the layer canvas cache without stringifying the whole array. Sound because strokes here are only ever appended or replaced. |
-| `layerSig` | The cache key for one baked layer canvas. Two caches use it and compare their keys against each other, so for a layer that is not boiling both forms must come out byte-identical - otherwise every such layer misses the cache and is redrawn every frame, with no visible symptom. |
-| `swayPointAt` | How to read one entry of a sway profile, whichever shape it is in. Weights used to be spaced evenly - three meant top, middle, bottom, which suits hair and is useless for an arm where the point that matters is wherever the elbow is. A point may carry its own position now; both shapes are read rather than one migrated, so a project saved before this still moves exactly as it did. |
-| `sortSwayProfile` | A profile as positioned points, in order. Always the positioned shape, because that is what an edit produces. Sorted because dragging a point past its neighbour is a thing people do, and the alternative is an interpolation that runs backwards through the middle of the drag. |
-| `swayWeightAt` | How much a point along the axis sways, interpolated smoothly between the control weights. Zero holds a point still; a negative weight bends it the other way, so one stretch can bend one direction while the next bends back. |
-| `swayWaveAt` | The sway waveform at a moment: a sine, or the curve the user drew. One place that says what the waveform is. |
-| `swayDispAt` | How far the sway has pushed the drawing at one position along its axis, including the lag — the tip doing what the root did `lag` seconds ago. Analytic, not simulated: every frame here is a pure function of its time, and a spring chain would answer scrubbing and export differently from playback. |
-| `targetCanvasFor` | Which canvas a video import should land in. A vertical clip dropped into a landscape canvas is mostly empty margin, so the import can match the source instead, or be pinned to one of the two shapes people actually publish. |
-| `TEXT_ANIM_DEFAULT` | - emphasis: a looping accent (pulse/shake/wave) |
-| `triwave` | Triangle wave 0->1->0 (period 2); used for ping-pong path following. |
-| `SWING` | The three shapes a return animation can take. `through` passes the resting position and goes out the other side, which is what the layer presets are made of - 둥실둥실 bobs above and below. `there` and `along` go out to the target and back and never past the start. One cycle is one whole trip in all three, so speed means the same thing to each. |
-| `swing` | A return animation's progress for one of those shapes, or 0 once it has run out of repeats. Settling at 0 rather than mid-wave is where a whole trip would have ended anyway. |
-
 ## `src/canvas/editChrome.js`
 
 What is drawn over the frame while editing and never while playing.
@@ -697,6 +636,7 @@ What is drawn over the frame while editing and never while playing.
 | `drawMosaicRegion` | The rectangle a mosaic effect is confined to, drawn only while that layer's panel is open — it is a setting, not part of the picture. |
 | `drawMosaicMarquee` | The rectangle the mosaic tool is dragging out: a tint (colour passed in, so the function stays testable) with the same screen-sized marquee round it. |
 | `drawCurveAnchors` | The curve ruler's anchors, screen-sized, the first one marked as the end the curve is drawn from. |
+| `accentSoft` | That keeps on-canvas furniture such as selection outlines and paths on the theme colour. |
 
 ## `src/canvas/layerComposite.js`
 
@@ -707,6 +647,7 @@ Putting one layer onto the frame: where it sits, and how a floating selection is
 | `partMatrix` | A part's placement as a 2x3 affine. A matrix rather than context calls, because the whole of the reasoning is the composition order — rotate and scale about the pivot, and a shear that pivots at `py` — and that can then be checked without a canvas. |
 | `applyPartTransform` | The same, applied to a context, with keyframe opacity multiplied rather than replaced (a part inside a fading cut has to fade with it). |
 | `drawMaskedLayer` | Layer minus the lifted region. `destination-out` on a **shared scratch**, never on the frame — erasing on the frame would take the artwork already there, and a fresh canvas per masked layer per frame is 8MB sixty times a second. |
+| `applyCutAnim` | Put a cut animation onto a context; the caller owns the save/restore. Written out at both places that draw a cut - the artwork and the text over it - and if the two disagreed about the pivot, an animation would slide a text off its own drawing. |
 
 ## `src/canvas/swayRender.js`
 
@@ -783,7 +724,7 @@ Skew and bend for a pasted bitmap — the two adjustments a lasso selection carr
 | `warpedHandles` | The eight resize handles on the warped box, named by compass point. |
 | `rotateKnob` | Where the rotate knob sits, taken through `warpPoint` so it orbits with the box instead of hovering above it. `ROTATE_STEM_PX` is how far above the top edge, in screen pixels — in canvas pixels it would drift off screen as the view zoomed in. |
 
-## `src/canvas/textLayout.js`
+## `src/core/textLayout.js`
 
 Where each character of a line goes, for curving and for animating characters separately.
 
@@ -791,6 +732,105 @@ Where each character of a line goes, for curving and for animating characters se
 |---|---|
 | `layoutLine` | Per-character position and angle along an arc. The straight path is left alone on purpose: drawing character by character gives up the font's kerning and shaping, so this is the cost of curving rather than something every text pays. |
 | `charProgress` | One character's own 0..1 when they are staggered. `spread` is capped below 1, because spending the whole duration on starts leaves the last character no time to move. |
+
+## `src/core/fonts.js`
+
+The fonts offered for text objects, grouped by script.
+
+| | |
+|---|---|
+| `FONT_PRESETS` | the app with no Japanese on screen downloads no Japanese. |
+| `fontGroups` | The presets in the order they should appear, as [group, fonts] pairs. |
+
+## `src/core/geometry.js`
+
+Small geometry, and the one array helper everything reaches for.
+
+| | |
+|---|---|
+| `pointInPolygon` | Whether a point is inside a polygon, by ray casting. What decides if a lasso caught something. |
+| `dist` | Distance between two points. |
+| `safeArray` | Anything-to-array, for fields that older projects may not have at all. |
+
+## `src/core/layerTree.js`
+
+Reading a cut's layer tree: order, cache keys and change signatures.
+
+| | |
+|---|---|
+| `layerKey` | The cache key for one baked layer. Keyed per (cut, layer) because layer ids are **not** unique across cuts - each cut numbers from 1 - and keying by layer id alone caused cross-cut collisions and an infinite cache-rebuild loop. |
+| `flattenForCanvas` | The layers to draw, bottom first, with folders resolved and hidden branches dropped. |
+| `strokeSig` | A cheap change signature for a layer's strokes, used to invalidate the layer canvas cache without stringifying the whole array. Sound because strokes here are only ever appended or replaced. |
+| `layerSig` | The cache key for one baked layer canvas. Two caches use it and compare their keys against each other, so for a layer that is not boiling both forms must come out byte-identical - otherwise every such layer misses the cache and is redrawn every frame, with no visible symptom. |
+| `flattenLayersInUiOrder` | The layer tree flattened the way the panel shows it, so an index in the list means the same thing to the UI and to the renderer. |
+
+## `src/core/cutAnim.js`
+
+A cut's entrance and exit: the transform at a moment, from its animation settings.
+
+| | |
+|---|---|
+| `ANIM_DEFAULT` | A cut animation with nothing turned on. Every field is present, so a stored animation never has to be merged against a shape that might be missing keys. |
+| `computeCutAnim` | A cut's animation at a given absolute time. Returns null when the cut is at rest, so callers can skip the save/transform entirely rather than applying an identity one. |
+
+## `src/core/cutTime.js`
+
+How long a cut lasts, and how far through it a moment is.
+
+| | |
+|---|---|
+| `cutDuration` | A cut's length in seconds, never zero - a cut can be dragged to zero length and everything that animates divides by it. |
+| `cutProgress` | How far through a cut a moment is, 0 to 1, clamped. Animations are evaluated for cuts merely near the playhead, so times outside the cut are routine and extrapolating would overshoot. |
+
+## `src/core/easing.js`
+
+Easing, the return-trip shapes, and the effect envelope the layer effects share.
+
+| | |
+|---|---|
+| `applyEase` | The easing curves. Everything animated should go through this rather than its own. |
+| `triwave` | Triangle wave 0->1->0 (period 2); used for ping-pong path following. |
+| `SWING` | The three shapes a return animation can take. `through` passes the resting position and goes out the other side, which is what the layer presets are made of - 둥실둥실 bobs above and below. `there` and `along` go out to the target and back and never past the start. One cycle is one whole trip in all three, so speed means the same thing to each. |
+| `swing` | A return animation's progress for one of those shapes, or 0 once it has run out of repeats. Settling at 0 rather than mid-wave is where a whole trip would have ended anyway. |
+| `effectAt` | An effect that runs between two values over part of a cut: a `from..to` window, a `speed` within it, and a `min..max` range. The mosaic and the film grain were asked the same three questions, so they share one answer. Outside the window it *holds* rather than snapping back — coming back is what `mode: 'return'` is for. |
+| `samplePath` | Sample a polyline path at normalized position s in [0,1]. |
+
+## `src/core/layerAnim.js`
+
+A layer's (part's) animation at a moment: move, rotate, scale, path, keys, sway, effects.
+
+| | |
+|---|---|
+| `LAYER_ANIM_DEFAULT` | A part animation with nothing turned on, every field present for the same reason ANIM_DEFAULT has them. |
+| `mosaicBlockAt` | The block size at a moment, over `effectAt`. `mode: 'return'` keeps using the shared swing, so the control that already means "come back" goes on meaning it. |
+| `computeLayerAnim` | A layer (part) animation resolved to one instant: the offset, rotation, scale, alpha and sway to draw it with. |
+
+## `src/core/sway.js`
+
+Sway: a drawn curve as a waveform, the profile along the part, and the lagged displacement.
+
+| | |
+|---|---|
+| `curveToWave` | The returned amp (px) is how far that curve actually swung, and is used as the default strength. |
+| `swayWaveAt` | The sway waveform at a moment: a sine, or the curve the user drew. One place that says what the waveform is. |
+| `swayDispAt` | How far the sway has pushed the drawing at one position along its axis, including the lag — the tip doing what the root did `lag` seconds ago. Analytic, not simulated: every frame here is a pure function of its time, and a spring chain would answer scrubbing and export differently from playback. |
+| `swayWeightAt` | How much a point along the axis sways, interpolated smoothly between the control weights. Zero holds a point still; a negative weight bends it the other way, so one stretch can bend one direction while the next bends back. |
+| `swayPointAt` | How to read one entry of a sway profile, whichever shape it is in. Weights used to be spaced evenly - three meant top, middle, bottom, which suits hair and is useless for an arm where the point that matters is wherever the elbow is. A point may carry its own position now; both shapes are read rather than one migrated, so a project saved before this still moves exactly as it did. |
+| `sortSwayProfile` | A profile as positioned points, in order. Always the positioned shape, because that is what an edit produces. Sorted because dragging a point past its neighbour is a thing people do, and the alternative is an interpolation that runs backwards through the middle of the drag. |
+| `sampleWave` | Samples the waveform cyclically over 0..1 with linear interpolation. |
+
+## `src/core/textAnim.js`
+
+Text animation for subtitles: entrance, exit, typing, emphasis, per-character effects.
+
+| | |
+|---|---|
+| `TEXT_ANIM_DEFAULT` | - emphasis: a looping accent (pulse/shake/wave) |
+| `charNoise` | A stable pseudo-random value for one character. Stable is the point: Math.random would give a character a new direction every frame and the text would boil. |
+| `charFxAt` | Where one character is coming from, on top of whatever entrance is playing: scatter, drop, zigzag, spin, pop. This is what makes typing read as characters arriving separately rather than a line sliding in as one, and it is an entrance in its own right - no block entrance need be chosen. |
+| `textAnimStep` | What one entrance or exit contributes at eased presence `e`. Shared so a staggered character cannot move differently from the block it belongs to. `dir` is +1 entering, -1 leaving, and only the vertical motions read it. |
+| `charAnimAt` | One character's share of a staggered entrance. The whole of that character's entrance, not something added on top of the block's - `computeTextAnim` leaves the block at rest when a stagger is set. |
+| `computeTextAnim` | A text animation resolved to one instant. Returns the entrance, exit and emphasis values, how much of the string is revealed, and — when the characters own the entrance — the progress they divide between them. |
 
 ## `src/canvas/textRender.js`
 
@@ -805,6 +845,64 @@ Measuring and drawing text objects.
 | `textFontOf` | The CSS font string, in the order the canvas shorthand requires: style, weight, size, family. |
 | `textLineHeight` | Baseline-to-baseline distance for stacked lines. |
 | `textNeedsBox` | Whether this text has to be measured before it can be drawn. Measuring costs a measureText per line, so it is skipped for plain text. |
+
+## `src/canvas/morph.js`
+
+Shape morphing for tweening: distance fields of two drawings, and an in-between frame at any t.
+
+| | |
+|---|---|
+| `morphPrepare` | Morph the pixel distribution of one frame into another by interpolating signed distance fields, so the shape moves and grows rather than one crossfading into the other. Computes the fields once and returns a function that makes a single in-between frame, which is what lets the tweening dialog show progress and yield between frames. |
+
+## `src/canvas/fill.js`
+
+The bucket fill: flood a region of an ImageData, and the mask around it.
+
+| | |
+|---|---|
+| `dilateMask` | Grow a bitmask outwards by r pixels (square structuring element, done separably so it stays O(w*h) whatever r is). Used to bleed a bucket fill under the line that bounds it. |
+| `bucketFillTransparentRegion` | Flood fill across the transparent region under a point, with a tolerance and an optional spread so the fill creeps under the anti-aliased edge of a line instead of leaving a halo. |
+
+## `src/canvas/imageCodec.js`
+
+ImageData to and from a data URL, for persistence.
+
+| | |
+|---|---|
+| `imageDataToDataURL` | Encode pixels as a dataURL, through a reused canvas — allocating one per call is the trap sizeCanvas exists for. |
+| `dataURLToImageData` | Decode a dataURL back to pixels. The synchronous counterpart of imageDataToDataURL, for the stored bitmaps a project restores. |
+
+## `src/canvas/strokes.js`
+
+Strokes become pixels here: smoothing a hand path, the boiling line, and every brush onto a context.
+
+| | |
+|---|---|
+| `smoothPoints` | A raw hand stroke resampled to 2px and corner-cut three times, ready to render as a Catmull-Rom; sparse input (zoomed-out or fast strokes) is interpolated through a Catmull-Rom first so the corner-cutting works at the stroke's scale, not the resample's. |
+| `drawStrokesOnCtx` | Draw a list of strokes onto a context: the one place that knows what each tool looks like. Clears first unless told not to, and takes the boiling options so a roughened layer draws its own phase. |
+
+## `src/canvas/scratch.js`
+
+Scratch canvases: sizing, one-per-ref reuse, and drawing an ImageData through a canvas.
+
+| | |
+|---|---|
+| `sizeCanvas` | Resizes only when the size differs. Assigning `canvas.width` reallocates the backing store even when the value is unchanged - 8MB at 1920x1080, and the measured 79MB/s that ran the tab out of memory. |
+| `scratchCanvas` | A full-size scratch canvas kept in a ref: allocated once, then sized and cleared for reuse. Three places in the composite path did this by hand and disagreed about the clear - two cleared after a resize, which the resize had already done. Reuse is not a micro-optimisation here: a fresh canvas is 8MB per masked layer per frame. |
+| `imageDataCanvas` | A canvas holding an ImageData, ready to draw. `putImageData` ignores the transform, composite mode and alpha, so anything that scales or blends ImageData needs this. Reused - valid until the next call. |
+| `resetCtx` | A shared canvas's context put back to its default state — a resize resets these, a reuse does not, and the last user leaves them dirty. |
+
+## `src/canvas/videoFrames.js`
+
+Decoding a video file into frames, and finding its scene cuts.
+
+| | |
+|---|---|
+| `fitRect` | Letterbox rect: fit source into destination preserving aspect ratio. |
+| `seekTarget` | Where a seek should land. Never the very last frame: seeking to exactly the duration fires no `seeked` event in some browsers, so the promise waiting for one never settles and the import stops halfway with no error. |
+| `openVideoFile` | Open a video file for frame-by-frame reading: the element, its duration, a clamped seek and a release. Both readers set one up the same way and tore it down the same way, and two copies of an object URL's lifetime is two chances to leak one. |
+| `extractVideoFrames` | Pull frames out of a video file at a given rate, optionally over a range, scaled, encoded as WebP or PNG, with near-duplicate frames merged. Reports progress and can be stopped part way. |
+| `detectSceneCuts` | Find where a video changes scene, by stepping through it and comparing frames. Refines each hit to the exact boundary, reports progress, and can be stopped part way. |
 
 ## `src/hooks/useCanvasView.js`
 

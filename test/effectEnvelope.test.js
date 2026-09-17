@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { effectAt, mosaicBlockAt, LAYER_ANIM_DEFAULT } from '../src/canvas/canvasUtils.js';
+import { effectAt } from '../src/core/easing.js';
+import { mosaicBlockAt, LAYER_ANIM_DEFAULT } from '../src/core/layerAnim.js';
 import { clampRegion } from '../src/canvas/pixelEffects.js';
 
 const linear = { ease: 'linear', easePower: 1 };
