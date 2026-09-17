@@ -307,7 +307,13 @@ export function useExport({ paint, audio, range, doc, report, recording }) {
         // on the canvas being recorded.
         if (playEnd <= playStart) { alert(tr('내보낼 콘텐츠가 없습니다.')); return; }
         const { mimeType, ext } = pickRecordingType(t => MediaRecorder.isTypeSupported(t));
-        alert(tr('녹화가 시작됩니다.')); setCurrentTime(playStart); if (audioRef.current) audioRef.current.currentTime = audioData ? Math.max(0, (playStart - audioData.startTime) + audioData.offset) : playStart;
+        alert(tr('녹화가 시작됩니다.'));
+        // The loop reads its clock from the ref, and the ref only follows state while paused -
+        // and isPlaying goes true in the same render. Left to state alone the loop started at
+        // wherever the playhead was, the recorder ran from that moment, and the frames only
+        // began once the clock reached the export start: the music led the picture by the gap.
+        setCurrentTime(playStart); currentTimeRef.current = playStart;
+        if (audioRef.current) audioRef.current.currentTime = audioData ? Math.max(0, (playStart - audioData.startTime) + audioData.offset) : playStart;
         // Frames on request rather than sampled at 30Hz off a 60Hz paint loop - that sampling
         // put two paints in one frame and three in the next, which is the judder in #156. The
         // loop paints on the frame grid and asks for each frame itself (usePlayback).
