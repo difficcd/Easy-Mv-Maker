@@ -835,6 +835,14 @@ The curve ruler: tap out anchors, and a smooth line is fitted through them.
 |---|---|
 | `useCurveTool` | Owns the anchors, whether one is being fine-tuned by dragging, and the count the mode bar shows. What it commits is an ordinary brush stroke, so nothing downstream has to learn that a curve exists. |
 
+## `src/hooks/useCutListUi.js`
+
+What is picked in the cut list, and how much of it is unfolded.
+
+| | |
+|---|---|
+| `useCutListUi` | Picked: `selectedCutIds`, the `marquee` selecting them, and the `activePartId` that scopes playback. Unfolded: `expandedCuts`, `collapsedCutIds`, `renamingCutId`, with `toggleCutSettings`/`toggleCutCollapse`. None of it is saved with the document — it is where the user is looking, not what they made. |
+
 ## `src/hooks/useDialogs.js`
 
 Which dialog is open, and the state one of them owns.
