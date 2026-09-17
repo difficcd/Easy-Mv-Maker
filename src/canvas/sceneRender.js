@@ -28,8 +28,9 @@ import { pixelateCanvas, pixelateRegion, clampRegion, staticCanvas } from './pix
  * @param {{copy: {current: any}, red: {current: any}, cyan: {current: any}, out: {current: any}}} deps.staticScratch
  *   four slots for the static; see staticCanvas for why none can be shared
  * @param {HTMLCanvasElement | null} deps.staticTile the noise tile, built once by the caller
+ * @param {HTMLCanvasElement | null} [deps.staticColourTile] the coloured-speck tile, for the colour option
  */
-export function drawScene(ctx, scene, { cw, ch, flattenClipGroup, hiddenByGesture, selection, bitmapEntry, maskScratchRef, mosaicScratch, staticScratch, staticTile }) {
+export function drawScene(ctx, scene, { cw, ch, flattenClipGroup, hiddenByGesture, selection, bitmapEntry, maskScratchRef, mosaicScratch, staticScratch, staticTile, staticColourTile }) {
     for (const { cut: ac, anim, groups } of scene.cuts) {
         ctx.save();
         if (anim) {
@@ -90,7 +91,7 @@ export function drawScene(ctx, scene, { cw, ch, flattenClipGroup, hiddenByGestur
                     staticSrc = up;
                     shrunk = false;
                 }
-                const glitched = staticCanvas(staticSrc, staticTile, { cw, ch, amount: la.noise, seconds: scene.time - ac.startTime }, staticScratch, scratchCanvas);
+                const glitched = staticCanvas(staticSrc, staticTile, { cw, ch, amount: la.noise, seconds: scene.time - ac.startTime, colour: la.noiseColor || 0, colourTile: staticColourTile || null }, staticScratch, scratchCanvas);
                 if (glitched) staticSrc = glitched;
             }
             if (shrunk) ctx.imageSmoothingEnabled = false;
