@@ -316,6 +316,16 @@ Lasso selection: closing the path, bounding it, lifting the pixels.
 | `WARP_LIMIT` | Furthest a drag can push skew or bend — the sliders' range, so the two agree. |
 | `paintedBounds` | The tight integer box around every pixel with alpha, or null for an empty buffer. What Ctrl+T selects: the drawing, not the canvas. |
 
+## `src/core/recordBitrate.js`
+
+How many bits a second to ask the recorder for.
+
+| | |
+|---|---|
+| `videoBitrate` | Bits per second from the canvas size, frame rate and codec. Per pixel per frame rather than a constant, because the canvas is a setting here and runs from 720p to 4K — a fixed figure would starve one end and waste the other. Clamped at both ends. |
+| `codecFamily` | Which of h264 / vp8 / vp9 a mimeType names. An unset type is assumed to be the *weaker* codec, since guessing VP9 would under-provision. |
+| `AUDIO_BITRATE` | 192k. The video dwarfs it either way. |
+
 ## `src/core/recordClock.js`
 
 Which frame a recording should take next (#156).
