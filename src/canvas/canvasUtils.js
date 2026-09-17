@@ -1215,7 +1215,7 @@ export function computeCutAnim(ac, time, cw = CANVAS_W, ch = CANVAS_H) {
     return { alpha: Math.max(0, alpha), sx, sy, tx, ty };
 }
 
-export const LAYER_ANIM_DEFAULT = { mode: 'progress', speed: 1, count: 0, tx: 0, ty: 0, rot: 0, scale: 0, pivotX: 0.5, pivotY: 0.5, path: null, ease: 'linear', easePower: 2, swayAmount: 0, swaySpeed: 1, swayCurve: null, swayProfile: null, swayAxis: 'y', keys: null };
+export const LAYER_ANIM_DEFAULT = { mode: 'progress', speed: 1, count: 0, tx: 0, ty: 0, rot: 0, scale: 0, pivotX: 0.5, pivotY: 0.5, path: null, ease: 'linear', easePower: 2, swayAmount: 0, swaySpeed: 1, swayCurve: null, swayProfile: null, swayAxis: 'y', keys: null, mosaic: 0 };
 
 // Easing applied to a 0..1 progress. type: linear | in (slow→fast) | out (fast→slow)
 // | inout. power (>=1) is the user-adjustable strength/weight.
@@ -1755,10 +1755,14 @@ export function computeLayerAnim(layer, ac, time, cw = CANVAS_W, ch = CANVAS_H) 
     // A profile weight of 1 equals the displacement the old shear produced at the end of the
     // axis, so the feel is unchanged.
     const swayDisp = prof ? (sway / 100) * wave * (axis === 'y' ? ch : cw) : 0;
-    if (tx === 0 && ty === 0 && rot === 0 && sc === 1 && shear === 0 && !prof && alpha === 1) return null;
+    // Mosaic as an effect rather than a stamp: the block grows with the same eased progress the
+    // move and the scale use, so "over the cut" and "there and back" mean the same thing here as
+    // they do for everything else on this panel.
+    const mosaic = Math.max(0, (a.mosaic || 0) * prog);
+    if (tx === 0 && ty === 0 && rot === 0 && sc === 1 && shear === 0 && !prof && alpha === 1 && mosaic < 2) return null;
     return {
         tx, ty, rot, sc, alpha, shear: prof ? 0 : shear, px: (a.pivotX ?? 0.5) * cw, py: (a.pivotY ?? 0.5) * ch,
-        swayProfile: prof, swayAxis: axis, swayDisp,
+        swayProfile: prof, swayAxis: axis, swayDisp, mosaic,
     };
 }
 

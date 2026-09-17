@@ -216,3 +216,43 @@ export function drawGrain(ctx, tile, { cw, ch, amount, seconds }) {
     }
     ctx.restore();
 }
+
+/**
+ * The size a canvas is shrunk to so that drawing it back up gives blocks of `block` pixels.
+ *
+ * Pixelating a whole layer per frame cannot be the per-pixel `mosaic` above: that is fine for a
+ * one-off stamp and far too slow for something the renderer does every frame. Shrinking and
+ * blowing back up with smoothing off is the same result in two blits.
+ *
+ * Never smaller than 1x1, or the shrink produces a zero-sized canvas and the draw throws.
+ *
+ * @param {number} w @param {number} h @param {number} block
+ * @returns {{w: number, h: number} | null} null when the block is too small to change anything
+ */
+export function pixelateSize(w, h, block) {
+    const b = Math.round(block);
+    if (!(b >= 2) || !(w > 0) || !(h > 0)) return null;
+    return { w: Math.max(1, Math.round(w / b)), h: Math.max(1, Math.round(h / b)) };
+}
+
+/**
+ * A pixelated copy of a canvas, as blocks of roughly `block` pixels.
+ *
+ * Two blits: down into a scratch, then back up with smoothing off. Alpha comes along, so a layer
+ * with transparent areas pixelates its edges rather than growing a square of colour.
+ *
+ * @param {HTMLCanvasElement | ImageBitmap} src
+ * @param {number} block
+ * @param {{current: any}} scratchRef a slot to keep the small canvas in between frames
+ * @param {(ref: any, w: number, h: number) => {canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D}} scratch
+ * @returns {HTMLCanvasElement | null} null when there is nothing to do
+ */
+export function pixelateCanvas(src, block, scratchRef, scratch) {
+    const size = pixelateSize(src.width, src.height, block);
+    if (!size) return null;
+    const { canvas, ctx } = scratch(scratchRef, size.w, size.h);
+    ctx.clearRect(0, 0, size.w, size.h);
+    ctx.imageSmoothingEnabled = true;   // averaging on the way down is what makes a block a block
+    ctx.drawImage(src, 0, 0, size.w, size.h);
+    return canvas;
+}

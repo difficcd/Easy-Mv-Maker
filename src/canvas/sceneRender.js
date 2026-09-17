@@ -9,6 +9,7 @@
 import { applyCutAnim, imageDataCanvas, scratchCanvas } from './canvasUtils.js';
 import { applyPartTransform, drawMaskedLayer } from './layerComposite.js';
 import { drawSwayed } from './swayRender.js';
+import { pixelateCanvas } from './pixelEffects.js';
 
 /**
  * @param {CanvasRenderingContext2D} ctx
@@ -16,14 +17,15 @@ import { drawSwayed } from './swayRender.js';
  * @param {object} deps
  * @param {number} deps.cw
  * @param {number} deps.ch
- * @param {(cutId: any, group: any) => CanvasImageSource | null} deps.flattenClipGroup a clip
- *   group as one canvas, or null while a frame in it is still decoding
+ * @param {(cutId: any, group: any) => (HTMLCanvasElement | ImageBitmap | null)} deps.flattenClipGroup
+ *   a clip group as one canvas, or null while a frame in it is still decoding
  * @param {(cutId: any, layerId: any) => boolean} deps.hiddenByGesture
  * @param {{cutId: any, sourceLayerId: any, maskBitmapId: any, x: number, y: number} | null} deps.selection
  * @param {(id: any) => {imageBitmap?: any, imageData?: any} | undefined} deps.bitmapEntry
  * @param {{current: any}} deps.maskScratchRef a scratch canvas slot for the mask
+ * @param {{current: any}} deps.mosaicScratchRef the small canvas a mosaic effect shrinks a layer into
  */
-export function drawScene(ctx, scene, { cw, ch, flattenClipGroup, hiddenByGesture, selection, bitmapEntry, maskScratchRef }) {
+export function drawScene(ctx, scene, { cw, ch, flattenClipGroup, hiddenByGesture, selection, bitmapEntry, maskScratchRef, mosaicScratchRef }) {
     for (const { cut: ac, anim, groups } of scene.cuts) {
         ctx.save();
         if (anim) {
@@ -51,15 +53,29 @@ export function drawScene(ctx, scene, { cw, ch, flattenClipGroup, hiddenByGestur
             const maskEntry = shouldMask ? bitmapEntry(selection.maskBitmapId) : null;
             const mask = maskEntry?.imageBitmap || (maskEntry?.imageData && imageDataCanvas(maskEntry.imageData)) || null;
 
+            // A mosaic effect replaces the layer's own pixels with a pixelated copy, so it is
+            // applied to the source rather than to the frame: everything below - the sway warp,
+            // the selection mask, the part transform - then works on the blocks, which is what
+            // makes the effect look like it belongs to the drawing and not like a filter laid
+            // over the shot.
+            const src = la?.mosaic >= 2
+                ? (pixelateCanvas(layerCanvas, la.mosaic, mosaicScratchRef, scratchCanvas) || layerCanvas)
+                : layerCanvas;
+            // Blown back up with smoothing off; on the way down it was on, which is what averages
+            // each block rather than point-sampling one pixel out of it.
+            const blocky = src !== layerCanvas;
+            if (blocky) ctx.imageSmoothingEnabled = false;
+
             if (la?.swayProfile && !mask) {
-                drawSwayed(ctx, layerCanvas, { profile: la.swayProfile, axis: la.swayAxis, disp: la.swayDisp, cw, ch });
+                drawSwayed(ctx, src, { profile: la.swayProfile, axis: la.swayAxis, disp: la.swayDisp, cw, ch });
             } else if (!mask) {
-                ctx.drawImage(layerCanvas, 0, 0);
+                ctx.drawImage(src, 0, 0, cw, ch);
             } else {
                 // imageDataCanvas is a different shared canvas from the mask scratch, so nesting
                 // them is safe - which is why they are separate helpers rather than two slots.
-                drawMaskedLayer(ctx, layerCanvas, mask, selection, scratchCanvas(maskScratchRef, cw, ch));
+                drawMaskedLayer(ctx, src, mask, selection, scratchCanvas(maskScratchRef, cw, ch));
             }
+            if (blocky) ctx.imageSmoothingEnabled = true;
             ctx.restore();
         }
         ctx.restore();
