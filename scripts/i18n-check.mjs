@@ -28,6 +28,7 @@ const jaKeys = dictKeys(JA_DICT);
 
 /** Every tr('...') literal in the source, with the first file it was seen in. */
 const used = new Map();
+let allSource = '';
 const walk = (dir) => {
     // withFileTypes rather than a stat per entry: one syscall instead of two, and no window
     // between asking what a path is and reading it - which is what CodeQL flags, and it is
@@ -39,6 +40,7 @@ const walk = (dir) => {
         const rel = path.replace(/\\/g, '/');
         if (!/\.jsx?$/.test(name) || rel === DICT || rel === JA_DICT) continue;
         const src = readFileSync(path, 'utf8');
+        allSource += src + '\n';
         for (const m of src.matchAll(new RegExp("tr\\('" + STRING + "'", 'g'))) {
             if (!used.has(m[1])) used.set(m[1], path);
         }
@@ -70,6 +72,21 @@ if (stale.length) {
     console.error(`${stale.length} Japanese entr(y/ies) with no English key:`);
     for (const k of stale) console.error(`    ${k}`);
     console.error('\nRemove them from src/i18n.ja.js, or fix the key if the string was reworded.');
+    process.exit(1);
+}
+
+// The other direction: an English entry whose Korean key appears nowhere in the source. A
+// tr() key is the Korean sentence itself, so rewording the Korean mints a new key and leaves
+// the old row behind with its translations - dead weight that reads as coverage. Twenty-three
+// of them had collected by the time this was written, two of them for an effect that no
+// longer existed. The key has to appear as a string literal somewhere (padded with spaces or
+// not, since tr() trims), which also covers keys that reach tr() through a table.
+const esc = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const orphans = [...keys].filter(k => !new RegExp("['\"`]\\s*" + esc(k) + "\\s*['\"`]").test(allSource));
+if (orphans.length) {
+    console.error(`${orphans.length} dictionary entr(y/ies) whose key appears nowhere in src/:`);
+    for (const k of orphans) console.error(`    ${k}`);
+    console.error('\nRemove them from src/i18n.js and src/i18n.ja.js, or the string was reworded and the row needs its new key.');
     process.exit(1);
 }
 
