@@ -20,7 +20,7 @@ import { tr, loadLang, saveLang, setLangValue } from './i18n';
 import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, patchLayer, nextLayerId, appendLayer, appendFolder, removeLayerTree } from './core/layerOps.js';
 import { mkCut, firstCut } from './core/document.js';
 import { selectionAfterClick, cutsToCopy } from './core/cutSelection.js';
-import { closeLassoPath, lassoBounds, applyResize, cutOutPolygon, selectionStrokes, applyWarpDrag, paintedBounds } from './core/lassoOps.js';
+import { closeLassoPath, lassoBounds, applyResize, cutOutPolygon, cropImageData, selectionStrokes, applyWarpDrag, paintedBounds } from './core/lassoOps.js';
 import { TOOLS } from './tools/canvasTools.js';
 import { useTimelineGestures } from './hooks/useTimelineGestures.js';
 import { useTextDrag } from './hooks/useTextDrag.js';
@@ -1684,21 +1684,32 @@ export default function App() {
         // Which pixels come along, and the hole they leave, are worked out in core/lassoOps -
         // both from one pass, because a mask that drifts from its selection leaves a ghost of
         // the lifted artwork behind in the layer.
-        const { selection: sel, eraseMask, hasContent } = cutOutPolygon({
+        const mk = (iw, ih) => new ImageData(iw, ih);
+        const { selection: sel, eraseMask, hasContent, painted } = cutOutPolygon({
             layer: ctx.getImageData(minX, minY, w, h),
             poly, minX, minY, w, h,
-            makeImageData: (iw, ih) => new ImageData(iw, ih),
+            makeImageData: mk,
             inside: pointInPolygon,
         });
-        if (!hasContent) return;
+        if (!hasContent || !painted) return;
+
+        // The floating selection is the artwork, not the loop that was drawn round it (#231).
+        // A generous lasso round a small drawing used to put the handles out in empty space and
+        // rotate about a centre nowhere near the picture.
+        //
+        // The hole is deliberately left at the full loop: x/y and the mask are untouched, and
+        // only the floating box moves. Cropping the hole as well would leave a ring of the
+        // original artwork behind, which is the one thing a lift must not do.
+        const pixels = (painted.w === w && painted.h === h) ? sel : cropImageData(sel, painted, mk);
+        const tx = minX + painted.x, ty = minY + painted.y;
 
         setSelection({
             cutId: currentCutId,
             sourceLayerId: activeLayer.id,
-            bitmapId: storeBitmap(sel),
+            bitmapId: storeBitmap(pixels),
             maskBitmapId: storeBitmap(eraseMask),
-            x: minX, y: minY, w, h,
-            tx: minX, ty: minY, tw: w, th: h,
+            x: minX, y: minY, w: painted.w, h: painted.h,
+            tx, ty, tw: painted.w, th: painted.h,
         });
     };
 

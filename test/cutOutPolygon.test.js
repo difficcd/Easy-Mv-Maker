@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cutOutPolygon } from '../src/core/lassoOps.js';
+import { cutOutPolygon, cropImageData } from '../src/core/lassoOps.js';
 import { pointInPolygon } from '../src/canvas/canvasUtils.js';
 
 /** Node has no ImageData; core/ takes it as an argument for exactly this reason. */
@@ -99,4 +99,59 @@ test('a zero-size region produces empty images rather than failing', () => {
     const r = cut({ layer: filled(1, 1), poly: wholeBox, minX: 0, minY: 0, w: 0, h: 0 });
     assert.equal(r.hasContent, false);
     assert.equal(r.selection.data.length, 0);
+});
+
+// --- the painted sub-box, and cropping to it (#231) ---
+//
+// A hand-drawn lasso is nearly always looser than what it catches. The box the handles and the
+// marquee are drawn from has to be the artwork, not the loop.
+
+/** A 6x6 box with an opaque 2x2 block at (2,2). Everything else transparent. */
+function blockAt(w, h, bx, by, bw, bh) {
+    const img = makeImageData(w, h);
+    for (let y = by; y < by + bh; y++) {
+        for (let x = bx; x < bx + bw; x++) {
+            const i = (y * w + x) * 4;
+            img.data[i] = 9; img.data[i + 1] = 8; img.data[i + 2] = 7; img.data[i + 3] = 255;
+        }
+    }
+    return img;
+}
+
+test('painted is where the pixels are, not where the loop was drawn', () => {
+    const r = cut({ layer: blockAt(6, 6, 2, 2, 2, 2), poly: [[0, 0], [6, 0], [6, 6], [0, 6], [0, 0]], minX: 0, minY: 0, w: 6, h: 6 });
+    assert.equal(r.hasContent, true);
+    assert.deepEqual(r.painted, { x: 2, y: 2, w: 2, h: 2 });
+});
+
+test('painted covers the whole box when the artwork fills it', () => {
+    const r = cut({ layer: filled(4, 4), poly: wholeBox, minX: 0, minY: 0, w: 4, h: 4 });
+    assert.deepEqual(r.painted, { x: 0, y: 0, w: 4, h: 4 });
+});
+
+test('a loop that catches nothing has no painted box at all', () => {
+    // hasContent already says this; painted must agree rather than report a degenerate box,
+    // because the caller sizes a selection from it.
+    const r = cut({ layer: makeImageData(4, 4), poly: wholeBox, minX: 0, minY: 0, w: 4, h: 4 });
+    assert.equal(r.hasContent, false);
+    assert.equal(r.painted, null);
+});
+
+test('cropImageData lifts out exactly that rectangle', () => {
+    const r = cut({ layer: blockAt(6, 6, 2, 2, 2, 2), poly: [[0, 0], [6, 0], [6, 6], [0, 6], [0, 0]], minX: 0, minY: 0, w: 6, h: 6 });
+    const cropped = cropImageData(r.selection, r.painted, makeImageData);
+    assert.equal(cropped.width, 2);
+    assert.equal(cropped.height, 2);
+    // Every pixel of the crop is the block, and none of the transparent margin came with it.
+    for (let i = 0; i < 4; i++) {
+        assert.deepEqual([...cropped.data.slice(i * 4, i * 4 + 4)], [9, 8, 7, 255]);
+    }
+});
+
+test('the hole is not cropped with the selection', () => {
+    // The erase mask stays the size of the loop. Shrinking it to the artwork would leave a ring
+    // of the original drawing behind, which is the one thing a lift must not do.
+    const r = cut({ layer: blockAt(6, 6, 2, 2, 2, 2), poly: [[0, 0], [6, 0], [6, 6], [0, 6], [0, 0]], minX: 0, minY: 0, w: 6, h: 6 });
+    assert.equal(r.eraseMask.width, 6);
+    assert.equal(r.eraseMask.height, 6);
 });
