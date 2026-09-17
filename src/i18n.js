@@ -182,6 +182,8 @@ const EN = {
     '전체 재생': 'Play all',
     '속도': 'Speed',
     '흔들림': 'Shake',
+    '노이즈': 'Noise',
+    '필름 그레인. 투명 배경으로 내보낼 때는 적용되지 않습니다': 'Film grain. Not applied when exporting on a transparent background',
     '세기': 'Amount',
     '손으로 든 것처럼 흔들립니다. 0이면 끕니다': 'A handheld wobble. 0 turns it off',
     '초당 흔들리는 횟수': 'Wobbles per second',
