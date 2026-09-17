@@ -45,6 +45,7 @@ import { drawTextSelection, drawFloatingSelection, drawMotionPath } from './canv
 import { createBitmapStore } from './canvas/bitmapStore.js';
 import { regionBounds, rectBounds, mosaic, blurMaskedRegion } from './canvas/pixelEffects.js';
 import { useLayerCache } from './hooks/useLayerCache.js';
+import { useTimelineView } from './hooks/useTimelineView.js';
 import { useCutListUi } from './hooks/useCutListUi.js';
 import { useNotices } from './hooks/useNotices.js';
 import { useDialogs } from './hooks/useDialogs.js';
@@ -248,14 +249,12 @@ export default function App() {
     } = usePanelLayout({ panelIds: PANEL_IDS, widthRange: PANEL_W });
 
     // True while the playhead is being dragged. Rendering treats it as playback (see paintFrame).
-    const [scrubbing, setScrubbing] = useState(false);
 
     // The editor opens at the text's position, so clicking near an edge used to put half of it
 
     // Where each panel lives: 'left', 'right' or 'float'. Panels are drawn from these rather than
     // from fixed positions in the layout, so dragging one only has to change this value.
 
-    const [snapLinePos, setSnapLinePos] = useState(null);
     // The audio and video tracks move together - loading audio sets four of these at once - so
     // they are one reducer. Destructured here so every read site keeps the name it always had;
     // only the writes go through an action. See core/mediaReducer.
@@ -335,13 +334,6 @@ export default function App() {
         showLeft, setShowLeft, showRight, setShowRight, showBottom, setShowBottom,
         leftDock, setLeftDock, toggleAllPanelsRef, panelOpen,
     } = usePanelVisibility({ timelineRef });
-    const [pps, setPps] = useState(50);
-    // Visible px window of the horizontally-scrolled timeline, so only on-screen cut blocks and
-    // ruler ticks are rendered (thousands of DOM nodes otherwise stall the whole app).
-    const [tlWin, setTlWin] = useState({ left: 0, right: 4000 });
-    const tlWinRafRef = useRef(0);
-    const ppsRef = useRef(50);
-    ppsRef.current = pps;
     // User-adjustable canvas resolution. Shadows the imported defaults for the whole component.
     const [canvasSize, setCanvasSize] = useState({ w: CANVAS_W_DEFAULT, h: CANVAS_H_DEFAULT });
     const CANVAS_W = canvasSize.w, CANVAS_H = canvasSize.h;
@@ -564,6 +556,10 @@ export default function App() {
 
     const maxTime = Math.max(TIMELINE_MIN_SPAN, audioData?.endTime ?? audioDuration, videoOverlay?.endTime ?? 0, ...cuts.map(c => c.endTime)) + TIMELINE_TAIL_PAD;
 
+    // How the timeline is being looked at: the zoom, the visible slice of it that is actually
+    // rendered, and the two things drawn over it during a drag.
+    const tl = useTimelineView({ timelineRef, mounted: showBottom, height: timelineH, maxTime, numTracks });
+
     // Content bounds - playback and loop run between these, not out to maxTime, which has empty
     // padding for the timeline ruler.
     // Parts (scenes): cuts grouped by partId. Each video import is one part; cuts can also be
@@ -585,7 +581,7 @@ export default function App() {
     } = usePlayback({
         media: { audioRef, videoElRef: vid.elRef, audioUrl, audioData, videoOverlay },
         range: { playStart, playEnd, maxTime, loopPlay, playbackRate, anchorTime: currentCut?.startTime },
-        paint: { pps, playheadRef, paintFrameRef, prefetchRef },
+        paint: { pps: tl.pps, playheadRef, paintFrameRef, prefetchRef },
         recording: { isExporting, exportEndRef, exportStartRef, requestFrameRef, mediaRecorderRef },
     });
 
@@ -703,6 +699,9 @@ export default function App() {
 
 
 
+    // Named out of the bundle so the dependency list is the two things this uses. Depending on
+    // `tl` would re-subscribe the window drag every time the timeline scrolled.
+    const { pps, setSnapLinePos } = tl;
     useEffect(() => {
         if (!resizingData && !draggingCutData) return;
         isDraggingOrResizingRef.current = true;
@@ -774,7 +773,7 @@ export default function App() {
             recordLiveHistory();
         };
         return dragOnWindow(mv, up);
-    }, [recordLiveHistory, resizingData, draggingCutData, pps, numTracks]);
+    }, [recordLiveHistory, resizingData, draggingCutData, pps, setSnapLinePos, numTracks]);
 
     // Record an undo point for whatever is on screen now.
     //
@@ -813,7 +812,7 @@ export default function App() {
             assetSink, blobsOk, blobToDataURL, imageDataToDataURL,
         });
         const out = {
-            version: '1.5', appName: 'EasyMVMaker', savedAt: new Date().toISOString(), numTracks, onionPrev, onionNext, pps, bitmaps, compressedBitmaps: compressed,
+            version: '1.5', appName: 'EasyMVMaker', savedAt: new Date().toISOString(), numTracks, onionPrev, onionNext, pps: tl.pps, bitmaps, compressedBitmaps: compressed,
             canvas: { w: CANVAS_W, h: CANVAS_H },
             cuts: cuts.map(c => ({ ...c, layers: c.layers.map(l => ({ ...l, redoStrokes: [] })) }))
         };
@@ -896,7 +895,7 @@ export default function App() {
         const s = projectSettings(data);
         if (s.canvas) setCanvasSize(s.canvas);
         setNumTracks(s.numTracks); setCurrentCutId(s.currentCutId); setCurrentTime(0);
-        setOnionPrev(s.onionPrev); setOnionNext(s.onionNext); setPps(s.pps); cutList.setExpandedCuts(new Set());
+        setOnionPrev(s.onionPrev); setOnionNext(s.onionNext); tl.setPps(s.pps); cutList.setExpandedCuts(new Set());
         setCopiedCut(null); // clipboard may reference bitmaps from the old project
         clearLayerCache(); // Clear cache on new project
         // The audio lives in useAudioTrack, and so does putting it back: the element, the
@@ -982,8 +981,8 @@ export default function App() {
     // audioData and videoOverlay are in here because trimming either one is a change worth
     // keeping - and without them nothing about the media reached the autosave until the next
     // stroke happened to trigger one.
-    const autosaveDoc = useMemo(() => ({ cuts, numTracks, onionPrev, onionNext, pps, audioData, videoOverlay }),
-        [cuts, numTracks, onionPrev, onionNext, pps, audioData, videoOverlay]);
+    const autosaveDoc = useMemo(() => ({ cuts, numTracks, onionPrev, onionNext, pps: tl.pps, audioData, videoOverlay }),
+        [cuts, numTracks, onionPrev, onionNext, tl.pps, audioData, videoOverlay]);
     const { savedAt: autoSavedAt, error: autosaveErr } = useAutosave({
         doc: autosaveDoc,
         ready: () => didRecoverRef.current,
@@ -1299,28 +1298,6 @@ export default function App() {
         return () => window.removeEventListener('keydown', h, true);
     }, [rebinding, setRebinding, setKeymap]);
 
-    // Track the timeline's visible px window (scroll + resize) to drive virtualization.
-    useEffect(() => {
-        const el = timelineRef.current; if (!el) return;
-        const update = () => {
-            cancelAnimationFrame(tlWinRafRef.current);
-            tlWinRafRef.current = requestAnimationFrame(() => {
-                const pad = el.clientWidth || 2000; // one screen of margin each side
-                setTlWin({ left: el.scrollLeft - pad, right: el.scrollLeft + (el.clientWidth || 2000) + pad });
-            });
-        };
-        update();
-        el.addEventListener('scroll', update, { passive: true });
-        const ro = new ResizeObserver(update);
-        ro.observe(el);
-        return () => { el.removeEventListener('scroll', update); ro.disconnect(); cancelAnimationFrame(tlWinRafRef.current); };
-    }, [showBottom, timelineH]);
-    // Keep the window sensible when zoom/content changes the scrollable width.
-    useEffect(() => {
-        const el = timelineRef.current; if (!el) return;
-        const pad = el.clientWidth || 2000;
-        setTlWin({ left: el.scrollLeft - pad, right: el.scrollLeft + (el.clientWidth || 2000) + pad });
-    }, [pps, maxTime, numTracks]);
 
     // The handles and the outline are where paintFrame draws them - on the warped box - and the
     // grab radius is in screen pixels, like their size. Measured in canvas pixels it shrank with
@@ -1835,7 +1812,7 @@ export default function App() {
     // paints imperatively (see below), so this effect just draws overlays at rest.
     useEffect(() => {
         if (isPlaying) return;              // rAF loop owns the canvas during playback
-        paintFrame(currentTime, scrubbing); // scrubbing renders like playback so animation shows
+        paintFrame(currentTime, tl.scrubbing); // tl.scrubbing renders like playback so animation shows
         const canvas = canvasRef.current; if (!canvas) return;
         const ctx = canvas.getContext('2d');
 
@@ -1866,7 +1843,7 @@ export default function App() {
             }
         }
 
-    }, [paintFrame, cuts, currentCutId, currentCut, isPlaying, scrubbing, currentTime, selection, selectedText, animLayer, view.zoom]);
+    }, [paintFrame, cuts, currentCutId, currentCut, isPlaying, tl.scrubbing, currentTime, selection, selectedText, animLayer, view.zoom]);
 
     // Boiling is motion, so it is invisible on a still frame; the phase is advanced slowly
     // while editing to preview it. That preview redraws the whole layer, though, so it stops
@@ -1907,10 +1884,10 @@ export default function App() {
     } = useTimelineGestures({
         timelineRef, timelineMounted: showBottom,
         cuts, currentCutId, setCurrentCutId, maxTime,
-        pps, setPps,
+        pps: tl.pps, setPps: tl.setPps,
         setCurrentTime, currentTimeRef, isPlayingRef, seekRef,
         audioRef, audioUrl, audioData,
-        setScrubbing, setMarquee: cutList.setMarquee, selectedCutIds: cutList.selectedCutIds, setSelectedCutIds: cutList.setSelectedCutIds,
+        setScrubbing: tl.setScrubbing, setMarquee: cutList.setMarquee, selectedCutIds: cutList.selectedCutIds, setSelectedCutIds: cutList.setSelectedCutIds,
         videoOverlay,
     });
 
@@ -2354,7 +2331,7 @@ export default function App() {
                 transparentFormat={transparentFormat} setTransparentFormat={setTransparentFormat}
                 numTracks={numTracks} onTimelinePointerDown={onTimelinePointerDown}
                 parts={parts}
-                playbackRate={playbackRate} playheadRef={playheadRef} pps={pps}
+                playbackRate={playbackRate} playheadRef={playheadRef} pps={tl.pps}
                 openPlaybackSettings={() => dialogs.openSettings('play')}
                 removeVideoOverlay={removeVideoOverlay} renamePart={renamePart} sceneDetect={vid.scene}
                 hiddenTracks={hiddenTracks} toggleTrackHidden={toggleTrackHidden}
@@ -2363,8 +2340,8 @@ export default function App() {
                 setCurrentCutId={setCurrentCutId} setCurrentTime={setCurrentTime} addCuts={cs => dispatchCuts(addCuts(cs))}
                 setDraggingCutData={setDraggingCutData} setLoopPlay={setLoopPlay} setPlaybackRate={setPlaybackRate}
                 setResizingData={setResizingData} setSceneCfg={vid.setSceneCfg} setSelectedCutIds={cutList.setSelectedCutIds}
-                setShowBottom={setShowBottom} showBottom={showBottom} snapLinePos={snapLinePos}
-                startTimelinePan={startTimelinePan} timelineH={timelineH} timelineRef={timelineRef} tlWin={tlWin}
+                setShowBottom={setShowBottom} showBottom={showBottom} snapLinePos={tl.snapLinePos}
+                startTimelinePan={startTimelinePan} timelineH={timelineH} timelineRef={timelineRef} tlWin={tl.win}
                 ungroupPart={ungroupPart} videoOverlay={videoOverlay} zoomTimelineAt={zoomTimelineAt} />
         </div>
     );
