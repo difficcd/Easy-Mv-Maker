@@ -191,11 +191,11 @@ export function grainTile(makeCanvas) {
 }
 
 /**
- * A square of coloured specks on nothing, for the colour static.
+ * A square of blue-green specks on nothing, for the colour static.
  *
- * Sparse, unlike the grain: a tile that covered every pixel would read as a tinted film over the
- * frame, not as static. Roughly a third of the pixels are a fully saturated colour and the rest
- * are transparent, so at 3x it is a scatter of coloured dots.
+ * Sparse, unlike the grain: a tile that covered every pixel would read as a tint, not as static.
+ * Roughly a third of the pixels are a saturated colour between green and blue - the cold half of
+ * the wheel, the colours a bad signal actually puts on a line - and the rest are transparent.
  *
  * @param {() => HTMLCanvasElement} makeCanvas
  * @returns {HTMLCanvasElement}
@@ -208,11 +208,12 @@ export function colourTile(makeCanvas) {
     const d = img.data;
     for (let i = 0; i < d.length; i += 4) {
         if (Math.random() > 0.3) continue;   // alpha stays 0
-        // One channel full, one random, one empty: a saturated hue rather than a pastel.
-        const k = Math.floor(Math.random() * 3);
-        const rgb = [0, 0, 0];
-        rgb[k] = 255; rgb[(k + 1) % 3] = Math.floor(Math.random() * 256);
-        d[i] = rgb[0]; d[i + 1] = rgb[1]; d[i + 2] = rgb[2]; d[i + 3] = 255;
+        // Green to blue through cyan: green and blue full or partial, never red.
+        const m = Math.random();
+        d[i] = 0;
+        d[i + 1] = m < 0.5 ? 255 : Math.floor(255 * (1 - (m - 0.5) * 2));
+        d[i + 2] = m < 0.5 ? Math.floor(255 * m * 2) : 255;
+        d[i + 3] = 255;
     }
     ctx.putImageData(img, 0, 0);
     return c;
@@ -233,8 +234,7 @@ export function colourTile(makeCanvas) {
  * @param {HTMLCanvasElement | ImageBitmap} src the layer as painted, full frame size
  * @param {HTMLCanvasElement} tile from grainTile, for the snow
  * @param {{cw: number, ch: number, amount: number, seconds: number, colour?: number, colourTile?: HTMLCanvasElement | null}} o
- *   `colour` 0..1 adds coloured specks across the whole frame, not just the ink - the one part
- *   of the old whole-frame static that the per-layer move lost and was asked back as an option
+ *   `colour` 0..1 adds blue-green specks on the ink, on top of the grey snow
  * @param {{copy: {current: any}, red: {current: any}, cyan: {current: any}, out: {current: any}}} refs
  *   four scratch slots; the halves are read while the output is written, so none can share
  * @param {(ref: any, w: number, h: number) => {canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D}} scratch
@@ -312,14 +312,15 @@ export function staticCanvas(src, tile, { cw, ch, amount, seconds, colour = 0, c
         octx.globalCompositeOperation = 'source-over';
     }
 
-    // Colour static, over the whole frame: coloured specks on the empty canvas too, so it shows
-    // on a blank or transparent background. Optional, because it paints outside the ink - the
-    // per-layer static's whole point is that it does not.
+    // Colour static: blue-green specks on the lines, the same source-atop rule as the snow, so
+    // the empty canvas stays empty. It was first built over the whole frame and corrected -
+    // "colour noise means blue/green laid on the lines, per layer, not across the canvas".
     if (ctile && colour > 0) {
         const cv = Math.sqrt(Math.min(1, colour));
         const ox = hash(step, 17) % TILE, oy = hash(step, 18) % TILE;
         const scale = 3;
-        octx.globalAlpha = cv * (bad ? 0.75 : 0.4);
+        octx.globalCompositeOperation = 'source-atop';
+        octx.globalAlpha = cv * (bad ? 0.9 : 0.55);
         octx.imageSmoothingEnabled = false;
         const size = TILE * scale;
         for (let yy = -(oy * scale) % size; yy < ch; yy += size) {
@@ -327,6 +328,7 @@ export function staticCanvas(src, tile, { cw, ch, amount, seconds, colour = 0, c
         }
         octx.globalAlpha = 1;
         octx.imageSmoothingEnabled = true;
+        octx.globalCompositeOperation = 'source-over';
     }
     return out;
 }
