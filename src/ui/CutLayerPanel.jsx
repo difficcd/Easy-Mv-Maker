@@ -10,6 +10,12 @@ import { inReadingOrder } from '../core/cutSelection.js';
 // CUT / LAYER panel: the cut list, each cut's layer tree, cut animation and text list.
 // The rows of each tree are LayerRows; everything they need arrives as the `layerRows` bundle
 // and is passed straight through, because none of it is this panel's business.
+// Two thresholds, because the two rows have different budgets - measured in the browser at the
+// default 270px panel, where the cut row takes "Settings" comfortably and the layer row, which
+// carries a thumbnail and six buttons, clips the layer's own name to fit "Anim".
+const CUT_LABEL_W = 240;
+const LAYER_LABEL_W = 330;
+
 export function CutLayerPanel({
     collapsedCutIds, copiedCut, currentCutId, cuts, deleteTextObject,
     deleteVideoBatch, onListDrop, expandedCuts, handleAddCut, handleAddFolder,
@@ -25,6 +31,10 @@ export function CutLayerPanel({
     // in the right dock left the canvas a sliver, and a window over the canvas covered the very
     // drawing it was editing.
     const showingText = rightTab === 'text' && !!textEditorBody;
+    // Wide enough to name the buttons that open a panel. Below it they go back to being icons,
+    // because a clipped label is worse than no label.
+    const wideCut = rightW >= CUT_LABEL_W;
+    const wideLayer = rightW >= LAYER_LABEL_W;
     const tab = (id, label, active, onClose) => (
         <div key={id} onClick={() => setRightTab(id)}
             style={{
@@ -84,8 +94,9 @@ export function CutLayerPanel({
                                         shows it instead of a gear rather than hiding the fact. */}
                                     <button className="icon-btn" onClick={e => { e.stopPropagation(); toggleCutSettings(cut.id); }}
                                         title={tr('설정 — 시간 · 애니메이션 · 카메라')}
-                                        style={cut.camera ? { color: 'var(--accent-hi)' } : undefined}>
+                                        style={{ ...(cut.camera ? { color: 'var(--accent-hi)' } : null), ...(wideCut ? { width: 'auto', padding: '0 5px', gap: 3 } : null) }}>
                                         {cut.camera ? <Video size={12} /> : <Settings size={12} />}
+                                        {wideCut && <span style={{ fontSize: 9.5 }}>{tr('설정')}</span>}
                                     </button>
                                     <button className="icon-btn del-btn" onClick={e => { e.stopPropagation(); handleDeleteCut(cut.id); }}><Trash2 size={12} /></button>
                                 </div>
@@ -103,7 +114,7 @@ export function CutLayerPanel({
                                 </div>
                             )}
                             <div className="layer-list" onDragOver={e => e.preventDefault()} onDrop={e => onListDrop(e, cut.id)}>
-                                <LayerRows cut={cut} rows={layerRows} />
+                                <LayerRows cut={cut} rows={layerRows} wide={wideLayer} />
                             </div>
                             {cut.id === currentCutId && (
                                 <div className="text-panel">
