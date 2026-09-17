@@ -303,6 +303,7 @@ export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCaptur
             <div style={R('#8bd')} title={tr('지지직 — 이 레이어의 선이 찢어지고 색이 갈라집니다. 선이 있는 곳에만 걸립니다')}>
                 <span style={{ width: 24, flexShrink: 0 }}>{tr('노이즈')}</span>
                 <NumIn label={tr('세기')} value={round2(a.noise || 0)} onChange={v => updLayerAnim(cut.id, layer.id, { noise: Math.max(0, Math.min(1, v)) })} step={0.1} min={0} w={46} title={tr('0~1. 켜는 순간 이 세기로 나옵니다')} />
+                <NumIn label={tr('색')} value={round2(a.noiseColor || 0)} onChange={v => updLayerAnim(cut.id, layer.id, { noiseColor: Math.max(0, Math.min(1, v)) })} step={0.1} min={0} w={46} title={tr('0~1. 화면 전체에 색색의 점이 튑니다. 선이 없는 곳에도')} />
             </div>
             {!!a.noise && (
                 <div style={R('#8bd')}>

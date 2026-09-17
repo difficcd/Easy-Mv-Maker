@@ -43,7 +43,7 @@ import { warpedOutline, warpedHandles, rotateKnob } from './canvas/warpRender.js
 import { drawMarquee, HANDLE_GRAB_PX } from './canvas/marquee.js';
 import { drawTextSelection, drawFloatingSelection, drawMotionPath, drawMosaicRegion } from './canvas/editChrome.js';
 import { createBitmapStore } from './canvas/bitmapStore.js';
-import { regionBounds, rectBounds, mosaic, blurMaskedRegion, grainTile, clampRegion } from './canvas/pixelEffects.js';
+import { regionBounds, rectBounds, mosaic, blurMaskedRegion, grainTile, colourTile, clampRegion } from './canvas/pixelEffects.js';
 import { useLayerCache } from './hooks/useLayerCache.js';
 import { useTimelineView } from './hooks/useTimelineView.js';
 import { useCutListUi } from './hooks/useCutListUi.js';
@@ -361,6 +361,7 @@ export default function App() {
     // Reused inside the composite loop; see the mask path in paintFrame.
     const maskScratchRef = useRef(null);
     const grainTileRef = useRef(/** @type {HTMLCanvasElement|null} */(null)); // built once, blitted per frame
+    const colourTileRef = useRef(/** @type {HTMLCanvasElement|null} */(null)); // the same, for the colour static
     // The static's four scratch slots: a copy of the layer, its red and cyan halves, and the
     // output. Four plain refs, not one holding four - see the mosaic's, above, for how that went.
     const staticCopyRef = useRef(null);
@@ -1853,6 +1854,7 @@ export default function App() {
             staticScratch: { copy: staticCopyRef, red: staticRedRef, cyan: staticCyanRef, out: staticOutRef },
             // Built on first use, not at mount: most projects never turn the static on.
             staticTile: (grainTileRef.current ||= grainTile(() => document.createElement('canvas'))),
+            staticColourTile: (colourTileRef.current ||= colourTile(() => document.createElement('canvas'))),
         });
 
         // Text objects live outside paint layers ("text layer").

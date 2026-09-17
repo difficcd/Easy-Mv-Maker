@@ -191,6 +191,34 @@ export function grainTile(makeCanvas) {
 }
 
 /**
+ * A square of coloured specks on nothing, for the colour static.
+ *
+ * Sparse, unlike the grain: a tile that covered every pixel would read as a tinted film over the
+ * frame, not as static. Roughly a third of the pixels are a fully saturated colour and the rest
+ * are transparent, so at 3x it is a scatter of coloured dots.
+ *
+ * @param {() => HTMLCanvasElement} makeCanvas
+ * @returns {HTMLCanvasElement}
+ */
+export function colourTile(makeCanvas) {
+    const c = makeCanvas();
+    c.width = TILE; c.height = TILE;
+    const ctx = c.getContext('2d');
+    const img = ctx.createImageData(TILE, TILE);
+    const d = img.data;
+    for (let i = 0; i < d.length; i += 4) {
+        if (Math.random() > 0.3) continue;   // alpha stays 0
+        // One channel full, one random, one empty: a saturated hue rather than a pastel.
+        const k = Math.floor(Math.random() * 3);
+        const rgb = [0, 0, 0];
+        rgb[k] = 255; rgb[(k + 1) % 3] = Math.floor(Math.random() * 256);
+        d[i] = rgb[0]; d[i + 1] = rgb[1]; d[i + 2] = rgb[2]; d[i + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    return c;
+}
+
+/**
  * A copy of a layer with broken-signal static on it, alpha preserved.
  *
  * `amount` is perceptual: the visible magnitudes follow its square root, so a third of the dial
@@ -204,13 +232,15 @@ export function grainTile(makeCanvas) {
  *
  * @param {HTMLCanvasElement | ImageBitmap} src the layer as painted, full frame size
  * @param {HTMLCanvasElement} tile from grainTile, for the snow
- * @param {{cw: number, ch: number, amount: number, seconds: number}} o
+ * @param {{cw: number, ch: number, amount: number, seconds: number, colour?: number, colourTile?: HTMLCanvasElement | null}} o
+ *   `colour` 0..1 adds coloured specks across the whole frame, not just the ink - the one part
+ *   of the old whole-frame static that the per-layer move lost and was asked back as an option
  * @param {{copy: {current: any}, red: {current: any}, cyan: {current: any}, out: {current: any}}} refs
  *   four scratch slots; the halves are read while the output is written, so none can share
  * @param {(ref: any, w: number, h: number) => {canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D}} scratch
  * @returns {HTMLCanvasElement | null} null when there is nothing to do
  */
-export function staticCanvas(src, tile, { cw, ch, amount, seconds }, refs, scratch) {
+export function staticCanvas(src, tile, { cw, ch, amount, seconds, colour = 0, colourTile: ctile = null }, refs, scratch) {
     if (!(amount > 0)) return null;
     const a = Math.min(1, amount);
     const v = Math.sqrt(a);
@@ -280,6 +310,23 @@ export function staticCanvas(src, tile, { cw, ch, amount, seconds }, refs, scrat
         octx.globalAlpha = 1;
         octx.imageSmoothingEnabled = true;
         octx.globalCompositeOperation = 'source-over';
+    }
+
+    // Colour static, over the whole frame: coloured specks on the empty canvas too, so it shows
+    // on a blank or transparent background. Optional, because it paints outside the ink - the
+    // per-layer static's whole point is that it does not.
+    if (ctile && colour > 0) {
+        const cv = Math.sqrt(Math.min(1, colour));
+        const ox = hash(step, 17) % TILE, oy = hash(step, 18) % TILE;
+        const scale = 3;
+        octx.globalAlpha = cv * (bad ? 0.75 : 0.4);
+        octx.imageSmoothingEnabled = false;
+        const size = TILE * scale;
+        for (let yy = -(oy * scale) % size; yy < ch; yy += size) {
+            for (let xx = -(ox * scale) % size; xx < cw; xx += size) octx.drawImage(ctile, xx, yy, size, size);
+        }
+        octx.globalAlpha = 1;
+        octx.imageSmoothingEnabled = true;
     }
     return out;
 }

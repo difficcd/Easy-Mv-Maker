@@ -34,3 +34,10 @@ test('no static at zero strength, without touching a canvas', () => {
     assert.equal(staticCanvas({}, null, { cw: 10, ch: 10, amount: 0, seconds: 1 }, {}, boom), null);
     assert.equal(staticCanvas({}, null, { cw: 10, ch: 10, amount: NaN, seconds: 1 }, {}, boom), null);
 });
+
+test('colour static is an option on the static: it follows the same window and needs a strength', () => {
+    assert.equal(at({ noise: 0.5, noiseColor: 0.8 }, 5).noiseColor, 0.8);
+    assert.equal(at({ noise: 0.5, noiseColor: 0.8, noiseFrom: 0.9 }, 5), null);
+    // Colour alone does nothing: it is a flavour of the static, not a second effect.
+    assert.equal(at({ noise: 0, noiseColor: 1 }, 5), null);
+});
