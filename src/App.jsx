@@ -98,7 +98,7 @@ import {
     DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT,
     pointInPolygon, safeArray, hexToRgb, bucketFillTransparentRegion,
     imageDataToDataURL, dataURLToImageData, drawStrokesOnCtx, sizeCanvas, flattenLayersInUiOrder, extractVideoFrames, fitRect, detectSceneCuts, curveToWave, morphPrepare,
-    targetCanvasFor, imageDataCanvas, seekTarget, accentSoft,
+    targetCanvasFor, imageDataCanvas, seekTarget, accentSoft, effectAt, cutProgress,
 } from './canvas/canvasUtils';
 
 
@@ -1833,7 +1833,14 @@ export default function App() {
         // Skipped on a transparent background. `overlay` paints into fully transparent pixels,
         // so grain would fill the empty area and a PNG sequence meant as an overlay would come
         // out opaque - which is the whole reason that export mode exists.
-        const grain = primary?.camera?.noise || 0;
+        // Through the same envelope the mosaic uses, so "over the first second and stay" means
+        // the same thing on both. Not inside computeCamera: that is playing-only, and grain is a
+        // look rather than a move - it should be visible while the frame is being worked on.
+        const cam = primary?.camera;
+        const grain = cam ? effectAt(cutProgress(primary, t), {
+            from: cam.noiseFrom, to: cam.noiseTo, speed: cam.noiseSpeed,
+            min: cam.noiseMin, max: cam.noise || 0, ease: cam.ease, easePower: cam.easePower,
+        }) : 0;
         if (grain > 0 && !transparentBg) {
             if (!grainTileRef.current) grainTileRef.current = grainTile(() => document.createElement('canvas'));
             drawGrain(ctx, grainTileRef.current, { cw: CANVAS_W, ch: CANVAS_H, amount: grain, seconds: t - primary.startTime });
