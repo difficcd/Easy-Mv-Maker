@@ -61,7 +61,7 @@
 - Automatic server backup every 5 minutes, keeping the newest 12 — runs in the background without blocking the UI
 - Video import from a local file or URL: frame extraction, scene-change detection, audio track (with a mute that lifts itself for the export)
 - Imports match the source video's own size by default, so a vertical shorts clip fills the canvas instead of being letterboxed; landscape and portrait presets are there too
-- WebM/MP4 export recorded on a fixed frame grid (no judder from sampling the paint loop), PWA, Android packaging
+- WebM/MP4 export recorded on a fixed frame grid (no judder from sampling the paint loop), with a start/end range; PWA, Android packaging
 
 **UI**
 - English, Korean and Japanese, switchable in Settings

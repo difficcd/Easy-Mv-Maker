@@ -53,6 +53,15 @@ export function useExport({ paint, audio, range, doc, report, recording }) {
     const { canvasRef, paintFrameRef, currentTimeRef, renderStateRef, bitmapStoreRef, videoStopRef } = paint;
     const { audioRef, audioCtxRef, audioSourceRef, audioDestRef, audioUrl, audioData } = audio;
     const { playStart, playEnd, cw: CANVAS_W, ch: CANVAS_H, transparentBg, transparentFormat } = range;
+    /**
+     * The span to export: the one asked for, else the whole range. The dialog asks for one -
+     * "let me set the start and the end" - and the defaults it shows are these same two numbers.
+     * @param {{from?: number, to?: number} | undefined} r
+     */
+    const span = (r) => ({
+        from: r && Number.isFinite(r.from) ? Math.max(0, r.from) : playStart,
+        to: r && Number.isFinite(r.to) ? r.to : playEnd,
+    });
     const { buildData, restore, invalidateCutsUsing, decodeFrameBitmap, paintFrame } = doc;
     const { setLoadProgress, setAppError, setCurrentTime, setIsPlaying } = report;
     const { isExporting, exportEndRef, exportStartRef, requestFrameRef, mediaRecorderRef } = recording;
@@ -257,13 +266,14 @@ export function useExport({ paint, audio, range, doc, report, recording }) {
         }
     };
 
-    const handleExportFrames = async () => {
+    /** @param {{from?: number, to?: number}} [r] */
+    const handleExportFrames = async (r) => {
         const canvas = canvasRef.current; if (!canvas) return;
-        // The range playback uses, so what you watch is what comes out: it starts where the
-        // content starts rather than at zero, and it follows the selected part the way playback
+        // By default the range playback uses, so what you watch is what comes out: it starts at
+        // the first cut rather than at zero, and it follows the selected part the way playback
         // and the dimming already do. Exporting from zero meant a project whose first cut sits at
         // three seconds began with three seconds of nothing.
-        const from = playStart, to = playEnd;
+        const { from, to } = span(r);
         // The rates, the scale and the frame count are all in core/frameExport, with the
         // reasoning behind each. The queue above plans through the same function.
         const { gif, fps, gw, gh, delayMs, total, empty } = frameExportPlan({ format: transparentFormat, cw: CANVAS_W, ch: CANVAS_H, from, to });
@@ -295,8 +305,10 @@ export function useExport({ paint, audio, range, doc, report, recording }) {
         }
     };
 
-    const handleExport = () => {
-        if (transparentBg) { handleExportFrames(); return; }
+    /** @param {{from?: number, to?: number}} [r] the span, or the whole range when omitted */
+    const handleExport = (r) => {
+        if (transparentBg) { handleExportFrames(r); return; }
+        const { from: playStart, to: playEnd } = span(r);
         const canvas = canvasRef.current;
         if (!canvas) return;
         if (typeof canvas.captureStream !== 'function' || typeof window.MediaRecorder === 'undefined') {

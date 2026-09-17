@@ -15,6 +15,8 @@ export function useDialogs() {
     const [settingsTab, setSettingsTab] = useState('theme');
     const [toolKeys, setToolKeys] = useState(false);
     const [help, setHelp] = useState(false);
+    /** The export-range dialog: start and end, before anything is recorded. */
+    const [exportRange, setExportRange] = useState(false);
     /** The id of the action waiting to be rebound, or null. */
     const [rebinding, setRebinding] = useState(/** @type {string|null} */(null));
 
@@ -34,7 +36,7 @@ export function useDialogs() {
 
     return {
         settings, setSettings, settingsTab, setSettingsTab,
-        toolKeys, setToolKeys, help, setHelp, rebinding, setRebinding,
+        toolKeys, setToolKeys, help, setHelp, exportRange, setExportRange, rebinding, setRebinding,
         openSettings, closeSettings, closeToolKeys,
     };
 }
