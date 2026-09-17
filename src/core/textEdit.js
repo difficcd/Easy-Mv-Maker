@@ -61,6 +61,11 @@ export function textFromEdit(edit, id) {
         flipX: !!edit.flipX,
         flipY: !!edit.flipY,
         anim: edit.anim || null,
+        // The static (#286). Written even at zero, so the round trip below holds field for field.
+        noise: edit.noise ?? 0,
+        noiseColor: edit.noiseColor ?? 0,
+        noiseFrom: edit.noiseFrom ?? 0,
+        noiseTo: edit.noiseTo ?? 1,
     };
 }
 
@@ -105,6 +110,10 @@ export function editFromText(t, now) {
         flipX: !!t.flipX,
         flipY: !!t.flipY,
         anim: t.anim || null,
+        noise: t.noise ?? 0,
+        noiseColor: t.noiseColor ?? 0,
+        noiseFrom: t.noiseFrom ?? 0,
+        noiseTo: t.noiseTo ?? 1,
     };
 }
 

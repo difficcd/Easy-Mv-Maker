@@ -11,6 +11,9 @@ const full = () => ({
     lineHeight: 1.5, letterSpacing: 3, shadow: true, shadowColor: '#000', shadowBlur: 12,
     gradient: true, color2: '#0000ff', bgColor: '#eeeeee', rotation: 15, curve: 30,
     flipX: true, flipY: true, anim: { inType: 'fade' },
+    // The static's four fields were missing from both mappings, so a text's noise was dropped
+    // the moment the editor closed - "text noise does not apply".
+    noise: 0.6, noiseColor: 0.3, noiseFrom: 0.1, noiseTo: 0.9,
 });
 
 // The test the inline version could not have. Opening a text and writing it straight back must
