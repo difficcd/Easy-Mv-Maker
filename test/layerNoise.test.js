@@ -41,3 +41,14 @@ test('colour static is an option on the static: it follows the same window and n
     // Colour alone does nothing: it is a flavour of the static, not a second effect.
     assert.equal(at({ noise: 0, noiseColor: 1 }, 5), null);
 });
+
+test('a text has the same gate as a layer: on inside its window at full strength, off outside', async () => {
+    const { textStaticGate } = await import('../src/canvas/sceneRender.js');
+    const cut = { startTime: 2, endTime: 12 };
+    const text = { noise: 0.7, noiseFrom: 0.2, noiseTo: 0.6, noiseColor: 0.5 };
+    assert.equal(textStaticGate(text, cut, 3), null);            // 10% in
+    assert.deepEqual(textStaticGate(text, cut, 5), { amount: 0.7, colour: 0.5 });   // 30% in
+    assert.equal(textStaticGate(text, cut, 9), null);            // 70% in
+    assert.equal(textStaticGate({ noise: 0 }, cut, 5), null);
+    assert.deepEqual(textStaticGate({ noise: 2 }, cut, 5), { amount: 1, colour: 0 });
+});

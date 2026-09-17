@@ -97,6 +97,9 @@ background and in a PNG-sequence export, and the sway, the mask and the part's m
 on the glitched drawing. It began as an effect over the whole frame and was moved here for
 exactly that reason: the noise should follow the lines, not shake the canvas.
 
+The same static is available on a **text**: in the text editor, a strength, a colour and a
+start/end. A noisy text is drawn onto a canvas of its own first, so only the glyphs tear.
+
 ## Boiling line
 
 The wavy icon on a layer row, separate from the panel above. The strokes jitter in place, like a

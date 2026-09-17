@@ -366,6 +366,8 @@ export default function App() {
     // refs, not one holding two - see the mosaic's, above, for how that went.
     const staticCopyRef = useRef(null);
     const staticOutRef = useRef(null);
+    // One scratch canvas per noisy text, by text id, so the static's per-canvas cache holds.
+    const textStaticRef = useRef(/** @type {Map<any, {current: any}>} */ (new Map()));
     // Two slots: the shrunken copy, and - when only a region is pixelated - the composed layer.
     // Separate, because composing reads the small one while writing the full one.
     //
@@ -1858,7 +1860,14 @@ export default function App() {
         });
 
         // Text objects live outside paint layers ("text layer").
-        drawSceneTexts(ctx, scene, { cw: CANVAS_W, ch: CANVAS_H, drawTextObject, textNeedsBox, measureTextBox });
+        drawSceneTexts(ctx, scene, {
+            cw: CANVAS_W, ch: CANVAS_H, drawTextObject, textNeedsBox, measureTextBox,
+            textNoise: {
+                scratch: { copy: staticCopyRef, out: staticOutRef },
+                tile: (grainTileRef.current ||= grainTile(() => document.createElement('canvas'))),
+                scratchFor: (id) => { const m = textStaticRef.current; if (!m.has(id)) m.set(id, { current: null }); return m.get(id); },
+            },
+        });
         if (camAt) ctx.restore();
     }, [cuts, currentCutId, currentCut, onionPrev, onionNext, selection, layerCanvasCache, frameDecodeTick, videoOverlay, boilTick, dragTick, transparentBg]);
 

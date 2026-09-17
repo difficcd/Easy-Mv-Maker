@@ -141,6 +141,18 @@ export function TextEditor({ textEdit, setTextEdit, textAreaRef, commitText, can
                 <label className="te-check" title={tr('상하 반전')}>
                     <input type="checkbox" checked={!!textEdit.flipY} onChange={e => patch({ flipY: e.target.checked })} />{tr('상하뒤집기')}
                 </label>
+                {/* Static on the glyphs: the layer effect, on a text. Strength, fringe, window. */}
+                <span className="te-check" title={tr('지지직 — 글자가 찢어지고 색이 갈라집니다. 세기 0이면 끕니다')}>{tr('노이즈')}</span>
+                <NumField className="time-input" width={48} title={tr('세기 (0~1)')} value={textEdit.noise ?? 0} step={0.1} min={0} max={1}
+                    onChange={v => patch({ noise: Math.max(0, Math.min(1, v)) })} />
+                {!!textEdit.noise && <>
+                    <NumField className="time-input" width={48} title={tr('색 — 빨강·청록 갈라짐 (0~1)')} value={textEdit.noiseColor ?? 0} step={0.1} min={0} max={1}
+                        onChange={v => patch({ noiseColor: Math.max(0, Math.min(1, v)) })} />
+                    <NumField className="time-input" width={48} title={tr('컷의 몇 지점에서 켜질지 (0~1)')} value={textEdit.noiseFrom ?? 0} step={0.1} min={0} max={1}
+                        onChange={v => patch({ noiseFrom: Math.max(0, Math.min(1, v)) })} />
+                    <NumField className="time-input" width={48} title={tr('컷의 몇 지점에서 꺼질지 (0~1). 계속 켜두려면 1')} value={textEdit.noiseTo ?? 1} step={0.1} min={0} max={1}
+                        onChange={v => patch({ noiseTo: Math.max(0, Math.min(1, v)) })} />
+                </>}
                 {/* Text animation, visible only during playback. */}
                 {(() => {
                     const an = { ...TEXT_ANIM_DEFAULT, ...(textEdit.anim || {}) };

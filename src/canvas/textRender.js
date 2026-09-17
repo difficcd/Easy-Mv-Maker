@@ -37,6 +37,10 @@
  * @property {boolean} [flipY] mirror top to bottom
  * @property {number} [rotation] degrees, about the centre of the box
  * @property {number} [opacity] 0..1, multiplied with any animation alpha
+ * @property {number} [noise] static on the glyphs, 0..1 - the layer effect, on a text
+ * @property {number} [noiseFrom] where in the cut it turns on, 0..1
+ * @property {number} [noiseTo] where it turns off, 0..1
+ * @property {number} [noiseColor] the red/cyan fringe, 0..1
  */
 
 /**

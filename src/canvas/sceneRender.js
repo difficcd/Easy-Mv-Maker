@@ -160,21 +160,68 @@ export function drawOnionCut(ctx, cut, layerCanvas, inUiOrder) {
  * rather than being handed a context that already has one applied.
  *
  * @param {CanvasRenderingContext2D} ctx
- * @param {{cuts: Array<{anim: any, texts: Array<{text: any, anim: any}>}>}} scene
+ * @param {{time: number, cuts: Array<{cut: any, anim: any, texts: Array<{text: any, anim: any}>}>}} scene
  * @param {object} deps
  * @param {number} deps.cw
  * @param {number} deps.ch
  * @param {(ctx: CanvasRenderingContext2D, text: any, opts: object) => void} deps.drawTextObject
  * @param {(text: any, anim: any) => boolean} deps.textNeedsBox
  * @param {(text: any) => any} deps.measureTextBox
+ * @param {{scratch: {copy: {current: any}, out: {current: any}}, tile: HTMLCanvasElement | null, scratchFor: (id: any) => {current: any}} | null} [deps.textNoise]
+ *   what the static needs: the two shared slots, the snow tile, and a canvas of each text's own
  */
-export function drawSceneTexts(ctx, scene, { cw, ch, drawTextObject, textNeedsBox, measureTextBox }) {
-    for (const { anim, texts } of scene.cuts) {
+export function drawSceneTexts(ctx, scene, { cw, ch, drawTextObject, textNeedsBox, measureTextBox, textNoise = null }) {
+    for (const { cut, anim, texts } of scene.cuts) {
         ctx.save();
         applyCutAnim(ctx, anim, cw, ch);
         for (const { text, anim: ta } of texts) {
-            drawTextObject(ctx, text, { anim: ta, box: textNeedsBox(text, ta) ? measureTextBox(text) : null, alpha: anim ? anim.alpha : 1 });
+            const opts = { anim: ta, box: textNeedsBox(text, ta) ? measureTextBox(text) : null, alpha: anim ? anim.alpha : 1 };
+            const gate = textNoise && textStaticGate(text, cut, scene.time);
+            if (!gate) { drawTextObject(ctx, text, opts); continue; }
+            // The static works on pixels, and a text is drawn straight onto the frame. So a
+            // noisy text is drawn onto a canvas of its own first - transparent, so only the
+            // glyphs tear - and that canvas goes through the same staticCanvas the layers use.
+            // One canvas per text, not one shared: the static caches its colour halves per
+            // source canvas, and two texts through one canvas would rebuild them every frame.
+            const { canvas: own, ctx: octx } = scratchCanvas(textNoise.scratchFor(text.id), cw, ch);
+            octx.clearRect(0, 0, cw, ch);
+            drawTextObject(octx, text, { ...opts, alpha: 1 });
+            // The static's cache key: whatever changes the glyphs changes this.
+            own.dataset.strokes = textStaticSig(text, ta);
+            const seconds = scene.time - cut.startTime;
+            const glitched = staticCanvas(own, textNoise.tile, { cw, ch, amount: gate.amount, seconds, colour: gate.colour }, textNoise.scratch, scratchCanvas) || own;
+            ctx.save();
+            ctx.globalAlpha = opts.alpha;
+            ctx.drawImage(glitched, 0, 0);
+            ctx.restore();
         }
         ctx.restore();
     }
 }
+
+/**
+ * Whether a text's static is on at this moment, and how strong: the same gate a layer has -
+ * full strength inside the start/end window, nothing outside it.
+ *
+ * @param {{noise?: number, noiseFrom?: number, noiseTo?: number, noiseColor?: number}} text
+ * @param {{startTime: number, endTime: number}} cut
+ * @param {number} time
+ * @returns {{amount: number, colour: number} | null}
+ */
+export function textStaticGate(text, cut, time) {
+    const amount = Math.min(1, text.noise || 0);
+    if (!(amount > 0)) return null;
+    const len = cut.endTime - cut.startTime;
+    const p = len > 0 ? (time - cut.startTime) / len : 0;
+    const nf = Math.max(0, Math.min(1, text.noiseFrom ?? 0)), nt = Math.max(nf, Math.min(1, text.noiseTo ?? 1));
+    if (p < nf || p > nt) return null;
+    return { amount, colour: Math.max(0, Math.min(1, text.noiseColor || 0)) };
+}
+
+/** A signature of everything that changes how a text renders, for the static's per-canvas cache. */
+const textStaticSig = (text, ta) => {
+    let sig = '';
+    for (const k in text) if (k !== 'noise' && k !== 'noiseFrom' && k !== 'noiseTo' && k !== 'noiseColor') sig += `${k}=${text[k]};`;
+    if (ta) sig += `|${ta.chars ?? ''},${ta.dx},${ta.dy},${ta.scale},${ta.rot},${ta.blur},${ta.perChar ? 'pc' : ''}`;
+    return sig;
+};

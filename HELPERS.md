@@ -754,6 +754,7 @@ Compositing the evaluated scene onto the frame - what was the middle of paintFra
 |---|---|
 | `drawScene` | Every cut's layers, bottom to top, under the cut's and the part's transform, with a floating selection's hole cut out of the layer it came from. Takes the cache's clip-group flattener and the gesture-hidden test as arguments. |
 | `drawSceneTexts` | Every cut's texts under the cut's transform; a text multiplies its own opacity with the cut's. |
+| `textStaticGate` | Whether a text's static is on at this moment and how strong: full strength inside its start/end window of the cut, null outside - the layer's gate, for a text. |
 | `drawVideoOverlay` | The reference video fitted to the canvas and faded by its track opacity, alpha restored after. |
 | `drawOnionCut` | A neighbouring cut's visible layers, faint, bottom to top. |
 | `ONION_ALPHA` | How faint. |
