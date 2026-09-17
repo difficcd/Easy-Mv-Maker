@@ -51,9 +51,11 @@ flat.
 
 ## What is and is not in the export
 
-- The export **starts at the first cut**. Playback starts where the content starts, which can
-  be the music; an intro before any drawing is for working to, not for the file. The end is
-  wherever the content ends, music included.
+- **Export** opens a small dialog with a start and an end. The defaults are the first cut to the
+  end of the content — or, if the playhead is parked inside the film, from the playhead. Type
+  a time as `mm:ss.cc` or use the buttons. Playback still starts where the content starts
+  (which can be the music), so an intro before the first drawing plays while working but is not
+  exported unless you ask for it.
 - Cut animations, part animations, the camera, and every effect play in the export exactly as
   they do under ▶. If it looked right playing, it looks right exported; they go through the same
   paint path, on purpose.

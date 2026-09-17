@@ -11,7 +11,7 @@ import { onOffCodec, oneZeroCodec } from './core/persist.js';
 import { TextEditor } from './ui/TextEditor';
 import { ToolsPanel } from './ui/ToolsPanel';
 import { Timeline } from './ui/Timeline';
-import { ProjectPicker, ProgressOverlay, SettingsModal, HelpModal, VideoImportModal, SceneDetectModal, LinkPromptModal, ToolKeysModal } from './ui/Modals';
+import { ProjectPicker, ProgressOverlay, SettingsModal, HelpModal, VideoImportModal, SceneDetectModal, LinkPromptModal, ToolKeysModal, ExportRangeModal } from './ui/Modals';
 import { Notices } from './ui/Notices.jsx';
 import { DocTabs } from './ui/DocTabs.jsx';
 import { CanvasStage, canvasCursor } from './ui/CanvasStage.jsx';
@@ -2324,6 +2324,11 @@ export default function App() {
                     cancelSceneDetect={() => { vid.sceneStopRef.current = true; }}
                     hasCuts={!!videoOverlay.cuts?.length} clearVideoCuts={() => dispatchMedia(clearVideoCuts())} />
             )}
+            {dialogs.exportRange && (
+                <ExportRangeModal first={exportStart} end={playEnd} playhead={currentTime} transparentBg={transparentBg} format={transparentFormat}
+                    onClose={() => dialogs.setExportRange(false)}
+                    onExport={(from, to) => { dialogs.setExportRange(false); handleExport({ from, to }); }} />
+            )}
             {dialogs.toolKeys && (
                 <ToolKeysModal keymap={keymap} setKeymap={setKeymap} defaultKeys={DEFAULT_KEYS} keyLabels={KEY_LABELS}
                     conflicts={findConflicts(keymap)} rebinding={dialogs.rebinding} setRebinding={dialogs.setRebinding}
@@ -2341,7 +2346,7 @@ export default function App() {
                 canvasW={CANVAS_W} canvasH={CANVAS_H}
                 setCanvasSize={setCanvasSize} setShowHelp={dialogs.setHelp} setShowSettings={dialogs.setSettings}
                 keymap={keymap} view={view} zoomCanvas={zoomCanvas} resetView={resetView} autoSavedAt={autoSavedAt}
-                autosaveErr={autosaveErr} backupAt={backupAt} storageInfo={storageInfo} handleExport={handleExport}
+                autosaveErr={autosaveErr} backupAt={backupAt} storageInfo={storageInfo} handleExport={() => dialogs.setExportRange(true)}
                 doSplitSave={doSplitSave} handleExportPieces={handleExportPieces} />
             <DocTabs
                 tabs={tabs} activeTabId={activeTabId} switchTab={switchTab} renameTab={renameTab} closeTab={closeTab} newTab={newTab}
