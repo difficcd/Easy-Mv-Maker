@@ -233,6 +233,54 @@ export async function loadBitmapStore(data, { dataURLToImageData, createBitmap, 
 }
 
 /**
+ * Put a document's pixels into a bitmap store: the externalised frame assets first, then the
+ * embedded bitmaps. What `restore` in App used to do inline in two blocks.
+ *
+ * Assets are fetched one at a time and kept as Blobs, undecoded - one frame in flight, bounded
+ * memory, and no decode until a frame is shown, which is what keeps a big project from OOMing
+ * on open. The embedded bitmaps go through loadBitmapStore.
+ *
+ * @param {Map<string, any>} store the live store; cleared first
+ * @param {any} data the document
+ * @param {object} deps
+ * @param {string | null} deps.assetBase where the server keeps this project's assets, or null
+ * @param {(url: string) => Promise<Blob>} deps.fetchAsset
+ * @param {() => void} [deps.tick] progress, once per asset or bitmap
+ * @param {(url: string) => Promise<ImageData>} deps.dataURLToImageData
+ * @param {(img: ImageData) => Promise<any>} [deps.createBitmap]
+ * @returns {Promise<number>} how many could not be loaded
+ */
+export async function fillBitmapStore(store, data, { assetBase, fetchAsset, tick, dataURLToImageData, createBitmap }) {
+    store.clear();
+    let missing = 0;
+    if (assetBase && Array.isArray(data.assets)) {
+        for (const a of data.assets) {
+            try {
+                const blob = await fetchAsset(`${assetBase}/asset/${a.id}`);
+                store.set(a.id, { imageData: null, imageBitmap: null, blob, ext: a.ext, w: a.w || 0, h: a.h || 0 });
+            } catch { missing++; }
+            tick?.();
+        }
+    }
+    const { store: loaded, failed } = await loadBitmapStore(data, {
+        dataURLToImageData,
+        createBitmap,
+        urlToBlob: async (url) => (await fetch(url)).blob(),
+        extFromType: imageExtFromType,
+        onEach: tick,
+    });
+    for (const [id, entry] of loaded) store.set(id, entry);
+    return missing + failed;
+}
+
+/** How many assets and bitmaps a document will load - for a progress bar before it starts. */
+export function bitmapLoadCount(data, assetBase) {
+    const assets = (assetBase && Array.isArray(data.assets)) ? data.assets.length : 0;
+    const bitmaps = data.bitmaps ? Object.keys(data.bitmaps).length : 0;
+    return assets + bitmaps;
+}
+
+/**
  * A Blob as a base64 dataURL.
  *
  * The conversion the "local .emv must stand alone" rule above rests on: bytes held as a Blob
