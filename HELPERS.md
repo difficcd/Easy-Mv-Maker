@@ -1179,7 +1179,7 @@ What bringing a video into the project remembers.
 
 | | |
 |---|---|
-| `useVideoImportState` | The hidden `<video>` and its bytes, the import dialog, extraction progress and whether it went to a background chip, the list of videos already fetched, the scene detector's progress and settings, and the two stop flags. The *logic* stays in App — it reads the document, the bitmap store and the paint path. The two stop flags are refs, because they are read inside loops that are already running. | Also `restore(field, deps)`: a stored video track back onto the element, the blob ref and the media state, like useAudioTrack's restoreAudio.
+| `useVideoImportState` | The hidden `<video>` and its bytes, the import dialog, extraction progress and whether it went to a background chip, the list of videos already fetched, the scene detector's progress and settings, and the two stop flags. The *logic* stays in App — it reads the document, the bitmap store and the paint path. The two stop flags are refs, because they are read inside loops that are already running. | Also `restore(field, deps)`: a stored video track back onto the element, the blob ref and the media state, like useAudioTrack's restoreAudio; and `run(deps)`: the import itself - extract as the dialog asked, store the frames, lay them out as cuts - taking the document at call time.
 
 ## `src/hooks/useTimelineView.js`
 
