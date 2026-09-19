@@ -71,14 +71,13 @@ import {
 import { cloneCutContents as cloneCutContentsPure, placeCopies } from './core/cutClone.js';
 import { DEFAULT_KEYS, KEY_LABELS, keyOf, keymapFrom, findConflicts } from './core/shortcuts.js';
 import { derivePartsFrom, deriveVideoBatches } from './core/partOps.js';
-import { importPlacement, buildImportedCuts, extractOptionsFor } from './core/videoCuts.js';
 import { playRange, exportRange } from './core/playRange.js';
 import { brushUp, brushDown } from './core/brushSize.js';
 import {
     cutsReducer, replaceCuts, addCuts, updateCut, setCutAnim, setCutCamera, clearCut,
     updateLayer, setLayerAnim, upsertText, deleteText, toggleTextVisible as toggleTextVisibleAction,
     assignPartTo, renamePart as renamePartAction, ungroupPart as ungroupPartAction, removeBatch,
-    insertCutsShifting, deleteTrack, moveCutGroup, replaceBatchCuts, patchCut, patchCuts,
+    insertCutsShifting, deleteTrack, moveCutGroup, patchCut, patchCuts,
 } from './core/cutsReducer.js';
 import { migrateCuts, projectSettings, makeLoadProgress } from './core/projectFormat.js';
 import { audioExt, videoExt, collectBitmaps, blobToDataURL, packMedia, fillBitmapStore, bitmapLoadCount } from './core/projectAssets.js';
@@ -97,8 +96,8 @@ import { imageDataToDataURL, dataURLToImageData } from './canvas/imageCodec.js';
 import { morphPrepare } from './canvas/morph.js';
 import { sizeCanvas, imageDataCanvas } from './canvas/scratch.js';
 import { drawStrokesOnCtx } from './canvas/strokes.js';
-import { extractVideoFrames, fitRect, detectSceneCuts, seekTarget } from './canvas/videoFrames.js';
-import { DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT, targetCanvasFor } from './core/canvasSize.js';
+import { detectSceneCuts, seekTarget } from './canvas/videoFrames.js';
+import { DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT } from './core/canvasSize.js';
 import { hexToRgb } from './core/colour.js';
 import { pointInPolygon, safeArray } from './core/geometry.js';
 import { flattenLayersInUiOrder } from './core/layerTree.js';
@@ -1848,69 +1847,6 @@ export default function App() {
     };
 
     // Import a video as one cut per extracted frame (sequential on the current track).
-    const runVideoImport = async () => {
-        const cfg = vid.cfg;
-        if (!cfg?.file) return;
-        const startedFor = docEpochRef.current;
-        vid.setBusy({ done: 0, total: 0 });
-        try {
-            const tgt = targetCanvasFor(cfg, CANVAS_W, CANVAS_H);
-            const TW = tgt.w, TH = tgt.h;
-            if (TW !== CANVAS_W || TH !== CANVAS_H) setCanvasSize({ w: TW, h: TH });
-            // The dialog's settings become the extractor's numbers in core/videoCuts, where the
-            // quality tiers are a table.
-            const { opts, nativeRes: isNative } = extractOptionsFor(cfg, tgt, parseClock);
-            const { frames, holds = [], skipped = 0, fps, width: fW, height: fH } = await extractVideoFrames(cfg.file, {
-                ...opts,
-                onProgress: (done, total, skipped) => vid.setBusy({ done, total, skipped }),
-                shouldStop: () => vid.stopRef.current,
-            });
-            if (!frames.length) { alert(tr('추출된 프레임이 없습니다.')); return; }
-            // Extraction can take minutes and can be left running in the background, so the
-            // project may have been swapped underneath it. Dropping the frames is the only safe
-            // answer: putting them in the project that happens to be open now would be writing
-            // into a document the user never asked to change.
-            if (docEpochRef.current !== startedFor) {
-                notices.setError(tr('다른 프로젝트를 여는 동안 영상 프레임 추출이 끝나 결과를 버렸습니다. 프로젝트를 연 뒤 다시 가져오세요.'));
-                return;
-            }
-            // Re-importing the same source replaces its old frames instead of piling up duplicates.
-            const srcKey = cfg.srcKey;
-            const { track, startAt } = importPlacement(cuts, srcKey, currentCutId);
-            // The batch key comes from an id rather than the clock so that importing twice in
-            // quick succession cannot produce two batches with the same name.
-            const batch = 'vb_' + nextId().toString(36);
-            const label = cfg.label || cfg.file.name.replace(/\.[^.]+$/, '').slice(0, 24);
-            // Native-res frames keep the source aspect, so letterbox-fit them into the canvas;
-            // compressed frames are already pre-letterboxed to the canvas (full-canvas paste).
-            const fit = (isNative && fW && fH) ? fitRect(fW, fH, TW, TH) : { x: 0, y: 0, w: TW, h: TH };
-            const rect = { x: Math.round(fit.x), y: Math.round(fit.y), w: Math.round(fit.w), h: Math.round(fit.h) };
-            // Storing the blobs is the only part of this that has to happen here: everything after
-            // it - where the cuts go, how long each lasts, which part it belongs to - is arithmetic,
-            // and lives in core/videoCuts.js where it can be tested.
-            const bitmapIds = [];
-            for (let i = 0; i < frames.length; i++) bitmapIds.push(await storeBitmapBlob(frames[i], fW, fH));
-            const made = buildImportedCuts({
-                bitmapIds, holds, fps, track, startAt, batch, label, srcKey, parts: cfg.parts, rect, nextId,
-            });
-            dispatchCuts(replaceBatchCuts(srcKey, made));
-            setCurrentCutId(made[0].id);
-            setCurrentTime(made[0].startTime);
-            // Audio (if asked) is the only thing that keeps the video bytes alive past this point.
-            // Aligned to the first imported frame; when only a range was imported, the audio is
-            // clipped to that same range (offset rStart, duration rEnd-rStart).
-            if (cfg.withAudio) loadAudioUrl(URL.createObjectURL(cfg.file), label + tr(' (영상 음원)'), made[0].startTime, opts.start, opts.end == null ? null : opts.end - opts.start);
-            vid.setCfg(null);
-            setTimeout(gcBitmaps, 0); // replaced frames' bitmaps go too
-        } catch (e) {
-            console.error('[import]', e);
-            notices.setError(tr('영상 가져오기 실패: ') + e.message);
-        } finally {
-            vid.stopRef.current = false;
-            vid.setBusy(null);
-            vid.setBusyBg(false);
-        }
-    };
     const { handleExport, handleExportFrames, handleExportPieces } = useExport({
         paint: { canvasRef, paintFrameRef, currentTimeRef, renderStateRef, bitmapStoreRef, videoStopRef: vid.stopRef },
         audio: { audioRef, audioCtxRef, audioSourceRef, audioDestRef, audioUrl, audioData },
@@ -2063,7 +1999,10 @@ export default function App() {
                 <VideoImportModal
                     videoImport={vid.cfg} setVideoImport={vid.setCfg}
                     videoBusy={vid.busy} setVideoBusyBg={vid.setBusyBg} videoStopRef={vid.stopRef}
-                    runVideoImport={runVideoImport}
+                    runVideoImport={() => vid.run({
+                        cw: CANVAS_W, ch: CANVAS_H, cuts, currentCutId, docEpochRef, setCanvasSize, storeBitmapBlob,
+                        dispatchCuts, setCurrentCutId, setCurrentTime, loadAudioUrl, gcBitmaps, notices,
+                    })}
                     loadVideoOverlay={loadVideoOverlay} loadAudioUrl={loadAudioUrl} parseClock={parseClock}
                     setShowHelp={dialogs.setHelp} canvasW={CANVAS_W} canvasH={CANVAS_H} setCanvasSize={setCanvasSize} />
             )}

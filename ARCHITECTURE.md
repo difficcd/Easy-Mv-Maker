@@ -199,7 +199,9 @@ needs a document takes those two functions rather than the document.
   in-progress state, each `begin / to / end`.
 - `useExport.js` — the three exports: a recorded video, a GIF or PNG sequence, and several `.emv`
   files painted into one. All paint through the app's own paint path.
-- `useVideoImportState.js` — what bringing a video in remembers. The logic stays in App.
+- `useVideoImportState.js` — what bringing a video in remembers, and the two things done with it:
+  `run` (the import: extract, store, lay out as cuts) and `restore` (a stored track back). Both
+  take the document at call time, so the hook stays free of App state.
 - `useNotices.js` — progress, toast, error banner, and the YouTube link prompt.
 - `useDialogs.js` — which dialog is open, and the rebinding two of them share.
 

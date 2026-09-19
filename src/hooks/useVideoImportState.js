@@ -4,6 +4,12 @@ import { safeMediaSrc, detachMedia } from '../core/mediaEl.js';
 import { loadVideo, clearVideo } from '../core/mediaReducer.js';
 import { fetchAsset } from '../core/api.js';
 import { tr } from '../i18n.js';
+import { nextId } from '../core/ids.js';
+import { parseClock } from '../core/timeCode.js';
+import { importPlacement, buildImportedCuts, extractOptionsFor } from '../core/videoCuts.js';
+import { replaceBatchCuts } from '../core/cutsReducer.js';
+import { targetCanvasFor } from '../core/canvasSize.js';
+import { extractVideoFrames, fitRect } from '../canvas/videoFrames.js';
 
 // The state of bringing a video into the project.
 //
@@ -12,9 +18,9 @@ import { tr } from '../i18n.js';
 // whether it has been sent to a background chip, the list of videos already fetched, the scene
 // detector's progress and settings, and the two flags that ask a long run to stop.
 //
-// The logic stays in App for now - it reads the document, the bitmap store and the paint path,
-// and moving it would mean handing all three back. What moves is the answer to "what does the
-// video import remember", which was previously "find out by grepping".
+// The import itself is `run`, and putting a stored track back is `restore`. Both take what
+// they need of the document at call time rather than at construction, so this hook stays free
+// of App's state and App stays the only place that knows the whole document.
 //
 // The two stop flags are refs rather than state deliberately. They are read inside loops that
 // are already running, and a state update would not reach a closure that started before it.
@@ -74,8 +80,76 @@ export function useVideoImportState() {
         return got.missing;
     };
 
+    /**
+     * The import: extract the frames as the dialog asked, store them, and lay them out as cuts.
+     * Everything after storing the blobs is arithmetic in core/videoCuts. Takes the document
+     * and the store at call time; see the header.
+     */
+    const run = async ({ cw, ch, cuts, currentCutId, docEpochRef, setCanvasSize, storeBitmapBlob, dispatchCuts, setCurrentCutId, setCurrentTime, loadAudioUrl, gcBitmaps, notices }) => {
+        if (!cfg?.file) return;
+        const startedFor = docEpochRef.current;
+        setBusy({ done: 0, total: 0 });
+        try {
+            const tgt = targetCanvasFor(cfg, cw, ch);
+            const TW = tgt.w, TH = tgt.h;
+            if (TW !== cw || TH !== ch) setCanvasSize({ w: TW, h: TH });
+            // The dialog's settings become the extractor's numbers in core/videoCuts, where the
+            // quality tiers are a table.
+            const { opts, nativeRes: isNative } = extractOptionsFor(cfg, tgt, parseClock);
+            const { frames, holds = [], skipped = 0, fps, width: fW, height: fH } = await extractVideoFrames(cfg.file, {
+                ...opts,
+                onProgress: (done, total, skipped) => setBusy({ done, total, skipped }),
+                shouldStop: () => stopRef.current,
+            });
+            if (!frames.length) { alert(tr('추출된 프레임이 없습니다.')); return; }
+            // Extraction can take minutes and can be left running in the background, so the
+            // project may have been swapped underneath it. Dropping the frames is the only safe
+            // answer: putting them in the project that happens to be open now would be writing
+            // into a document the user never asked to change.
+            if (docEpochRef.current !== startedFor) {
+                notices.setError(tr('다른 프로젝트를 여는 동안 영상 프레임 추출이 끝나 결과를 버렸습니다. 프로젝트를 연 뒤 다시 가져오세요.'));
+                return;
+            }
+            // Re-importing the same source replaces its old frames instead of piling up duplicates.
+            const srcKey = cfg.srcKey;
+            const { track, startAt } = importPlacement(cuts, srcKey, currentCutId);
+            // The batch key comes from an id rather than the clock so that importing twice in
+            // quick succession cannot produce two batches with the same name.
+            const batch = 'vb_' + nextId().toString(36);
+            const label = cfg.label || cfg.file.name.replace(/\.[^.]+$/, '').slice(0, 24);
+            // Native-res frames keep the source aspect, so letterbox-fit them into the canvas;
+            // compressed frames are already pre-letterboxed to the canvas (full-canvas paste).
+            const fit = (isNative && fW && fH) ? fitRect(fW, fH, TW, TH) : { x: 0, y: 0, w: TW, h: TH };
+            const rect = { x: Math.round(fit.x), y: Math.round(fit.y), w: Math.round(fit.w), h: Math.round(fit.h) };
+            // Storing the blobs is the only part of this that has to happen here: everything after
+            // it - where the cuts go, how long each lasts, which part it belongs to - is arithmetic,
+            // and lives in core/videoCuts.js where it can be tested.
+            const bitmapIds = [];
+            for (let i = 0; i < frames.length; i++) bitmapIds.push(await storeBitmapBlob(frames[i], fW, fH));
+            const made = buildImportedCuts({
+                bitmapIds, holds, fps, track, startAt, batch, label, srcKey, parts: cfg.parts, rect, nextId,
+            });
+            dispatchCuts(replaceBatchCuts(srcKey, made));
+            setCurrentCutId(made[0].id);
+            setCurrentTime(made[0].startTime);
+            // Audio (if asked) is the only thing that keeps the video bytes alive past this point.
+            // Aligned to the first imported frame; when only a range was imported, the audio is
+            // clipped to that same range (offset rStart, duration rEnd-rStart).
+            if (cfg.withAudio) loadAudioUrl(URL.createObjectURL(cfg.file), label + tr(' (영상 음원)'), made[0].startTime, opts.start, opts.end == null ? null : opts.end - opts.start);
+            setCfg(null);
+            setTimeout(gcBitmaps, 0); // replaced frames' bitmaps go too
+        } catch (e) {
+            console.error('[import]', e);
+            notices.setError(tr('영상 가져오기 실패: ') + e.message);
+        } finally {
+            stopRef.current = false;
+            setBusy(null);
+            setBusyBg(false);
+        }
+    };
+
     return {
-        elRef, blobRef, restore, stopRef, sceneStopRef,
+        elRef, blobRef, restore, run, stopRef, sceneStopRef,
         cfg, setCfg, recent, setRecent, busy, setBusy, busyBg, setBusyBg,
         scene, setScene, sceneCfg, setSceneCfg,
     };
