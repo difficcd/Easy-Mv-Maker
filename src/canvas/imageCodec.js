@@ -1,7 +1,9 @@
 // ImageData to and from a data URL, for persistence.
 
+import { makeCanvas } from './canvasFactory.js';
+
 export function imageDataToDataURL(imageData) {
-    const c = document.createElement('canvas');
+    const c = makeCanvas();
     c.width = imageData.width;
     c.height = imageData.height;
     c.getContext('2d').putImageData(imageData, 0, 0);
@@ -12,7 +14,7 @@ export function dataURLToImageData(url) {
     return new Promise((resolve, reject) => {
         const img = new Image();
         img.onload = () => {
-            const c = document.createElement('canvas');
+            const c = makeCanvas();
             c.width = img.naturalWidth;
             c.height = img.naturalHeight;
             const ctx = c.getContext('2d');

@@ -5,6 +5,7 @@ import { imageDataCanvas, resetCtx, sizeCanvas } from './scratch.js';
 import { hexToRgb } from '../core/colour.js';
 import { drawWarped, isWarped } from './warpRender.js';
 import { catmullThrough } from '../core/catmullRom.js';
+import { makeCanvas } from './canvasFactory.js';
 
 // Remove hand/sampling jitter before drawing: weighted moving average over position and
 // pressure, keeping the endpoints fixed. Without this the curve wobbles unnaturally.
@@ -215,7 +216,7 @@ let _grainTile = null;
 
 function grainTile() {
     if (_grainTile) return _grainTile;
-    const N = 128, c = document.createElement('canvas'); c.width = c.height = N;
+    const N = 128, c = makeCanvas(); c.width = c.height = N;
     const g = c.getContext('2d'), img = g.createImageData(N, N);
     let seed = 0x1a2b3c;
     const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
@@ -230,7 +231,7 @@ function grainTile() {
 
 // Reusable soft radial stamp in a given rgb, for the airbrush spray.
 function softStamp(r, g, b, radius) {
-    const s = Math.max(2, Math.ceil(radius * 2)), c = document.createElement('canvas'); c.width = c.height = s;
+    const s = Math.max(2, Math.ceil(radius * 2)), c = makeCanvas(); c.width = c.height = s;
     const cx = c.getContext('2d'), grd = cx.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
     grd.addColorStop(0, `rgba(${r},${g},${b},0.16)`);
     grd.addColorStop(0.5, `rgba(${r},${g},${b},0.06)`);
@@ -248,7 +249,7 @@ let _scratch = null;
 
 /** A cleared, full-size scratch canvas with a context in its default state. */
 function takeScratch(w, h) {
-    if (!_scratch) _scratch = document.createElement('canvas');
+    if (!_scratch) _scratch = makeCanvas();
     const cx = sizeCanvas(_scratch, w, h)
         ? _scratch.getContext('2d')                        // a resize already blanked it
         : (() => { const c = _scratch.getContext('2d'); c.clearRect(0, 0, w, h); return c; })();

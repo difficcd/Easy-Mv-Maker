@@ -1,5 +1,7 @@
 // Scratch canvases: sizing, one-per-ref reuse, and drawing an ImageData through a canvas.
 
+import { makeCanvas } from './canvasFactory.js';
+
 /**
  * Give a canvas these dimensions, reallocating only if it does not already have them.
  *
@@ -42,7 +44,7 @@ export function scratchCanvas(ref, w, h) {
     if (!ref || typeof ref !== 'object' || !('current' in ref)) {
         throw new TypeError('scratchCanvas needs a ref ({current}), got ' + (ref ? `{${Object.keys(ref)}}` : String(ref)));
     }
-    const canvas = ref.current || (ref.current = document.createElement('canvas'));
+    const canvas = ref.current || (ref.current = makeCanvas());
     const ctx = /** @type {CanvasRenderingContext2D} */ (canvas.getContext('2d'));
     if (!sizeCanvas(canvas, w, h)) ctx.clearRect(0, 0, w, h);
     return { canvas, ctx };
@@ -69,7 +71,7 @@ let _imgCanvas = null;
  * @returns {HTMLCanvasElement} valid until the next call
  */
 export function imageDataCanvas(img) {
-    if (!_imgCanvas) _imgCanvas = document.createElement('canvas');
+    if (!_imgCanvas) _imgCanvas = makeCanvas();
     sizeCanvas(_imgCanvas, img.width, img.height);
     const cx = _imgCanvas.getContext('2d');
     resetCtx(cx);
