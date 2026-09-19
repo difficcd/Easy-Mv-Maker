@@ -38,11 +38,11 @@ import { useLocalDocuments } from './hooks/useLocalDocuments.js';
 import { fetchAsset } from './core/api.js';
 import { PLAYBACK_RATES, RATE_DEFAULT, playbackRateCodec } from './core/playbackRate.js';
 import { scaleProjectTimes, bakePlan } from './core/timeScale.js';
-import { drawScene, drawVideoOverlay, drawOnionCut, drawSceneTexts } from './canvas/sceneRender.js';
+import { paintFrameOnto, createFrameScratch, BOIL_FPS } from './canvas/framePaint.js';
 import { drawMarquee } from './canvas/marquee.js';
 import { drawTextSelection, drawFloatingSelection, drawMotionPath, drawMosaicRegion } from './canvas/editChrome.js';
 import { createBitmapStore } from './canvas/bitmapStore.js';
-import { regionBounds, rectBounds, mosaic, blurMaskedRegion, grainTile } from './canvas/pixelEffects.js';
+import { regionBounds, rectBounds, mosaic, blurMaskedRegion } from './canvas/pixelEffects.js';
 import { useLayerCache } from './hooks/useLayerCache.js';
 import { useTimelineView } from './hooks/useTimelineView.js';
 import { useCutListUi } from './hooks/useCutListUi.js';
@@ -80,7 +80,6 @@ import {
     assignPartTo, renamePart as renamePartAction, ungroupPart as ungroupPartAction, removeBatch,
     insertCutsShifting, deleteTrack, moveCutGroup, replaceBatchCuts, patchCut, patchCuts,
 } from './core/cutsReducer.js';
-import { textNeedsBox, drawTextObject } from './canvas/textRender.js';
 import { migrateCuts, projectSettings, makeLoadProgress } from './core/projectFormat.js';
 import { imageExtFromType, audioExt, videoExt, collectBitmaps, loadBitmapStore, blobToDataURL, packMedia, unpackMedia } from './core/projectAssets.js';
 import { xAtTime } from './core/timelineZoom.js';
@@ -89,10 +88,7 @@ import { dragOnWindow } from './core/windowDrag.js';
 // active at once, and startDraw checks this one first because a camera is a property of the cut
 // rather than of whichever layer happens to be selected.
 
-import { applyCamera } from './core/camera.js';
-import { onionNeighbours, topCutAt } from './engine/selectCuts.js';
-import { evaluateFrame } from './engine/evaluateFrame.js';
-import { pendingBitmapIds } from './engine/pendingBitmaps.js';
+import { topCutAt } from './engine/selectCuts.js';
 import { unusedBitmapIds } from './core/bitmapRefs.js';
 import { dragCut, resizeCut } from './core/cutOps.js';
 import { accentSoft } from './canvas/editChrome.js';
@@ -122,7 +118,6 @@ const PEN_TYPES = [
     { id: 'eraser', label: 'Eraser', Icon: Eraser },
     { id: 'fill', label: 'Fill', Icon: PaintBucket },
 ];
-const BOIL_FPS = 10; // how many times a second the boiling-line motion advances
 const TIMELINE_MIN_SPAN = 240; // seconds of ruler even with nothing in the project
 const TIMELINE_TAIL_PAD = 60;  // empty room past the end, to drag into
 
@@ -360,28 +355,12 @@ export default function App() {
     const paintFrameRef = useRef(/** @type {((t: number, playing: boolean) => void) | null} */(null)); // set below, beside paintFrame
     const renderStateRef = useRef(/** @type {{cuts: any[], currentCutId: any, cw: number, ch: number}} */({ cuts: [], currentCutId: null, cw: 1920, ch: 1080 })); // set below, beside liveRef
     const prefetchRef = useRef(null); // prefetchFramesAt, called by the rAF loop with the real playhead
-    const paintedOnceRef = useRef(false); // once we've painted a real frame, hold it rather than flash white
     const canvasAreaRef = useRef(null);
     const videoFileRef = useRef(null);
     const playheadRef = useRef(null);        // moved imperatively during playback
-    // Reused inside the composite loop; see the mask path in paintFrame.
-    const maskScratchRef = useRef(null);
-    const grainTileRef = useRef(/** @type {HTMLCanvasElement|null} */(null)); // built once, blitted per frame
-    // The static's two scratch slots: a copy of the layer and the output. Its colour halves are
-    // kept per layer inside pixelEffects, since they only change when the layer does. Two plain
-    // refs, not one holding two - see the mosaic's, above, for how that went.
-    const staticCopyRef = useRef(null);
-    const staticOutRef = useRef(null);
-    // One scratch canvas per noisy text, by text id, so the static's per-canvas cache holds.
-    const textStaticRef = useRef(/** @type {Map<any, {current: any}>} */ (new Map()));
-    // Two slots: the shrunken copy, and - when only a region is pixelated - the composed layer.
-    // Separate, because composing reads the small one while writing the full one.
-    //
-    // Two refs rather than one ref holding two, which is what this was and it never worked: the
-    // pair then lives at `ref.current`, and every reader asking for `ref.small` got undefined
-    // and threw on the first frame the mosaic was on.
-    const mosaicFullRef = useRef(null);
-    const mosaicSmallRef = useRef(null);
+    // What paintFrame keeps between frames - the effects' scratch canvases, the snow tile, the
+    // painted-once flag. One object, made once; see canvas/framePaint.
+    const frameScratch = useRef(createFrameScratch());
     const dataUrlCacheRef = useRef(new Map()); // id -> {imageData, url}; avoids re-encoding bitmaps each autosave
     const liveRef = useRef({}); // latest {cuts, copiedCut, selection} for safe bitmap GC from effects
     const textAreaRef = useRef(null);
@@ -1671,79 +1650,12 @@ export default function App() {
 
     const paintFrame = useCallback((t, playing) => {
         const canvas = canvasRef.current; if (!canvas) return;
-        const ctx = canvas.getContext('2d');
-        // Boiling phase, quantised to about ten changes a second like a traditional boiling line.
-        // Changing it every frame just reads as noise; this rate is what makes the drawing feel
-        // alive.
-        boilPhaseRef.current = t * BOIL_FPS + boilTick;
-        const primary = currentCut;
-        // Everything about *what* this frame is - which cuts, their animation, their layer
-        // groups, their texts, the camera - is worked out once, before anything is drawn.
-        // The two passes below then read the same answer instead of each recomputing it.
-        const scene = evaluateFrame(cuts, t, { playing, currentCutId, cw: CANVAS_W, ch: CANVAS_H });
-        const activeCuts = scene.cuts.map(e => e.cut);
-        // Never flash white DURING PLAYBACK: if the frame we're about to show isn't decoded yet,
-        // HOLD the last painted frame (skip this repaint) and kick a decode. The loop keeps advancing,
-        // so it reads as a brief hold instead of a white flash. Paused/editing always paints normally
-        // (the prefetch effect repaints once the frame is ready), so a still frame is never stuck.
-        if (playing && paintedOnceRef.current) {
-            const missing = pendingBitmapIds(activeCuts, bitmapStoreRef.current);
-            if (missing.length) { requestFrameDecode(missing); return; }
-        }
-        // Clear either way - the canvas holds the previous frame otherwise. The difference is
-        // whether white is then painted over it, which is what makes an export opaque.
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        if (!transparentBg) { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height); }
-        paintedOnceRef.current = true;
-        // The camera is a window onto the frame, so it wraps everything drawn into it - the video
-        // reference, the artwork and the text move together, which is the whole point of it being
-        // a camera rather than another per-layer transform. The white fill above stays outside:
-        // that is the viewport itself, and zooming it would leave the edges unpainted.
-        //
-        // Playback only, like cut and part animation. While editing, a moved canvas would put the
-        // pen somewhere other than where the drawing appears, which is not a trade worth making
-        // for a preview.
-        //
-        // A shot belongs to the cut on the lowest active track: that is the base scene, and the
-        // tracks above it are parts of the same shot rather than shots of their own.
-        const camAt = scene.camera;
-        if (camAt) { ctx.save(); applyCamera(ctx, camAt, CANVAS_W, CANVAS_H); }
-        // Video overlay track: drawn underneath everything. The <video> element is kept at time t by
-        // the playback loop (playing) or a paused-seek effect.
-        if (videoOverlay && t >= videoOverlay.startTime && t < videoOverlay.endTime) {
-            drawVideoOverlay(ctx, vid.elRef.current, videoOverlay, CANVAS_W, CANVAS_H, fitRect);
-        }
-
-        // Onion skin: the neighbouring drawings, faint, so a new one can be lined up against
-        // them. Paused only - during playback the next frame is about to be shown anyway.
-        if (!playing && primary && (onionPrev || onionNext)) {
-            const { prev, next } = onionNeighbours(cuts, primary);
-            for (const cut of [onionPrev ? prev : null, onionNext ? next : null]) {
-                if (cut) drawOnionCut(ctx, cut, ensureLayerCanvas, flattenLayersInUiOrder);
-            }
-        }
-
-        // Every cut's layers, bottom to top, under the cut's and the part's transform, with the
-        // floating selection's hole cut out of the layer it was lifted from: canvas/sceneRender.
-        drawScene(ctx, scene, {
-            cw: CANVAS_W, ch: CANVAS_H, flattenClipGroup, hiddenByGesture, selection,
-            bitmapEntry: (id) => bitmapStoreRef.current.get(id), maskScratchRef,
-            mosaicScratch: { full: mosaicFullRef, small: mosaicSmallRef },
-            staticScratch: { copy: staticCopyRef, out: staticOutRef },
-            // Built on first use, not at mount: most projects never turn the static on.
-            staticTile: (grainTileRef.current ||= grainTile(() => document.createElement('canvas'))),
+        paintFrameOnto(canvas.getContext('2d'), {
+            t, playing, cw: CANVAS_W, ch: CANVAS_H, cuts, currentCutId, currentCut, transparentBg, selection,
+            onionPrev, onionNext, videoOverlay, videoEl: vid.elRef.current,
+            bitmapStore: bitmapStoreRef.current, requestFrameDecode, ensureLayerCanvas, flattenClipGroup, hiddenByGesture,
+            boilPhaseRef, boilTick, measureTextBox, scratch: frameScratch.current,
         });
-
-        // Text objects live outside paint layers ("text layer").
-        drawSceneTexts(ctx, scene, {
-            cw: CANVAS_W, ch: CANVAS_H, drawTextObject, textNeedsBox, measureTextBox,
-            textNoise: {
-                scratch: { copy: staticCopyRef, out: staticOutRef },
-                tile: (grainTileRef.current ||= grainTile(() => document.createElement('canvas'))),
-                scratchFor: (id) => { const m = textStaticRef.current; if (!m.has(id)) m.set(id, { current: null }); return m.get(id); },
-            },
-        });
-        if (camAt) ctx.restore();
     }, [cuts, currentCutId, currentCut, onionPrev, onionNext, selection, layerCanvasCache, frameDecodeTick, videoOverlay, boilTick, dragTick, transparentBg]);
 
     paintFrameRef.current = paintFrame;
