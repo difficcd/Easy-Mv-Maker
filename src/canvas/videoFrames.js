@@ -1,6 +1,7 @@
 // Decoding a video file into frames, and finding its scene cuts.
 
 import { tr } from '../i18n.js';
+import { makeCanvas } from './canvasFactory.js';
 
 // Letterbox rect: fit source into destination preserving aspect ratio.
 export function fitRect(sw, sh, dw, dh) {
@@ -92,7 +93,7 @@ export async function extractVideoFrames(file, { fps = 6, maxFrames = 0, start =
         const useNative = nativeRes && video.videoWidth && video.videoHeight;
         const fw = useNative ? vW : Math.max(1, Math.round(width * scale));
         const fh = useNative ? vH : Math.max(1, Math.round(height * scale));
-        const cnv = document.createElement('canvas');
+        const cnv = makeCanvas();
         cnv.width = fw; cnv.height = fh;
         const ctx = cnv.getContext('2d');
         ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high'; // crisp resampling when scaling
@@ -103,7 +104,7 @@ export async function extractVideoFrames(file, { fps = 6, maxFrames = 0, start =
         // Cheap similarity signature: the frame downscaled to 32x32 grayscale. Comparing these
         // lets a still shot skip encoding entirely — the previous frame just gets held longer.
         const sw = 32, sh = 32;
-        const sig = document.createElement('canvas');
+        const sig = makeCanvas();
         sig.width = sw; sig.height = sh;
         const sctx = sig.getContext('2d', { willReadFrequently: true });
         const signature = () => {
@@ -191,7 +192,7 @@ export async function detectSceneCuts(file, { start = 0, end = null, step = 0.2,
     try {
         if (!isFinite(dur) || dur <= 0) return [];
         const to = Math.min(end ?? dur, dur), from = Math.max(0, Math.min(start, to - 0.05));
-        const sw = 48, sh = 48, c = document.createElement('canvas'); c.width = sw; c.height = sh; // finer signature = more accurate
+        const sw = 48, sh = 48, c = makeCanvas(); c.width = sw; c.height = sh; // finer signature = more accurate
         const cx = c.getContext('2d', { willReadFrequently: true });
         const sig = () => { cx.drawImage(video, 0, 0, sw, sh); const d = cx.getImageData(0, 0, sw, sh).data, o = new Uint8Array(sw * sh); for (let i = 0, j = 0; j < o.length; i += 4, j++) o[j] = (d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114) | 0; return o; };
         const diff = (a, b) => { let s = 0; for (let i = 0; i < a.length; i++) s += Math.abs(a[i] - b[i]); return s / a.length; };

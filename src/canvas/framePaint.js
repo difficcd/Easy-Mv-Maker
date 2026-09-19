@@ -20,6 +20,7 @@ import { drawScene, drawVideoOverlay, drawOnionCut, drawSceneTexts } from './sce
 import { drawTextObject, textNeedsBox } from './textRender.js';
 import { grainTile } from './pixelEffects.js';
 import { fitRect } from './videoFrames.js';
+import { makeCanvas } from './canvasFactory.js';
 
 /** How many times a second the boiling-line motion advances. */
 export const BOIL_FPS = 10;
@@ -137,7 +138,7 @@ export function paintFrameOnto(ctx, { t, playing, cw, ch, cuts, currentCutId, cu
         mosaicScratch: { full: scratch.mosaicFull, small: scratch.mosaicSmall },
         staticScratch: { copy: scratch.staticCopy, out: scratch.staticOut },
         // Built on first use, not at mount: most projects never turn the static on.
-        staticTile: (scratch.tile ||= grainTile(() => document.createElement('canvas'))),
+        staticTile: (scratch.tile ||= grainTile(makeCanvas)),
     });
 
     // Text objects live outside paint layers ("text layer").
@@ -145,7 +146,7 @@ export function paintFrameOnto(ctx, { t, playing, cw, ch, cuts, currentCutId, cu
         cw, ch, drawTextObject, textNeedsBox, measureTextBox,
         textNoise: {
             scratch: { copy: scratch.staticCopy, out: scratch.staticOut },
-            tile: (scratch.tile ||= grainTile(() => document.createElement('canvas'))),
+            tile: (scratch.tile ||= grainTile(makeCanvas)),
             scratchFor: (id) => { const m = scratch.textStatic; if (!m.has(id)) m.set(id, { current: null }); return m.get(id); },
         },
     });

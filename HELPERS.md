@@ -891,6 +891,15 @@ Strokes become pixels here: smoothing a hand path, the boiling line, and every b
 | `smoothPoints` | A raw hand stroke resampled to 2px and corner-cut three times, ready to render as a Catmull-Rom; sparse input (zoomed-out or fast strokes) is interpolated through a Catmull-Rom first so the corner-cutting works at the stroke's scale, not the resample's. |
 | `drawStrokesOnCtx` | Draw a list of strokes onto a context: the one place that knows what each tool looks like. Clears first unless told not to, and takes the boiling options so a roughened layer draws its own phase. |
 
+## `src/canvas/canvasFactory.js`
+
+Where the canvas modules get a canvas from - the browser's document, or whatever a test hands in.
+
+| | |
+|---|---|
+| `makeCanvas` | A fresh canvas from the current factory, sized when a size is given. Every canvas module makes its canvases through this, which is what lets them run on @napi-rs/canvas in the unit tests. |
+| `setCanvasFactory` | Swap the source of canvases. The tests call it once; the browser never does. |
+
 ## `src/canvas/scratch.js`
 
 Scratch canvases: sizing, one-per-ref reuse, and drawing an ImageData through a canvas.

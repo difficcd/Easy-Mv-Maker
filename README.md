@@ -112,9 +112,10 @@ The same steps run in CI on every push and pull request.
 Around 1,150 unit tests cover the pure modules under `src/core`, `src/canvas`, `src/engine` and
 `src/export` — geometry, easing, keyframe sampling, the cuts reducer, layer-tree moves, lasso
 cut-out, timeline snapping, the time-scale bake, GIF and zip writers. They use Node's built-in
-runner because none of it needs a DOM or a framework. The functions that genuinely need a 2D
-context (frame extraction, stroke drawing) are deliberately not faked; the smoke test covers those
-end to end.
+runner because none of it needs a DOM or a framework. The functions that draw - strokes into
+pixels, the static, the mosaic, the bucket fill - run on `@napi-rs/canvas` (a Skia canvas with
+the 2D API, no browser) through `canvas/canvasFactory.js`, and are asserted on real pixels. Frame
+extraction needs a real video element and is left to the smoke test.
 
 ```bash
 npm run bench      # measures the pure hot paths
