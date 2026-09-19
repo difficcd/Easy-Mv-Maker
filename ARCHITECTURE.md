@@ -116,6 +116,9 @@ know storage exists at all, because reading it is `useStored`'s decoder.
   distance-field morph behind tweening.
 - `textRender.js` — measuring and drawing text: `measureTextBox`, `textNeedsBox`, `revealLines`
   (typing), `drawTextObject`. Line breaking is `textLayout.js`.
+- `framePaint.js` — `paintFrameOnto`: one frame of the film onto the main canvas, every pass in
+  order, with the scratch it keeps between frames (`createFrameScratch`). App's `paintFrame` is a
+  thin callback over it.
 - `sceneRender.js` — `drawScene`, the other half of `engine/evaluateFrame`: it draws the answer
   and decides nothing. Also the video reference, the onion skin and the scene's texts.
 - `layerComposite.js` — one layer onto the frame, with its clip group and opacity.

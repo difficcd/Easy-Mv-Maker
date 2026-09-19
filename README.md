@@ -161,7 +161,7 @@ npm run android:open     # open Android Studio -> run, or Build > Generate Signe
 
 ```
 src/
-  App.jsx          the component: the paint loop and the wiring (~2,400 lines)
+  App.jsx          the component: state and wiring (~2,200 lines)
   tools/           the drawing tools as a dispatch table: what each one does on pointer down and move
   core/            pure logic - reducers, timeline geometry, lasso, shapes, persistence, export planning
   canvas/          anything that draws on a 2D context: strokes, text, sway slices, layer compositing

@@ -687,6 +687,16 @@ The two tools that change pixels already on the canvas: the mosaic and the blur 
 | `pixelateRegion` | A copy of a layer with one rectangle pixelated and the rest untouched. Composed to a full-size canvas because everything downstream — sway, mask, part transform — takes one image; handing them a patch would mean teaching each about the region. |
 | `clampRegion` | A hand-dragged rectangle clipped to the canvas and rounded, or `null` when it is too small. Dragged backwards or off the edge are both routine, and a negative width silently draws nothing. |
 
+## `src/canvas/framePaint.js`
+
+Painting one frame of the film onto the main canvas - the passes in the order things are seen - with the scratch it keeps between frames in one object.
+
+| | |
+|---|---|
+| `createFrameScratch` | The scratch a frame painter keeps between frames: the mask, mosaic and static slots (plain `{current}` refs, as scratchCanvas insists), the snow tile built on first use, a canvas per noisy text, and the painted-once flag. One per canvas. |
+| `paintFrameOnto` | Paint the film at time t onto a context: white or nothing, then under the camera the reference video, the onion skin, the artwork with its effects, the texts. Holds the last frame during playback when a bitmap is still decoding. Editing chrome is not here. |
+| `BOIL_FPS` | How many times a second the boiling-line motion advances; ten, like a traditional boil. |
+
 ## `src/canvas/sceneRender.js`
 
 Compositing the evaluated scene onto the frame - what was the middle of paintFrame.
