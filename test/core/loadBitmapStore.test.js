@@ -85,3 +85,40 @@ test('the store it returns is its own, so a caller can merge it where it likes',
     assert.ok(store instanceof Map);
     assert.equal(store.size, 1);
 });
+
+import { fillBitmapStore, bitmapLoadCount } from '../../src/core/projectAssets.js';
+
+test('fillBitmapStore: server assets first as undecoded Blobs, then the embedded bitmaps, missing counted once', async () => {
+    const store = new Map([['stale', {}]]);
+    const fetched = [];
+    const fetchAsset = async (url) => { fetched.push(url); if (url.endsWith('/gone')) throw new Error('404'); return { type: 'image/webp' }; };
+    const data = {
+        assets: [{ id: 'a1', ext: 'webp', w: 10, h: 5 }, { id: 'gone', ext: 'png' }],
+        bitmaps: { b1: 'data:image/png;base64,AAAA', b2: 'data:image/png;base64,BBBB' },
+    };
+    let ticks = 0;
+    const missing = await fillBitmapStore(store, data, {
+        assetBase: '/p/1', fetchAsset, tick: () => ticks++,
+        dataURLToImageData: async (url) => { if (url.endsWith('BBBB')) throw new Error('bad'); return { kind: 'imagedata' }; },
+        createBitmap: async () => null,
+    });
+    assert.equal(store.has('stale'), false, 'the store is cleared first');
+    assert.deepEqual(fetched, ['/p/1/asset/a1', '/p/1/asset/gone']);
+    assert.deepEqual(store.get('a1'), { imageData: null, imageBitmap: null, blob: { type: 'image/webp' }, ext: 'webp', w: 10, h: 5 });
+    assert.equal(store.has('gone'), false);
+    assert.deepEqual(store.get('b1'), { imageData: { kind: 'imagedata' }, imageBitmap: null });
+    assert.equal(store.has('b2'), false);
+    assert.equal(missing, 2, 'one asset and one bitmap could not be loaded');
+    assert.equal(ticks, 4, 'progress ticks once per asset and per bitmap, loaded or not');
+    assert.equal(bitmapLoadCount(data, '/p/1'), 4);
+    assert.equal(bitmapLoadCount(data, null), 2, 'no asset base, no assets to fetch');
+});
+
+test('fillBitmapStore: a local file has no assets to fetch, and fetchAsset is never called', async () => {
+    const store = new Map();
+    const missing = await fillBitmapStore(store, { assets: [{ id: 'x' }], bitmaps: {} }, {
+        assetBase: null, fetchAsset: async () => { throw new Error('must not be called'); },
+        dataURLToImageData: async () => ({}), createBitmap: null,
+    });
+    assert.equal(missing, 0); assert.equal(store.size, 0);
+});

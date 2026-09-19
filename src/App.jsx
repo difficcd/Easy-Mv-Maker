@@ -60,7 +60,7 @@ import { useMosaicTool } from './hooks/useMosaicTool.js';
 import { useShortcuts } from './hooks/useShortcuts.js';
 import { usePanelVisibility } from './hooks/usePanelVisibility.js';
 import { useAppearance } from './hooks/useAppearance.js';
-import { detachMedia, safeMediaSrc } from './core/mediaEl.js';
+import { detachMedia } from './core/mediaEl.js';
 import { useAutosave } from './hooks/useAutosave.js';
 import { useAudioTrack } from './hooks/useAudioTrack.js';
 import { useToolSettings } from './hooks/useToolSettings.js';
@@ -81,7 +81,7 @@ import {
     insertCutsShifting, deleteTrack, moveCutGroup, replaceBatchCuts, patchCut, patchCuts,
 } from './core/cutsReducer.js';
 import { migrateCuts, projectSettings, makeLoadProgress } from './core/projectFormat.js';
-import { imageExtFromType, audioExt, videoExt, collectBitmaps, loadBitmapStore, blobToDataURL, packMedia, unpackMedia } from './core/projectAssets.js';
+import { audioExt, videoExt, collectBitmaps, blobToDataURL, packMedia, fillBitmapStore, bitmapLoadCount } from './core/projectAssets.js';
 import { xAtTime } from './core/timelineZoom.js';
 import { dragOnWindow } from './core/windowDrag.js';
 // Recording a camera path reuses the pen the way a part's motion path does; the two cannot be
@@ -854,42 +854,15 @@ export default function App() {
         // session, which is a worse failure than the one being prevented.
         try {
         restoreBusyRef.current = true;
-        // Rebuild the bitmap store before swapping cuts in, so fill/lasso/paste render correctly.
-        const store = bitmapStoreRef.current;
-        store.clear();
         // Progress: a project with many frames takes a while to open, so it gets a bar.
         // Only past a certain count, to stop small projects flashing one up for an instant.
-        const assetCount = (assetBase && Array.isArray(data.assets)) ? data.assets.length : 0;
-        const bmpCount = data.bitmaps ? Object.keys(data.bitmaps).length : 0;
-        const total = assetCount + bmpCount;
+        const total = bitmapLoadCount(data, assetBase);
         const { heavy, tick } = makeLoadProgress(total, p => notices.setProgress({ label, ...p }));
         if (heavy) notices.setProgress({ label, done: 0, total });
-        // Externalized frame assets (server projects): fetch one at a time and keep as a Blob
-        // (off-heap). Bounded memory — one frame in flight.
-        let missingAssets = 0;
-        if (assetBase && Array.isArray(data.assets)) {
-            for (const a of data.assets) {
-                try {
-                    const blob = await fetchAsset(`${assetBase}/asset/${a.id}`);
-                    // Don't decode here — lazy decode on display keeps opening a big project from OOMing.
-                    store.set(a.id, { imageData: null, imageBitmap: null, blob, ext: a.ext, w: a.w || 0, h: a.h || 0 });
-                } catch { missingAssets++; }
-                tick();
-            }
-        }
-        // Frames may arrive as a Blob (IndexedDB autosave) or a dataURL (embedded .emv); which is
-        // which, and what each becomes, is projectAssets' decision rather than a second opinion
-        // taken here. Reading a document's pixels without opening the document is also what the
-        // export queue needs (#123), which is why this is a function and no longer a block.
-        const { store: loaded, failed } = await loadBitmapStore(data, {
-            dataURLToImageData,
-            createBitmap: (img) => createImageBitmap(img),
-            urlToBlob: async (url) => (await fetch(url)).blob(),
-            extFromType: imageExtFromType,
-            onEach: tick,
+        // The pixels first, so fill/lasso/paste render correctly the moment the cuts swap in.
+        let missingAssets = await fillBitmapStore(bitmapStoreRef.current, data, {
+            assetBase, fetchAsset, tick, dataURLToImageData, createBitmap: (img) => createImageBitmap(img),
         });
-        for (const [id, entry] of loaded) store.set(id, entry);
-        missingAssets += failed;
         // Older files are brought up to the current shape in projectFormat, where the renames and
         // added fields are written down and tested.
         docEpochRef.current++;   // opening a project: anything still running belongs to the old one
@@ -904,25 +877,7 @@ export default function App() {
         // The audio lives in useAudioTrack, and so does putting it back: the element, the
         // base64 copy a local save needs, and the three shapes a stored track can arrive in.
         missingAssets += await restoreAudio(data, assetBase);
-        // Restore the video overlay track (Blob from IDB / server asset / embedded dataURL).
-        // Same three shapes as the audio, read by the same function; the track wants a Blob.
-        const gotVideo = await unpackMedia(data.video, '__video__', { assetBase, fetchAsset });
-        missingAssets += gotVideo.missing;
-        let videoBlob = gotVideo.blob;
-        if (!videoBlob && gotVideo.dataUrl) { try { videoBlob = await (await fetch(gotVideo.dataUrl)).blob(); } catch { } }
-        if (videoBlob) {
-            vid.blobRef.current = videoBlob;
-            const url = URL.createObjectURL(videoBlob);
-            const v = vid.elRef.current;
-            // The url here is ours (createObjectURL), but it goes through the same gate as the
-            // audio so there is one rule about what may reach a media element, not two.
-            const videoSrc = safeMediaSrc(url, 'video');
-            if (v && videoSrc) { v.muted = true; v.playsInline = true; v.src = videoSrc; v.onseeked = () => requestRepaint(); v.onloadedmetadata = () => { try { v.currentTime = data.video.offset || 0; } catch { } }; }
-            dispatchMedia(loadVideo({ name: data.video.name || tr('영상'), startTime: data.video.startTime ?? 0, endTime: data.video.endTime ?? (data.video.duration || 0), offset: data.video.offset ?? 0, duration: data.video.duration || 0, w: data.video.w || 0, h: data.video.h || 0, cuts: data.video.cuts, cutStart: data.video.cutStart, cutOffset: data.video.cutOffset }));
-        } else {
-            vid.blobRef.current = null; dispatchMedia(clearVideo());
-            detachMedia(vid.elRef.current);
-        }
+        missingAssets += await vid.restore(data.video, { assetBase, dispatchMedia, requestRepaint });
             // Said once, after everything that could be loaded has been. A project that opens
             // with holes in it should say so - the alternative is blank frames that look like the
             // work was lost. Deliberately not "not found on the server": this counts a missing

@@ -517,6 +517,8 @@ How each piece of a project is stored, and how it comes back.
 | `packMedia` | How the audio or video track is written: an asset for a server save, a Blob for the browser store (made from the dataURL if needed, dataURL fallback), a dataURL for a self-contained file. Both tracks had made this choice inline. |
 | `unpackMedia` | The reverse: whichever shape the file holds for a track — a Blob, or a dataURL — with a missing count when a server asset could not be fetched. Audio and video read the three shapes their own way before. |
 | `loadBitmapStore` | Rebuild a bitmap store from a saved project's bitmaps, the reverse of `collectBitmaps`. Written inline in App's restore before, which meant the only way to read a project's pixels was to open the project and replace whatever was on screen. An entry that will not load is skipped and counted, so one bad frame costs that frame rather than the file. |
+| `fillBitmapStore` | A document's pixels into the live store: the store cleared, server assets fetched one at a time as undecoded Blobs, then the embedded bitmaps through loadBitmapStore; returns how many could not be loaded. What restore did inline. |
+| `bitmapLoadCount` | How many assets and bitmaps a document will load, for the progress bar before it starts. |
 | `blobToDataURL` | A Blob as a base64 dataURL — the conversion the "a local .emv must stand alone" rule rests on, and the way back for bytes that have to reach a media element and then be saved again. |
 | `collectBitmaps` | Every bitmap the cuts reference, packed the way this kind of save wants them. The loop around frameStorage, which used to live in App.jsx where it could be read but never run. Encoders are injected because one needs FileReader and the other a canvas. |
 | `imageExt` | The file extension for a frame bitmap. |
@@ -1177,7 +1179,7 @@ What bringing a video into the project remembers.
 
 | | |
 |---|---|
-| `useVideoImportState` | The hidden `<video>` and its bytes, the import dialog, extraction progress and whether it went to a background chip, the list of videos already fetched, the scene detector's progress and settings, and the two stop flags. The *logic* stays in App — it reads the document, the bitmap store and the paint path. The two stop flags are refs, because they are read inside loops that are already running. |
+| `useVideoImportState` | The hidden `<video>` and its bytes, the import dialog, extraction progress and whether it went to a background chip, the list of videos already fetched, the scene detector's progress and settings, and the two stop flags. The *logic* stays in App — it reads the document, the bitmap store and the paint path. The two stop flags are refs, because they are read inside loops that are already running. | Also `restore(field, deps)`: a stored video track back onto the element, the blob ref and the media state, like useAudioTrack's restoreAudio.
 
 ## `src/hooks/useTimelineView.js`
 
