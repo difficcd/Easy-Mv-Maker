@@ -285,11 +285,12 @@ export default function App() {
     const [autoSceneDetect, setAutoSceneDetect] = useStored('mv_auto_scene', true, onOffCodec);
     // YouTube link input. A native prompt fails silently once blocked, so this asks in-app.
 
+    const audio = useAudioTrack({ audioUrl, dispatchMedia, setLinkPrompt: notices.setLinkPrompt });
     const {
         audioRef, audioB64Ref, audioCtxRef, audioSourceRef, audioDestRef,
         audioAsBlob, restoreAudio, loadAudioUrl, handleAudioUpload, handleDeleteAudio, loadYoutubeAudio,
         muted: audioMuted, setMuted: setAudioMuted,
-    } = useAudioTrack({ audioUrl, dispatchMedia, setLinkPrompt: notices.setLinkPrompt });
+    } = audio;
     // Make failures visible. Once the browser blocks dialogs, alert is swallowed and the app
     // looks like it simply did nothing - which is exactly why one bug here took so long to find.
     const isExporting = useRef(false);
@@ -584,16 +585,17 @@ export default function App() {
     // of state so it never runs on a stale closure. Everything passed in is an input - playback
     // is a function of the timeline, the media and where to paint - and the groups say which is
     // which rather than leaving seventeen arguments in a row.
-    const {
-        isPlaying, setIsPlaying, currentTime, setCurrentTime,
-        currentTimeRef, seekRef, isPlayingRef,
-        playPause: handlePlayPause, stop: handleStop,
-    } = usePlayback({
+    const playback = usePlayback({
         media: { audioRef, videoElRef: vid.elRef, audioUrl, audioData, videoOverlay },
         range: { playStart, playEnd, maxTime, loopPlay, playbackRate, anchorTime: currentCut?.startTime },
         paint: { pps: tl.pps, playheadRef, paintFrameRef, prefetchRef },
         recording: { isExporting, exportEndRef, exportStartRef, requestFrameRef, mediaRecorderRef },
     });
+    const {
+        isPlaying, setIsPlaying, currentTime, setCurrentTime,
+        currentTimeRef, seekRef, isPlayingRef,
+        playPause: handlePlayPause, stop: handleStop,
+    } = playback;
 
     // The layer canvases: which cuts are rendered to one, when they are rebuilt, the frames
     // decoded ahead of the playhead, and the clip groups flattened on top. hooks/useLayerCache
@@ -1693,11 +1695,7 @@ export default function App() {
     // Every way the timeline can be pointed at - scrub, cutList.marquee, middle-click pan, one-finger
     // pan/tap, two-finger pinch - lives in useTimelineGestures, where the overlaps between them
     // are visible.
-    const {
-        seekToTime, seekToClientX, goToScene,
-        startTimelinePan, startTimelineScrub,
-        onTimelinePointerDown, zoomTimelineAt,
-    } = useTimelineGestures({
+    const tlGestures = useTimelineGestures({
         timelineRef, timelineMounted: showBottom,
         cuts, currentCutId, setCurrentCutId, maxTime,
         pps: tl.pps, setPps: tl.setPps,
@@ -2081,30 +2079,25 @@ export default function App() {
             {showBottom && <div className="splitter-h" style={{ touchAction: 'none' }} onPointerDown={e => { try { e.currentTarget.setPointerCapture(e.pointerId); } catch { } startBottomResize(e.clientY); }} />}
 
             <Timeline
-                activePartId={cutList.activePartId} audioData={audioData} audioFile={audioFile}
-                currentCutId={currentCutId} currentTime={currentTime} cutDragArmedRef={cutDragArmedRef}
-                cutDragMovedRef={cutDragMovedRef} cutDragTimerRef={cutDragTimerRef} cuts={cuts}
-                draggingCutData={draggingCutData} fmt={fmt} goToScene={goToScene} handleAddTrack={handleAddTrack}
-                handleDeleteAudio={handleDeleteAudio} handleDeleteTrack={handleDeleteTrack}
-                audioMuted={audioMuted} setAudioMuted={setAudioMuted}
-                handlePlayPause={handlePlayPause} handleStop={handleStop} isPlaying={isPlaying} loopPlay={loopPlay}
-                makePartFromSelection={makePartFromSelection} marquee={cutList.marquee} maxTime={maxTime}
-                transparentBg={transparentBg} setTransparentBg={setTransparentBg}
-                transparentFormat={transparentFormat} setTransparentFormat={setTransparentFormat}
-                numTracks={numTracks} onTimelinePointerDown={onTimelinePointerDown}
-                parts={parts}
-                playbackRate={playbackRate} playheadRef={playheadRef} pps={tl.pps}
+                doc={{ cuts, currentCutId, setCurrentCutId, parts, numTracks, maxTime }}
+                view={{ showBottom, setShowBottom, timelineH, timelineRef, playheadRef, fmt }}
+                tracks={{ hiddenTracks, toggleTrackHidden, handleAddTrack, handleDeleteTrack }}
+                partOps={{ makePartFromSelection, selectPart, renamePart, ungroupPart }}
+                drag={{ cutDragArmedRef, cutDragMovedRef, cutDragTimerRef, draggingCutData, setDraggingCutData, setResizingData }}
+                media={{ audioData, audioFile, videoOverlay, removeVideoOverlay }}
+                rate={{ loopPlay, setLoopPlay, playbackRate, setPlaybackRate }}
+                bg={{ transparentBg, setTransparentBg, transparentFormat, setTransparentFormat }}
+                playback={playback}
+                gestures={tlGestures}
+                tl={tl}
+                cutList={cutList}
+                audio={audio}
                 openPlaybackSettings={() => dialogs.openSettings('play')}
-                removeVideoOverlay={removeVideoOverlay} renamePart={renamePart} sceneDetect={vid.scene}
-                hiddenTracks={hiddenTracks} toggleTrackHidden={toggleTrackHidden}
                 openVideoSettings={() => vid.setSceneCfg(c => c || { threshold: 14, rangeOn: false, startText: '0:00', endText: '' })}
-                seekToTime={seekToTime} selectPart={selectPart} selectedCutIds={cutList.selectedCutIds}
-                setCurrentCutId={setCurrentCutId} setCurrentTime={setCurrentTime} addCuts={cs => dispatchCuts(addCuts(cs))}
-                setDraggingCutData={setDraggingCutData} setLoopPlay={setLoopPlay} setPlaybackRate={setPlaybackRate}
-                setResizingData={setResizingData} setSceneCfg={vid.setSceneCfg} setSelectedCutIds={cutList.setSelectedCutIds}
-                setShowBottom={setShowBottom} showBottom={showBottom} snapLinePos={tl.snapLinePos}
-                startTimelinePan={startTimelinePan} timelineH={timelineH} timelineRef={timelineRef} tlWin={tl.win}
-                ungroupPart={ungroupPart} videoOverlay={videoOverlay} zoomTimelineAt={zoomTimelineAt} />
+                sceneDetect={vid.scene}
+                setSceneCfg={vid.setSceneCfg}
+                addCuts={cs => dispatchCuts(addCuts(cs))}
+                />
         </div>
     );
 }

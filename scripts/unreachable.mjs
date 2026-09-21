@@ -38,7 +38,21 @@ for (let i = bodyAt; i < retAt; i++) {
         owner.set(pair[1], i); owner.set(pair[2], i); defLines.push(i); continue;
     }
     const one = /^ {4}(?:const|let|function) (\w+)/.exec(lines[i]);
-    if (one) { owner.set(one[1], i); defLines.push(i); }
+    if (one) { owner.set(one[1], i); defLines.push(i); continue; }
+    // A destructuring - `const { a, b: c } = ...` - defines every name on its left-hand side.
+    // It may run over several lines; the names are read up to the `} =`. These were invisible
+    // before, which is how a name defined by one destructuring and used only inside another
+    // came to count as reached: both sat inside whichever plain `const` preceded them.
+    if (/^ {4}const \{/.test(lines[i])) {
+        let text = lines[i], j = i;
+        while (!/\}\s*=/.test(text) && j + 1 < retAt) text += '\n' + lines[++j];
+        const lhs = text.slice(text.indexOf('{') + 1, text.lastIndexOf('}'));
+        for (const part of lhs.split(',')) {
+            const m = /(?:\w+\s*:\s*)?(\w+)\s*(?:=[^,]*)?$/.exec(part.trim());
+            if (m && m[1]) owner.set(m[1], i);
+        }
+        defLines.push(i);
+    }
 }
 
 /** Where a top-level statement beginning at `start` ends: at the next one, or at the return. */
