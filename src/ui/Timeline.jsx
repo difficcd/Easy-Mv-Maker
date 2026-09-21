@@ -4,7 +4,7 @@ import { safeArray } from '../core/geometry.ts';
 import { tr } from '../i18n';
 import { PLAYBACK_RATES, RATE_DEFAULT } from '../core/playbackRate.ts';
 import { TRACK_GUTTER, timeAtX, xAtTime } from '../core/timelineZoom.ts';
-import { gapAt } from '../core/cutOps.js';
+import { gapAt } from '../core/cutOps.ts';
 import { toggled } from '../core/cutSelection.ts';
 import { mkCut } from '../core/document.js';
 import { nextId } from '../core/ids.ts';

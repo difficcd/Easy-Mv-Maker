@@ -5,7 +5,7 @@ import { safeArray } from '../core/geometry.ts';
 import { layerKey, layerSig } from '../core/layerTree.ts';
 import { scanLayerBitmaps } from '../engine/pendingBitmaps.js';
 import { cutsToCache } from '../engine/selectCuts.js';
-import { layerKeysUsingBitmaps, keysWithPhases, prefetchWindow } from '../core/decodeBudget.js';
+import { layerKeysUsingBitmaps, keysWithPhases, prefetchWindow } from '../core/decodeBudget.ts';
 
 // How many distinct wobbles the boiling line cycles through. A hand-drawn boiling line is a
 // handful of drawings alternating, not a new one every frame, so this reads right - and it is

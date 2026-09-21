@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { keysOrNull, snapProgress, upsertKey, patchKey, removeKey, KEY_SNAP } from '../../src/core/keyframes.js';
+import { keysOrNull, snapProgress, upsertKey, patchKey, removeKey, KEY_SNAP } from '../../src/core/keyframes.ts';
 
 let n = 0;
 const mkId = () => `k${++n}`;

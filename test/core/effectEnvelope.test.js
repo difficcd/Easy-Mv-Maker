@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { effectAt } from '../../src/core/easing.js';
+import { effectAt } from '../../src/core/easing.ts';
 import { mosaicBlockAt, LAYER_ANIM_DEFAULT } from '../../src/core/layerAnim.js';
 import { clampRegion } from '../../src/canvas/pixelEffects.js';
 

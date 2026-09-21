@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { pathLength, smoothPath, resampleByLength, preparePath, spacingRatio } from '../../src/core/pathMotion.js';
-import { samplePath } from '../../src/core/easing.js';
+import { pathLength, smoothPath, resampleByLength, preparePath, spacingRatio } from '../../src/core/pathMotion.ts';
+import { samplePath } from '../../src/core/easing.ts';
 
 /** A path drawn the way a hand draws one: dense where the pen dawdled, sparse where it hurried. */
 function handDrawn() {

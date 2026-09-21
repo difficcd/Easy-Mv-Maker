@@ -7,7 +7,7 @@
 // them to the panels that turn a capture on, so they come back out by their old names.
 
 import { useState } from 'react';
-import { preparePath } from '../core/pathMotion.js';
+import { preparePath } from '../core/pathMotion.ts';
 import { curveToWave } from '../core/sway.js';
 import { clampRegion } from '../canvas/pixelEffects.js';
 import { setCutCamera } from '../core/cutsReducer.js';

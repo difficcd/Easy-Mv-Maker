@@ -2,8 +2,8 @@
 
 import { CANVAS_H, CANVAS_W } from './canvasSize.ts';
 import { cutProgress } from './cutTime.ts';
-import { SWING, applyEase, effectAt, samplePath, swing } from './easing.js';
-import { sampleKeys } from './keyframes.js';
+import { SWING, applyEase, effectAt, samplePath, swing } from './easing.ts';
+import { sampleKeys } from './keyframes.ts';
 import { swayWaveAt } from './sway.js';
 
 export const LAYER_ANIM_DEFAULT = { mode: 'progress', speed: 1, count: 0, tx: 0, ty: 0, rot: 0, scale: 0, pivotX: 0.5, pivotY: 0.5, path: null, ease: 'linear', easePower: 2, swayAmount: 0, swaySpeed: 1, swayCurve: null, swayProfile: null, swayAxis: 'y', swayLag: 0, keys: null, mosaic: 0, mosaicMin: 0, mosaicFrom: 0, mosaicTo: 1, mosaicSpeed: 1, mosaicRect: null, noise: 0, noiseFrom: 0, noiseTo: 1, noiseColor: 0 };

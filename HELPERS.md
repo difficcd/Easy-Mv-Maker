@@ -152,7 +152,7 @@ Copying a cut, including the pixels its strokes point at.
 | `cloneCutContents` | A cut's layers, texts and active layer, copied for a new cut. Takes the bitmap cloner so the pixels come with it, sharing one cache so a bitmap used twice becomes one copy rather than two. |
 | `placeCopies` | Copies of several cuts laid end to end from a point on one track, each with fresh contents and "(copy)" on the name; returns the total span so later cuts can be pushed aside by it. |
 
-## `src/core/cutOps.js`
+## `src/core/cutOps.ts`
 
 Dragging and resizing cuts on the timeline, with snapping.
 
@@ -196,7 +196,7 @@ Every change the document can undergo, as named actions. Build them with these c
 | `updateLayer` | Change fields on one layer. |
 | `upsertText` | Add a text if it is new, otherwise update it in place. |
 
-## `src/core/decodeBudget.js`
+## `src/core/decodeBudget.ts`
 
 How many decoded frames to hold, which to let go of, and which cached layers a decode invalidates. Both answers fail quietly when wrong.
 
@@ -280,7 +280,7 @@ two of those sites had already worked the collision around by hand with `Date.no
 | `randomId` | A unique string id, optionally prefixed: the clock in base 36 plus eight random characters. The clock keeps ids sorting by creation; the random tail is what makes them unique, since a video import mints one per frame inside the same millisecond. |
 | `resetIds` | Reset the counter. For tests only, so one test's calls cannot change what another sees. |
 
-## `src/core/liquify.js`
+## `src/core/liquify.ts`
 
 Pushing pixels around with a brush - the liquify tool, on a plain RGBA buffer so the preview and the committed result are the same bytes.
 
@@ -291,7 +291,7 @@ Pushing pixels around with a brush - the liquify tool, on a plain RGBA buffer so
 | `falloffAt` | Brush strength by distance from the centre: 1 there, 0 at the rim, quartic between so the edge blends instead of ringing. |
 | `sampleBilinear` | Fractional read from an RGBA buffer; outside is transparent. |
 
-## `src/core/keyframes.js`
+## `src/core/keyframes.ts`
 
 Editing a part's keyframe list: sorted by position, one key per instant, null when empty.
 
@@ -342,7 +342,7 @@ Which frame a recording should take next (#156).
 | `nextRecordFrame` | Quantise the playback clock to the export grid: the next frame index and the exact time to paint for it, or null while the grid has not advanced. Falling behind skips to the latest step rather than replaying missed ones, because audio is the master clock and drift is worse than a flicker. |
 | `EXPORT_FPS` | Frames per second of a recorded video, and the grid the paint is quantised to. |
 
-## `src/core/shapeStroke.js`
+## `src/core/shapeStroke.ts`
 
 Ruler shapes as points, so a rectangle or an ellipse is an ordinary stroke.
 
@@ -462,7 +462,7 @@ The small preferences that live in localStorage: which panels are open, the them
 |---|---|
 | `useStored` | State that remembers itself in localStorage: reads once on first render, writes when it changes. Replaces nine hand-written read/write pairs, one of which had no try/catch at all. |
 
-## `src/core/pathMotion.js`
+## `src/core/pathMotion.ts`
 
 Turning a drawn line into something that can be moved along smoothly.
 
@@ -736,7 +736,7 @@ Skew and bend for a pasted bitmap — the two adjustments a lasso selection carr
 | `warpedHandles` | The eight resize handles on the warped box, named by compass point. |
 | `rotateKnob` | Where the rotate knob sits, taken through `warpPoint` so it orbits with the box instead of hovering above it. `ROTATE_STEM_PX` is how far above the top edge, in screen pixels — in canvas pixels it would drift off screen as the view zoomed in. |
 
-## `src/core/textLayout.js`
+## `src/core/textLayout.ts`
 
 Where each character of a line goes, for curving and for animating characters separately.
 
@@ -794,7 +794,7 @@ How long a cut lasts, and how far through it a moment is.
 | `cutDuration` | A cut's length in seconds, never zero - a cut can be dragged to zero length and everything that animates divides by it. |
 | `cutProgress` | How far through a cut a moment is, 0 to 1, clamped. Animations are evaluated for cuts merely near the playhead, so times outside the cut are routine and extrapolating would overshoot. |
 
-## `src/core/easing.js`
+## `src/core/easing.ts`
 
 Easing, the return-trip shapes, and the effect envelope the layer effects share.
 

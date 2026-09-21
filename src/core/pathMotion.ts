@@ -13,8 +13,10 @@
 //
 // Smoothing runs first because resampling a jittery line just produces evenly spaced jitter.
 
+import type { Point } from './types.ts';
+
 /** Total length along a polyline. @param {{x:number,y:number}[]} pts @returns {number} */
-export function pathLength(pts) {
+export function pathLength(pts: readonly Point[]): number {
     let total = 0;
     for (let i = 1; i < pts.length; i++) total += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
     return total;
@@ -35,11 +37,11 @@ export function pathLength(pts) {
  * @param {number} [iterations] each pass roughly doubles the point count
  * @returns {{x:number,y:number}[]}
  */
-export function smoothPath(pts, iterations = 2) {
+export function smoothPath(pts: Point[], iterations = 2): Point[] {
     let out = pts;
     for (let n = 0; n < iterations; n++) {
         if (out.length < 3) return out;
-        const next = [out[0]];
+        const next: Point[] = [out[0]];
         for (let i = 0; i < out.length - 1; i++) {
             const a = out[i], b = out[i + 1];
             next.push(
@@ -63,7 +65,7 @@ export function smoothPath(pts, iterations = 2) {
  * @param {number} count how many points to produce, including both ends
  * @returns {{x:number,y:number}[]}
  */
-export function resampleByLength(pts, count = 64) {
+export function resampleByLength(pts: Point[] | null | undefined, count = 64): Point[] {
     if (!Array.isArray(pts) || pts.length < 2) return Array.isArray(pts) ? pts.slice() : [];
     const n = Math.max(2, Math.floor(count));
 
@@ -75,7 +77,7 @@ export function resampleByLength(pts, count = 64) {
     // no length to distribute along. Spreading points over it would divide by zero.
     if (total <= 0) return Array.from({ length: n }, () => ({ x: pts[0].x, y: pts[0].y }));
 
-    const out = [{ x: pts[0].x, y: pts[0].y }];
+    const out: Point[] = [{ x: pts[0].x, y: pts[0].y }];
     let seg = 1;
     for (let i = 1; i < n - 1; i++) {
         const want = (total * i) / (n - 1);
@@ -99,7 +101,7 @@ export function resampleByLength(pts, count = 64) {
  * @param {{smooth?: number, samples?: number}} [opts]
  * @returns {{x:number,y:number}[]} empty when there was no real gesture to record
  */
-export function preparePath(pts, { smooth = 2, samples = 64 } = {}) {
+export function preparePath(pts: Point[] | null | undefined, { smooth = 2, samples = 64 }: { smooth?: number, samples?: number } = {}): Point[] {
     if (!Array.isArray(pts) || pts.length < 2) return [];
     const even = resampleByLength(smoothPath(pts, smooth), samples);
     return even.map(p => ({ x: Math.round(p.x), y: Math.round(p.y) }));
@@ -115,7 +117,7 @@ export function preparePath(pts, { smooth = 2, samples = 64 } = {}) {
  * @param {{x:number,y:number}[]} pts
  * @returns {number} Infinity for a path with no length
  */
-export function spacingRatio(pts) {
+export function spacingRatio(pts: readonly Point[] | null | undefined): number {
     if (!pts || pts.length < 3) return 1;
     let max = 0, total = 0;
     for (let i = 1; i < pts.length; i++) {

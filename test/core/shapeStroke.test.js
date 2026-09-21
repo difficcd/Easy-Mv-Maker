@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { rectPoints, ellipsePoints, shapePoints } from '../../src/core/shapeStroke.js';
+import { rectPoints, ellipsePoints, shapePoints } from '../../src/core/shapeStroke.ts';
 
 const p = (x, y) => ({ x, y });
 const near = (a, b, msg) => assert.ok(Math.abs(a - b) < 1e-9, `${msg}: ${a} vs ${b}`);

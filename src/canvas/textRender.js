@@ -68,7 +68,7 @@
  *   entrance belongs to the characters rather than the block
  */
 
-import { layoutLine } from '../core/textLayout.js';
+import { layoutLine } from '../core/textLayout.ts';
 import { charAnimAt } from '../core/textAnim.js';
 
 // Measuring and drawing text objects.

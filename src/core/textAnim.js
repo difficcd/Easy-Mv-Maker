@@ -1,7 +1,7 @@
 // Text animation, for MV subtitles: entrance, exit, typing, emphasis, per-character effects.
 
 import { cutDuration } from './cutTime.ts';
-import { charProgress } from './textLayout.js';
+import { charProgress } from './textLayout.ts';
 
 // Text animation, for MV subtitles. Takes the progress through the cut and returns just the
 // values needed to draw.

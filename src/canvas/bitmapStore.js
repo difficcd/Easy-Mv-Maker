@@ -14,7 +14,7 @@
 // decoded frame is what took it out again during playback - so decoding is lazy and the count
 // of decoded frames is capped by an LRU (core/decodeBudget decides which to let go).
 
-import { framesToRelease, DECODED_CAP } from '../core/decodeBudget.js';
+import { framesToRelease, DECODED_CAP } from '../core/decodeBudget.ts';
 import { randomId } from '../core/ids.ts';
 
 /**

@@ -97,7 +97,7 @@ import { dragOnWindow } from './core/windowDrag.ts';
 
 import { topCutAt } from './engine/selectCuts.js';
 import { unusedBitmapIds } from './core/bitmapRefs.ts';
-import { dragCut, resizeCut } from './core/cutOps.js';
+import { dragCut, resizeCut } from './core/cutOps.ts';
 import { accentSoft } from './canvas/editChrome.js';
 import { bucketFillTransparentRegion } from './canvas/fill.js';
 import { imageDataToDataURL, dataURLToImageData } from './canvas/imageCodec.js';

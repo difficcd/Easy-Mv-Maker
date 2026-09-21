@@ -9,8 +9,10 @@
 // Both are built from the two corners of the drag, so the caller only ever has to hand over where
 // the pointer went down and where it is now.
 
+import type { Point } from './types.ts';
+
 /** The drag's bounding box, normalised so dragging up or left works the same as down or right. */
-function box(a, b) {
+function box(a: Point, b: Point) {
     const x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x);
     const y0 = Math.min(a.y, b.y), y1 = Math.max(a.y, b.y);
     return { x0, y0, x1, y1, w: x1 - x0, h: y1 - y0 };
@@ -27,7 +29,7 @@ function box(a, b) {
  * @param {{x: number, y: number}} b where it is now
  * @returns {{x: number, y: number}[]}
  */
-export function rectPoints(a, b) {
+export function rectPoints(a: Point | null | undefined, b: Point | null | undefined): Point[] {
     if (!a || !b) return [];
     const { x0, y0, x1, y1 } = box(a, b);
     return [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }, { x: x0, y: y0 }];
@@ -51,7 +53,7 @@ const FLATNESS = 0.2;
  * ends of the long axis and is much tighter than the average - the one place a count chosen from
  * the average visibly corners.
  */
-function segmentsFor(w, h) {
+function segmentsFor(w: number, h: number): number {
     const rx = w / 2, ry = h / 2;
     const big = Math.max(rx, ry), small = Math.min(rx, ry);
     // Degenerate drags (a tap, or a perfectly flat one) have no curvature to resolve; the floor
@@ -79,13 +81,13 @@ function segmentsFor(w, h) {
  * @param {number} [segments] override, for tests
  * @returns {{x: number, y: number}[]}
  */
-export function ellipsePoints(a, b, segments) {
+export function ellipsePoints(a: Point | null | undefined, b: Point | null | undefined, segments?: number): Point[] {
     if (!a || !b) return [];
     const { x0, y0, w, h } = box(a, b);
     const rx = w / 2, ry = h / 2;
     const cx = x0 + rx, cy = y0 + ry;
     const n = segments || segmentsFor(w, h);
-    const pts = [];
+    const pts: Point[] = [];
     for (let i = 0; i < n; i++) {
         const t = (i / n) * Math.PI * 2;
         pts.push({ x: cx + rx * Math.cos(t), y: cy + ry * Math.sin(t) });
@@ -97,7 +99,7 @@ export function ellipsePoints(a, b, segments) {
 }
 
 /** Points for whichever ruler shape is in effect, or null if this tool is not one of them. */
-export function shapePoints(etool, a, b) {
+export function shapePoints(etool: string, a: Point | null | undefined, b: Point | null | undefined): Point[] | null {
     if (etool === 'rect') return rectPoints(a, b);
     if (etool === 'ellipse') return ellipsePoints(a, b);
     return null;

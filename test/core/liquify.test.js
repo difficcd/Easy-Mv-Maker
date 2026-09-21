@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { falloffAt, sampleBilinear, pushPixels, pushAlong } from '../../src/core/liquify.js';
+import { falloffAt, sampleBilinear, pushPixels, pushAlong } from '../../src/core/liquify.ts';
 
 const near = (a, b, msg, eps = 1e-9) => assert.ok(Math.abs(a - b) < eps, `${msg}: ${a} vs ${b}`);
 
