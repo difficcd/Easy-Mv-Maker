@@ -103,3 +103,12 @@ const m = await import('/src/canvas/pixelEffects.js');
 ```
 
 The numbers above will not match on a different GPU, but the ratio should.
+
+## Guarded since 2026-09-21
+
+`test/canvas/opBudget.test.js` counts the canvas operations (drawImage, fillRect, clearRect,
+getImageData, putImageData) a frame of the static costs, through a proxy over a real Skia
+context, and fails above a ceiling: 10 in the steady state (measured 8.9), 11 with the fringe
+(9.9), 20 on a cache miss. Counts, not times - a timing budget on a CI runner is noise, and what
+this page changed was the count. Tighten the ceilings when the count drops; do not loosen them
+without a paragraph here.
