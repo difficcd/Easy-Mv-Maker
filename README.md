@@ -170,7 +170,7 @@ src/
   export/          byte writers for GIF and zip, video recording plumbing, download
   hooks/           App state that has been given its own home: the canvas view, the layer cache, playback,
                    audio, history, autosave, panels, tool settings, shortcuts, the drag gestures
-  ui/              panels and modals
+  ui/              panels; ui/dialogs/ one file per dialog
   i18n.js          the English dictionary (~710 entries) and the tr() lookup; i18n.ja.js the Japanese one
   globals.d.ts     ambient declarations (EyeDropper, Capacitor, File System Access…)
 server/index.js    project storage + backup rotation + video/audio import API

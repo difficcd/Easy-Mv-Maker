@@ -166,7 +166,7 @@ src/
   export/          GIF·zip 바이트 라이터, 영상 녹화 배관, 다운로드
   hooks/           제 자리를 얻은 App 상태: 캔버스 뷰, 레이어 캐시, 재생, 오디오, 히스토리,
                    자동저장, 패널, 도구 설정, 단축키, 드래그 제스처
-  ui/              패널과 모달
+  ui/              패널; ui/dialogs/ 는 대화상자 하나당 파일 하나
   i18n.js          영어 사전(~710 항목)과 tr() 조회; i18n.ja.js는 일본어
   globals.d.ts     앰비언트 선언 (EyeDropper, Capacitor, File System Access…)
 server/index.js    프로젝트 저장 + 백업 순환 + 영상/음원 가져오기 API

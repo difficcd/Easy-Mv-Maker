@@ -135,8 +135,9 @@ know storage exists at all, because reading it is `useStored`'s decoder.
 
 **ui/** — everything App used to return inline. Panels: `AnimPanels.jsx` (`CutAnimPanel`,
 `LayerAnimPanel`, `JitterPanel`), `CutLayerPanel.jsx` + `LayerRows.jsx`, `ColorPanel.jsx`,
-`ToolsPanel.jsx`, `Timeline.jsx`, `TopBar.jsx`, `TextEditor.jsx`, `SwaySpine.jsx`. Dialogs:
-`Modals.jsx` over `Modal.jsx`. And the chrome:
+`ToolsPanel.jsx`, `Timeline.jsx`, `TopBar.jsx`, `TextEditor.jsx`, `SwaySpine.jsx`. Dialogs: one
+file each under `ui/dialogs/` (settings, help, video import, scene detect, export range, link
+prompt, tool keys, project picker, progress overlay), all over `Modal.jsx`. And the chrome:
 
 - `CanvasStage.jsx` — the scrolling area, the zoomed stage, and the two canvases. There are two
   because the lower one is the document and the upper one is whatever the pointer is doing right
