@@ -115,7 +115,9 @@ cut-out, timeline snapping, the time-scale bake, GIF and zip writers. They use N
 runner because none of it needs a DOM or a framework. The functions that draw - strokes into
 pixels, the static, the mosaic, the bucket fill - run on `@napi-rs/canvas` (a Skia canvas with
 the 2D API, no browser) through `canvas/canvasFactory.js`, and are asserted on real pixels. Frame
-extraction needs a real video element and is left to the smoke test.
+extraction needs a real video element and is left to the smoke test. The cost of each effect is
+guarded by count, not time: `test/canvas/opBudget.test.js` fails when a frame of the static or
+the mosaic issues more canvas operations than it does today.
 
 ```bash
 npm run bench      # measures the pure hot paths
