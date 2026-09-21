@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CAMERA_DEFAULT, CAMERA_PRESETS, resolveCamera, computeCamera, applyCamera, zoomForDrift } from '../../src/core/camera.js';
+import { CAMERA_DEFAULT, CAMERA_PRESETS, resolveCamera, computeCamera, applyCamera, zoomForDrift } from '../../src/core/camera.ts';
 
 const W = 1920, H = 1080;
 const cam = (over) => ({ ...CAMERA_DEFAULT, ...over });

@@ -21,7 +21,7 @@
 
 import { offsetLayers, mergeDown } from './layerOps.js';
 import { assignPart, renamePartIn, ungroupPartIn, removeVideoBatch } from './partOps.ts';
-import { CAMERA_DEFAULT } from './camera.js';
+import { CAMERA_DEFAULT } from './camera.ts';
 import { ANIM_DEFAULT } from './cutAnim.ts';
 import { safeArray } from './geometry.ts';
 import { LAYER_ANIM_DEFAULT } from './layerAnim.ts';

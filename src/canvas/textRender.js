@@ -64,12 +64,12 @@
  * @property {number} blur px
  * @property {number} rot degrees
  * @property {number} chars how much of the string is revealed, for the typing effect
- * @property {import('../core/textAnim.js').PerCharAnim | null} [perChar] set when the
+ * @property {import('../core/textAnim.ts').PerCharAnim | null} [perChar] set when the
  *   entrance belongs to the characters rather than the block
  */
 
 import { layoutLine } from '../core/textLayout.ts';
-import { charAnimAt } from '../core/textAnim.js';
+import { charAnimAt } from '../core/textAnim.ts';
 
 // Measuring and drawing text objects.
 //

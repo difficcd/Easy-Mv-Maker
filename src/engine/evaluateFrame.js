@@ -18,8 +18,8 @@ import { cutProgress } from '../core/cutTime.ts';
 import { safeArray } from '../core/geometry.ts';
 import { computeLayerAnim } from '../core/layerAnim.ts';
 import { flattenLayersInUiOrder } from '../core/layerTree.ts';
-import { computeTextAnim } from '../core/textAnim.js';
-import { computeCamera } from '../core/camera.js';
+import { computeTextAnim } from '../core/textAnim.ts';
+import { computeCamera } from '../core/camera.ts';
 import { clipGroups } from '../core/clipping.ts';
 import { visibleCutsAt } from './selectCuts.js';
 

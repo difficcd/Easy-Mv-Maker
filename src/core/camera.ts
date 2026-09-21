@@ -16,9 +16,27 @@
 // chosen so the travel stays inside what the zoom buys.
 
 import { applyEase, samplePath } from './easing.ts';
+import type { Point } from './types.ts';
+
+/** A cut's camera, as the camera panel edits it. */
+export interface CameraSettings {
+    preset: string; path: Point[] | null;
+    zoomFrom: number | null; zoomTo: number | null;
+    rotFrom: number; rotTo: number;
+    ease: string; easePower: number;
+    shake: number; shakeSpeed: number;
+}
+/** What a preset supplies: a path and the zoom at each end, and optionally a shake. */
+export interface PresetMove { path: Point[]; zoomFrom: number; zoomTo: number; shake?: number; shakeSpeed?: number }
+export interface CameraPreset { label: string; build: (cw: number, ch: number) => PresetMove | null }
+/** The camera with every field decided - the preset and the user's overrides folded together. */
+export interface ResolvedCamera { path: Point[]; zoomFrom: number; zoomTo: number; rotFrom: number; rotTo: number; shake: number; shakeSpeed: number }
+/** The camera at a moment: the point at the centre of the picture, the zoom, the tilt in radians. */
+export interface CameraAt { cx: number; cy: number; zoom: number; rot: number }
+
 
 /** No camera at all: the default, and what every existing project has. */
-export const CAMERA_DEFAULT = {
+export const CAMERA_DEFAULT: CameraSettings = {
     preset: 'none',
     /** Points in canvas coordinates. Overrides the preset's own path when present. */
     path: null,
@@ -58,7 +76,7 @@ export const CAMERA_DEFAULT = {
  * @param {number} speed wobbles a second
  * @returns {{dx: number, dy: number}}
  */
-export function cameraShake(seconds, amp, speed) {
+export function cameraShake(seconds: number, amp: number, speed: number): { dx: number, dy: number } {
     if (!amp || !Number.isFinite(amp) || !Number.isFinite(seconds)) return { dx: 0, dy: 0 };
     const w = seconds * (Number.isFinite(speed) ? speed : 6) * Math.PI * 2;
     return {
@@ -79,7 +97,7 @@ export function cameraShake(seconds, amp, speed) {
  * @param {number} drift largest offset from centre, as a fraction of the frame
  * @returns {number}
  */
-export function zoomForDrift(drift) {
+export function zoomForDrift(drift: number): number {
     const d = Math.max(0, Math.min(0.49, drift));
     return 1 / (1 - 2 * d);
 }
@@ -98,39 +116,39 @@ const KB_DRIFT_X = 0.04, KB_DRIFT_Y = 0.03;
  *
  * Keyed by id; the label is a translation key resolved by the UI.
  */
-export const CAMERA_PRESETS = {
+export const CAMERA_PRESETS: Record<string, CameraPreset> = {
     none: { label: '없음', build: () => null },
 
     zoomIn: {
         label: '줌 인',
-        build: (cw, ch) => ({ path: [{ x: cw / 2, y: ch / 2 }], zoomFrom: 1, zoomTo: 1.25 }),
+        build: (cw: number, ch: number) => ({ path: [{ x: cw / 2, y: ch / 2 }], zoomFrom: 1, zoomTo: 1.25 }),
     },
     zoomOut: {
         label: '줌 아웃',
-        build: (cw, ch) => ({ path: [{ x: cw / 2, y: ch / 2 }], zoomFrom: 1.25, zoomTo: 1 }),
+        build: (cw: number, ch: number) => ({ path: [{ x: cw / 2, y: ch / 2 }], zoomFrom: 1.25, zoomTo: 1 }),
     },
 
     panLeft: {
         label: '왼쪽으로',
-        build: (cw, ch) => panPreset(cw, ch, +1, 0),
+        build: (cw: number, ch: number) => panPreset(cw, ch, +1, 0),
     },
     panRight: {
         label: '오른쪽으로',
-        build: (cw, ch) => panPreset(cw, ch, -1, 0),
+        build: (cw: number, ch: number) => panPreset(cw, ch, -1, 0),
     },
     panUp: {
         label: '위로',
-        build: (cw, ch) => panPreset(cw, ch, 0, +1),
+        build: (cw: number, ch: number) => panPreset(cw, ch, 0, +1),
     },
     panDown: {
         label: '아래로',
-        build: (cw, ch) => panPreset(cw, ch, 0, -1),
+        build: (cw: number, ch: number) => panPreset(cw, ch, 0, -1),
     },
 
     // The staple: a slow push in with a little drift, so a still drawing stops looking still.
     kenBurns: {
         label: '켄 번스',
-        build: (cw, ch) => ({
+        build: (cw: number, ch: number) => ({
             path: [
                 { x: cw / 2 - cw * KB_DRIFT_X, y: ch / 2 + ch * KB_DRIFT_Y },
                 { x: cw / 2 + cw * KB_DRIFT_X, y: ch / 2 - ch * KB_DRIFT_Y },
@@ -147,7 +165,7 @@ export const CAMERA_PRESETS = {
  * A pan across the frame in one direction, with the zoom that keeps the edges out of shot.
  * `dx`/`dy` are -1, 0 or +1 and point at where the camera STARTS, so panLeft starts on the right.
  */
-function panPreset(cw, ch, dx, dy) {
+function panPreset(cw: number, ch: number, dx: number, dy: number): PresetMove {
     const rx = (cw * PAN_TRAVEL) / 2, ry = (ch * PAN_TRAVEL) / 2;
     return {
         path: [
@@ -170,9 +188,9 @@ function panPreset(cw, ch, dx, dy) {
  * @returns {{path: {x:number,y:number}[], zoomFrom: number, zoomTo: number, rotFrom: number,
  *   rotTo: number, shake: number, shakeSpeed: number} | null}
  */
-export function resolveCamera(cam, cw, ch) {
+export function resolveCamera(cam: Partial<CameraSettings> | null | undefined, cw: number, ch: number): ResolvedCamera | null {
     if (!cam) return null;
-    const preset = CAMERA_PRESETS[cam.preset]?.build(cw, ch) || null;
+    const preset = CAMERA_PRESETS[cam.preset ?? 'none']?.build(cw, ch) || null;
     const drawn = Array.isArray(cam.path) && cam.path.length > 0 ? cam.path : null;
     const path = drawn || preset?.path || null;
 
@@ -195,7 +213,7 @@ export function resolveCamera(cam, cw, ch) {
 }
 
 /** First of the three that is an actual number: the user's value, the preset's, then the base. */
-const num = (v, fallback, base) => {
+const num = (v: unknown, fallback: unknown, base: number): number => {
     if (typeof v === 'number' && Number.isFinite(v)) return v;
     if (typeof fallback === 'number' && Number.isFinite(fallback)) return fallback;
     return base;
@@ -213,13 +231,13 @@ const num = (v, fallback, base) => {
  * @returns {{cx: number, cy: number, zoom: number, rot: number} | null} null when there is no
  *   camera move, so the caller skips the transform rather than applying an identity
  */
-export function computeCamera(cam, t01, cw, ch, seconds = t01) {
+export function computeCamera(cam: Partial<CameraSettings> | null | undefined, t01: number, cw: number, ch: number, seconds = t01): CameraAt | null {
     const r = resolveCamera(cam, cw, ch);
     if (!r) return null;
 
     // Eased once and used for everything, so the position, the zoom and the tilt stay in step.
     // Easing them separately is what makes a move feel like two moves.
-    const p = applyEase(Math.max(0, Math.min(1, t01)), cam.ease ?? 'inout', cam.easePower ?? 2);
+    const p = applyEase(Math.max(0, Math.min(1, t01)), cam?.ease ?? 'inout', cam?.easePower ?? 2);
 
     const c = r.path.length > 1 ? samplePath(r.path, p) : r.path[0];
     // The wobble rides on top of the move, and is not eased with it: easing a shake would make it
@@ -243,7 +261,7 @@ export function computeCamera(cam, t01, cw, ch, seconds = t01) {
  * @param {{cx:number, cy:number, zoom:number, rot:number}} cam
  * @param {number} cw @param {number} ch
  */
-export function applyCamera(ctx, cam, cw, ch) {
+export function applyCamera(ctx: CanvasRenderingContext2D, cam: CameraAt, cw: number, ch: number): void {
     ctx.translate(cw / 2, ch / 2);
     ctx.scale(cam.zoom, cam.zoom);
     if (cam.rot) ctx.rotate(cam.rot);
