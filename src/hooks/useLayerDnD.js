@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { moveLayer, moveLayerToEnd, dropPositionFor } from '../core/layerOps.js';
+import { moveLayer, moveLayerToEnd, dropPositionFor } from '../core/layerOps.ts';
 
 /**
  * Dragging a layer row to reorder it, or into a folder.

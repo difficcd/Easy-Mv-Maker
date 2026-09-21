@@ -352,7 +352,7 @@ Ruler shapes as points, so a rectangle or an ellipse is an ordinary stroke.
 | `ellipsePoints` | An ellipse inscribed in the two dragged corners, so it fills the same box the rectangle would. The segment count is solved from how far a chord may sag away from the curve (`c² / 8r`), not from a fixed segment length: the same chord on a bigger circle sags less, and holding the length constant put a thousand points into a full-canvas circle to fix a hundredth of a pixel. Rounded up to a multiple of four so points land on all four extremes. |
 | `shapePoints` | Points for whichever ruler shape is in effect, or null when the tool is not one. The single place that knows which tool names are shapes. |
 
-## `src/core/layerOps.js`
+## `src/core/layerOps.ts`
 
 Layers: moving, merging, resolving which one a stroke lands on.
 

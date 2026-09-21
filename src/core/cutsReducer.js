@@ -19,7 +19,7 @@
 // `patchCut` remains for the handful of operations that are genuinely one-off. Reach for a named
 // action first; a lambda here is a note that something has not been given a name yet.
 
-import { offsetLayers, mergeDown } from './layerOps.js';
+import { offsetLayers, mergeDown } from './layerOps.ts';
 import { assignPart, renamePartIn, ungroupPartIn, removeVideoBatch } from './partOps.ts';
 import { CAMERA_DEFAULT } from './camera.ts';
 import { ANIM_DEFAULT } from './cutAnim.ts';

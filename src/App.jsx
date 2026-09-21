@@ -25,7 +25,7 @@ import { DocTabs } from './ui/DocTabs.jsx';
 import { CanvasStage, canvasCursor } from './ui/CanvasStage.jsx';
 import { DockRail, DockSlot, FloatingPanels, DockHint, ReopenRight } from './ui/PanelDock.jsx';
 import { tr, loadLang, saveLang, setLangValue } from './i18n';
-import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, patchLayer, nextLayerId, appendLayer, appendFolder, removeLayerTree } from './core/layerOps.js';
+import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, patchLayer, nextLayerId, appendLayer, appendFolder, removeLayerTree } from './core/layerOps.ts';
 import { mkCut, firstCut } from './core/document.ts';
 import { selectionAfterClick, cutsToCopy } from './core/cutSelection.ts';
 import { closeLassoPath, lassoBounds, cutOutPolygon, cropImageData, selectionStrokes, paintedBounds } from './core/lassoOps.js';
