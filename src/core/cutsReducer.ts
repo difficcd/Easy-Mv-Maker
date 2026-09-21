@@ -25,28 +25,32 @@ import { CAMERA_DEFAULT } from './camera.ts';
 import { ANIM_DEFAULT } from './cutAnim.ts';
 import { safeArray } from './geometry.ts';
 import { LAYER_ANIM_DEFAULT } from './layerAnim.ts';
+import type { Id } from './types.ts';
+import type { CutAnimSettings } from './cutAnim.ts';
+import type { CameraSettings } from './camera.ts';
+import type { LayerAnimSettings } from './layerAnim.ts';
 
 // ── action creators ────────────────────────────────────────────────────────
 
 /** Replace the whole document: opening a file, undo/redo, starting over. */
-export const replaceCuts = (cuts) => ({ type: 'replaceCuts', cuts });
+export const replaceCuts = (cuts: Cut[]) => ({ type: 'replaceCuts' as const, cuts });
 /** Append cuts: a new cut, a tween, an imported video's frames. */
-export const addCuts = (cuts) => ({ type: 'addCuts', cuts });
+export const addCuts = (cuts: Cut[]) => ({ type: 'addCuts' as const, cuts });
 /** Change fields on one cut (name, start/end time, track, activeLayerId). */
-export const updateCut = (cutId, patch) => ({ type: 'updateCut', cutId, patch });
+export const updateCut = (cutId: Id, patch: Partial<Cut>) => ({ type: 'updateCut' as const, cutId, patch });
 /** Merge into a cut's animation, over the defaults. */
-export const setCutAnim = (cutId, patch) => ({ type: 'setCutAnim', cutId, patch });
+export const setCutAnim = (cutId: Id, patch: Partial<CutAnimSettings>) => ({ type: 'setCutAnim' as const, cutId, patch });
 /**
  * Merge into a cut's camera move. Passing null clears it, which is not the same as setting every
  * field back to its default: the renderer skips the transform entirely when there is no camera
  * object at all, and that is the state every existing project is in.
  */
-export const setCutCamera = (cutId, patch) => ({ type: 'setCutCamera', cutId, patch });
+export const setCutCamera = (cutId: Id, patch: Partial<CameraSettings> | null) => ({ type: 'setCutCamera' as const, cutId, patch });
 /** Empty a cut's drawing and text, keeping its layers. */
-export const clearCut = (cutId) => ({ type: 'clearCut', cutId });
+export const clearCut = (cutId: Id) => ({ type: 'clearCut' as const, cutId });
 
 /** Change fields on one layer. */
-export const updateLayer = (cutId, layerId, patch) => ({ type: 'updateLayer', cutId, layerId, patch });
+export const updateLayer = (cutId: Id, layerId: Id, patch: Partial<Layer>) => ({ type: 'updateLayer' as const, cutId, layerId, patch });
 /**
  * Clip a layer to the one below it, or stop clipping.
  *
@@ -54,53 +58,84 @@ export const updateLayer = (cutId, layerId, patch) => ({ type: 'updateLayer', cu
  * cached canvas is still correct. What has to be invalidated is the frame, and paintFrame already
  * re-runs when cuts change.
  */
-export const setLayerClipped = (cutId, layerId, clipped) => ({ type: 'setLayerClipped', cutId, layerId, clipped });
+export const setLayerClipped = (cutId: Id, layerId: Id, clipped: boolean) => ({ type: 'setLayerClipped' as const, cutId, layerId, clipped });
 /** Merge into a layer's animation, over the defaults. */
-export const setLayerAnim = (cutId, layerId, patch) => ({ type: 'setLayerAnim', cutId, layerId, patch });
+export const setLayerAnim = (cutId: Id, layerId: Id, patch: Partial<LayerAnimSettings>) => ({ type: 'setLayerAnim' as const, cutId, layerId, patch });
 /** Flatten a layer into the one below it. */
-export const mergeLayerDown = (cutId, layerId, flattenVisibleLeaves) => ({ type: 'mergeLayerDown', cutId, layerId, flattenVisibleLeaves });
+export const mergeLayerDown = (cutId: Id, layerId: Id, flattenVisibleLeaves: (layers: Layer[]) => Layer[]) => ({ type: 'mergeLayerDown' as const, cutId, layerId, flattenVisibleLeaves });
 /** Shift whole layers (and optionally the cut's texts) by a pixel offset. Bumps rev. */
-export const moveLayers = (cutId, layerIds, dx, dy) => ({ type: 'moveLayers', cutId, layerIds, dx, dy });
+export const moveLayers = (cutId: Id, layerIds: Iterable<Id>, dx: number, dy: number) => ({ type: 'moveLayers' as const, cutId, layerIds, dx, dy });
 
 /** Add a text if it is new, otherwise update it in place. */
-export const upsertText = (cutId, text) => ({ type: 'upsertText', cutId, text });
+export const upsertText = (cutId: Id, text: CutText) => ({ type: 'upsertText' as const, cutId, text });
 /** Move a text to an absolute position. */
-export const moveText = (cutId, textId, x, y) => ({ type: 'moveText', cutId, textId, x, y });
-export const deleteText = (cutId, textId) => ({ type: 'deleteText', cutId, textId });
-export const toggleTextVisible = (cutId, textId) => ({ type: 'toggleTextVisible', cutId, textId });
+export const moveText = (cutId: Id, textId: Id, x: number, y: number) => ({ type: 'moveText' as const, cutId, textId, x, y });
+export const deleteText = (cutId: Id, textId: Id) => ({ type: 'deleteText' as const, cutId, textId });
+export const toggleTextVisible = (cutId: Id, textId: Id) => ({ type: 'toggleTextVisible' as const, cutId, textId });
 
-export const assignPartTo = (cutIds, partId, name) => ({ type: 'assignPartTo', cutIds, partId, name });
-export const renamePart = (partId, name) => ({ type: 'renamePart', partId, name });
-export const ungroupPart = (partId) => ({ type: 'ungroupPart', partId });
-export const removeBatch = (batchId) => ({ type: 'removeBatch', batchId });
+export const assignPartTo = (cutIds: Iterable<Id>, partId: Id, name: string) => ({ type: 'assignPartTo' as const, cutIds, partId, name });
+export const renamePart = (partId: Id, name: string) => ({ type: 'renamePart' as const, partId, name });
+export const ungroupPart = (partId: Id) => ({ type: 'ungroupPart' as const, partId });
+export const removeBatch = (batchId: Id) => ({ type: 'removeBatch' as const, batchId });
 
 /**
  * Insert cuts at a point on a track, pushing everything later on that track along to make room.
  * Duplicating a cut and filling a gap with tweened frames are the same operation.
  */
-export const insertCutsShifting = (track, at, shift, newCuts, exceptId) =>
-    ({ type: 'insertCutsShifting', track, at, shift, newCuts, exceptId });
+export const insertCutsShifting = (track: number, at: number, shift: number, newCuts: Cut[], exceptId?: Id | null) =>
+    ({ type: 'insertCutsShifting' as const, track, at, shift, newCuts, exceptId });
 /** Delete a track, closing the gap by pulling every track below it up one. */
-export const deleteTrack = (track) => ({ type: 'deleteTrack', track });
+export const deleteTrack = (track: number) => ({ type: 'deleteTrack' as const, track });
 /** Move several cuts together, keeping their relative layout and staying in bounds. */
-export const moveCutGroup = (group, dt, trackOff, numTracks) => ({ type: 'moveCutGroup', group, dt, trackOff, numTracks });
+export const moveCutGroup = (group: Cut[], dt: number, trackOff: number, numTracks: number) => ({ type: 'moveCutGroup' as const, group, dt, trackOff, numTracks });
 /** Replace the cuts imported from one video source with a fresh set. */
-export const replaceBatchCuts = (videoSrc, newCuts) => ({ type: 'replaceBatchCuts', videoSrc, newCuts });
+export const replaceBatchCuts = (videoSrc: string | undefined, newCuts: Cut[]) => ({ type: 'replaceBatchCuts' as const, videoSrc, newCuts });
 
 /** Escape hatch: run a function over one cut. Prefer a named action. */
-export const patchCut = (cutId, fn) => ({ type: 'patchCut', cutId, fn });
+export const patchCut = (cutId: Id, fn: (cut: Cut) => Partial<Cut>) => ({ type: 'patchCut' as const, cutId, fn });
 /** Escape hatch: run a function over the whole list. Prefer a named action. */
-export const patchCuts = (fn) => ({ type: 'patchCuts', fn });
+export const patchCuts = (fn: (cuts: Cut[]) => Cut[]) => ({ type: 'patchCuts' as const, fn });
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
-const mapCut = (cuts, cutId, fn) => cuts.map(c => c.id === cutId ? fn(c) : c);
-const mapLayer = (cut, layerId, fn) => ({ ...cut, layers: safeArray(cut.layers).map(l => l.id === layerId ? fn(l) : l) });
-const mapTexts = (cut, fn) => ({ ...cut, texts: fn(safeArray(cut.texts)) });
+/**
+ * Every action the reducer takes: the union of what the creators build. A case that reads a
+ * field its creator does not set is a type error, which is what a reducer is for.
+ */
+export type CutsAction =
+    | ReturnType<typeof replaceCuts>
+    | ReturnType<typeof addCuts>
+    | ReturnType<typeof updateCut>
+    | ReturnType<typeof setCutAnim>
+    | ReturnType<typeof setCutCamera>
+    | ReturnType<typeof clearCut>
+    | ReturnType<typeof updateLayer>
+    | ReturnType<typeof setLayerClipped>
+    | ReturnType<typeof setLayerAnim>
+    | ReturnType<typeof mergeLayerDown>
+    | ReturnType<typeof moveLayers>
+    | ReturnType<typeof upsertText>
+    | ReturnType<typeof moveText>
+    | ReturnType<typeof deleteText>
+    | ReturnType<typeof toggleTextVisible>
+    | ReturnType<typeof assignPartTo>
+    | ReturnType<typeof renamePart>
+    | ReturnType<typeof ungroupPart>
+    | ReturnType<typeof removeBatch>
+    | ReturnType<typeof insertCutsShifting>
+    | ReturnType<typeof deleteTrack>
+    | ReturnType<typeof moveCutGroup>
+    | ReturnType<typeof replaceBatchCuts>
+    | ReturnType<typeof patchCut>
+    | ReturnType<typeof patchCuts>;
+
+const mapCut = (cuts: Cut[], cutId: Id, fn: (cut: Cut) => Cut): Cut[] => cuts.map(c => c.id === cutId ? fn(c) : c);
+const mapLayer = (cut: Cut, layerId: Id, fn: (layer: Layer) => Layer): Cut => ({ ...cut, layers: safeArray(cut.layers).map(l => l.id === layerId ? fn(l) : l) });
+const mapTexts = (cut: Cut, fn: (texts: CutText[]) => CutText[]): Cut => ({ ...cut, texts: fn(safeArray(cut.texts)) });
 
 // ── the reducer ────────────────────────────────────────────────────────────
 
-export function cutsReducer(cuts, action) {
+export function cutsReducer(cuts: Cut[] | null | undefined, action: CutsAction): Cut[] {
     const list = Array.isArray(cuts) ? cuts : [];
     switch (action.type) {
         case 'replaceCuts':
@@ -198,7 +233,7 @@ export function cutsReducer(cuts, action) {
             const maxTrack = Math.max(...group.map(g => g.track));
             const dt = Math.max(action.dt, -minStart);
             const trackOff = Math.max(-minTrack, Math.min(action.numTracks - 1 - maxTrack, action.trackOff));
-            const byId = new Map(group.map(g => [g.id, g]));
+            const byId = new Map<Id, Cut>(group.map(g => [g.id, g]));
             return list.map(c => {
                 const g = byId.get(c.id);
                 if (!g) return c;

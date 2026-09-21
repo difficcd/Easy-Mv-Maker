@@ -7,7 +7,7 @@ import { tr } from '../i18n.js';
 import { nextId } from '../core/ids.ts';
 import { parseClock } from '../core/timeCode.ts';
 import { importPlacement, buildImportedCuts, extractOptionsFor } from '../core/videoCuts.ts';
-import { replaceBatchCuts } from '../core/cutsReducer.js';
+import { replaceBatchCuts } from '../core/cutsReducer.ts';
 import { targetCanvasFor } from '../core/canvasSize.ts';
 import { extractVideoFrames, fitRect } from '../canvas/videoFrames.js';
 

@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { moveText } from '../core/cutsReducer.js';
+import { moveText } from '../core/cutsReducer.ts';
 import { measureTextBox as measureTextBoxPure } from '../canvas/textRender.js';
 import { safeArray } from '../core/geometry.ts';
 

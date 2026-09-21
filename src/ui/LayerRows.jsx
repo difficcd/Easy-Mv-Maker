@@ -3,7 +3,7 @@ import { ChevronRight, ChevronDown, Folder, FolderOpen, Eye, EyeOff, Waves, Corn
 import { cutProgress } from '../core/cutTime.ts';
 import { flattenLayersInUiOrder, layerKey } from '../core/layerTree.ts';
 import { canClip } from '../core/clipping.ts';
-import { setLayerClipped, mergeLayerDown } from '../core/cutsReducer.js';
+import { setLayerClipped, mergeLayerDown } from '../core/cutsReducer.ts';
 import { JitterPanel, LayerAnimPanel } from './AnimPanels';
 import { tr } from '../i18n';
 
