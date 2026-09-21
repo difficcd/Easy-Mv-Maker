@@ -16,7 +16,7 @@
 
 import { tr } from '../i18n';
 import { pieceRange } from '../core/exportQueue.js';
-import { frameExportPlan, exportFileInfo, LONG_EXPORT_FRAMES } from '../core/frameExport.js';
+import { frameExportPlan, exportFileInfo, LONG_EXPORT_FRAMES } from '../core/frameExport.ts';
 import { EXPORT_FPS } from '../core/recordClock.ts';
 import { evaluateFrame } from '../engine/evaluateFrame.js';
 import { pendingBitmapIds } from '../engine/pendingBitmaps.js';

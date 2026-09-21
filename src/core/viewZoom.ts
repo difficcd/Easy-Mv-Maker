@@ -9,6 +9,11 @@
 // The wider pair won. Narrowing the buttons to match would have taken away detail work people may
 // already rely on, and there is no reason a finger should be allowed less than a button.
 
+import type { Point } from './types.ts';
+
+/** The canvas view: zoom, and where the canvas origin sits on the stage. */
+export interface View { zoom: number; x: number; y: number }
+
 /** Below this the artwork is too small to place a stroke on. */
 export const ZOOM_MIN = 0.1;
 /** Above this a single pixel fills a large part of the screen and panning is the only control. */
@@ -23,7 +28,7 @@ export const ZOOM_MAX = 16;
  * @param {number} zoom
  * @returns {number}
  */
-export function clampZoom(zoom) {
+export function clampZoom(zoom: number): number {
     if (!Number.isFinite(zoom)) return 1;
     return Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoom));
 }
@@ -42,7 +47,7 @@ export function clampZoom(zoom) {
  * @param {number} [cy]
  * @returns {{zoom: number, x: number, y: number}}
  */
-export function zoomAbout(view, factor, cx = 0, cy = 0) {
+export function zoomAbout(view: View, factor: number, cx = 0, cy = 0): View {
     const zoom = clampZoom(view.zoom * factor);
     const k = zoom / view.zoom;
     return { zoom, x: cx - (cx - view.x) * k, y: cy - (cy - view.y) * k };
@@ -57,7 +62,7 @@ export function zoomAbout(view, factor, cx = 0, cy = 0) {
  * @param {{x: number, y: number}} b the other
  * @returns {{zoom: number, x: number, y: number}}
  */
-export function pinchedView(pinch, a, b) {
+export function pinchedView(pinch: { startView: View, startDist: number, startMid: Point }, a: Point, b: Point): View {
     const dist = Math.hypot(a.x - b.x, a.y - b.y);
     const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
     const { startView: s } = pinch;

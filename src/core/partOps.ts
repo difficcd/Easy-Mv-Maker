@@ -9,6 +9,13 @@
 // Membership is likewise a field on the cut rather than a list on the part, so deleting a cut
 // cannot leave a part holding a reference to something that no longer exists.
 
+import type { Id } from './types.ts';
+
+/** A part as the timeline shows it: derived from the cuts that carry its id. */
+export interface Part { id: Id; name: string; count: number; start: number; end: number }
+/** A batch of cuts one video import produced. */
+export interface VideoBatch { id: Id; label: string; count: number; start: number; end: number }
+
 /**
  * Group cuts into parts, in timeline order.
  *
@@ -16,8 +23,8 @@
  * @param {string} [fallbackName] shown for a part whose cuts carry no name
  * @returns {Array<{id: any, name: string, count: number, start: number, end: number}>}
  */
-export function derivePartsFrom(cuts, fallbackName = 'Part') {
-    const m = new Map();
+export function derivePartsFrom(cuts: Cut[] | null | undefined, fallbackName = 'Part'): Part[] {
+    const m = new Map<Id, Part>();
     for (const c of (Array.isArray(cuts) ? cuts : [])) {
         if (!c?.partId) continue;
         const p = m.get(c.partId) || { id: c.partId, name: '', count: 0, start: Infinity, end: 0 };
@@ -40,8 +47,8 @@ export function derivePartsFrom(cuts, fallbackName = 'Part') {
  * The same grouping for imported frame sets, which predate parts and are keyed separately.
  * Kept apart from derivePartsFrom because an old project can have batches and no parts.
  */
-export function deriveVideoBatches(cuts, fallbackName = 'Video') {
-    const m = new Map();
+export function deriveVideoBatches(cuts: Cut[] | null | undefined, fallbackName = 'Video'): VideoBatch[] {
+    const m = new Map<Id, VideoBatch>();
     for (const c of (Array.isArray(cuts) ? cuts : [])) {
         if (!c?.videoBatch) continue;
         const b = m.get(c.videoBatch) || { id: c.videoBatch, label: c.videoLabel || fallbackName, count: 0, start: c.startTime, end: c.endTime };
@@ -54,13 +61,13 @@ export function deriveVideoBatches(cuts, fallbackName = 'Video') {
 }
 
 /** Put the given cuts in a part, taking them out of whichever one they were in. */
-export function assignPart(cuts, cutIds, partId, name) {
+export function assignPart(cuts: Cut[] | null | undefined, cutIds: Iterable<Id> | Set<Id> | null | undefined, partId: Id, name: string): Cut[] {
     const ids = cutIds instanceof Set ? cutIds : new Set(cutIds || []);
     return (Array.isArray(cuts) ? cuts : []).map(c => ids.has(c.id) ? { ...c, partId, partName: name } : c);
 }
 
 /** Rename a part, which means renaming it on every cut that belongs to it. */
-export function renamePartIn(cuts, partId, name) {
+export function renamePartIn(cuts: Cut[] | null | undefined, partId: Id, name: string): Cut[] {
     return (Array.isArray(cuts) ? cuts : []).map(c => c.partId === partId ? { ...c, partName: name } : c);
 }
 
@@ -68,11 +75,11 @@ export function renamePartIn(cuts, partId, name) {
  * Ungroup a part. The cuts stay exactly where they are and only lose their membership - this is
  * not a delete, and confusing the two would be expensive.
  */
-export function ungroupPartIn(cuts, partId) {
+export function ungroupPartIn(cuts: Cut[] | null | undefined, partId: Id): Cut[] {
     return (Array.isArray(cuts) ? cuts : []).map(c => c.partId === partId ? { ...c, partId: undefined, partName: undefined } : c);
 }
 
 /** Remove every cut of an imported frame set. This one really does delete. */
-export function removeVideoBatch(cuts, batchId) {
+export function removeVideoBatch(cuts: Cut[] | null | undefined, batchId: Id): Cut[] {
     return (Array.isArray(cuts) ? cuts : []).filter(c => c.videoBatch !== batchId);
 }

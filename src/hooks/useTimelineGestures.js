@@ -23,7 +23,7 @@
 // stopped propagation first and so was the only one that ever ran. This is the one now.
 
 import { useEffect, useLayoutEffect, useRef } from 'react';
-import { timeAtX, pinchZoom, zoomAnchored } from '../core/timelineZoom.js';
+import { timeAtX, pinchZoom, zoomAnchored } from '../core/timelineZoom.ts';
 import { dragOnWindow } from '../core/windowDrag.ts';
 
 const DRAG_SLOP = 5;   // mouse travel before a click becomes a marquee drag

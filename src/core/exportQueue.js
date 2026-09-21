@@ -12,7 +12,7 @@
 // Planning is separate from rendering because planning is arithmetic and rendering needs a
 // browser. Everything here can be tested; nothing here touches a canvas.
 
-import { playRange } from './playRange.js';
+import { playRange } from './playRange.ts';
 
 /**
  * How long one piece contributes to the output.

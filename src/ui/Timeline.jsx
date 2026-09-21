@@ -3,7 +3,7 @@ import { accentSoft } from '../canvas/editChrome.js';
 import { safeArray } from '../core/geometry.ts';
 import { tr } from '../i18n';
 import { PLAYBACK_RATES, RATE_DEFAULT } from '../core/playbackRate.ts';
-import { TRACK_GUTTER, timeAtX, xAtTime } from '../core/timelineZoom.js';
+import { TRACK_GUTTER, timeAtX, xAtTime } from '../core/timelineZoom.ts';
 import { gapAt } from '../core/cutOps.js';
 import { toggled } from '../core/cutSelection.ts';
 import { mkCut } from '../core/document.js';

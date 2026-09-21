@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { playRange, exportRange } from '../../src/core/playRange.js';
+import { playRange, exportRange } from '../../src/core/playRange.ts';
 
 // The bugs this replaces, stated as the cases that used to come out wrong:
 //   - the frame and GIF export began at zero, not where the content begins

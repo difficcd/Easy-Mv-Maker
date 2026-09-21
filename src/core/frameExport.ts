@@ -8,6 +8,9 @@
 // None of this touches a canvas. It is the arithmetic and the reasoning behind it, which is the
 // part worth having in one place and worth being able to test.
 
+/** The numbers a frame export is planned from. */
+export interface FramePlan { gif: boolean; fps: number; scale: number; gw: number; gh: number; total: number; delayMs: number; empty: boolean }
+
 /** A GIF wider than this is a file nobody can post. See `frameExportPlan`. */
 export const GIF_MAX_EDGE = 720;
 
@@ -32,7 +35,7 @@ export const GIF_MAX_EDGE = 720;
  * @returns {{gif: boolean, fps: number, scale: number, gw: number, gh: number, total: number,
  *   delayMs: number, empty: boolean}}
  */
-export function frameExportPlan({ format, cw, ch, from = 0, to = 0 }) {
+export function frameExportPlan({ format, cw, ch, from = 0, to = 0 }: { format: string, cw: number, ch: number, from?: number, to?: number }): FramePlan {
     const gif = format === 'gif';
     const fps = gif ? 12 : 30;
     const w = Math.max(1, Math.round(Number(cw) || 1));
@@ -64,7 +67,7 @@ export function frameExportPlan({ format, cw, ch, from = 0, to = 0 }) {
  * @param {boolean} gif
  * @param {{gif: string, zip: string}} base
  */
-export function exportFileInfo(gif, base = { gif: 'mv_export', zip: 'mv_frames' }) {
+export function exportFileInfo(gif: boolean, base: { gif: string, zip: string } = { gif: 'mv_export', zip: 'mv_frames' }): { type: string, name: string } {
     return gif
         ? { type: 'image/gif', name: `${base.gif}.gif` }
         : { type: 'application/zip', name: `${base.zip}.zip` };

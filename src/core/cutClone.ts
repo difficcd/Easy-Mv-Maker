@@ -12,22 +12,24 @@
 //    copies are shared within this one operation so a bitmap used by several strokes stays one
 //    bitmap rather than becoming several.
 
+import type { Id } from './types.ts';
+
 /**
  * @param {Cut} srcCut the cut to copy from
  * @param {(oldId: any, cache: Map) => any} cloneBitmapId copies stored pixels, returning the new
  *   id; given the shared cache so it can return the same new id for a repeated old one
  * @returns {{layers: Layer[], activeLayerId: any, texts: CutText[]}} the contents, ready for a new cut
  */
-export function cloneCutContents(srcCut, cloneBitmapId) {
+export function cloneCutContents(srcCut: Cut | null | undefined, cloneBitmapId: (id: Id, cache: Map<Id, Id>) => Id): { layers: Layer[], activeLayerId: Id, texts: CutText[] } {
     const srcLayers = Array.isArray(srcCut?.layers) ? srcCut.layers : [];
 
     // Renumbered in order, so the copy reads 1..n whatever the original had.
-    const idMap = new Map();
+    const idMap = new Map<Id, number>();
     let next = 1;
     for (const l of srcLayers) idMap.set(l.id, next++);
 
-    const bmpCache = new Map();
-    const layers = srcLayers.map(l => {
+    const bmpCache = new Map<Id, Id>();
+    const layers: Layer[] = srcLayers.map(l => {
         const cl = JSON.parse(JSON.stringify(l));
         cl.id = idMap.get(l.id);
         // A parent outside this cut cannot come along, so the layer is promoted to the root
@@ -36,7 +38,7 @@ export function cloneCutContents(srcCut, cloneBitmapId) {
         // Redo belongs to the editing session that produced it, not to the strokes.
         cl.redoStrokes = [];
         if (Array.isArray(cl.strokes)) {
-            cl.strokes = cl.strokes.map(s => s.bitmapId ? { ...s, bitmapId: cloneBitmapId(s.bitmapId, bmpCache) } : s);
+            cl.strokes = cl.strokes.map((s: Stroke) => s.bitmapId ? { ...s, bitmapId: cloneBitmapId(s.bitmapId, bmpCache) } : s);
         }
         return cl;
     });
@@ -44,7 +46,7 @@ export function cloneCutContents(srcCut, cloneBitmapId) {
     // Falling back to any real layer matters: with none, drawing into the copy would have nowhere
     // to go and the first stroke would vanish.
     const activeLayerId = idMap.get(srcCut?.activeLayerId) ?? layers.find(l => l.type === 'layer')?.id ?? 1;
-    const texts = (Array.isArray(srcCut?.texts) ? srcCut.texts : []).map(t => JSON.parse(JSON.stringify(t)));
+    const texts: CutText[] = (Array.isArray(srcCut?.texts) ? srcCut.texts : []).map(t => JSON.parse(JSON.stringify(t)));
     return { layers, activeLayerId, texts };
 }
 
@@ -63,7 +65,7 @@ export function cloneCutContents(srcCut, cloneBitmapId) {
  * @param {() => any} nextId
  * @returns {{cuts: Cut[], span: number}}
  */
-export function placeCopies(copies, at, track, cloneContents, nextId) {
+export function placeCopies<C extends Cut>(copies: C[], at: number, track: number, cloneContents: (cut: C) => Partial<C>, nextId: () => Id): { cuts: C[], span: number } {
     let cursor = at;
     const cuts = copies.map((cc) => {
         const dur = cc.endTime - cc.startTime;

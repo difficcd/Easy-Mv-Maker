@@ -20,7 +20,7 @@
 // action first; a lambda here is a note that something has not been given a name yet.
 
 import { offsetLayers, mergeDown } from './layerOps.js';
-import { assignPart, renamePartIn, ungroupPartIn, removeVideoBatch } from './partOps.js';
+import { assignPart, renamePartIn, ungroupPartIn, removeVideoBatch } from './partOps.ts';
 import { CAMERA_DEFAULT } from './camera.js';
 import { ANIM_DEFAULT } from './cutAnim.js';
 import { safeArray } from './geometry.ts';

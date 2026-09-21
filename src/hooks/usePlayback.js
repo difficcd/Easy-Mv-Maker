@@ -20,7 +20,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { playbackStartFrom } from '../core/playbackStart.ts';
-import { xAtTime } from '../core/timelineZoom.js';
+import { xAtTime } from '../core/timelineZoom.ts';
 import { nextRecordFrame, EXPORT_FPS } from '../core/recordClock.ts';
 
 /**

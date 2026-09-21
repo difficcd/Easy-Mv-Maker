@@ -11,6 +11,19 @@
 // is what comes out, including the selected part - which playback already scopes to, and which
 // the timeline already dims the rest of.
 
+import type { TimeSpan } from './types.ts';
+
+/** Where to start and stop, in seconds. */
+export interface TimeRange { start: number; end: number }
+
+/** What playRange looks at: the cuts, the audio clip, the reference video, the selected part. */
+export interface RangeSources {
+    cuts?: Array<{ startTime: number, endTime?: number } | null | undefined> | null;
+    audio?: { startTime?: number, endTime?: number } | null;
+    video?: { startTime?: number, endTime?: number } | null;
+    part?: { start: number, end: number } | null;
+}
+
 /**
  * The time range to play, or export.
  *
@@ -28,17 +41,17 @@
  * @param {{start: number, end: number} | null} [opts.part] the selected part, if there is one
  * @returns {{start: number, end: number}}
  */
-export function playRange({ cuts, audio, video, part } = {}) {
+export function playRange({ cuts, audio, video, part }: RangeSources = {}): TimeRange {
     if (part && Number.isFinite(part.start) && Number.isFinite(part.end) && part.end > part.start) {
         return { start: Math.max(0, part.start), end: part.end };
     }
-    const list = (Array.isArray(cuts) ? cuts : []).filter(c => c && Number.isFinite(c.startTime) && Number.isFinite(c.endTime));
+    const list = (Array.isArray(cuts) ? cuts : []).filter((c): c is TimeSpan => !!c && Number.isFinite(c.startTime) && Number.isFinite(c.endTime));
     const starts = list.map(c => c.startTime);
     const ends = list.map(c => c.endTime);
-    if (audio && Number.isFinite(audio.startTime)) starts.push(audio.startTime);
-    if (audio && Number.isFinite(audio.endTime)) ends.push(audio.endTime);
-    if (video && Number.isFinite(video.startTime)) starts.push(video.startTime);
-    if (video && Number.isFinite(video.endTime)) ends.push(video.endTime);
+    if (audio && Number.isFinite(audio.startTime)) starts.push(audio.startTime as number);
+    if (audio && Number.isFinite(audio.endTime)) ends.push(audio.endTime as number);
+    if (video && Number.isFinite(video.startTime)) starts.push(video.startTime as number);
+    if (video && Number.isFinite(video.endTime)) ends.push(video.endTime as number);
     if (!ends.length) return { start: 0, end: 0 };
     const end = Math.max(0, ...ends);
     // Only meaningful if something is actually there: a project with no content starts at zero
@@ -62,10 +75,10 @@ export function playRange({ cuts, audio, video, part } = {}) {
  * @param {Parameters<typeof playRange>[0]} [opts] the same options as playRange
  * @returns {{start: number, end: number}}
  */
-export function exportRange(opts = {}) {
+export function exportRange(opts: RangeSources = {}): TimeRange {
     const { start, end } = playRange(opts);
     const { cuts, part } = opts;
-    const inRange = (Array.isArray(cuts) ? cuts : []).filter(c => c && Number.isFinite(c.startTime)
+    const inRange = (Array.isArray(cuts) ? cuts : []).filter((c): c is { startTime: number, endTime?: number } => !!c && Number.isFinite(c.startTime)
         && (!part || (c.startTime < part.end && (c.endTime ?? c.startTime) > part.start)));
     if (!inRange.length) return { start, end };
     const first = Math.max(start, Math.min(...inRange.map(c => c.startTime)));
