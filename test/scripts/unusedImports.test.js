@@ -43,8 +43,8 @@ test('a name used only in a comment is left alone', () => {
 });
 
 test('a module path that contains an imported name does not count as using it', () => {
-    // `import { applyCamera } from './core/camera.js'` - the word camera is in the path.
-    const src = `import { camera } from './core/camera.js';\nnothing();\n`;
+    // `import { applyCamera } from './core/camera.ts'` - the word camera is in the path.
+    const src = `import { camera } from './core/camera.ts';\nnothing();\n`;
     assert.deepEqual(unused(src), ['camera:never used']);
 });
 

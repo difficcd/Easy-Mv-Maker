@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { bakeFactor, scaleProjectTimes, bakePlan } from '../../src/core/timeScale.ts';
 import { computeCutAnim } from '../../src/core/cutAnim.ts';
 import { computeLayerAnim } from '../../src/core/layerAnim.ts';
-import { computeTextAnim, charAnimAt } from '../../src/core/textAnim.js';
+import { computeTextAnim, charAnimAt } from '../../src/core/textAnim.ts';
 
 const CW = 1920, CH = 1080;
 

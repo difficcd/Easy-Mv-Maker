@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { textAnimStep, charAnimAt, charFxAt, charNoise, computeTextAnim, TEXT_ANIM_DEFAULT } from '../../src/core/textAnim.js';
+import { textAnimStep, charAnimAt, charFxAt, charNoise, computeTextAnim, TEXT_ANIM_DEFAULT } from '../../src/core/textAnim.ts';
 
 const close = (a, b, eps = 1e-9) => Math.abs(a - b) < eps;
 

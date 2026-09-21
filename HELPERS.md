@@ -66,7 +66,7 @@ and not to what a file can say - and a file is the easier of the two to get a wr
 | `CANVAS_W` | The document's pixel size, 1920x1080. The canvas element is scaled by CSS; drawing coordinates are always these. |
 | `targetCanvasFor` | Which canvas a video import should land in. A vertical clip dropped into a landscape canvas is mostly empty margin, so the import can match the source instead, or be pinned to one of the two shapes people actually publish. |
 
-## `src/core/camera.js`
+## `src/core/camera.ts`
 
 Camera moves: presets, drawn paths, and the transform they resolve to.
 
@@ -831,7 +831,7 @@ Sway: a drawn curve as a waveform, the profile along the part, and the lagged di
 | `sortSwayProfile` | A profile as positioned points, in order. Always the positioned shape, because that is what an edit produces. Sorted because dragging a point past its neighbour is a thing people do, and the alternative is an interpolation that runs backwards through the middle of the drag. |
 | `sampleWave` | Samples the waveform cyclically over 0..1 with linear interpolation. |
 
-## `src/core/textAnim.js`
+## `src/core/textAnim.ts`
 
 Text animation for subtitles: entrance, exit, typing, emphasis, per-character effects.
 

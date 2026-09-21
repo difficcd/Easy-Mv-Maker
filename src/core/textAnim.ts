@@ -2,13 +2,30 @@
 
 import { cutDuration } from './cutTime.ts';
 import { charProgress } from './textLayout.ts';
+import type { TimeSpan } from './types.ts';
+
+/** A text's animation, as the text editor sets it. */
+export interface TextAnimSettings {
+    inType: string; inDur: number; outType: string; outDur: number;
+    typing: boolean; typeSpeed: number; emphasis: string; emAmount: number; emSpeed: number;
+    charStagger: number; charFx: string; charFxAmount: number;
+}
+/** One entrance or exit step for the block: opacity, offset, scale, blur. */
+export interface AnimStep { alpha: number; dx: number; dy: number; scale: number; blur: number }
+/** A per-character effect step; rotation too. */
+export interface CharStep { dx: number; dy: number; rot: number; scale: number; alpha: number }
+/** What one character does at a moment. */
+export interface CharAt extends AnimStep { rot: number }
+/** The text's animation at a moment; `chars` is how many are revealed, `perChar` the character-wise state. */
+export interface TextAnimAt extends CharAt { chars: number | null; perChar: PerCharAnim | null }
+
 
 // Text animation, for MV subtitles. Takes the progress through the cut and returns just the
 // values needed to draw.
 //  - in/out: entrance and exit (fade/up/down/scale/blur)
 //  - typing: reveals a character at a time by slicing the string
 //  - emphasis: a looping accent (pulse/shake/wave)
-export const TEXT_ANIM_DEFAULT = {
+export const TEXT_ANIM_DEFAULT: TextAnimSettings = {
     inType: 'none', inDur: 0.4, outType: 'none', outDur: 0.4,
     typing: false, typeSpeed: 18, emphasis: 'none', emAmount: 20, emSpeed: 2,
     charStagger: 0, charFx: 'none', charFxAmount: 40,
@@ -26,7 +43,7 @@ export const TEXT_ANIM_DEFAULT = {
  * @param {number} [salt] a second stream, for a second axis
  * @returns {number} 0..1
  */
-export function charNoise(index, salt = 0) {
+export function charNoise(index: number, salt = 0): number {
     // A small integer hash. The constants are the usual odd primes; nothing about them matters
     // beyond mixing the low bits into the high ones.
     let h = (index | 0) * 374761393 + (salt | 0) * 668265263;
@@ -47,10 +64,10 @@ export function charNoise(index, salt = 0) {
  * @param {number} e 0..1, eased; 1 means settled
  * @returns {{ dx: number, dy: number, rot: number, scale: number, alpha: number } | null}
  */
-export function charFxAt(mode, amount, index, e) {
+export function charFxAt(mode: string | null | undefined, amount: number | undefined, index: number, e: number): CharStep | null {
     const away = 1 - e;
     if (!mode || mode === 'none' || away <= 0) return null;
-    const amt = Number.isFinite(amount) ? amount : 40;
+    const amt: number = typeof amount === 'number' && Number.isFinite(amount) ? amount : 40;
     switch (mode) {
         case 'scatter': {
             // A direction per character, from anywhere on the circle, so the line gathers itself
@@ -101,11 +118,11 @@ export function charFxAt(mode, amount, index, e) {
  * @param {1 | -1} dir
  * @returns {{ alpha: number, dx: number, dy: number, scale: number, blur: number } | null}
  */
-export function textAnimStep(type, e, dir) {
+export function textAnimStep(type: string | null | undefined, e: number, dir: number): AnimStep | null {
     const away = 1 - e;
     // Adding zero, because a settled 'down' works out to -0, which is equal to 0 everywhere
     // except in a strict comparison - and that is exactly where a test would find it.
-    const noMinusZero = (v) => v + 0;
+    const noMinusZero = (v: number) => v + 0;
     switch (type) {
         case 'fade': return { alpha: e, dx: 0, dy: 0, scale: 1, blur: 0 };
         case 'up': return { alpha: e, dx: 0, dy: noMinusZero(dir * away * 40), scale: 1, blur: 0 };
@@ -118,19 +135,29 @@ export function textAnimStep(type, e, dir) {
 
 /**
  * The raw entrance progress, handed to the renderer so each character can take its own slice.
- * @typedef {object} PerCharAnim
- * @property {'typing'|'spread'|null} [inMode] which way the entrance is divided among characters
- * @property {number} spread how much of the duration separates the first character from the last
- * @property {string} [inType]
- * @property {number} [inU] 0..1 through the entrance, for the spread mode
- * @property {number} [speed] characters a second, for the typing mode
- * @property {number} [local] seconds since the cut began, for the typing mode
- * @property {number} [dur] how long one character takes to settle, for the typing mode
- * @property {string} [outType]
- * @property {number} [outU] 0..1 through the exit
- * @property {string} [fx] a per-character offset played on top of the entrance
- * @property {number} [fxAmount] how far that offset reaches, in px or degrees
  */
+export interface PerCharAnim {
+    /** which way the entrance is divided among characters */
+    inMode?: 'typing' | 'spread' | null;
+    /** how much of the duration separates the first character from the last */
+    spread: number;
+    inType?: string;
+    /** 0..1 through the entrance, for the spread mode */
+    inU?: number;
+    /** characters a second, for the typing mode */
+    speed?: number;
+    /** seconds since the cut began, for the typing mode */
+    local?: number;
+    /** how long one character takes to settle, for the typing mode */
+    dur?: number;
+    outType?: string;
+    /** 0..1 through the exit */
+    outU?: number;
+    /** a per-character offset played on top of the entrance */
+    fx?: string | null;
+    /** how far that offset reaches, in px or degrees */
+    fxAmount?: number;
+}
 
 /**
  * How far into its own entrance one character is.
@@ -148,7 +175,7 @@ export function textAnimStep(type, e, dir) {
  * @param {number} count
  * @returns {number} 0..1
  */
-function charInProgress(p, index, count) {
+function charInProgress(p: PerCharAnim, index: number, count: number): number {
     if (p.inMode === 'typing') {
         // Revealed at (index + 1) / speed: `chars` is a count, so character 0 is drawn once the
         // count reaches one. Starting the entrance at index / speed instead put every character
@@ -170,9 +197,9 @@ function charInProgress(p, index, count) {
  * @param {number} index character index across the whole text, not within its line
  * @param {number} count
  */
-export function charAnimAt(perChar, index, count) {
+export function charAnimAt(perChar: PerCharAnim, index: number, count: number): CharAt {
     let alpha = 1, dx = 0, dy = 0, scale = 1, blur = 0, rot = 0;
-    const take = (step) => {
+    const take = (step: { alpha: number, dx: number, dy: number, scale: number, blur?: number, rot?: number } | null) => {
         if (!step) return;
         alpha *= step.alpha; dx += step.dx; dy += step.dy; scale *= step.scale;
         blur = Math.max(blur, step.blur ?? 0);
@@ -196,7 +223,7 @@ export function charAnimAt(perChar, index, count) {
     return { alpha, dx, dy, scale, blur, rot };
 }
 
-export function computeTextAnim(t, ac, time) {
+export function computeTextAnim(t: { anim?: Partial<TextAnimSettings> | null }, ac: TimeSpan, time: number): TextAnimAt | null {
     const a = t.anim;
     if (!a) return null;
     const local = time - ac.startTime;
@@ -214,7 +241,7 @@ export function computeTextAnim(t, ac, time) {
     // A per-character offset is an entrance in its own right. Requiring one of the block
     // entrances to be chosen as well was why ticking only 'typing' appeared to do nothing.
     const hasIn = (!!a.inType && a.inType !== 'none') || !!fx;
-    const inMode = a.typing && hasIn ? 'typing' : ((stagger || fx) && hasIn ? 'spread' : null);
+    const inMode: 'typing' | 'spread' | null = a.typing && hasIn ? 'typing' : ((stagger || fx) && hasIn ? 'spread' : null);
 
     const inDur = Math.max(0.0001, a.inDur ?? 0.4);
     const enteringIn = !!a.inType && a.inType !== 'none' && local < inDur;
@@ -240,7 +267,7 @@ export function computeTextAnim(t, ac, time) {
 
     // Typing reveals typeSpeed characters per second; null means no slicing.
     const speed = a.typeSpeed || 18;
-    let chars = null;
+    let chars: number | null = null;
     if (a.typing) chars = Math.max(0, Math.floor(Math.max(0, local) * speed));
 
     // A typed entrance runs for as long as the typing does, not just the entrance window: the
@@ -251,7 +278,7 @@ export function computeTextAnim(t, ac, time) {
 
     // Only present while something is actually per-character, so the renderer's cheap
     // whole-line path stays the normal one.
-    const perChar = (typingIn || spreadIn || staggeredOut)
+    const perChar: PerCharAnim | null = (typingIn || spreadIn || staggeredOut)
         ? {
             inMode: typingIn ? 'typing' : (spreadIn ? 'spread' : null),
             spread: stagger,

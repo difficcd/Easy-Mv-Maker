@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cameraShake, computeCamera, resolveCamera } from '../../src/core/camera.js';
+import { cameraShake, computeCamera, resolveCamera } from '../../src/core/camera.ts';
 
 const CW = 1920, CH = 1080;
 
