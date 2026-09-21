@@ -13,21 +13,50 @@ import { nextId } from '../core/ids.js';
 // and the audio and video tracks.
 // Scrubbing, cut dragging and pinch zoom touch App state directly, so those handlers stay
 // in App and arrive as props - moving them here would change behaviour, not just location.
+/**
+ * The bottom of the screen: the transport bar and the tracks.
+ *
+ * Sixty-three loose props became these: the hook bundles App already holds (playback, the
+ * timeline gestures, the view, the cut list, the audio) passed whole, and the rest grouped by
+ * what they are about. The body below reads the same names it always did.
+ *
+ * @param {object} p
+ * @param {{cuts: any[], currentCutId: any, setCurrentCutId: Function, parts: any[], numTracks: number, maxTime: number}} p.doc
+ * @param {{showBottom: boolean, setShowBottom: Function, timelineH: number, timelineRef: any, playheadRef: any, fmt: (s: number) => string}} p.view
+ * @param {{hiddenTracks: any, toggleTrackHidden: Function, handleAddTrack: Function, handleDeleteTrack: Function}} p.tracks
+ * @param {{makePartFromSelection: Function, selectPart: Function, renamePart: Function, ungroupPart: Function}} p.partOps
+ * @param {{cutDragArmedRef: any, cutDragMovedRef: any, cutDragTimerRef: any, draggingCutData: any, setDraggingCutData: Function, setResizingData: Function}} p.drag
+ * @param {{audioData: any, audioFile: any, videoOverlay: any, removeVideoOverlay: Function}} p.media
+ * @param {{loopPlay: boolean, setLoopPlay: Function, playbackRate: number, setPlaybackRate: Function}} p.rate
+ * @param {{transparentBg: boolean, setTransparentBg: Function, transparentFormat: string, setTransparentFormat: Function}} p.bg
+ * @param {any} p.playback usePlayback's bundle
+ * @param {any} p.gestures useTimelineGestures' bundle
+ * @param {any} p.tl useTimelineView's bundle
+ * @param {any} p.cutList useCutListUi's bundle
+ * @param {any} p.audio useAudioTrack's bundle
+ * @param {() => void} p.openPlaybackSettings
+ * @param {() => void} p.openVideoSettings
+ * @param {any} p.sceneDetect
+ * @param {Function} p.setSceneCfg
+ * @param {(cs: any[]) => void} p.addCuts
+ */
 export function Timeline({
-    activePartId, audioData, audioFile, currentCutId,
-    currentTime, cutDragArmedRef, cutDragMovedRef, cutDragTimerRef, cuts,
-    draggingCutData, fmt, goToScene, handleAddTrack, handleDeleteAudio, audioMuted, setAudioMuted,
-    handleDeleteTrack, handlePlayPause, handleStop, isPlaying, loopPlay,
-    makePartFromSelection, marquee, maxTime, numTracks,
-    onTimelinePointerDown, parts, playbackRate, openPlaybackSettings,
-    playheadRef, pps, removeVideoOverlay, renamePart, sceneDetect,
-    seekToTime, selectPart, selectedCutIds, setCurrentCutId, setCurrentTime,
-    addCuts, setDraggingCutData, setLoopPlay, setPlaybackRate, setResizingData,
-    setSceneCfg, setSelectedCutIds, setShowBottom, showBottom, snapLinePos,
-    startTimelinePan, timelineH, timelineRef, tlWin, ungroupPart,
-    videoOverlay, hiddenTracks, toggleTrackHidden, openVideoSettings, zoomTimelineAt,
-    transparentBg, setTransparentBg, transparentFormat, setTransparentFormat,
+    doc, view, tracks, partOps, drag, media, rate, bg, playback, gestures, tl, cutList, audio, openPlaybackSettings, openVideoSettings, sceneDetect, setSceneCfg, addCuts,
 }) {
+    const { cuts, currentCutId, setCurrentCutId, parts, numTracks, maxTime } = doc;
+    const { showBottom, setShowBottom, timelineH, timelineRef, playheadRef, fmt } = view;
+    const { hiddenTracks, toggleTrackHidden, handleAddTrack, handleDeleteTrack } = tracks;
+    const { makePartFromSelection, selectPart, renamePart, ungroupPart } = partOps;
+    const { cutDragArmedRef, cutDragMovedRef, cutDragTimerRef, draggingCutData, setDraggingCutData, setResizingData } = drag;
+    const { audioData, audioFile, videoOverlay, removeVideoOverlay } = media;
+    const { loopPlay, setLoopPlay, playbackRate, setPlaybackRate } = rate;
+    const { transparentBg, setTransparentBg, transparentFormat, setTransparentFormat } = bg;
+    const { isPlaying, currentTime, setCurrentTime, playPause: handlePlayPause, stop: handleStop } = playback;
+    const { seekToTime, goToScene, startTimelinePan, onTimelinePointerDown, zoomTimelineAt } = gestures;
+    const { pps, snapLinePos, win: tlWin } = tl;
+    const { activePartId, marquee, selectedCutIds, setSelectedCutIds } = cutList;
+    const { muted: audioMuted, setMuted: setAudioMuted, handleDeleteAudio } = audio;
+
     return (
     <div className="timeline" style={{ height: showBottom ? timelineH : 44, flexShrink: 0 }}>
         <div className="tl-controls">
