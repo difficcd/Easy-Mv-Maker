@@ -10,8 +10,13 @@
 // bitmap and its mask. That is why this is one function with every source named, rather than a
 // scan spread across the code that collects them.
 
+import type { Id } from './types.ts';
+
+/** Everywhere a bitmap id can be held: the document, its history, the clipboard, a lifted selection. */
+export interface BitmapSources { cuts?: unknown; history?: Array<{ cuts?: unknown } | null | undefined> | null; copiedCut?: unknown; lassoClip?: { bitmapId?: Id | null } | null; selection?: { bitmapId?: Id | null, maskBitmapId?: Id | null } | null }
+
 /** Ids referenced by the strokes of a list of cuts. */
-function scanCuts(cuts, into) {
+function scanCuts(cuts: unknown, into: Set<Id>): void {
     if (!Array.isArray(cuts)) return;
     for (const c of cuts) {
         if (!c || !Array.isArray(c.layers)) continue;
@@ -31,8 +36,8 @@ function scanCuts(cuts, into) {
  * @param {{bitmapId?: string|null, maskBitmapId?: string|null}|null} [sources.selection] the live selection, which has a mask as well
  * @returns {Set<string>} every id that must be kept
  */
-export function collectUsedBitmapIds({ cuts, history, copiedCut, lassoClip, selection } = {}) {
-    const used = new Set();
+export function collectUsedBitmapIds({ cuts, history, copiedCut, lassoClip, selection }: BitmapSources = {}): Set<Id> {
+    const used = new Set<Id>();
 
     scanCuts(cuts, used);
 
@@ -55,7 +60,7 @@ export function collectUsedBitmapIds({ cuts, history, copiedCut, lassoClip, sele
 }
 
 /** Ids present in the store that nothing references any more. */
-export function unusedBitmapIds(storeKeys, sources) {
+export function unusedBitmapIds(storeKeys: Iterable<Id>, sources: BitmapSources): Id[] {
     const used = collectUsedBitmapIds(sources);
     return [...storeKeys].filter(id => !used.has(id));
 }

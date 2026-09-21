@@ -18,7 +18,7 @@
 // functions the app already calls.
 
 import { useEffect, useRef, useCallback } from 'react';
-import { pushSnapshot, step } from '../core/historyOps.js';
+import { pushSnapshot, step } from '../core/historyOps.ts';
 
 /**
  * @template T

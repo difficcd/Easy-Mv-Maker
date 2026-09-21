@@ -13,8 +13,8 @@
 // The one rule worth stating: **no cut may be lost.** Cuts that belong to no part are a piece of
 // their own rather than being dropped, because "split this" must never mean "throw some away".
 
-import { collectUsedBitmapIds } from './bitmapRefs.js';
-import { derivePartsFrom } from './partOps.js';
+import { collectUsedBitmapIds } from './bitmapRefs.ts';
+import { derivePartsFrom } from './partOps.ts';
 import { pieceRange } from './exportQueue.js';
 
 /**

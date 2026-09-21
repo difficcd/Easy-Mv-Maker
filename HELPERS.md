@@ -14,7 +14,7 @@ worse than none: it teaches you to distrust it, and then you stop looking.
 Each row says what the helper is **for** and, where it matters, **what goes wrong without it** —
 that second part is usually the reason it exists.
 
-## `src/core/bitmapRefs.js`
+## `src/core/bitmapRefs.ts`
 
 Which stored bitmaps are still reachable, for garbage collection.
 
@@ -104,7 +104,7 @@ the part with the actual rules in it was the part nobody could test.
 | `buildImportedCuts` | The cuts themselves, laid end to end, each holding one paste stroke of its frame - which is what makes an imported frame drawable over rather than a background. |
 | `extractOptionsFor` | The extractor's options from the import dialog's settings: the quality tiers as a table, a range only when its end is after its start, the frame budget off when "whole" is on. |
 
-## `src/core/viewZoom.js`
+## `src/core/viewZoom.ts`
 
 How far the canvas view may be zoomed. It was in three places and they disagreed: pinch and the
 wheel clamped to 0.25-8 while the buttons clamped to 0.1-16, so a pinch stopped where a button did
@@ -143,7 +143,7 @@ Putting an alpha on a colour that came from the theme.
 | `withAlpha` | `colour` at `alpha`, in a form a canvas can parse: hex becomes rgba, an hsl/rgb function takes a slash alpha, one that already carries an alpha has it replaced rather than appended. Handling only hsl dropped the alpha silently for the stylesheet's hex defaults. |
 | `hexToRgb` | A #rrggbb string as {r, g, b}. |
 
-## `src/core/cutClone.js`
+## `src/core/cutClone.ts`
 
 Copying a cut, including the pixels its strokes point at.
 
@@ -209,7 +209,7 @@ How many decoded frames to hold, which to let go of, and which cached layers a d
 | `layerKeysUsingBitmaps` | The layer-canvas keys holding pixels from given frames. Only these are dropped — clearing everything made on-screen frames flicker while playing. |
 | `keysWithPhases` | Includes a boiling layer's `cut:layer#phase` variants. Dropping the plain key alone leaves the phases holding the replaced bitmap. |
 
-## `src/core/frameExport.js`
+## `src/core/frameExport.ts`
 
 What a frame export is going to be, before any of it happens — the arithmetic three exports were each working out again from the same constants.
 
@@ -220,7 +220,7 @@ What a frame export is going to be, before any of it happens — the arithmetic 
 | `GIF_MAX_EDGE` | The long edge a GIF is fitted to. |
 | `LONG_EXPORT_FRAMES` | Above this the export is worth warning about — a question of time and file size, not of surviving it. |
 
-## `src/core/historyOps.js`
+## `src/core/historyOps.ts`
 
 Undo and redo, and the memory budget that bounds them.
 
@@ -417,7 +417,7 @@ Typing into a number field without the value fighting the cursor.
 | `commitNumber` | The value to settle on when the field is left: unreadable text falls back to the old value. |
 | `liveNumber` | The value to report while typing; null means "not a number yet, hold on". Intermediate states like "", "-", "." and "1e" hold rather than snapping to zero. |
 
-## `src/core/playRange.js`
+## `src/core/playRange.ts`
 
 Where the content starts and where it ends. Answered in three places with three different answers
 before this: playback counted cuts, audio and the reference video; the screen recording left out
@@ -429,7 +429,7 @@ began at zero.
 | `playRange` | The time range to play, or export. A selected part wins outright; otherwise the range spans everything that occupies time. An empty project gives 0..0, so callers read that as nothing to do rather than testing for emptiness themselves. |
 | `exportRange` | The play range with its start moved up to the first cut (within the selected part, if any): an intro on the music plays while working but is not exported. End untouched. |
 
-## `src/core/partOps.js`
+## `src/core/partOps.ts`
 
 Parts: groups of cuts made from an import or a selection.
 
@@ -602,7 +602,7 @@ Formatting and parsing times.
 | `fmt` | Seconds as mm:ss.cc, which is what the timeline shows and what parseClock reads back. |
 | `parseClock` | Read a typed time back into seconds. Accepts what a person is likely to type: "1:30", "1:02:03", or a plain number of seconds. |
 
-## `src/core/timelineZoom.js`
+## `src/core/timelineZoom.ts`
 
 Timeline pixels to time, and zooming without the content sliding.
 

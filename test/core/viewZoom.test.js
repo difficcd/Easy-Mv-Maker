@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { clampZoom, ZOOM_MIN, ZOOM_MAX, zoomAbout, pinchedView } from '../../src/core/viewZoom.js';
+import { clampZoom, ZOOM_MIN, ZOOM_MAX, zoomAbout, pinchedView } from '../../src/core/viewZoom.ts';
 
 test('a zoom inside the range is left alone', () => {
     for (const z of [0.1, 0.5, 1, 4, 15.9, 16]) assert.equal(clampZoom(z), z);

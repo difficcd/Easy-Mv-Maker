@@ -21,7 +21,7 @@ export const PPS_MIN = 10;
 export const PPS_MAX = 300;
 
 /** @param {number} pps @returns {number} */
-export function clampPps(pps) {
+export function clampPps(pps: number): number {
     if (!Number.isFinite(pps)) return PPS_MIN;
     return Math.max(PPS_MIN, Math.min(PPS_MAX, pps));
 }
@@ -33,7 +33,7 @@ export function clampPps(pps) {
  * @param {number} pps pixels per second
  * @returns {number}
  */
-export function timeAtX(scrollLeft, localX, pps) {
+export function timeAtX(scrollLeft: number, localX: number, pps: number): number {
     return (scrollLeft + localX - TRACK_GUTTER) / pps;
 }
 
@@ -43,7 +43,7 @@ export function timeAtX(scrollLeft, localX, pps) {
  * @param {number} pps
  * @returns {number}
  */
-export function xAtTime(time, pps) {
+export function xAtTime(time: number, pps: number): number {
     return time * pps + TRACK_GUTTER;
 }
 
@@ -58,7 +58,7 @@ export function xAtTime(time, pps) {
  * @param {number} localX where on screen it should stay
  * @returns {number}
  */
-export function scrollToHold(time, pps, localX) {
+export function scrollToHold(time: number, pps: number, localX: number): number {
     return Math.max(0, xAtTime(time, pps) - localX);
 }
 
@@ -72,7 +72,7 @@ export function scrollToHold(time, pps, localX) {
  * @returns {{pps: number, scrollLeft: number} | null} null when already at the limit, so the
  *   caller can leave the scroll position alone rather than recomputing it from an unchanged scale
  */
-export function zoomAnchored(prevPps, factor, scrollLeft, localX) {
+export function zoomAnchored(prevPps: number, factor: number, scrollLeft: number, localX: number): { pps: number, scrollLeft: number } | null {
     const pps = clampPps(prevPps * factor);
     if (pps === prevPps) return null;
     return { pps, scrollLeft: scrollToHold(timeAtX(scrollLeft, localX, prevPps), pps, localX) };
@@ -87,7 +87,7 @@ export function zoomAnchored(prevPps, factor, scrollLeft, localX) {
  * @param {number} localX midpoint between them, within the element
  * @returns {{pps: number, scrollLeft: number}}
  */
-export function pinchZoom(pinch, dist, localX) {
+export function pinchZoom(pinch: { startPps: number, startDist: number, anchorTime: number }, dist: number, localX: number): { pps: number, scrollLeft: number } {
     const pps = clampPps(pinch.startPps * (dist / (pinch.startDist || 1)));
     return { pps, scrollLeft: scrollToHold(pinch.anchorTime, pps, localX) };
 }

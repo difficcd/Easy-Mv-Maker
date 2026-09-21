@@ -76,10 +76,10 @@ import {
     mediaReducer, EMPTY_MEDIA, setAudioClip, clearAudio,
     loadVideo, clearVideo, setVideoCuts, setVideoOpacity, clearVideoCuts, moveTrack, resizeAudio,
 } from './core/mediaReducer.js';
-import { cloneCutContents as cloneCutContentsPure, placeCopies } from './core/cutClone.js';
+import { cloneCutContents as cloneCutContentsPure, placeCopies } from './core/cutClone.ts';
 import { DEFAULT_KEYS, KEY_LABELS, keyOf, keymapFrom, findConflicts } from './core/shortcuts.js';
-import { derivePartsFrom, deriveVideoBatches } from './core/partOps.js';
-import { playRange, exportRange } from './core/playRange.js';
+import { derivePartsFrom, deriveVideoBatches } from './core/partOps.ts';
+import { playRange, exportRange } from './core/playRange.ts';
 import { brushUp, brushDown } from './core/brushSize.ts';
 import {
     cutsReducer, replaceCuts, addCuts, updateCut, setCutAnim, setCutCamera, clearCut,
@@ -89,14 +89,14 @@ import {
 } from './core/cutsReducer.js';
 import { migrateCuts, projectSettings, makeLoadProgress } from './core/projectFormat.js';
 import { audioExt, videoExt, collectBitmaps, blobToDataURL, packMedia, fillBitmapStore, bitmapLoadCount } from './core/projectAssets.js';
-import { xAtTime } from './core/timelineZoom.js';
+import { xAtTime } from './core/timelineZoom.ts';
 import { dragOnWindow } from './core/windowDrag.ts';
 // Recording a camera path reuses the pen the way a part's motion path does; the two cannot be
 // active at once, and startDraw checks this one first because a camera is a property of the cut
 // rather than of whichever layer happens to be selected.
 
 import { topCutAt } from './engine/selectCuts.js';
-import { unusedBitmapIds } from './core/bitmapRefs.js';
+import { unusedBitmapIds } from './core/bitmapRefs.ts';
 import { dragCut, resizeCut } from './core/cutOps.js';
 import { accentSoft } from './canvas/editChrome.js';
 import { bucketFillTransparentRegion } from './canvas/fill.js';

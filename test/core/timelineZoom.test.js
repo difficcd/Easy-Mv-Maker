@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
     TRACK_GUTTER, PPS_MIN, PPS_MAX, clampPps, timeAtX, xAtTime, scrollToHold, zoomAnchored, pinchZoom,
-} from '../../src/core/timelineZoom.js';
+} from '../../src/core/timelineZoom.ts';
 
 test('clampPps holds the scale inside its usable range', () => {
     assert.equal(clampPps(50), 50);

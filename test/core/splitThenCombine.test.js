@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { splitProject, piecesAreSequential } from '../../src/core/splitProject.js';
 import { planQueue, pieceRange } from '../../src/core/exportQueue.js';
-import { playRange } from '../../src/core/playRange.js';
+import { playRange } from '../../src/core/playRange.ts';
 
 // Splitting and combining are two features that only mean anything together, and each was written
 // with the other in mind rather than against it. "Split it and put it back and you have the same

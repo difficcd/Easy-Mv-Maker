@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { zoomAbout, pinchedView } from '../core/viewZoom.js';
+import { zoomAbout, pinchedView } from '../core/viewZoom.ts';
 import { dragOnWindow } from '../core/windowDrag.ts';
 
 /**

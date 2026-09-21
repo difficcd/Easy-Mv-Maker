@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { frameExportPlan, exportFileInfo, GIF_MAX_EDGE, LONG_EXPORT_FRAMES } from '../../src/core/frameExport.js';
+import { frameExportPlan, exportFileInfo, GIF_MAX_EDGE, LONG_EXPORT_FRAMES } from '../../src/core/frameExport.ts';
 
 const hd = { cw: 1920, ch: 1080 };
 

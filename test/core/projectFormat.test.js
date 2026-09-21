@@ -6,7 +6,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { projectSettings, migrateCuts, makeLoadProgress, MAX_TRACKS } from '../../src/core/projectFormat.js';
-import { PPS_MIN, PPS_MAX } from '../../src/core/timelineZoom.js';
+import { PPS_MIN, PPS_MAX } from '../../src/core/timelineZoom.ts';
 import { CANVAS_MAX_EDGE } from '../../src/core/canvasSize.ts';
 
 // ── settings ───────────────────────────────────────────────────────────────

@@ -15,7 +15,7 @@
 //     plain layer at the root
 //   - texts arrived later still, so older cuts have no texts array at all
 
-import { clampPps } from './timelineZoom.js';
+import { clampPps } from './timelineZoom.ts';
 import { clampCanvasSize } from './canvasSize.ts';
 
 /**

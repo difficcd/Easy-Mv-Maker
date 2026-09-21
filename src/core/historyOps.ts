@@ -22,7 +22,7 @@ const MIN_HISTORY = 20;   // even a very heavy project keeps a usable amount of 
 const MAX_HISTORY = 400;  // and a trivial one does not keep an unbounded amount
 
 /** Steps affordable at this snapshot size. Exported for the tests and for anyone tuning it. */
-export function limitFor(snapshotBytes, budget = HISTORY_BUDGET) {
+export function limitFor(snapshotBytes: number, budget = HISTORY_BUDGET): number {
     return Math.max(MIN_HISTORY, Math.min(MAX_HISTORY, Math.floor(budget / Math.max(1, snapshotBytes))));
 }
 
@@ -41,7 +41,7 @@ export const HISTORY_LIMIT = MAX_HISTORY;
  * @returns {{history: Array, index: number, changed: boolean}} changed is false when the
  *   snapshot matches what is already on screen and nothing was recorded
  */
-export function pushSnapshot(history, index, snapshot, limit = null) {
+export function pushSnapshot<S>(history: S[] | null | undefined, index: number, snapshot: S, limit: number | null = null): { history: S[], index: number, changed: boolean } {
     const list = Array.isArray(history) ? history : [];
     const json = JSON.stringify(snapshot);
     // Nothing actually changed - a drag that ended where it started, an effect firing again -
@@ -62,14 +62,14 @@ export function pushSnapshot(history, index, snapshot, limit = null) {
 }
 
 /** Whether there is anything to step to. Index 0 is the original state, so undo needs 1 or more. */
-export const canUndo = (history, index) => index > 0;
-export const canRedo = (history, index) => index < (Array.isArray(history) ? history.length : 0) - 1;
+export const canUndo = (history: unknown[] | null | undefined, index: number): boolean => index > 0;
+export const canRedo = (history: unknown[] | null | undefined, index: number): boolean => index < (Array.isArray(history) ? history.length : 0) - 1;
 
 /**
  * Step one snapshot back or forward.
  * @returns {{index: number, snapshot: any}|null} null at either end, so the caller does nothing
  */
-export function step(history, index, dir) {
+export function step<S>(history: S[] | null | undefined, index: number, dir: number): { index: number, snapshot: S } | null {
     const list = Array.isArray(history) ? history : [];
     if (dir < 0 && !canUndo(list, index)) return null;
     if (dir > 0 && !canRedo(list, index)) return null;

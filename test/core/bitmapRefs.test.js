@@ -4,7 +4,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { collectUsedBitmapIds, unusedBitmapIds } from '../../src/core/bitmapRefs.js';
+import { collectUsedBitmapIds, unusedBitmapIds } from '../../src/core/bitmapRefs.ts';
 
 const cutWith = (...bitmapIds) => ({
     id: 'c1',
