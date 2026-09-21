@@ -117,14 +117,14 @@ function ToolSettings({
 }
 
 export function ToolsPanel({
-    width, onClose, TOOL_TYPES, tool, handleSetTool,
-    onionPrev, setOnionPrev, onionNext, setOnionNext,
-    globalUndo, globalRedo, handleClearCut, doTween,
-    hasLassoClip, pasteLassoSelection, pickingColor, pickColor, isSelectionTool,
-    color, applyColor, opacity, setOpacity,
-    pressureOn = true, setPressureOn = undefined,
-    ...settings
+    panel, tools, brush, edit, onion,
 }) {
+    const { width, onClose, TOOL_TYPES } = panel;
+    const { tool, handleSetTool, isSelectionTool, pickingColor, pickColor, hasLassoClip, pasteLassoSelection } = tools;
+    // pressureOn defaults on; the rest of the brush settings go to the child as they always did.
+    const { color, applyColor, opacity, setOpacity, pressureOn = true, setPressureOn, ...settings } = brush;
+    const { globalUndo, globalRedo, handleClearCut, doTween } = edit;
+    const { onionPrev, setOnionPrev, onionNext, setOnionNext } = onion;
     return (
         <div className="toolbar" style={{ width, flexShrink: 0 }}>
             <div className="panel-head">

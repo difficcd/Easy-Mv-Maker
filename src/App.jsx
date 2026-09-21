@@ -1902,18 +1902,12 @@ export default function App() {
     // dock, the right dock, or a floating window without being duplicated.
     const toolsPanelEl = (
         <ToolsPanel
-            width={toolW} onClose={() => setShowLeft(false)}
-            TOOL_TYPES={TOOL_TYPES} tool={tool} handleSetTool={handleSetTool}
-            onionPrev={onionPrev} setOnionPrev={setOnionPrev} onionNext={onionNext} setOnionNext={setOnionNext}
-            globalUndo={globalUndo} globalRedo={globalRedo} handleClearCut={handleClearCut} doTween={doTween}
-            hasLassoClip={hasLassoClip} pasteLassoSelection={pasteLassoSelection}
-            pickingColor={pickingColor} pickColor={pickColor} isSelectionTool={isSelectionTool}
-            color={color} applyColor={applyColor} opacity={opacity} setOpacity={setOpacity}
-            softMode={softMode} setSoftMode={setSoftMode}
-            rulerMode={rulerMode} setRulerMode={setRulerMode}
-            mosaicBlock={mosaicBlock} setMosaicBlock={setMosaicBlock}
-            toolSize={toolSize} setToolSize={setToolSize}
-            pressureOn={pressureOn} setPressureOn={setPressureOn} />
+                    panel={{ width: toolW, onClose: () => setShowLeft(false), TOOL_TYPES }}
+                    tools={{ tool, handleSetTool, isSelectionTool, pickingColor, pickColor, hasLassoClip, pasteLassoSelection }}
+                    brush={{ color, applyColor, opacity, setOpacity, toolSize, setToolSize, pressureOn, setPressureOn, softMode, setSoftMode, rulerMode, setRulerMode, mosaicBlock, setMosaicBlock }}
+                    edit={{ globalUndo, globalRedo, handleClearCut, doTween }}
+                    onion={{ onionPrev, setOnionPrev, onionNext, setOnionNext }}
+                    />
     );
 
     const colorPanelEl = (
@@ -1934,23 +1928,15 @@ export default function App() {
 
     const cutPanelEl = (
                 <CutLayerPanel
-                    collapsedCutIds={cutList.collapsedCutIds} copiedCut={copiedCut} currentCutId={currentCutId} cuts={cuts}
-                    deleteTextObject={deleteTextObject} deleteVideoBatch={deleteVideoBatch}
-                    onListDrop={onListDrop} expandedCuts={cutList.expandedCuts} handleAddCut={handleAddCut}
-                    handleAddFolder={handleAddFolder} handleAddLayer={handleAddLayer} handleCopyCut={handleCopyCut}
-                    handleCutClick={handleCutClick} handleDeleteCut={handleDeleteCut}
-                    handleDuplicateCut={handleDuplicateCut} handlePasteCut={handlePasteCut}
-                    handleSetTool={handleSetTool} openEditText={openEditText} renameCut={renameCut}
-                    renamingCutId={cutList.renamingCutId} layerRows={layerRows} rightW={rightW}
-                    selectedCutIds={cutList.selectedCutIds} selectedText={selectedText}
-                    setRenamingCutId={cutList.setRenamingCutId} setSelectedText={setSelectedText}
-                    setShowRight={setShowRight} showRight={showRight} toggleCutCollapse={cutList.toggleCutCollapse}
-                    toggleCutSettings={cutList.toggleCutSettings} toggleTextVisible={toggleTextVisible}
-                    updCutAnim={updCutAnim} updCutTime={updCutTime}
-                    updCutCamera={updCutCamera} cameraCapture={cameraCapture} setCameraCapture={setCameraCapture}
-                    canvasW={CANVAS_W} canvasH={CANVAS_H}
-                    rightTab={rightTab} setRightTab={setRightTab} textEditorBody={textEditorBody} cancelText={cancelText}
-                    videoBatches={videoBatches} />
+                    doc={{ cuts, currentCutId, copiedCut, videoBatches, layerRows }}
+                    cutOps={{ handleAddCut, handleCopyCut, handleCutClick, handleDeleteCut, handleDuplicateCut, handlePasteCut, renameCut, deleteVideoBatch, updCutAnim, updCutTime, updCutCamera }}
+                    layerOps={{ handleAddFolder, handleAddLayer, onListDrop, handleSetTool }}
+                    text={{ selectedText, setSelectedText, openEditText, deleteTextObject, toggleTextVisible, textEditorBody, cancelText }}
+                    camera={{ cameraCapture, setCameraCapture }}
+                    panel={{ showRight, setShowRight, rightW, rightTab, setRightTab }}
+                    canvas={{ canvasW: CANVAS_W, canvasH: CANVAS_H }}
+                    cutList={cutList}
+                    />
     );
 
 
@@ -2032,18 +2018,12 @@ export default function App() {
             )}
             {dialogs.help && <HelpModal keymap={keymap} onClose={() => dialogs.setHelp(false)} />}
             <TopBar
-                doNew={doNew} doSave={doSave} doOpen={doOpen} doLocalSave={doLocalSave}
-                openLocalList={openLocalList} doServerSave={doServerSave} openServerList={openServerList}
-                doServerBackup={doServerBackup} openBackupList={openBackupList} backupBusy={backupBusy}
-                handleAudioUpload={handleAudioUpload} loadYoutubeAudio={loadYoutubeAudio}
-                handleDeleteAudio={handleDeleteAudio} audioFile={audioFile} openVideoImport={openVideoImport}
-                loadYoutubeVideo={loadYoutubeVideo} videoFileRef={videoFileRef} recentVideos={vid.recent}
-                reimportRecent={reimportRecent} serverAvailable={serverAvailable} setToast={notices.setToast}
-                canvasW={CANVAS_W} canvasH={CANVAS_H}
-                setCanvasSize={setCanvasSize} setShowHelp={dialogs.setHelp} setShowSettings={dialogs.setSettings}
-                keymap={keymap} view={view} zoomCanvas={zoomCanvas} resetView={resetView} autoSavedAt={autoSavedAt}
-                autosaveErr={autosaveErr} backupAt={backupAt} storageInfo={storageInfo} handleExport={() => dialogs.setExportRange(true)}
-                doSplitSave={doSplitSave} handleExportPieces={handleExportPieces} />
+                    project={{ doNew, doSave, doOpen, doLocalSave, openLocalList, doServerSave, openServerList, doServerBackup, openBackupList, backupBusy, doSplitSave, handleExportPieces, handleExport: () => dialogs.setExportRange(true) }}
+                    status={{ autoSavedAt, autosaveErr, backupAt, storageInfo, serverAvailable, setToast: notices.setToast }}
+                    media={{ handleAudioUpload, loadYoutubeAudio, handleDeleteAudio, audioFile, openVideoImport, loadYoutubeVideo, videoFileRef, recentVideos: vid.recent, reimportRecent }}
+                    canvas={{ canvasW: CANVAS_W, canvasH: CANVAS_H, setCanvasSize, view, zoomCanvas, resetView }}
+                    dialogs={{ setShowHelp: dialogs.setHelp, setShowSettings: dialogs.setSettings, keymap }}
+                    />
             <DocTabs
                 tabs={tabs} activeTabId={activeTabId} switchTab={switchTab} renameTab={renameTab} closeTab={closeTab} newTab={newTab}
                 selection={selection} setSelection={setSelection} extractSelectionToPart={extractSelectionToPart}
