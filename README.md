@@ -92,13 +92,19 @@ On a tablet, scan the QR printed by `npm run dev` (same Wi-Fi). If 5173 is taken
 ```bash
 npm run check      # everything below, in order, then a production build
 npm test           # node --test, no test framework dependency
-npm run typecheck  # tsc --noEmit (allowJs/checkJs, files stay .jsx)
+npm run typecheck  # tsc twice: the JavaScript leniently (checkJs), the TypeScript strictly
 npm run lint       # eslint-plugin-react-hooks
 npm run smoke      # boots the built app in a headless browser and draws a stroke
 ```
 
 `npm run check` is the gate: typecheck, the unit tests, then six static guards, then the build.
 The same steps run in CI on every push and pull request.
+
+The code is moving to TypeScript one module at a time (#268). A converted module is a `.ts` file
+under `src/`, held to `strict` by `tsconfig.strict.json`; the JavaScript around it is checked as
+before. Importers name a `.ts` module with its extension - that is what Node's own type
+stripping needs in the tests (`--experimental-strip-types`, no extra dependency), and the
+bundler and `tsc` accept it. New modules are written in TypeScript.
 
 | Guard | What it fails on |
 |---|---|

@@ -1,7 +1,7 @@
 import { tr } from '../../i18n';
 import { targetCanvasFor } from '../../core/canvasSize.js';
 import { Modal } from '../Modal.jsx';
-import { parseClock } from '../../core/timeCode.js';
+import { parseClock } from '../../core/timeCode.ts';
 import { NumField, clampNum } from '../NumField.jsx';
 
 // The video-to-frame-cuts import dialog. While extracting it shows only progress;

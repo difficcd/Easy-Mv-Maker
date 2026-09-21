@@ -34,7 +34,7 @@ import { useTimelineGestures } from './hooks/useTimelineGestures.js';
 import { useTextDrag } from './hooks/useTextDrag.js';
 import { useLayerDnD } from './hooks/useLayerDnD.js';
 import { useCanvasView } from './hooks/useCanvasView.js';
-import { fmt, parseClock } from './core/timeCode.js';
+import { fmt, parseClock } from './core/timeCode.ts';
 import { textFromEdit, editFromText, blankTextEdit } from './core/textEdit.js';
 import { useHistory } from './hooks/useHistory.js';
 import { usePlayback } from './hooks/usePlayback.js';

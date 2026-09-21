@@ -20,7 +20,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const ROOTS = ['src', 'server', 'scripts'];
-const CODE = /\.(jsx?|mjs)$/;
+const CODE = /\.([jt]sx?|mjs)$/;
 
 /** @param {string} dir */
 function files(dir) {

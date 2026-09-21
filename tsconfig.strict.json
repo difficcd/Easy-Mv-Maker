@@ -1,0 +1,10 @@
+{
+  // The TypeScript files only, held to the full standard. See tsconfig.json for why there are two.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "noImplicitAny": true,
+    "checkJs": false
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
+}

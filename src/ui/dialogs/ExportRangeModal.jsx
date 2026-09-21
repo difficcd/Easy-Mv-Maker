@@ -1,7 +1,7 @@
 import React from 'react';
 import { tr } from '../../i18n';
 import { Modal } from '../Modal.jsx';
-import { fmt, parseClock } from '../../core/timeCode.js';
+import { fmt, parseClock } from '../../core/timeCode.ts';
 
 /**
  * Start and end for an export, before anything is recorded.
