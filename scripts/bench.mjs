@@ -6,7 +6,7 @@
 // helpers worth caching", not as a full performance picture.
 
 import { strokeSig, flattenLayersInUiOrder } from '../src/core/layerTree.ts';
-import { sampleWave, swayWeightAt } from '../src/core/sway.js';
+import { sampleWave, swayWeightAt } from '../src/core/sway.ts';
 import { applyEase } from '../src/core/easing.ts';
 import { pointInPolygon } from '../src/core/geometry.ts';
 

@@ -4,7 +4,7 @@ import { CANVAS_H, CANVAS_W } from './canvasSize.ts';
 import { cutProgress } from './cutTime.ts';
 import { SWING, applyEase, effectAt, samplePath, swing } from './easing.ts';
 import { sampleKeys } from './keyframes.ts';
-import { swayWaveAt } from './sway.js';
+import { swayWaveAt } from './sway.ts';
 import type { TimeSpan, Point } from './types.ts';
 import type { Keyframe } from './keyframes.ts';
 

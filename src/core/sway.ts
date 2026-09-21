@@ -8,7 +8,14 @@
 // the line from start to end, so anything from a scribble that doubles back to a gentle wave
 // sways exactly as it was drawn.
 // The returned amp (px) is how far that curve actually swung, and is used as the default strength.
-export function curveToWave(pts, samples = 64) {
+import type { Point } from './types.ts';
+
+/** One control point of a sway profile: where along the part (0..1) and how much it bends (-1..1). */
+export interface SwayPoint { p: number; w: number }
+/** A profile as stored: bare weights spread evenly, or points with their own positions. */
+export type SwayProfile = ReadonlyArray<number | { p?: unknown, w?: unknown } | null | undefined>;
+
+export function curveToWave(pts: readonly Point[] | null | undefined, samples = 64): { wave: number[], amp: number } | null {
     if (!pts || pts.length < 3) return null;
     const a = pts[0], b = pts[pts.length - 1];
     let ux = b.x - a.x, uy = b.y - a.y;
@@ -18,7 +25,7 @@ export function curveToWave(pts, samples = 64) {
     const arc = [0];
     for (let i = 1; i < pts.length; i++) arc.push(arc[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
     const total = arc[arc.length - 1] || 1;
-    const out = new Array(samples);
+    const out: number[] = new Array(samples);
     let j = 0;
     for (let k = 0; k < samples; k++) {
         const target = (k / (samples - 1)) * total;
@@ -51,7 +58,7 @@ export function curveToWave(pts, samples = 64) {
  * @param {number[] | null | undefined} curve
  * @returns {number} -1..1
  */
-export function swayWaveAt(time, speed, curve) {
+export function swayWaveAt(time: number, speed: number | null | undefined, curve: readonly number[] | null | undefined): number {
     const sp = speed || 1;
     return (curve && curve.length > 1) ? sampleWave(curve, sp * time) : Math.sin(2 * Math.PI * sp * time);
 }
@@ -76,13 +83,13 @@ export function swayWaveAt(time, speed, curve) {
  * @param {{amp: number, speed: number, curve?: number[] | null, time: number, lag?: number}} o
  * @returns {number} displacement in pixels
  */
-export function swayDispAt(p01, { amp, speed, curve, time, lag }) {
+export function swayDispAt(p01: number, { amp, speed, curve, time, lag }: { amp: number, speed: number, curve?: readonly number[] | null, time: number, lag?: number }): number {
     return amp * swayWaveAt(time - (lag || 0) * p01, speed, curve);
 }
 
-export function swayWeightAt(profile, p) {
+export function swayWeightAt(profile: SwayProfile | null | undefined, p: number): number {
     const n = profile?.length || 0;
-    if (!n) return 1;
+    if (!profile || !n) return 1;
     const at = swayPointAt(profile);
     if (n === 1) return at(0).w;
     const x = Math.min(1, Math.max(0, p));
@@ -112,7 +119,7 @@ export function swayWeightAt(profile, p) {
  * @param {Array<number | {p: number, w: number}>} profile
  * @returns {(i: number) => {p: number, w: number}}
  */
-export function swayPointAt(profile) {
+export function swayPointAt(profile: SwayProfile): (i: number) => SwayPoint {
     const n = profile.length;
     return (i) => {
         const v = profile[i];
@@ -140,14 +147,14 @@ export function swayPointAt(profile) {
  * @param {Array<number | {p: number, w: number}>} profile
  * @returns {{p: number, w: number}[]}
  */
-export function sortSwayProfile(profile) {
+export function sortSwayProfile(profile: unknown): SwayPoint[] {
     if (!Array.isArray(profile)) return [];
     const at = swayPointAt(profile);
-    return profile.map((_, i) => at(i)).sort((a, b) => a.p - b.p);
+    return (profile as SwayProfile).map((_, i) => at(i)).sort((a, b) => a.p - b.p);
 }
 
 // Samples the waveform cyclically over 0..1 with linear interpolation.
-export function sampleWave(wave, u) {
+export function sampleWave(wave: readonly number[], u: number): number {
     const n = wave.length;
     if (!n) return 0;
     const x = (((u % 1) + 1) % 1) * n;

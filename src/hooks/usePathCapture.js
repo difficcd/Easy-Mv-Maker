@@ -8,7 +8,7 @@
 
 import { useState } from 'react';
 import { preparePath } from '../core/pathMotion.ts';
-import { curveToWave } from '../core/sway.js';
+import { curveToWave } from '../core/sway.ts';
 import { clampRegion } from '../canvas/pixelEffects.js';
 import { setCutCamera } from '../core/cutsReducer.js';
 import { tr } from '../i18n.js';

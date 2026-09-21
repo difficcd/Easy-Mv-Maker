@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { splitProject, pieceFileName } from '../../src/core/splitProject.js';
+import { splitProject, pieceFileName } from '../../src/core/splitProject.ts';
 
 const cut = (id, partId, partName, bitmapIds = [], startTime = id, endTime = id + 1) => ({
     id, partId, partName, startTime, endTime, track: 0, texts: [],

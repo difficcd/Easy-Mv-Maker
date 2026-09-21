@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { textFromEdit, editFromText, blankTextEdit } from '../../src/core/textEdit.js';
+import { textFromEdit, editFromText, blankTextEdit } from '../../src/core/textEdit.ts';
 
 const now = { color: '#123456', opacity: 0.7 };
 
