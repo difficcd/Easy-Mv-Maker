@@ -5,7 +5,7 @@ import { loadVideo, clearVideo } from '../core/mediaReducer.js';
 import { fetchAsset } from '../core/api.js';
 import { tr } from '../i18n.js';
 import { nextId } from '../core/ids.js';
-import { parseClock } from '../core/timeCode.js';
+import { parseClock } from '../core/timeCode.ts';
 import { importPlacement, buildImportedCuts, extractOptionsFor } from '../core/videoCuts.js';
 import { replaceBatchCuts } from '../core/cutsReducer.js';
 import { targetCanvasFor } from '../core/canvasSize.js';

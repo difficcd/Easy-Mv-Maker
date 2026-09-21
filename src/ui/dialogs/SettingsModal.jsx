@@ -2,7 +2,7 @@ import { KeyConflicts, KeyRows } from './ToolKeysModal.jsx';
 import { tr } from '../../i18n';
 import { TOOL_PREFIX } from '../../core/shortcuts.js';
 import { Modal } from '../Modal.jsx';
-import { fmt } from '../../core/timeCode.js';
+import { fmt } from '../../core/timeCode.ts';
 import { NumField, clampNum } from '../NumField.jsx';
 
 /** A factor as short text: 4 rather than 4.00, 1.5 rather than 1.50. */

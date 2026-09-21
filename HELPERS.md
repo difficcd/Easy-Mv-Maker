@@ -593,7 +593,7 @@ Making a preview speed the film's real speed — the other half of the playback 
 | `scaleProjectTimes` | The cuts stretched about time zero, **and every per-second rate slowed to match** — cut/text in-out durations, `typeSpeed`, `emSpeed`, `swaySpeed`, `roughSpeed`. Rates measured against the cut (`speed`, `deformSpeed`, `moveSpeed`, keyframes, paths) are deliberately untouched. |
 | `bakePlan` | What baking will do — the factor, the running time before and after, and which media tracks will be left behind, since a sound cannot be stretched. |
 
-## `src/core/timeCode.js`
+## `src/core/timeCode.ts`
 
 Formatting and parsing times.
 

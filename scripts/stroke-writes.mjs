@@ -55,7 +55,7 @@ const walk = (dir) => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
         const path = join(dir, entry.name);
         if (entry.isDirectory()) { walk(path); continue; }
-        if (!/\.jsx?$/.test(entry.name)) continue;
+        if (!/\.[jt]sx?$/.test(entry.name)) continue;
         const rel = path.split('\\').join('/');
         for (const hit of strokeWrites(readFileSync(path, 'utf8'))) {
             if (!isAllowed(rel, hit.text)) found.push({ ...hit, file: rel });

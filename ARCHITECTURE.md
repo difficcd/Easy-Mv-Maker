@@ -75,7 +75,7 @@ know storage exists at all, because reading it is `useStored`'s decoder.
 - `historyOps.js` — undo/redo. `pushSnapshot` sizes how far back it reaches by memory rather than
   a step count, since a snapshot copies the whole document.
 - `shortcuts.js` — `DEFAULT_KEYS`, `KEY_LABELS`, `keyOf`, `matchShortcut`, `keymapFrom`, `findConflicts`.
-- `timeCode.js` — `fmt` / `parseClock` for the timeline clock.
+- `timeCode.ts` — `fmt` / `parseClock` for the timeline clock. The first module in TypeScript (#268).
 - `numInput.js` — the rules behind a number field that can be typed into.
 - `bitmapRefs.js` — `collectUsedBitmapIds` / `unusedBitmapIds`. Every reference source is named in
   one place; miss one and the collector frees pixels undo or paste still needs.

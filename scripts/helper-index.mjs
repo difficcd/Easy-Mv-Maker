@@ -46,7 +46,7 @@ const found = [];
 for (const dir of DIRS) {
     if (!existsSync(dir)) continue;
     for (const file of readdirSync(dir)) {
-        if (!/\.jsx?$/.test(file)) continue;
+        if (!/\.[jt]sx?$/.test(file)) continue;
         const path = `${dir}/${file}`;
         for (const name of exportsOf(readFileSync(join(dir, file), 'utf8'))) {
             found.push({ name, path });

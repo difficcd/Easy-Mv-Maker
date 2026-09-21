@@ -38,7 +38,7 @@ const walk = (dir) => {
         const path = join(dir, name);
         if (entry.isDirectory()) { walk(path); continue; }
         const rel = path.replace(/\\/g, '/');
-        if (!/\.jsx?$/.test(name) || rel === DICT || rel === JA_DICT) continue;
+        if (!/\.[jt]sx?$/.test(name) || rel === DICT || rel === JA_DICT) continue;
         const src = readFileSync(path, 'utf8');
         allSource += src + '\n';
         for (const m of src.matchAll(new RegExp("tr\\('" + STRING + "'", 'g'))) {

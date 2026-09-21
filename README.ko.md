@@ -90,12 +90,17 @@ npm run build
 ```bash
 npm run check      # 아래 전부를 순서대로, 그리고 프로덕션 빌드
 npm test           # node --test, 테스트 프레임워크 의존성 없음
-npm run typecheck  # tsc --noEmit (allowJs/checkJs, 파일은 .jsx 그대로)
+npm run typecheck  # tsc 두 번: JS는 느슨하게(checkJs), TS는 strict로
 npm run lint       # eslint-plugin-react-hooks
 npm run smoke      # 빌드된 앱을 헤드리스 브라우저에서 띄워 선 하나 긋기
 ```
 
 `npm run check`가 관문입니다: 타입 검사, 단위 테스트, 정적 가드 여섯, 빌드. 같은 단계가 모든 푸시와 PR에서 CI로 돕니다.
+
+코드는 모듈 하나씩 TypeScript로 옮기는 중입니다(#268). 옮긴 모듈은 `src/` 아래 `.ts` 파일이고
+`tsconfig.strict.json`이 strict로 검사하며, 주변 JS는 전처럼 검사합니다. `.ts` 모듈은 확장자까지
+적어 import합니다 — 테스트에서 Node 자체 타입 스트립(`--experimental-strip-types`, 추가 의존성
+없음)이 그걸 필요로 하고, 번들러와 `tsc`도 받아들입니다. 새 모듈은 TypeScript로 씁니다.
 
 | 가드 | 실패 조건 |
 |---|---|
