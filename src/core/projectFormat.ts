@@ -17,6 +17,16 @@
 
 import { clampPps } from './timelineZoom.ts';
 import { clampCanvasSize } from './canvasSize.ts';
+/** The settings a stored project restores, each clamped to what the app accepts. */
+export interface ProjectSettings {
+    canvas: { w: number, h: number } | null;
+    numTracks: number;
+    currentCutId: any;
+    onionPrev: boolean;
+    onionNext: boolean;
+    pps: number;
+}
+
 
 /**
  * The most timeline tracks a project may claim.
@@ -27,7 +37,7 @@ import { clampCanvasSize } from './canvasSize.ts';
 export const MAX_TRACKS = 64;
 
 /** At least one track to put a cut on, at most MAX_TRACKS. Anything unreadable is the default 2. */
-function clampTracks(n) {
+function clampTracks(n: unknown): number {
     const t = Math.round(Number(n));
     if (!Number.isFinite(t)) return 2;
     return Math.max(1, Math.min(MAX_TRACKS, t));
@@ -44,7 +54,7 @@ function clampTracks(n) {
  * width, a negative numTracks puts cuts on track -1 where nothing draws them, and a canvas of
  * 100000 square asks for forty gigabytes.
  */
-export function projectSettings(data) {
+export function projectSettings(data: any): ProjectSettings {
     const cuts = Array.isArray(data?.cuts) ? data.cuts : [];
     return {
         // Half a size is treated as none at all: a width with no height gives a canvas of NaN.
@@ -67,13 +77,13 @@ export function projectSettings(data) {
  * Written as spread-then-override so a field the file already has always wins, and adding a new
  * default here can never overwrite real data in an existing project.
  */
-export function migrateCuts(cuts) {
-    return (Array.isArray(cuts) ? cuts : []).map(c => ({
+export function migrateCuts(cuts: unknown): Cut[] {
+    return (Array.isArray(cuts) ? cuts : []).map((c: any): Cut => ({
         ...c,
         partId: c.partId ?? c.videoBatch,
         partName: c.partName ?? c.videoLabel,
         texts: Array.isArray(c.texts) ? c.texts : [],
-        layers: (Array.isArray(c.layers) ? c.layers : []).map(l => ({
+        layers: (Array.isArray(c.layers) ? c.layers : []).map((l: any): Layer => ({
             type: 'layer',
             parentId: null,
             ...l,
@@ -96,7 +106,7 @@ export function migrateCuts(cuts) {
  * @param {number} [minToShow] below this many items, report nothing at all
  * @returns {{heavy: boolean, tick: () => void}}
  */
-export function makeLoadProgress(total, onProgress, minToShow = 12) {
+export function makeLoadProgress(total: number, onProgress: (p: { done: number, total: number }) => void, minToShow = 12): { heavy: boolean, tick: () => void } {
     const heavy = total > minToShow;
     const step = Math.max(1, Math.floor(total / 100));
     let done = 0, lastPaint = 0;

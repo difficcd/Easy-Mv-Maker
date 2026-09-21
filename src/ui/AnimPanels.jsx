@@ -1,7 +1,7 @@
 import { Circle } from 'lucide-react';
 import React from 'react';
-import { ANIM_DEFAULT } from '../core/cutAnim.js';
-import { LAYER_ANIM_DEFAULT } from '../core/layerAnim.js';
+import { ANIM_DEFAULT } from '../core/cutAnim.ts';
+import { LAYER_ANIM_DEFAULT } from '../core/layerAnim.ts';
 import { CAMERA_DEFAULT, CAMERA_PRESETS, resolveCamera } from '../core/camera.js';
 import { randomId } from '../core/ids.ts';
 

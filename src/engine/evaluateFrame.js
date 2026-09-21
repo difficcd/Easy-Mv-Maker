@@ -13,10 +13,10 @@
 // needs a context: compositing clip groups, slicing for sway, the selection mask, and leaving out
 // a layer that the drag overlay is drawing instead.
 
-import { computeCutAnim } from '../core/cutAnim.js';
+import { computeCutAnim } from '../core/cutAnim.ts';
 import { cutProgress } from '../core/cutTime.ts';
 import { safeArray } from '../core/geometry.ts';
-import { computeLayerAnim } from '../core/layerAnim.js';
+import { computeLayerAnim } from '../core/layerAnim.ts';
 import { flattenLayersInUiOrder } from '../core/layerTree.ts';
 import { computeTextAnim } from '../core/textAnim.js';
 import { computeCamera } from '../core/camera.js';

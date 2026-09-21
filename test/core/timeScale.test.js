@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { bakeFactor, scaleProjectTimes, bakePlan } from '../../src/core/timeScale.ts';
-import { computeCutAnim } from '../../src/core/cutAnim.js';
-import { computeLayerAnim } from '../../src/core/layerAnim.js';
+import { computeCutAnim } from '../../src/core/cutAnim.ts';
+import { computeLayerAnim } from '../../src/core/layerAnim.ts';
 import { computeTextAnim, charAnimAt } from '../../src/core/textAnim.js';
 
 const CW = 1920, CH = 1080;

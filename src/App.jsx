@@ -87,7 +87,7 @@ import {
     assignPartTo, renamePart as renamePartAction, ungroupPart as ungroupPartAction, removeBatch,
     insertCutsShifting, deleteTrack, moveCutGroup, patchCut, patchCuts,
 } from './core/cutsReducer.js';
-import { migrateCuts, projectSettings, makeLoadProgress } from './core/projectFormat.js';
+import { migrateCuts, projectSettings, makeLoadProgress } from './core/projectFormat.ts';
 import { audioExt, videoExt, collectBitmaps, blobToDataURL, packMedia, fillBitmapStore, bitmapLoadCount } from './core/projectAssets.js';
 import { xAtTime } from './core/timelineZoom.ts';
 import { dragOnWindow } from './core/windowDrag.ts';

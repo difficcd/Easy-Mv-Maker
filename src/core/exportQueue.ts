@@ -13,6 +13,15 @@
 // browser. Everything here can be tested; nothing here touches a canvas.
 
 import { playRange } from './playRange.ts';
+/** What a piece of a split project offers the queue: its cuts and media, for the range. */
+export interface PieceDoc { cuts?: Array<{ startTime: number, endTime?: number } | null | undefined> | null; audio?: { startTime?: number, endTime?: number } | null; video?: { startTime?: number, endTime?: number } | null; [k: string]: any }
+/** The frames to paint, in order, and the piece each one belongs to. */
+export interface QueuePlan {
+    frames: Array<{ piece: number, t: number, index: number }>;
+    pieces: Array<{ start: number, end: number, duration: number, from: number, count: number }>;
+    fps: number; duration: number; truncated: boolean;
+}
+
 
 /**
  * How long one piece contributes to the output.
@@ -24,7 +33,7 @@ import { playRange } from './playRange.ts';
  * @param {{cuts?: any[], audio?: any, video?: any}} doc a parsed project
  * @returns {{start: number, end: number, duration: number}}
  */
-export function pieceRange(doc) {
+export function pieceRange(doc: PieceDoc | null | undefined): { start: number, end: number, duration: number } {
     const { start, end } = playRange({ cuts: doc?.cuts, audio: doc?.audio, video: doc?.video });
     return { start, end, duration: Math.max(0, end - start) };
 }
@@ -45,13 +54,13 @@ export function pieceRange(doc) {
  * @param {{fps?: number, maxFrames?: number}} [opts]
  * @returns {{frames: Array<{piece: number, t: number, index: number}>, pieces: Array<{start: number, end: number, duration: number, from: number, count: number}>, fps: number, duration: number, truncated: boolean}}
  */
-export function planQueue(docs, { fps = 12, maxFrames = 0 } = {}) {
+export function planQueue(docs: PieceDoc[] | null | undefined, { fps = 12, maxFrames = 0 }: { fps?: number, maxFrames?: number } = {}): QueuePlan {
     const rate = Math.max(1, Number(fps) || 12);
     const step = 1 / rate;
     const list = Array.isArray(docs) ? docs : [];
 
-    const pieces = [];
-    const frames = [];
+    const pieces: QueuePlan['pieces'] = [];
+    const frames: QueuePlan['frames'] = [];
     let truncated = false;
 
     for (let p = 0; p < list.length; p++) {
@@ -76,7 +85,7 @@ export function planQueue(docs, { fps = 12, maxFrames = 0 } = {}) {
  * @param {ReturnType<typeof planQueue>} plan
  * @returns {number[]} one output time per piece, in seconds
  */
-export function seamTimes(plan) {
+export function seamTimes(plan: QueuePlan): number[] {
     const step = 1 / plan.fps;
     return plan.pieces.map(p => p.from * step);
 }
@@ -91,7 +100,7 @@ export function seamTimes(plan) {
  * @param {number} done how many frames have been written
  * @returns {number}
  */
-export function queueProgress(plan, done) {
+export function queueProgress(plan: QueuePlan, done: number): number {
     if (!plan.frames.length) return 1;
     return Math.max(0, Math.min(1, done / plan.frames.length));
 }

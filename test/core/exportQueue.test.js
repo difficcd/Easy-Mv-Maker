@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { pieceRange, planQueue, seamTimes, queueProgress } from '../../src/core/exportQueue.js';
+import { pieceRange, planQueue, seamTimes, queueProgress } from '../../src/core/exportQueue.ts';
 
 const piece = (...spans) => ({ cuts: spans.map(([startTime, endTime], i) => ({ id: i + 1, startTime, endTime })) });
 
