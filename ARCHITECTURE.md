@@ -206,7 +206,10 @@ needs a document takes those two functions rather than the document.
 - `useNotices.js` — progress, toast, error banner, and the YouTube link prompt.
 - `useDialogs.js` — which dialog is open, and the rebinding two of them share.
 
-- `server/index.js` — Express file-backed project DB on :8787, files under `server/data/`.
+- `server/` — the Express file-backed project DB on :8787, files under `server/data/`. `index.js`
+  is the wiring (body limit, rate-limit tiers, mount, listen); `projects.js`, `backups.js` and
+  `youtube.js` are one route family each; `paths.js` builds every path, so `safeId` cannot be
+  forgotten by a route.
   Proxied at `/api` (vite.config).
 - `src/main.jsx` — boot + service-worker register (PWA, skipped in Capacitor) + fatal-error
   overlay. That overlay is how a render crash shows up — check the page text for "Unhandled".

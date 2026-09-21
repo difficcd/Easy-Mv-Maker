@@ -1221,6 +1221,50 @@ Every way the timeline can be pointed at, in one place.
 |---|---|
 | `useTimelineGestures` | Pointer handling for the timeline: dragging cuts, resizing them, panning, and pinch zoom. One place, because seven copies of the gutter maths is where the dead wheel zoom came from. |
 
+## `server/paths.js`
+
+Where things live on disk and what they are called - the one place a path is built, so no route can forget to sanitise an id.
+
+| | |
+|---|---|
+| `DATA_DIR` | `server/data/`, beside the server. |
+| `safeId` | An id reduced to `[A-Za-z0-9_-]`, at most 64 characters: the server's only defence against a path in a project id, applied by every path builder. |
+| `fileFor` | A project's JSON file. |
+| `assetsDirFor` | A project's binary-asset directory, shared with its backups. |
+| `newId` | A fresh project id: time in base 36 plus six random characters. |
+| `ASSET_MIME` | Content type by extension for a stored asset. |
+| `AUDIO_MIME` | The same for the extensions webm / mp4 / ogg share between audio and video - the asset id says which, and this is the audio answer. |
+| `BACKUP_KEEP` | How many snapshots a project keeps: twelve. |
+| `backupDirFor` | A project's backup directory. |
+| `safeStamp` | A snapshot stamp reduced to `[0-9A-Za-z_-]`, at most 40 characters. |
+| `audioType` | Content type for an extracted audio file, by extension. |
+| `videoType` | Content type for a downloaded video file, by extension. |
+
+## `server/projects.js`
+
+The project routes: list, fetch, create, overwrite, delete, and the binary assets beside each project.
+
+| | |
+|---|---|
+| `listJsonDir` | The `.json` files in a directory, summarised, newest first; a file that will not parse is left out rather than failing the whole listing. Backups list through it too. |
+| `projectRoutes` | Mounts `/api/projects` and `/api/projects/:id(/asset/:assetId|/assets)` on an Express app. |
+
+## `server/backups.js`
+
+Rotating snapshots of a project's JSON, and the pruning of assets no retained snapshot names.
+
+| | |
+|---|---|
+| `backupRoutes` | Mounts `/api/backups/:key(/:stamp)` on an Express app. |
+
+## `server/youtube.js`
+
+Local-only: audio and video from a URL through yt-dlp, with ffmpeg for merged formats.
+
+| | |
+|---|---|
+| `youtubeRoutes` | Mounts `/api/youtube-audio` and `/api/youtube-video` on an Express app. |
+
 ## `server/rateLimit.js`
 
 A token bucket, so one caller cannot use the whole server.
