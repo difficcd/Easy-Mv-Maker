@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readStored, writeStored, jsonCodec, arrayCodec, onOffCodec, oneZeroCodec, numberCodec }
-    from '../../src/core/persist.js';
+    from '../../src/core/persist.ts';
 
 /** A localStorage stand-in. `throws` makes it behave like a browser with site data blocked. */
 function fakeStorage({ throws = false, data = {} } = {}) {

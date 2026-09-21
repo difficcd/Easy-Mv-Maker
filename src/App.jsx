@@ -7,7 +7,7 @@ import { TopBar } from './ui/TopBar';
 import { CutLayerPanel } from './ui/CutLayerPanel';
 import { useStored } from './hooks/useStored.js';
 import { nextId } from './core/ids.ts';
-import { onOffCodec, oneZeroCodec } from './core/persist.js';
+import { onOffCodec, oneZeroCodec } from './core/persist.ts';
 import { TextEditor } from './ui/TextEditor';
 import { ToolsPanel } from './ui/ToolsPanel';
 import { Timeline } from './ui/Timeline';
@@ -26,7 +26,7 @@ import { CanvasStage, canvasCursor } from './ui/CanvasStage.jsx';
 import { DockRail, DockSlot, FloatingPanels, DockHint, ReopenRight } from './ui/PanelDock.jsx';
 import { tr, loadLang, saveLang, setLangValue } from './i18n';
 import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, patchLayer, nextLayerId, appendLayer, appendFolder, removeLayerTree } from './core/layerOps.js';
-import { mkCut, firstCut } from './core/document.js';
+import { mkCut, firstCut } from './core/document.ts';
 import { selectionAfterClick, cutsToCopy } from './core/cutSelection.ts';
 import { closeLassoPath, lassoBounds, cutOutPolygon, cropImageData, selectionStrokes, paintedBounds } from './core/lassoOps.js';
 import { TOOLS } from './tools/canvasTools.js';
@@ -45,7 +45,7 @@ import { usePanelLayout } from './hooks/usePanelLayout.js';
 import { useLocalDocuments } from './hooks/useLocalDocuments.js';
 import { fetchAsset } from './core/api.ts';
 import { PLAYBACK_RATES, RATE_DEFAULT, playbackRateCodec } from './core/playbackRate.ts';
-import { scaleProjectTimes, bakePlan } from './core/timeScale.js';
+import { scaleProjectTimes, bakePlan } from './core/timeScale.ts';
 import { paintFrameOnto, createFrameScratch, BOIL_FPS } from './canvas/framePaint.js';
 import { drawMarquee } from './canvas/marquee.js';
 import { drawTextSelection, drawFloatingSelection, drawMotionPath, drawMosaicRegion } from './canvas/editChrome.js';
@@ -75,9 +75,9 @@ import { useToolSettings } from './hooks/useToolSettings.js';
 import {
     mediaReducer, EMPTY_MEDIA, setAudioClip, clearAudio,
     loadVideo, clearVideo, setVideoCuts, setVideoOpacity, clearVideoCuts, moveTrack, resizeAudio,
-} from './core/mediaReducer.js';
+} from './core/mediaReducer.ts';
 import { cloneCutContents as cloneCutContentsPure, placeCopies } from './core/cutClone.ts';
-import { DEFAULT_KEYS, KEY_LABELS, keyOf, keymapFrom, findConflicts } from './core/shortcuts.js';
+import { DEFAULT_KEYS, KEY_LABELS, keyOf, keymapFrom, findConflicts } from './core/shortcuts.ts';
 import { derivePartsFrom, deriveVideoBatches } from './core/partOps.ts';
 import { playRange, exportRange } from './core/playRange.ts';
 import { brushUp, brushDown } from './core/brushSize.ts';

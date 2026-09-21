@@ -244,7 +244,7 @@ Which cuts are selected after a click on one, and which are copied. The shift-ru
 | `inReadingOrder` | Cuts sorted by track, then start time. |
 | `toggled` | A copy of a Set with one id added if absent, removed if present. Three copies of this lived in App. |
 
-## `src/core/document.js`
+## `src/core/document.ts`
 
 Constructors for the pieces of a document. A cut was a literal in four places and they had drifted.
 
@@ -385,7 +385,7 @@ The DOM side of the media tracks: `mediaReducer` says what the audio and video a
 | `detachMedia` | Let go of an `<audio>`/`<video>` element's source. Pause, remove the attribute, then `load()` — without the last one the bytes stay held, and a revoked blob: URL never gives its memory back. |
 | `safeMediaSrc` | A URL that may reach a media element, or null. Opening a project assigns a URL read out of a file; only `blob:` and a `data:` of the matching kind get through. Also catches the duller case — an error page in the audio field fails visibly instead of becoming a track that never plays. |
 
-## `src/core/mediaReducer.js`
+## `src/core/mediaReducer.ts`
 
 The audio and video tracks, as named actions.
 
@@ -442,7 +442,7 @@ Parts: groups of cuts made from an import or a selection.
 | `renamePartIn` | Rename a part, which means renaming it on every cut that belongs to it. |
 | `ungroupPartIn` | Ungroup a part. The cuts stay exactly where they are and only lose their membership - this is not a delete, and confusing the two would be expensive. |
 
-## `src/core/persist.js`
+## `src/core/persist.ts`
 
 The small preferences that live in localStorage: which panels are open, the theme, recent colours.
 
@@ -539,7 +539,7 @@ Reading a saved project, including ones written by older versions.
 | `MAX_TRACKS` | The most timeline tracks a project may claim. Every track is a rendered row, so this is a rendering budget rather than a rule about music videos - nothing in the app creates this many, but a file can still say so. |
 | `projectSettings` | What the app should look like after opening this project, with defaults for anything absent. |
 
-## `src/core/shortcuts.js`
+## `src/core/shortcuts.ts`
 
 Key bindings, and what a key event means.
 
@@ -583,7 +583,7 @@ property simply does not survive being edited, which reads as the editor losing 
 Having both directions in one place is what lets the round trip be tested: open a text, write it
 straight back, and it must be the text you started with.
 
-## `src/core/timeScale.js`
+## `src/core/timeScale.ts`
 
 Making a preview speed the film's real speed — the other half of the playback selector.
 

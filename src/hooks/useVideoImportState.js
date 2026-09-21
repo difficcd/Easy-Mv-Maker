@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { unpackMedia } from '../core/projectAssets.js';
 import { safeMediaSrc, detachMedia } from '../core/mediaEl.ts';
-import { loadVideo, clearVideo } from '../core/mediaReducer.js';
+import { loadVideo, clearVideo } from '../core/mediaReducer.ts';
 import { fetchAsset } from '../core/api.ts';
 import { tr } from '../i18n.js';
 import { nextId } from '../core/ids.ts';

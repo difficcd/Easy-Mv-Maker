@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { keyOf, shortcutFor } from '../core/shortcuts.js';
+import { keyOf, shortcutFor } from '../core/shortcuts.ts';
 
 /**
  * The document-level keydown listener, wired to what each shortcut does.

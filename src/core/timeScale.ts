@@ -28,6 +28,9 @@
 // keyframes and motion paths are sampled by progress. Scaling those would slow the animation
 // twice over.
 
+/** What baking the playback speed into the film would do, before it is done. */
+export interface BakePlan { factor: number; noop: boolean; before: number; after: number; stranded: string[] }
+
 /** Below this the factor is a rounding error, not an intention. */
 const MIN_FACTOR = 1e-6;
 
@@ -40,19 +43,19 @@ const MIN_FACTOR = 1e-6;
  * @param {number} rate the preview speed being made permanent
  * @returns {number} 1 when the rate is unusable, so a bad number is a no-op rather than a wipe
  */
-export function bakeFactor(rate) {
+export function bakeFactor(rate: unknown): number {
     const n = Number(rate);
     if (!Number.isFinite(n) || n < MIN_FACTOR) return 1;
     return 1 / n;
 }
 
 /** A duration in seconds, k times longer. Anything that is not a number is left as it is. */
-const longer = (v, k) => (Number.isFinite(Number(v)) ? Number(v) * k : v);
+const longer = (v: unknown, k: number) => (Number.isFinite(Number(v)) ? Number(v) * k : v);
 /** A rate per second, k times slower. Zero stays zero - it means "stopped", not "very slow". */
-const slower = (v, k) => (Number.isFinite(Number(v)) && Number(v) !== 0 ? Number(v) / k : v);
+const slower = (v: unknown, k: number) => (Number.isFinite(Number(v)) && Number(v) !== 0 ? Number(v) / k : v);
 
 /** @param {any} anim @param {number} k */
-function scaleCutAnim(anim, k) {
+function scaleCutAnim(anim: any, k: number) {
     if (!anim) return anim;
     // inDur/outDur are compared against `time - cut.startTime`, so they are seconds.
     // deformSpeed, moveSpeed and the counts are cycles across the cut and stay put.
@@ -60,7 +63,7 @@ function scaleCutAnim(anim, k) {
 }
 
 /** @param {any} anim @param {number} k */
-function scaleTextAnim(anim, k) {
+function scaleTextAnim(anim: any, k: number) {
     if (!anim) return anim;
     // `typeSpeed` is characters per second and `emSpeed` is cycles per second against the
     // absolute clock - both rates, unlike the `speed` on a layer animation, which is cycles
@@ -75,7 +78,7 @@ function scaleTextAnim(anim, k) {
 }
 
 /** @param {any} layer @param {number} k */
-function scaleLayer(layer, k) {
+function scaleLayer(layer: Layer, k: number): Layer {
     const out = { ...layer };
     // swaySpeed drives sin(2*PI*swaySpeed*time) off the absolute clock.
     if (layer.anim?.swaySpeed !== undefined) {
@@ -95,7 +98,7 @@ function scaleLayer(layer, k) {
  * @param {number} k
  * @returns {C[]} the input untouched when there is nothing to do, so React can skip the render
  */
-export function scaleProjectTimes(cuts, k) {
+export function scaleProjectTimes(cuts: Cut[] | null | undefined, k: number): Cut[] {
     if (!Array.isArray(cuts)) return [];
     if (!Number.isFinite(k) || k <= 0 || k === 1) return cuts;
     return cuts.map(c => {
@@ -105,7 +108,7 @@ export function scaleProjectTimes(cuts, k) {
         // and staying obviously wrong. A cut that ends before it starts is the same case.
         if (!Number.isFinite(a) || !Number.isFinite(b) || b < a) return c;
         /** @type {any} */
-        const out = { ...c, startTime: a * k, endTime: b * k };
+        const out: Cut = { ...c, startTime: a * k, endTime: b * k };
         if (c.anim) out.anim = scaleCutAnim(c.anim, k);
         if (Array.isArray(c.layers)) out.layers = c.layers.map(l => scaleLayer(l, k));
         if (Array.isArray(c.texts)) out.texts = c.texts.map(t => (t.anim ? { ...t, anim: scaleTextAnim(t.anim, k) } : t));
@@ -120,7 +123,7 @@ export function scaleProjectTimes(cuts, k) {
  * @param {number} rate
  * @param {{audio?: boolean, video?: boolean}} [media] which tracks are loaded
  */
-export function bakePlan(cuts, rate, media = {}) {
+export function bakePlan(cuts: Cut[] | null | undefined, rate: unknown, media: { audio?: unknown, video?: unknown } = {}): BakePlan {
     const k = bakeFactor(rate);
     const end = (cuts || []).reduce((m, c) => Math.max(m, Number(c.endTime) || 0), 0);
     return {
@@ -130,6 +133,6 @@ export function bakePlan(cuts, rate, media = {}) {
         before: end,
         after: end * k,
         /** Tracks that will stay where they are, because a sound cannot be stretched. */
-        stranded: [media.audio && 'audio', media.video && 'video'].filter(Boolean),
+        stranded: ([media.audio && 'audio', media.video && 'video'] as Array<string | false | null | undefined | 0>).filter((x): x is string => typeof x === 'string'),
     };
 }

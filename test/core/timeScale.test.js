@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { bakeFactor, scaleProjectTimes, bakePlan } from '../../src/core/timeScale.js';
+import { bakeFactor, scaleProjectTimes, bakePlan } from '../../src/core/timeScale.ts';
 import { computeCutAnim } from '../../src/core/cutAnim.js';
 import { computeLayerAnim } from '../../src/core/layerAnim.js';
 import { computeTextAnim, charAnimAt } from '../../src/core/textAnim.js';

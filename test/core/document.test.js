@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkCut, firstCut } from '../../src/core/document.js';
+import { mkCut, firstCut } from '../../src/core/document.ts';
 
 test('mkCut: every field a cut needs, including an empty texts array', () => {
     // One copy had no texts array. Nothing crashed - safeArray papers over it - but two shapes

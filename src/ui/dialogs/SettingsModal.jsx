@@ -1,6 +1,6 @@
 import { KeyConflicts, KeyRows } from './ToolKeysModal.jsx';
 import { tr } from '../../i18n';
-import { TOOL_PREFIX } from '../../core/shortcuts.js';
+import { TOOL_PREFIX } from '../../core/shortcuts.ts';
 import { Modal } from '../Modal.jsx';
 import { fmt } from '../../core/timeCode.ts';
 import { NumField, clampNum } from '../NumField.jsx';
