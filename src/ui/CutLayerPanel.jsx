@@ -16,16 +16,16 @@ import { inReadingOrder } from '../core/cutSelection.js';
 const LAYER_LABEL_W = 330;
 
 export function CutLayerPanel({
-    collapsedCutIds, copiedCut, currentCutId, cuts, deleteTextObject,
-    deleteVideoBatch, onListDrop, expandedCuts, handleAddCut, handleAddFolder,
-    handleAddLayer, handleCopyCut, handleCutClick, handleDeleteCut, handleDuplicateCut,
-    handlePasteCut, handleSetTool, openEditText, renameCut, renamingCutId,
-    updCutCamera, cameraCapture, setCameraCapture, canvasW, canvasH,
-    layerRows, rightW, selectedCutIds, selectedText,
-    setRenamingCutId, setSelectedText, setShowRight, showRight,
-    toggleCutCollapse, toggleCutSettings, toggleTextVisible, updCutAnim, updCutTime,
-    videoBatches, rightTab, setRightTab, textEditorBody, cancelText,
+    doc, cutOps, layerOps, text, camera, panel, canvas, cutList,
 }) {
+    const { cuts, currentCutId, copiedCut, videoBatches, layerRows } = doc;
+    const { handleAddCut, handleCopyCut, handleCutClick, handleDeleteCut, handleDuplicateCut, handlePasteCut, renameCut, deleteVideoBatch, updCutAnim, updCutTime, updCutCamera } = cutOps;
+    const { handleAddFolder, handleAddLayer, onListDrop, handleSetTool } = layerOps;
+    const { selectedText, setSelectedText, openEditText, deleteTextObject, toggleTextVisible, textEditorBody, cancelText } = text;
+    const { cameraCapture, setCameraCapture } = camera;
+    const { showRight, setShowRight, rightW, rightTab, setRightTab } = panel;
+    const { canvasW, canvasH } = canvas;
+    const { collapsedCutIds, expandedCuts, renamingCutId, setRenamingCutId, selectedCutIds, toggleCutCollapse, toggleCutSettings } = cutList;
     // The text editor arrives as a tab rather than a panel of its own. Two panels side by side
     // in the right dock left the canvas a sliver, and a window over the canvas covered the very
     // drawing it was editing.

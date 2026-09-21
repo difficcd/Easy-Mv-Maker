@@ -6,14 +6,13 @@ import { useDropdown } from '../hooks/useDropdown.js';
 
 // Top menu bar: the File and Media menus, resolution, canvas zoom, save state, Export.
 export function TopBar({
-    doNew, doSave, doOpen, doLocalSave, openLocalList,
-    doServerSave, openServerList, doServerBackup, openBackupList, backupBusy,
-    handleAudioUpload, loadYoutubeAudio, handleDeleteAudio, audioFile, openVideoImport,
-    loadYoutubeVideo, videoFileRef, recentVideos, reimportRecent, serverAvailable, setToast,
-    canvasW, canvasH, setCanvasSize, setShowHelp,
-    setShowSettings, keymap, view, zoomCanvas, resetView,
-    autoSavedAt, autosaveErr, backupAt, storageInfo, handleExport, doSplitSave, handleExportPieces,
+    project, status, media, canvas, dialogs,
 }) {
+    const { doNew, doSave, doOpen, doLocalSave, openLocalList, doServerSave, openServerList, doServerBackup, openBackupList, backupBusy, doSplitSave, handleExportPieces, handleExport } = project;
+    const { autoSavedAt, autosaveErr, backupAt, storageInfo, serverAvailable, setToast } = status;
+    const { handleAudioUpload, loadYoutubeAudio, handleDeleteAudio, audioFile, openVideoImport, loadYoutubeVideo, videoFileRef, recentVideos, reimportRecent } = media;
+    const { canvasW, canvasH, setCanvasSize, view, zoomCanvas, resetView } = canvas;
+    const { setShowHelp, setShowSettings, keymap } = dialogs;
     // The two menus are this bar's own: which is open, and where its edge is for the
     // outside-press that closes it. App used to hold both for no reason of its own.
     const [showFileMenu, setShowFileMenu, fileMenuRef] = useDropdown();
