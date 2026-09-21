@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { catmullThrough } from '../../src/core/catmullRom.js';
+import { catmullThrough } from '../../src/core/catmullRom.ts';
 
 const P = (x, y, pressure) => ({ x, y, ...(pressure === undefined ? {} : { pressure }) });
 const near = (a, b, tol = 1e-9) => Math.abs(a - b) <= tol;

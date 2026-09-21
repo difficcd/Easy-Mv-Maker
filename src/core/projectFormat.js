@@ -16,7 +16,7 @@
 //   - texts arrived later still, so older cuts have no texts array at all
 
 import { clampPps } from './timelineZoom.js';
-import { clampCanvasSize } from './canvasSize.js';
+import { clampCanvasSize } from './canvasSize.ts';
 
 /**
  * The most timeline tracks a project may claim.

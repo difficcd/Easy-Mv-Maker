@@ -23,7 +23,7 @@ const QUICK_TRIES = 3;    // how many failures stay at the base interval
  * @param {number} failures consecutive failures; 0 means the last probe succeeded
  * @returns {number} milliseconds
  */
-export function nextProbeDelay(failures) {
+export function nextProbeDelay(failures: number): number {
     const n = Number.isFinite(failures) ? Math.max(0, Math.floor(failures)) : 0;
     if (n <= QUICK_TRIES) return BASE_MS;
     // Doubling from the base once the quick tries are used up.

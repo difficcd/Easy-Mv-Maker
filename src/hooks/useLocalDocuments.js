@@ -23,7 +23,7 @@ import { downloadBlob } from '../export/download.js';
 import { ZipWriter } from '../export/zip.js';
 import { splitProject, pieceFileName, piecesAreSequential } from '../core/splitProject.js';
 import { randomId, nextId } from '../core/ids.js';
-import { safeArray } from '../core/geometry.js';
+import { safeArray } from '../core/geometry.ts';
 import { tr } from '../i18n.js';
 
 /** How often to ask the browser how much room is left. */

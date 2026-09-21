@@ -19,7 +19,7 @@ export const BRUSH_MAX = 200;
  * @param {number} n
  * @returns {number}
  */
-export function clampBrush(n) {
+export function clampBrush(n: number): number {
     return Math.max(BRUSH_MIN, Math.min(BRUSH_MAX, Math.round(n) || BRUSH_MIN));
 }
 
@@ -33,7 +33,7 @@ export function clampBrush(n) {
  * @param {number} size
  * @returns {number}
  */
-export function brushUp(size) {
+export function brushUp(size: number): number {
     return clampBrush(Math.round(size * 1.25) + 1);
 }
 
@@ -47,6 +47,6 @@ export function brushUp(size) {
  * @param {number} size
  * @returns {number}
  */
-export function brushDown(size) {
+export function brushDown(size: number): number {
     return clampBrush(Math.min(size - 1, Math.round(size / 1.25)));
 }

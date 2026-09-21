@@ -62,3 +62,9 @@ test('a multi-line import clause is read', () => {
 test('a name that only appears as part of a longer identifier is not a use', () => {
     assert.deepEqual(unused(`import { pad } from './x.js';\npadding();\n`), ['pad:never used']);
 });
+
+test('a type-only import is read by its names, not by the word "type"', async () => {
+    const { importedNames } = await import('../../scripts/unused-imports.mjs');
+    const names = importedNames("import type { Point, Size } from './types.ts';\nconst p: Point = { x: 0, y: 0 };\n");
+    assert.deepEqual(names.map(n => n.name), ['Point', 'Size']);
+});

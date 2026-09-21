@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { clampCanvasSize, CANVAS_MIN_EDGE, CANVAS_MAX_EDGE } from '../../src/core/canvasSize.js';
+import { clampCanvasSize, CANVAS_MIN_EDGE, CANVAS_MAX_EDGE } from '../../src/core/canvasSize.ts';
 
 test('an ordinary size passes through untouched', () => {
     assert.deepEqual(clampCanvasSize(1920, 1080), { w: 1920, h: 1080 });

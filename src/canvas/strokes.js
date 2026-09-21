@@ -4,7 +4,7 @@
 import { imageDataCanvas, resetCtx, sizeCanvas } from './scratch.js';
 import { hexToRgb } from '../core/colour.js';
 import { drawWarped, isWarped } from './warpRender.js';
-import { catmullThrough } from '../core/catmullRom.js';
+import { catmullThrough } from '../core/catmullRom.ts';
 import { makeCanvas } from './canvasFactory.js';
 
 // Remove hand/sampling jitter before drawing: weighted moving average over position and

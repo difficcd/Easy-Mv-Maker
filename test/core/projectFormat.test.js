@@ -7,7 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { projectSettings, migrateCuts, makeLoadProgress, MAX_TRACKS } from '../../src/core/projectFormat.js';
 import { PPS_MIN, PPS_MAX } from '../../src/core/timelineZoom.js';
-import { CANVAS_MAX_EDGE } from '../../src/core/canvasSize.js';
+import { CANVAS_MAX_EDGE } from '../../src/core/canvasSize.ts';
 
 // ── settings ───────────────────────────────────────────────────────────────
 test('projectSettings: takes what the file says', () => {

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Plus, FolderPlus, Trash2, Copy, CopyPlus, ClipboardPaste, Eye, EyeOff, Settings, Video, ChevronDown, ChevronRight } from 'lucide-react';
-import { safeArray } from '../core/geometry.js';
+import { safeArray } from '../core/geometry.ts';
 import { CutAnimPanel, CameraPanel } from './AnimPanels';
 import { LayerRows } from './LayerRows';
 import { tr } from '../i18n';

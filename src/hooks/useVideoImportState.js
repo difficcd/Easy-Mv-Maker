@@ -8,7 +8,7 @@ import { nextId } from '../core/ids.js';
 import { parseClock } from '../core/timeCode.ts';
 import { importPlacement, buildImportedCuts, extractOptionsFor } from '../core/videoCuts.js';
 import { replaceBatchCuts } from '../core/cutsReducer.js';
-import { targetCanvasFor } from '../core/canvasSize.js';
+import { targetCanvasFor } from '../core/canvasSize.ts';
 import { extractVideoFrames, fitRect } from '../canvas/videoFrames.js';
 
 // The state of bringing a video into the project.

@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 import { moveText } from '../core/cutsReducer.js';
 import { measureTextBox as measureTextBoxPure } from '../canvas/textRender.js';
-import { safeArray } from '../core/geometry.js';
+import { safeArray } from '../core/geometry.ts';
 
 /**
  * Grabbing a text object on the canvas and dragging it.

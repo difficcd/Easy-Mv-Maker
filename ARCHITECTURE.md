@@ -76,6 +76,8 @@ know storage exists at all, because reading it is `useStored`'s decoder.
   a step count, since a snapshot copies the whole document.
 - `shortcuts.js` — `DEFAULT_KEYS`, `KEY_LABELS`, `keyOf`, `matchShortcut`, `keymapFrom`, `findConflicts`.
 - `timeCode.ts` — `fmt` / `parseClock` for the timeline clock. The first module in TypeScript (#268).
+  The leaf modules followed; the shapes they share (`Point`, `PressurePoint`, `Size`, `TimeSpan`)
+  live in `types.ts`, grown only as a module needs them.
 - `numInput.js` — the rules behind a number field that can be typed into.
 - `bitmapRefs.js` — `collectUsedBitmapIds` / `unusedBitmapIds`. Every reference source is named in
   one place; miss one and the collector frees pixels undo or paste still needs.

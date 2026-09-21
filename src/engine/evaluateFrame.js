@@ -14,8 +14,8 @@
 // a layer that the drag overlay is drawing instead.
 
 import { computeCutAnim } from '../core/cutAnim.js';
-import { cutProgress } from '../core/cutTime.js';
-import { safeArray } from '../core/geometry.js';
+import { cutProgress } from '../core/cutTime.ts';
+import { safeArray } from '../core/geometry.ts';
 import { computeLayerAnim } from '../core/layerAnim.js';
 import { flattenLayersInUiOrder } from '../core/layerTree.js';
 import { computeTextAnim } from '../core/textAnim.js';

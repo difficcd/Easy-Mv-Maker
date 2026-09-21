@@ -50,7 +50,9 @@ export function importedNames(src) {
     const re = /^import\s+([^;]*?)\s+from\s+'([^']+)';/gm;
     for (const m of src.matchAll(re)) {
         const line = src.slice(0, m.index).split('\n').length;
-        const clause = m[1];
+        // `import type { A }` - TypeScript's type-only import. The word `type` is the keyword,
+        // not a binding; the names inside the braces are checked like any other.
+        const clause = m[1].replace(/^type\s+/, '');
         const braces = clause.match(/\{([\s\S]*)\}/);
         // `import React, { useState }` - the part before the brace is the default binding.
         const lead = (braces ? clause.slice(0, clause.indexOf('{')) : clause).replace(/,\s*$/, '').trim();

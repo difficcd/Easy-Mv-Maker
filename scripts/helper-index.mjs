@@ -34,7 +34,8 @@ const DIRS = [
 function exportsOf(source) {
     const names = new Set();
     for (const m of source.matchAll(/^export\s+(?:async\s+)?function\s+(\w+)/gm)) names.add(m[1]);
-    for (const m of source.matchAll(/^export\s+const\s+(\w+)\s*=/gm)) names.add(m[1]);
+    // `export const X = ` and, in TypeScript, `export const X: Type = `.
+    for (const m of source.matchAll(/^export\s+const\s+(\w+)\s*(?::[^=]+)?=/gm)) names.add(m[1]);
     // Classes were invisible here until ByteWriter and ZipWriter arrived, which is the one
     // kind of gap this check cannot afford: a shared export the index cannot see is exactly
     // the export someone writes a second time.

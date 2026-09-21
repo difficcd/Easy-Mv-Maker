@@ -1,7 +1,7 @@
 import { Layers, Undo, Redo, Trash, Repeat, ClipboardPaste, Pipette } from 'lucide-react';
 import { NumField } from './NumField';
 import { tr } from '../i18n';
-import { BRUSH_MIN, BRUSH_MAX } from '../core/brushSize.js';
+import { BRUSH_MIN, BRUSH_MAX } from '../core/brushSize.ts';
 
 // TOOLS panel: the tool grid, the colour swatch, and whatever settings the current tool has.
 //

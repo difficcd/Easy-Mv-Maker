@@ -19,7 +19,7 @@ const EPS = 0.001;
  * @param {number} anchor where to rewind to — the current cut's start
  * @returns {number} the time to play from
  */
-export function playbackStartFrom(currentTime, playStart, playEnd, anchor) {
+export function playbackStartFrom(currentTime: number, playStart: number, playEnd: number, anchor: number): number {
     const t = Number.isFinite(currentTime) ? currentTime : playStart;
     // At or past the end there is nothing left to play, so pressing play means "again".
     if (t >= playEnd - EPS) return anchor;

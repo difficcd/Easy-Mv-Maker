@@ -1,3 +1,6 @@
+
+import type { PressurePoint } from './types.ts';
+
 /**
  * A Catmull-Rom spline through every point it is given.
  *
@@ -16,11 +19,11 @@
  * @param {number} [seg] samples per span; more is smoother and slower
  * @returns {Array<{x: number, y: number, pressure?: number}>} a dense point list
  */
-export function catmullThrough(pts, seg = 16) {
+export function catmullThrough(pts: ReadonlyArray<PressurePoint> | null | undefined, seg = 16): PressurePoint[] {
     // Under three points there is no curve to fit - a line through two points is the two points.
     if (!pts || pts.length < 3) return (pts || []).slice();
-    const at = i => pts[Math.max(0, Math.min(pts.length - 1, i))];
-    const out = [];
+    const at = (i: number) => pts[Math.max(0, Math.min(pts.length - 1, i))];
+    const out: PressurePoint[] = [];
     for (let i = 0; i < pts.length - 1; i++) {
         const p0 = at(i - 1), p1 = at(i), p2 = at(i + 1), p3 = at(i + 2);
         for (let t = 0; t < seg; t++) {

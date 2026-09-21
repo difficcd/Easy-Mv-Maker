@@ -15,7 +15,7 @@
 
 import { useState, useEffect } from 'react';
 import { useStored } from './useStored.js';
-import { dragOnWindow } from '../core/windowDrag.js';
+import { dragOnWindow } from '../core/windowDrag.ts';
 
 /** The element each panel's markup is rooted in, for finding which one a header belongs to. */
 const PANEL_ROOTS = { color: '.color-panel', tools: '.toolbar', cut: '.right-panel' };

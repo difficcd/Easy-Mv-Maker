@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BRUSH_MIN, BRUSH_MAX, clampBrush, brushUp, brushDown } from '../../src/core/brushSize.js';
+import { BRUSH_MIN, BRUSH_MAX, clampBrush, brushUp, brushDown } from '../../src/core/brushSize.ts';
 
 test('the range holds, from either direction', () => {
     assert.equal(clampBrush(0), BRUSH_MIN);

@@ -1,7 +1,7 @@
 // A layer's (part's) animation at a moment: move, rotate, scale, path, keys, sway, effects.
 
-import { CANVAS_H, CANVAS_W } from './canvasSize.js';
-import { cutProgress } from './cutTime.js';
+import { CANVAS_H, CANVAS_W } from './canvasSize.ts';
+import { cutProgress } from './cutTime.ts';
 import { SWING, applyEase, effectAt, samplePath, swing } from './easing.js';
 import { sampleKeys } from './keyframes.js';
 import { swayWaveAt } from './sway.js';

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { nextRecordFrame, EXPORT_FPS } from '../../src/core/recordClock.js';
+import { nextRecordFrame, EXPORT_FPS } from '../../src/core/recordClock.ts';
 
 test('the first frame is index 0 at the start time', () => {
     assert.deepEqual(nextRecordFrame(2.0, 2.0, 30, -1), { idx: 0, time: 2.0 });

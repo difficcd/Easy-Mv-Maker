@@ -5,7 +5,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { playbackStartFrom } from '../../src/core/playbackStart.js';
+import { playbackStartFrom } from '../../src/core/playbackStart.ts';
 
 const START = 2, END = 10, ANCHOR = 4;
 const from = (t) => playbackStartFrom(t, START, END, ANCHOR);
