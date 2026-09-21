@@ -6,7 +6,7 @@ import ColorPanel from './ui/ColorPanel';
 import { TopBar } from './ui/TopBar';
 import { CutLayerPanel } from './ui/CutLayerPanel';
 import { useStored } from './hooks/useStored.js';
-import { nextId } from './core/ids.js';
+import { nextId } from './core/ids.ts';
 import { onOffCodec, oneZeroCodec } from './core/persist.js';
 import { TextEditor } from './ui/TextEditor';
 import { ToolsPanel } from './ui/ToolsPanel';
@@ -27,7 +27,7 @@ import { DockRail, DockSlot, FloatingPanels, DockHint, ReopenRight } from './ui/
 import { tr, loadLang, saveLang, setLangValue } from './i18n';
 import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, patchLayer, nextLayerId, appendLayer, appendFolder, removeLayerTree } from './core/layerOps.js';
 import { mkCut, firstCut } from './core/document.js';
-import { selectionAfterClick, cutsToCopy } from './core/cutSelection.js';
+import { selectionAfterClick, cutsToCopy } from './core/cutSelection.ts';
 import { closeLassoPath, lassoBounds, cutOutPolygon, cropImageData, selectionStrokes, paintedBounds } from './core/lassoOps.js';
 import { TOOLS } from './tools/canvasTools.js';
 import { useTimelineGestures } from './hooks/useTimelineGestures.js';
@@ -43,7 +43,7 @@ import { useServerProbe } from './hooks/useServerProbe.js';
 import { useServerStorage } from './hooks/useServerStorage.js';
 import { usePanelLayout } from './hooks/usePanelLayout.js';
 import { useLocalDocuments } from './hooks/useLocalDocuments.js';
-import { fetchAsset } from './core/api.js';
+import { fetchAsset } from './core/api.ts';
 import { PLAYBACK_RATES, RATE_DEFAULT, playbackRateCodec } from './core/playbackRate.ts';
 import { scaleProjectTimes, bakePlan } from './core/timeScale.js';
 import { paintFrameOnto, createFrameScratch, BOIL_FPS } from './canvas/framePaint.js';
@@ -68,7 +68,7 @@ import { useMosaicTool } from './hooks/useMosaicTool.js';
 import { useShortcuts } from './hooks/useShortcuts.js';
 import { usePanelVisibility } from './hooks/usePanelVisibility.js';
 import { useAppearance } from './hooks/useAppearance.js';
-import { detachMedia } from './core/mediaEl.js';
+import { detachMedia } from './core/mediaEl.ts';
 import { useAutosave } from './hooks/useAutosave.js';
 import { useAudioTrack } from './hooks/useAudioTrack.js';
 import { useToolSettings } from './hooks/useToolSettings.js';
@@ -106,9 +106,9 @@ import { sizeCanvas, imageDataCanvas } from './canvas/scratch.js';
 import { drawStrokesOnCtx } from './canvas/strokes.js';
 import { detectSceneCuts, seekTarget } from './canvas/videoFrames.js';
 import { DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT } from './core/canvasSize.ts';
-import { hexToRgb } from './core/colour.js';
+import { hexToRgb } from './core/colour.ts';
 import { pointInPolygon, safeArray } from './core/geometry.ts';
-import { flattenLayersInUiOrder } from './core/layerTree.js';
+import { flattenLayersInUiOrder } from './core/layerTree.ts';
 
 
 

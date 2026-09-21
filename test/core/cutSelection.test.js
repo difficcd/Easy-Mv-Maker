@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { toggled, inReadingOrder, selectionAfterClick, cutsToCopy } from '../../src/core/cutSelection.js';
+import { toggled, inReadingOrder, selectionAfterClick, cutsToCopy } from '../../src/core/cutSelection.ts';
 
 // Made out of order on purpose: b was made first but sits later on track 1.
 const cuts = [

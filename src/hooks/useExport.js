@@ -25,7 +25,7 @@ import { frameName, ZipWriter } from '../export/zip.js';
 import { GifWriter } from '../export/gif.js';
 import { downloadBlob } from '../export/download.js';
 import { pickRecordingType, frameSource, startRecorder } from '../export/recorder.js';
-import { videoBitrate, AUDIO_BITRATE } from '../core/recordBitrate.js';
+import { videoBitrate, AUDIO_BITRATE } from '../core/recordBitrate.ts';
 
 /**
  * @param {object} opts

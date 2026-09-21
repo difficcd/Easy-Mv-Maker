@@ -9,6 +9,9 @@
 // setting here and ranges from 720p to 4K. A fixed figure would either starve 4K or waste most
 // of the file at 720p.
 
+/** The three encoders a browser recorder can hand back, by the bits each needs per pixel. */
+export type CodecFamily = 'h264' | 'vp8' | 'vp9';
+
 /**
  * Bits per pixel per frame.
  *
@@ -20,7 +23,7 @@
  * content. VP8 is not, so it is grouped with H.264 rather than with the codec it shares a
  * container with.
  */
-const BPP = { h264: 0.12, vp8: 0.12, vp9: 0.08 };
+const BPP: Record<CodecFamily, number> = { h264: 0.12, vp8: 0.12, vp9: 0.08 };
 
 /** Below this, even a small canvas looks chewed. Above it, the file is bigger for no visible gain. */
 const FLOOR = 2_000_000;
@@ -38,7 +41,7 @@ export const AUDIO_BITRATE = 192_000;
  * @param {string} mimeType from pickRecordingType
  * @returns {'h264' | 'vp8' | 'vp9'}
  */
-export function codecFamily(mimeType) {
+export function codecFamily(mimeType: string | null | undefined): CodecFamily {
     const t = (mimeType || '').toLowerCase();
     if (t.includes('vp9')) return 'vp9';
     if (t.includes('h264') || t.includes('avc') || t.includes('mp4')) return 'h264';
@@ -53,7 +56,7 @@ export function codecFamily(mimeType) {
  * @param {string} [opts.mimeType] what the recorder was asked for
  * @returns {number} bits per second, clamped
  */
-export function videoBitrate({ width, height, fps, mimeType }) {
+export function videoBitrate({ width, height, fps, mimeType }: { width: number, height: number, fps: number, mimeType?: string | null }): number {
     const pixels = Math.max(1, width) * Math.max(1, height);
     const raw = pixels * Math.max(1, fps) * BPP[codecFamily(mimeType)];
     return Math.round(Math.min(CEILING, Math.max(FLOOR, raw)));

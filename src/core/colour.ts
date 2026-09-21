@@ -6,7 +6,7 @@
 // nothing said so.
 
 /** #rgb, #rgba, #rrggbb, #rrggbbaa -> [r, g, b], or null if it is not a hex colour. */
-function hexRgb(c) {
+function hexRgb(c: string): number[] | null {
     const m = /^#([0-9a-f]{3,8})$/i.exec(c);
     if (!m) return null;
     const h = m[1];
@@ -26,7 +26,7 @@ function hexRgb(c) {
  * @param {number} alpha
  * @returns {string}
  */
-export function withAlpha(colour, alpha) {
+export function withAlpha(colour: string | null | undefined, alpha: number): string {
     const c = (colour || '').trim();
     if (!c || !(alpha < 1)) return c;
     const a = Math.max(0, alpha);
@@ -39,7 +39,7 @@ export function withAlpha(colour, alpha) {
     return c;   // a named colour, or something this does not know: better opaque than broken
 }
 
-export function hexToRgb(hex) {
+export function hexToRgb(hex: unknown): { r: number, g: number, b: number } {
     const h = String(hex || '').trim();
     if (!h.startsWith('#')) return { r: 0, g: 0, b: 0 };
     const s = h.slice(1);

@@ -19,7 +19,7 @@
  * @param {RequestInit} [opts]
  * @returns {Promise<any>}
  */
-export async function apiFetch(url, opts) {
+export async function apiFetch(url: string, opts?: RequestInit): Promise<any> {
     const res = await fetch(url, opts);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.json();
@@ -31,7 +31,7 @@ export async function apiFetch(url, opts) {
  * @param {string} url
  * @returns {Promise<Blob>}
  */
-export async function fetchAsset(url) {
+export async function fetchAsset(url: string): Promise<Blob> {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.blob();
@@ -49,8 +49,8 @@ export async function fetchAsset(url) {
  * @param {string} failMessage thrown as-is, so the caller can localise and number it
  * @returns {Promise<void>}
  */
-export async function putAsset(base, asset, failMessage) {
-    const blob = asset.blob || await (await fetch(asset.url)).blob();
+export async function putAsset(base: string, asset: { id: string, ext: string, blob?: Blob | null, url?: string }, failMessage: string): Promise<void> {
+    const blob = asset.blob || await (await fetch(asset.url as string)).blob();
     const res = await fetch(`${base}/asset/${asset.id}?ext=${encodeURIComponent(asset.ext)}`, {
         method: 'PUT',
         headers: { 'Content-Type': blob.type || 'application/octet-stream' },

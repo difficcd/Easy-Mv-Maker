@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import { sizeCanvas } from '../canvas/scratch.js';
 import { pushAlong } from '../core/liquify.js';
 import { selectionStrokes } from '../core/lassoOps.js';
-import { nextId } from '../core/ids.js';
+import { nextId } from '../core/ids.ts';
 
 // Liquify: the layer's pixels are copied out when the pen goes down, pushed around in that copy
 // on every move, and stamped back when it lifts.

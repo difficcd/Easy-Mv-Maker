@@ -5,7 +5,7 @@ import { CutAnimPanel, CameraPanel } from './AnimPanels';
 import { LayerRows } from './LayerRows';
 import { tr } from '../i18n';
 
-import { inReadingOrder } from '../core/cutSelection.js';
+import { inReadingOrder } from '../core/cutSelection.ts';
 
 // CUT / LAYER panel: the cut list, each cut's layer tree, cut animation and text list.
 // The rows of each tree are LayerRows; everything they need arrives as the `layerRows` bundle

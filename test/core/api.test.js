@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { apiFetch, fetchAsset, putAsset } from '../../src/core/api.js';
+import { apiFetch, fetchAsset, putAsset } from '../../src/core/api.ts';
 
 // A real server rather than a stubbed fetch, because the thing being tested is what fetch does
 // with a status code - and a stub would be me asserting my own assumption about that.

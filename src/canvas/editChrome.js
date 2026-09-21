@@ -8,7 +8,7 @@
 import { drawMarquee, drawHandle } from './marquee.js';
 import { drawWarped, warpedOutline, warpedHandles, rotateKnob } from './warpRender.js';
 
-import { withAlpha } from '../core/colour.js';
+import { withAlpha } from '../core/colour.ts';
 
 /** The rectangle around a selected text, as a marquee. */
 export function drawTextSelection(ctx, box, zoom) {

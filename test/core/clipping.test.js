@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { clipGroups, canClip } from '../../src/core/clipping.js';
+import { clipGroups, canClip } from '../../src/core/clipping.ts';
 
 /**
  * Layers in UI order, topmost first. A trailing `*` marks one as clipped.

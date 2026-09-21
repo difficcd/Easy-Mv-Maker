@@ -15,14 +15,14 @@ import { applyCutAnim } from '../../src/canvas/layerComposite.js';
 import { sizeCanvas, scratchCanvas } from '../../src/canvas/scratch.js';
 import { fitRect, seekTarget } from '../../src/canvas/videoFrames.js';
 import { targetCanvasFor } from '../../src/core/canvasSize.ts';
-import { hexToRgb } from '../../src/core/colour.js';
+import { hexToRgb } from '../../src/core/colour.ts';
 import { computeCutAnim } from '../../src/core/cutAnim.js';
 import { cutDuration, cutProgress } from '../../src/core/cutTime.ts';
 import { applyEase, triwave } from '../../src/core/easing.js';
 import { FONT_PRESETS, fontGroups } from '../../src/core/fonts.ts';
 import { pointInPolygon, dist, safeArray } from '../../src/core/geometry.ts';
 import { sampleKeys } from '../../src/core/keyframes.js';
-import { layerKey, strokeSig, flattenLayersInUiOrder, layerSig } from '../../src/core/layerTree.js';
+import { layerKey, strokeSig, flattenLayersInUiOrder, layerSig } from '../../src/core/layerTree.ts';
 import { swayWeightAt, sampleWave, sortSwayProfile } from '../../src/core/sway.js';
 
 const near = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) < eps, `${a} ≈ ${b}`);

@@ -15,7 +15,7 @@ import { evaluateFrame } from '../engine/evaluateFrame.js';
 import { pendingBitmapIds } from '../engine/pendingBitmaps.js';
 import { onionNeighbours } from '../engine/selectCuts.js';
 import { applyCamera } from '../core/camera.js';
-import { flattenLayersInUiOrder } from '../core/layerTree.js';
+import { flattenLayersInUiOrder } from '../core/layerTree.ts';
 import { drawScene, drawVideoOverlay, drawOnionCut, drawSceneTexts } from './sceneRender.js';
 import { drawTextObject, textNeedsBox } from './textRender.js';
 import { grainTile } from './pixelEffects.js';

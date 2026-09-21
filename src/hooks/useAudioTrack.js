@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { loadAudio, setAudioDuration, setAudioClip, clearAudio } from '../core/mediaReducer.js';
-import { detachMedia, safeMediaSrc } from '../core/mediaEl.js';
-import { fetchAsset } from '../core/api.js';
+import { detachMedia, safeMediaSrc } from '../core/mediaEl.ts';
+import { fetchAsset } from '../core/api.ts';
 import { blobToDataURL, unpackMedia } from '../core/projectAssets.js';
 import { tr } from '../i18n';
 

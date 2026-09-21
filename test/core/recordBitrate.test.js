@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { videoBitrate, codecFamily, AUDIO_BITRATE } from '../../src/core/recordBitrate.js';
+import { videoBitrate, codecFamily, AUDIO_BITRATE } from '../../src/core/recordBitrate.ts';
 
 const mbps = (n) => n / 1_000_000;
 
