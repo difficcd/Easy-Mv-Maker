@@ -5,7 +5,7 @@
 // one took its id from Date.now() rather than nextId, which is the one thing nextId exists to
 // guard against (two ids in the same millisecond). One constructor, one shape.
 
-import { mkLayer } from './layerOps.js';
+import { mkLayer } from './layerOps.ts';
 import type { Id } from './types.ts';
 
 

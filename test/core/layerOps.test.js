@@ -4,7 +4,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { moveLayer, isDescendantOf, resolveDrawLayer, commitStroke, insertFill, offsetLayers, mergeDown, patchLayer, mkLayer, mkFolder, nextLayerId, appendLayer, appendFolder, removeLayerTree, dropPositionFor, moveLayerToEnd, appendPoints } from '../../src/core/layerOps.js';
+import { moveLayer, isDescendantOf, resolveDrawLayer, commitStroke, insertFill, offsetLayers, mergeDown, patchLayer, mkLayer, mkFolder, nextLayerId, appendLayer, appendFolder, removeLayerTree, dropPositionFor, moveLayerToEnd, appendPoints } from '../../src/core/layerOps.ts';
 import { flattenLayersInUiOrder } from '../../src/core/layerTree.ts';
 
 // f1 > a, b   then c at the root

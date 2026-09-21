@@ -8,14 +8,20 @@
 // The array is flat and ordered as the UI shows it. Nesting is expressed by parentId, and a
 // folder's children are the entries that follow it with parentId pointing at it.
 
+import type { Id } from './types.ts';
+
+/** Where a dragged row lands relative to the row under it. */
+export type DropPosition = 'before' | 'after' | 'inside';
+
 /** True when `folderId` is `maybeChildId` itself or an ancestor of it. */
-export function isDescendantOf(layers, maybeChildId, folderId) {
+export function isDescendantOf(layers: Layer[], maybeChildId: Id, folderId: Id): boolean {
     if (maybeChildId === folderId) return true;
-    let cur = layers.find(l => l.id === maybeChildId);
+    let cur: Layer | undefined = layers.find(l => l.id === maybeChildId);
     // The walk is bounded by the list length so a corrupted parentId cycle cannot hang the app.
     for (let guard = 0; cur && cur.parentId != null && guard <= layers.length; guard++) {
         if (cur.parentId === folderId) return true;
-        cur = layers.find(l => l.id === cur.parentId);
+        const pid = cur.parentId;
+        cur = layers.find(l => l.id === pid);
     }
     return false;
 }
@@ -25,7 +31,7 @@ export function isDescendantOf(layers, maybeChildId, folderId) {
  * `position` is 'before', 'after', or 'inside' (only meaningful when the target is a folder).
  * Returns a new array, or null when the move is refused and the caller should change nothing.
  */
-export function moveLayer(layers, layerId, targetId, position = 'after') {
+export function moveLayer(layers: Layer[] | null | undefined, layerId: Id, targetId: Id, position: DropPosition = 'after'): Layer[] | null {
     if (!Array.isArray(layers) || layerId === targetId) return null;
 
     const from = layers.findIndex(l => l.id === layerId);
@@ -66,7 +72,7 @@ export function moveLayer(layers, layerId, targetId, position = 'after') {
  * nowhere. A hidden active layer is deliberately kept - commitStroke reveals it instead, so
  * drawing into a hidden layer shows the result rather than silently swallowing it.
  */
-export function resolveDrawLayer(cut, flattenVisibleLeaves) {
+export function resolveDrawLayer(cut: Cut | null | undefined, flattenVisibleLeaves: (layers: Layer[]) => Layer[]): Layer | null {
     if (!cut || !Array.isArray(cut.layers)) return null;
     const active = cut.layers.find(l => l.id === cut.activeLayerId);
     if (active && active.type === 'layer') return active;
@@ -91,7 +97,7 @@ export function resolveDrawLayer(cut, flattenVisibleLeaves) {
  * @param {(layer: any) => object} patch fields to merge into the matching layer
  * @returns {any[]} a new list; the same one back if nothing matched
  */
-export function patchLayer(layers, layerId, patch) {
+export function patchLayer(layers: Layer[] | null | undefined, layerId: Id, patch: (layer: Layer) => Partial<Layer>): Layer[] {
     if (!Array.isArray(layers)) return [];
     return layers.map(l => (l.id === layerId ? { ...l, ...patch(l) } : l));
 }
@@ -111,12 +117,12 @@ export function patchLayer(layers, layerId, patch) {
  * The reveal is the point. Without it, drawing into a hidden layer - or one inside a collapsed,
  * hidden folder - accepts the stroke and shows nothing, which reads as the drawing being lost.
  */
-export function commitStroke(layers, layerId, stroke, place = (strokes, st) => [...strokes, ...(Array.isArray(st) ? st : [st])]) {
+export function commitStroke(layers: Layer[] | null | undefined, layerId: Id, stroke: Stroke | Stroke[], place: (strokes: Stroke[], st: Stroke | Stroke[]) => Stroke[] = (strokes, st) => [...strokes, ...(Array.isArray(st) ? st : [st])]): { activeLayerId: Id, layers: Layer[] } | null {
     if (!Array.isArray(layers) || !layers.some(l => l.id === layerId)) return null;
 
-    const byId = new Map(layers.map(l => [l.id, l]));
-    const reveal = new Set();
-    let cur = byId.get(layerId);
+    const byId = new Map<Id, Layer>(layers.map(l => [l.id, l]));
+    const reveal = new Set<Id>();
+    let cur: Layer | undefined = byId.get(layerId);
     for (let guard = 0; cur && cur.parentId != null && guard <= layers.length; guard++) {
         reveal.add(cur.parentId);
         cur = byId.get(cur.parentId);
@@ -152,7 +158,7 @@ export function commitStroke(layers, layerId, stroke, place = (strokes, st) => [
  * @param {object} fill the new fill stroke
  * @param {boolean} [overPaint] true when the fill is recolouring existing paint
  */
-export function insertFill(strokes, fill, overPaint) {
+export function insertFill(strokes: Stroke[] | null | undefined, fill: Stroke, overPaint: boolean): Stroke[] {
     const list = Array.isArray(strokes) ? strokes : [];
     if (overPaint) return [...list, fill];
     let at = 0;
@@ -186,8 +192,8 @@ export function insertFill(strokes, fill, overPaint) {
  * @param {number} dy
  * @returns {{layers: Array}} the changed field, for the caller to merge
  */
-export function offsetLayers(cut, layerIds, dx, dy) {
-    const ids = new Set(layerIds || []);
+export function offsetLayers(cut: Cut | null | undefined, layerIds: Iterable<Id> | null | undefined, dx: number, dy: number): { layers: Layer[] } {
+    const ids = new Set<Id>(layerIds || []);
     const layers = Array.isArray(cut?.layers) ? cut.layers : [];
     // Texts are not touched. A text and a layer coexist in a cut without one belonging to the
     // other, and a move applies to what is selected; texts riding along with a layer move was
@@ -196,8 +202,8 @@ export function offsetLayers(cut, layerIds, dx, dy) {
         layers: layers.map(l => !ids.has(l.id) ? l : ({
             ...l,
             rev: (l.rev || 0) + 1,
-            strokes: (Array.isArray(l.strokes) ? l.strokes : []).map(st => st.points
-                ? { ...st, points: st.points.map(p => ({ ...p, x: p.x + dx, y: p.y + dy })) }
+            strokes: (Array.isArray(l.strokes) ? l.strokes : []).map((st: Stroke) => st.points
+                ? { ...st, points: st.points.map((p: { x: number, y: number }) => ({ ...p, x: p.x + dx, y: p.y + dy })) }
                 : { ...st, x: (st.x || 0) + dx, y: (st.y || 0) + dy }),
             ...(l.anim?.mosaicRect
                 ? { anim: { ...l.anim, mosaicRect: { ...l.anim.mosaicRect, x: l.anim.mosaicRect.x + dx, y: l.anim.mosaicRect.y + dy } } }
@@ -222,7 +228,7 @@ export function offsetLayers(cut, layerIds, dx, dy) {
  * @param {(layers: Array) => Array} flattenVisibleLeaves ordering helper (flattenLayersInUiOrder)
  * @returns {{layers: Array, activeLayerId: any} | null} null when there is nothing to merge into
  */
-export function mergeDown(layers, layerId, flattenVisibleLeaves) {
+export function mergeDown(layers: Layer[] | null | undefined, layerId: Id, flattenVisibleLeaves: (layers: Layer[]) => Layer[]): { layers: Layer[], activeLayerId: Id } | null {
     const list = Array.isArray(layers) ? layers : [];
     const src = list.find(l => l.id === layerId);
     if (!src || src.type === 'folder') return null;
@@ -252,12 +258,10 @@ export function mergeDown(layers, layerId, flattenVisibleLeaves) {
 }
 
 /** A blank drawable layer. The one shape, so a layer made anywhere has every field. */
-/** @returns {Layer} */
-export const mkLayer = (id, name = `L${id}`) => ({ id, name, type: /** @type {const} */ ('layer'), strokes: [], redoStrokes: [], visible: true, parentId: null });
+export const mkLayer = (id: Id, name = `L${id}`): Layer => ({ id, name, type: 'layer', strokes: [], redoStrokes: [], visible: true, parentId: null });
 
 /** A blank folder. */
-/** @returns {Layer} */
-export const mkFolder = (id) => ({ id, name: `Folder ${id}`, type: /** @type {const} */ ('folder'), visible: true, collapsed: false, parentId: null });
+export const mkFolder = (id: Id): Layer => ({ id, name: `Folder ${id}`, type: 'folder', visible: true, collapsed: false, parentId: null });
 
 /**
  * The next free layer id within a cut. Layer ids are per cut, not global (see the gotchas):
@@ -267,7 +271,7 @@ export const mkFolder = (id) => ({ id, name: `Folder ${id}`, type: /** @type {co
  * and a fourth site used the global id counter instead, so a layer added after a delete could
  * carry an id in the millions beside layers numbered 1 to 5.
  */
-export const nextLayerId = (layers) => Math.max(...(Array.isArray(layers) ? layers : []).map(l => l.id), 0) + 1;
+export const nextLayerId = (layers: Layer[] | null | undefined): number => Math.max(...(Array.isArray(layers) ? layers : []).map(l => Number(l.id)), 0) + 1;
 
 /**
  * A new layer at the end of the stack, made active.
@@ -275,7 +279,7 @@ export const nextLayerId = (layers) => Math.max(...(Array.isArray(layers) ? laye
  * @param {{layers: any[]}} cut
  * @returns {{layers: any[], activeLayerId: number}}
  */
-export function appendLayer(cut) {
+export function appendLayer(cut: Cut | null | undefined): { layers: Layer[], activeLayerId: Id } {
     const layers = Array.isArray(cut?.layers) ? cut.layers : [];
     const id = nextLayerId(layers);
     return { layers: [...layers, mkLayer(id)], activeLayerId: id };
@@ -287,7 +291,7 @@ export function appendLayer(cut) {
  * @param {{layers: any[]}} cut
  * @returns {{layers: any[]}}
  */
-export function appendFolder(cut) {
+export function appendFolder(cut: Cut | null | undefined): { layers: Layer[] } {
     const layers = Array.isArray(cut?.layers) ? cut.layers : [];
     return { layers: [...layers, mkFolder(nextLayerId(layers))] };
 }
@@ -304,18 +308,18 @@ export function appendFolder(cut) {
  * @param {any} layerId
  * @returns {{layers: any[], activeLayerId: any}}
  */
-export function removeLayerTree(cut, layerId) {
+export function removeLayerTree(cut: Cut | null | undefined, layerId: Id): { layers: Layer[], activeLayerId: Id | null } {
     const layers = Array.isArray(cut?.layers) ? cut.layers : [];
-    const gone = new Set([layerId]);
+    const gone = new Set<Id>([layerId]);
     // Folders can nest, so walk until no new child turns up.
     let grew = true;
     while (grew) {
         grew = false;
-        for (const l of layers) if (!gone.has(l.id) && gone.has(l.parentId)) { gone.add(l.id); grew = true; }
+        for (const l of layers) if (!gone.has(l.id) && l.parentId != null && gone.has(l.parentId)) { gone.add(l.id); grew = true; }
     }
     let kept = layers.filter(l => !gone.has(l.id));
     if (!kept.some(l => l.type === 'layer')) kept = [...kept, mkLayer(nextLayerId(kept))];
-    const activeLayerId = gone.has(cut?.activeLayerId) ? (kept.find(l => l.type === 'layer')?.id ?? null) : cut.activeLayerId;
+    const activeLayerId: Id | null = gone.has(cut?.activeLayerId) ? (kept.find(l => l.type === 'layer')?.id ?? null) : (cut?.activeLayerId ?? null);
     return { layers: kept, activeLayerId };
 }
 
@@ -332,7 +336,7 @@ export function removeLayerTree(cut, layerId) {
  * @param {'layer'|'folder'} targetType
  * @returns {'before'|'after'|'inside'}
  */
-export function dropPositionFor(clientY, rect, targetType) {
+export function dropPositionFor(clientY: number, rect: { top: number, height: number }, targetType: string | undefined): DropPosition {
     const mid = rect.top + rect.height / 2;
     if (targetType === 'folder' && clientY > mid - 4 && clientY < mid + rect.height * 0.4) return 'inside';
     return clientY < mid ? 'before' : 'after';
@@ -346,7 +350,7 @@ export function dropPositionFor(clientY, rect, targetType) {
  * @param {any} layerId
  * @returns {any[] | null}
  */
-export function moveLayerToEnd(layers, layerId) {
+export function moveLayerToEnd(layers: Layer[] | null | undefined, layerId: Id): Layer[] | null {
     if (!Array.isArray(layers)) return null;
     const i = layers.findIndex(l => l.id === layerId);
     if (i < 0) return null;
@@ -366,7 +370,7 @@ export function moveLayerToEnd(layers, layerId) {
  * @param {Array<{x: number, y: number}>} points
  * @returns {any[]}
  */
-export function appendPoints(strokes, points) {
+export function appendPoints(strokes: Stroke[] | null | undefined, points: Array<{ x: number, y: number, pressure?: number }>): Stroke[] {
     const list = Array.isArray(strokes) ? strokes : [];
     const last = list[list.length - 1];
     if (!last || last.tool === 'paste' || last.tool === 'fill' || !Array.isArray(last.points)) return list;
