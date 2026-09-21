@@ -6,7 +6,9 @@
 // The CJK families cost less than their size suggests: Google Fonts serves them split by
 // unicode-range, so the browser fetches only the subsets whose glyphs actually appear. Loading
 // the app with no Japanese on screen downloads no Japanese.
-export const FONT_PRESETS = [
+export interface FontPreset { value: string; label: string; group: string }
+
+export const FONT_PRESETS: FontPreset[] = [
     { value: 'sans-serif', label: 'Sans', group: 'Basic' },
     { value: 'serif', label: 'Serif', group: 'Basic' },
     { value: 'monospace', label: 'Mono', group: 'Basic' },
@@ -37,9 +39,9 @@ export const FONT_PRESETS = [
  * @param {typeof FONT_PRESETS} [presets]
  * @returns {[string, typeof FONT_PRESETS][]}
  */
-export function fontGroups(presets = FONT_PRESETS) {
+export function fontGroups(presets: readonly FontPreset[] = FONT_PRESETS): Array<[string, FontPreset[]]> {
     /** @type {[string, typeof FONT_PRESETS][]} */
-    const out = [];
+    const out: Array<[string, FontPreset[]]> = [];
     for (const f of presets) {
         const name = f.group || '';
         const last = out[out.length - 1];

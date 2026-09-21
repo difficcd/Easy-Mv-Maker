@@ -18,7 +18,7 @@
  * @param {number} [min]
  * @param {number} [max]
  */
-export function clampNum(n, min, max) {
+export function clampNum(n: number, min?: number | null, max?: number | null): number {
     if (min != null && n < min) return min;
     if (max != null && n > max) return max;
     return n;
@@ -28,7 +28,7 @@ export function clampNum(n, min, max) {
  * The value to report while typing; null means "not a number yet, hold on".
  * Intermediate states like "", "-", "." and "1e" hold rather than snapping to zero.
  */
-export function liveNumber(raw) {
+export function liveNumber(raw: unknown): number | null {
     const s = String(raw).trim();
     if (!/^[+-]?(\d+\.?\d*|\.\d+)$/.test(s)) return null;
     const n = parseFloat(s);
@@ -40,7 +40,7 @@ export function liveNumber(raw) {
  * @param {string|number} raw
  * @param {{min?: number, max?: number, fallback?: number}} [opts]
  */
-export function commitNumber(raw, { min, max, fallback = 0 } = {}) {
+export function commitNumber(raw: unknown, { min, max, fallback = 0 }: { min?: number | null, max?: number | null, fallback?: number } = {}): number {
     const n = parseFloat(String(raw));
     if (!Number.isFinite(n)) return fallback;
     return clampNum(n, min, max);

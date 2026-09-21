@@ -15,7 +15,7 @@
 // rounds the position and clamps the size - and a loop that had to carry those exceptions would
 // say less than the two explicit lists do.
 
-import { clampNum } from './numInput.js';
+import { clampNum } from './numInput.ts';
 
 /** Font sizes the renderer will accept. Matches clampFontSize in textRender. */
 const FONT_MIN = 6;

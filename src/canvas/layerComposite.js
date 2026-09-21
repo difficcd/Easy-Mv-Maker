@@ -1,4 +1,4 @@
-import { CANVAS_H, CANVAS_W } from '../core/canvasSize.js';
+import { CANVAS_H, CANVAS_W } from '../core/canvasSize.ts';
 // Putting one layer onto the frame: where it sits, and how a floating selection is cut out of it.
 //
 // Both of these lived inside the composite loop in paintFrame, which is the hottest code in the

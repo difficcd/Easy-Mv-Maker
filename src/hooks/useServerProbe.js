@@ -14,7 +14,7 @@
 // most likely just been started.
 
 import { useState, useEffect } from 'react';
-import { nextProbeDelay } from '../core/probeBackoff.js';
+import { nextProbeDelay } from '../core/probeBackoff.ts';
 
 /**
  * @param {string} [url] the endpoint to probe

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { zoomAbout, pinchedView } from '../core/viewZoom.js';
-import { dragOnWindow } from '../core/windowDrag.js';
+import { dragOnWindow } from '../core/windowDrag.ts';
 
 /**
  * How the canvas is looked at: its zoom and offset, and every way of changing them.

@@ -4,7 +4,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { nextProbeDelay, PROBE_BASE_MS, PROBE_MAX_MS, PROBE_QUICK_TRIES } from '../../src/core/probeBackoff.js';
+import { nextProbeDelay, PROBE_BASE_MS, PROBE_MAX_MS, PROBE_QUICK_TRIES } from '../../src/core/probeBackoff.ts';
 
 test('a working server is checked at the base interval', () => {
     assert.equal(nextProbeDelay(0), PROBE_BASE_MS);

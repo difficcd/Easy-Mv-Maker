@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { sizeCanvas, scratchCanvas } from '../canvas/scratch.js';
 import { drawStrokesOnCtx } from '../canvas/strokes.js';
-import { safeArray } from '../core/geometry.js';
+import { safeArray } from '../core/geometry.ts';
 import { layerKey, layerSig } from '../core/layerTree.js';
 import { scanLayerBitmaps } from '../engine/pendingBitmaps.js';
 import { cutsToCache } from '../engine/selectCuts.js';

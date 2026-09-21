@@ -19,9 +19,9 @@
 // 60Hz starves the prefetcher and the video stutters.
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { playbackStartFrom } from '../core/playbackStart.js';
+import { playbackStartFrom } from '../core/playbackStart.ts';
 import { xAtTime } from '../core/timelineZoom.js';
-import { nextRecordFrame, EXPORT_FPS } from '../core/recordClock.js';
+import { nextRecordFrame, EXPORT_FPS } from '../core/recordClock.ts';
 
 /**
  * @param {object} opts

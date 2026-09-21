@@ -1,5 +1,5 @@
 import { tr } from '../../i18n';
-import { targetCanvasFor } from '../../core/canvasSize.js';
+import { targetCanvasFor } from '../../core/canvasSize.ts';
 import { Modal } from '../Modal.jsx';
 import { parseClock } from '../../core/timeCode.ts';
 import { NumField, clampNum } from '../NumField.jsx';

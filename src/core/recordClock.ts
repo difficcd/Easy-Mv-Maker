@@ -23,7 +23,7 @@ export const EXPORT_FPS = 30;
  * @param {number} lastIdx the index recorded last, or -1 before the first
  * @returns {{idx: number, time: number} | null} the index and the exact time to paint for it
  */
-export function nextRecordFrame(t, start, fps, lastIdx) {
+export function nextRecordFrame(t: number, start: number, fps: number, lastIdx: number): { idx: number, time: number } | null {
     if (!(fps > 0)) return null;
     // The epsilon absorbs float error in an audio clock that reports 0.99999 for a time that is
     // meant to be 1.0; without it a frame on the boundary would be painted a step early.

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { ChevronRight, ChevronDown, Folder, FolderOpen, Eye, EyeOff, Waves, CornerDownRight, ArrowDownToLine, Film, Trash2 } from 'lucide-react';
-import { cutProgress } from '../core/cutTime.js';
+import { cutProgress } from '../core/cutTime.ts';
 import { flattenLayersInUiOrder, layerKey } from '../core/layerTree.js';
 import { canClip } from '../core/clipping.js';
 import { setLayerClipped, mergeLayerDown } from '../core/cutsReducer.js';

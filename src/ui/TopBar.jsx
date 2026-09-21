@@ -1,7 +1,7 @@
 import { ChevronDown, Download, Upload, Film, Settings, AlertTriangle, DatabaseBackup } from 'lucide-react';
 import { tr } from '../i18n';
 import { Logo } from './Logo.jsx';
-import { clampCanvasSize } from '../core/canvasSize.js';
+import { clampCanvasSize } from '../core/canvasSize.ts';
 import { useDropdown } from '../hooks/useDropdown.js';
 
 // Top menu bar: the File and Media menus, resolution, canvas zoom, save state, Export.

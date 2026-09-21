@@ -37,7 +37,7 @@ frame's image data.
 | `fetchAsset` | One stored binary asset - a frame, the audio, the reference video - as a Blob, or throw. |
 | `putAsset` | Upload one asset as a Blob rather than base64, throwing the caller's own message so it can be localised and numbered. A legacy dataURL is fetched back into a Blob first. |
 
-## `src/core/brushSize.js`
+## `src/core/brushSize.ts`
 
 How wide a brush may be, and how a keystroke changes it. The range was written twice - once for
 typing a size, once for the shortcut - which is the shape the canvas zoom bug had before one copy
@@ -51,7 +51,7 @@ was edited and the other was not.
 | `brushUp` | A quarter wider, plus one. The plus one is not decoration - 1 x 1.25 rounds back to 1, so without it the shortcut does nothing at the sizes where a single pixel matters most. |
 | `brushDown` | The mirror of it, which was missing: 2 / 1.25 rounds back to 2, so the shortcut for a smaller brush did nothing at all at size 2. Takes at least one pixel off, so the key always moves. |
 
-## `src/core/canvasSize.js`
+## `src/core/canvasSize.ts`
 
 How large a project's canvas is allowed to be. The custom-size prompt already clamped to these two
 numbers as literals; the loader clamped nothing, so the limits applied to what a person can type
@@ -118,7 +118,7 @@ not, and one notch of the wheel snapped a 16x view back to 8x.
 | `ZOOM_MIN` | Below this the artwork is too small to place a stroke on. |
 | `ZOOM_MAX` | Above this a single pixel fills a large part of the screen and panning is the only control left. |
 
-## `src/core/windowDrag.js`
+## `src/core/windowDrag.ts`
 
 Running a drag on window listeners, so it survives the pointer leaving the element.
 
@@ -126,7 +126,7 @@ Running a drag on window listeners, so it survives the pointer leaving the eleme
 |---|---|
 | `dragOnWindow` | Listen for move until pointerup **or pointercancel**, then remove everything. Returns a stop function, which is also what a React effect wants as its cleanup. The cancel case is the one five hand-written copies all missed - a cancelled pointer never sends pointerup, so the move listener stayed for the session. |
 
-## `src/core/catmullRom.js`
+## `src/core/catmullRom.ts`
 
 The spline behind the curve ruler.
 
@@ -333,7 +333,7 @@ How many bits a second to ask the recorder for.
 | `codecFamily` | Which of h264 / vp8 / vp9 a mimeType names. An unset type is assumed to be the *weaker* codec, since guessing VP9 would under-provision. |
 | `AUDIO_BITRATE` | 192k. The video dwarfs it either way. |
 
-## `src/core/recordClock.js`
+## `src/core/recordClock.ts`
 
 Which frame a recording should take next (#156).
 
@@ -407,7 +407,7 @@ The audio and video tracks, as named actions.
 | `setVideoCuts` | Scene-cut markers found by the detector, in video time. |
 | `setVideoOpacity` | How strongly the overlay shows through, 0..1. A reference layer is usually wanted faint. |
 
-## `src/core/numInput.js`
+## `src/core/numInput.ts`
 
 Typing into a number field without the value fighting the cursor.
 
@@ -474,7 +474,7 @@ Turning a drawn line into something that can be moved along smoothly.
 | `smoothPath` | Chaikin corner cutting: replace each point with two points a quarter in from its neighbours. |
 | `spacingRatio` | How evenly spaced a path is: the longest gap between consecutive points divided by the mean. 1 is perfect. A raw hand-drawn path is usually somewhere past 5, which is the same thing as saying it would stutter. |
 
-## `src/core/playbackRate.js`
+## `src/core/playbackRate.ts`
 
 How fast preview playback runs, and the fact that the choice is remembered between sessions.
 
@@ -486,7 +486,7 @@ How fast preview playback runs, and the fact that the choice is remembered betwe
 | `safePlaybackRate` | A usable rate, or the default. Falls back rather than clamping: a rate nobody chose should not be one they have to notice and undo. |
 | `playbackRateCodec` | For `useStored`. A stored `0` would freeze the playhead with nothing on screen to explain why. |
 
-## `src/core/playbackStart.js`
+## `src/core/playbackStart.ts`
 
 Where playback begins when play is pressed.
 
@@ -494,7 +494,7 @@ Where playback begins when play is pressed.
 |---|---|
 | `playbackStartFrom` | Where pressing play should start from: the playhead if it is inside the range, otherwise the start of the range. The anchor lets a part play from its own beginning rather than the timeline's. |
 
-## `src/core/probeBackoff.js`
+## `src/core/probeBackoff.ts`
 
 How often to re-check whether the API server is up.
 
@@ -745,16 +745,16 @@ Where each character of a line goes, for curving and for animating characters se
 | `layoutLine` | Per-character position and angle along an arc. The straight path is left alone on purpose: drawing character by character gives up the font's kerning and shaping, so this is the cost of curving rather than something every text pays. |
 | `charProgress` | One character's own 0..1 when they are staggered. `spread` is capped below 1, because spending the whole duration on starts leaves the last character no time to move. |
 
-## `src/core/fonts.js`
+## `src/core/fonts.ts`
 
 The fonts offered for text objects, grouped by script.
 
 | | |
 |---|---|
-| `FONT_PRESETS` | the app with no Japanese on screen downloads no Japanese. |
+| `FONT_PRESETS` | The fonts offered for text objects, grouped by script. The CJK families cost less than their size suggests: the CDN serves unicode-range subsets, so a project with no Japanese on screen downloads none. |
 | `fontGroups` | The presets in the order they should appear, as [group, fonts] pairs. |
 
-## `src/core/geometry.js`
+## `src/core/geometry.ts`
 
 Small geometry, and the one array helper everything reaches for.
 
@@ -785,7 +785,7 @@ A cut's entrance and exit: the transform at a moment, from its animation setting
 | `ANIM_DEFAULT` | A cut animation with nothing turned on. Every field is present, so a stored animation never has to be merged against a shape that might be missing keys. |
 | `computeCutAnim` | A cut's animation at a given absolute time. Returns null when the cut is at rest, so callers can skip the save/transform entirely rather than applying an identity one. |
 
-## `src/core/cutTime.js`
+## `src/core/cutTime.ts`
 
 How long a cut lasts, and how far through it a moment is.
 

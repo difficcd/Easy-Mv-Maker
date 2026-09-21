@@ -1,7 +1,7 @@
 import React from 'react';
 import { tr } from '../i18n';
 import { NumField, clampNum } from './NumField';
-import { FONT_PRESETS, fontGroups } from '../core/fonts.js';
+import { FONT_PRESETS, fontGroups } from '../core/fonts.ts';
 import { TEXT_ANIM_DEFAULT } from '../core/textAnim.js';
 
 /**

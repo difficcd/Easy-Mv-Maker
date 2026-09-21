@@ -24,7 +24,7 @@
 
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import { timeAtX, pinchZoom, zoomAnchored } from '../core/timelineZoom.js';
-import { dragOnWindow } from '../core/windowDrag.js';
+import { dragOnWindow } from '../core/windowDrag.ts';
 
 const DRAG_SLOP = 5;   // mouse travel before a click becomes a marquee drag
 const TAP_SLOP = 4;    // finger travel before a tap becomes a pan

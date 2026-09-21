@@ -44,7 +44,7 @@ import { useServerStorage } from './hooks/useServerStorage.js';
 import { usePanelLayout } from './hooks/usePanelLayout.js';
 import { useLocalDocuments } from './hooks/useLocalDocuments.js';
 import { fetchAsset } from './core/api.js';
-import { PLAYBACK_RATES, RATE_DEFAULT, playbackRateCodec } from './core/playbackRate.js';
+import { PLAYBACK_RATES, RATE_DEFAULT, playbackRateCodec } from './core/playbackRate.ts';
 import { scaleProjectTimes, bakePlan } from './core/timeScale.js';
 import { paintFrameOnto, createFrameScratch, BOIL_FPS } from './canvas/framePaint.js';
 import { drawMarquee } from './canvas/marquee.js';
@@ -80,7 +80,7 @@ import { cloneCutContents as cloneCutContentsPure, placeCopies } from './core/cu
 import { DEFAULT_KEYS, KEY_LABELS, keyOf, keymapFrom, findConflicts } from './core/shortcuts.js';
 import { derivePartsFrom, deriveVideoBatches } from './core/partOps.js';
 import { playRange, exportRange } from './core/playRange.js';
-import { brushUp, brushDown } from './core/brushSize.js';
+import { brushUp, brushDown } from './core/brushSize.ts';
 import {
     cutsReducer, replaceCuts, addCuts, updateCut, setCutAnim, setCutCamera, clearCut,
     updateLayer, setLayerAnim, upsertText, deleteText, toggleTextVisible as toggleTextVisibleAction,
@@ -90,7 +90,7 @@ import {
 import { migrateCuts, projectSettings, makeLoadProgress } from './core/projectFormat.js';
 import { audioExt, videoExt, collectBitmaps, blobToDataURL, packMedia, fillBitmapStore, bitmapLoadCount } from './core/projectAssets.js';
 import { xAtTime } from './core/timelineZoom.js';
-import { dragOnWindow } from './core/windowDrag.js';
+import { dragOnWindow } from './core/windowDrag.ts';
 // Recording a camera path reuses the pen the way a part's motion path does; the two cannot be
 // active at once, and startDraw checks this one first because a camera is a property of the cut
 // rather than of whichever layer happens to be selected.
@@ -105,9 +105,9 @@ import { morphPrepare } from './canvas/morph.js';
 import { sizeCanvas, imageDataCanvas } from './canvas/scratch.js';
 import { drawStrokesOnCtx } from './canvas/strokes.js';
 import { detectSceneCuts, seekTarget } from './canvas/videoFrames.js';
-import { DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT } from './core/canvasSize.js';
+import { DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT } from './core/canvasSize.ts';
 import { hexToRgb } from './core/colour.js';
-import { pointInPolygon, safeArray } from './core/geometry.js';
+import { pointInPolygon, safeArray } from './core/geometry.ts';
 import { flattenLayersInUiOrder } from './core/layerTree.js';
 
 

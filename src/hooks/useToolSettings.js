@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useStored } from './useStored.js';
 import { arrayCodec, onOffCodec } from '../core/persist.js';
-import { clampBrush } from '../core/brushSize.js';
+import { clampBrush } from '../core/brushSize.ts';
 import { RECENT_SLOTS } from '../ui/ColorPanel';
 
 /**

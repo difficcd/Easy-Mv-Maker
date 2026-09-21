@@ -1,6 +1,8 @@
 // Small geometry, and the one array helper everything reaches for.
 
-export function pointInPolygon(point, vs) {
+import type { Point } from './types.ts';
+
+export function pointInPolygon(point: readonly number[], vs: ReadonlyArray<readonly number[]>): boolean {
     const [x, y] = point;
     let inside = false;
     for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
@@ -12,12 +14,12 @@ export function pointInPolygon(point, vs) {
     return inside;
 };
 
-export function dist(a, b) {
+export function dist(a: Point, b: Point): number {
     const dx = a.x - b.x;
     const dy = a.y - b.y;
     return Math.hypot(dx, dy);
 }
 
-export function safeArray(v) {
-    return Array.isArray(v) ? v : [];
+export function safeArray<T = any>(v: unknown): T[] {
+    return Array.isArray(v) ? (v as T[]) : [];
 }

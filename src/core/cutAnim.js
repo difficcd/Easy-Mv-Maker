@@ -1,7 +1,7 @@
 // A cut's entrance and exit: the transform at a moment, from its animation settings.
 
-import { CANVAS_H, CANVAS_W } from './canvasSize.js';
-import { cutDuration } from './cutTime.js';
+import { CANVAS_H, CANVAS_W } from './canvasSize.ts';
+import { cutDuration } from './cutTime.ts';
 import { SWING, applyEase, swing } from './easing.js';
 
 export const ANIM_DEFAULT = { inType: 'none', inDur: 0.4, inDir: 'left', outType: 'none', outDur: 0.4, outDir: 'right', deformAxis: 'x', deformAmount: 0, deformReturn: false, deformSpeed: 1, deformCount: 0, moveX: 0, moveY: 0, moveReturn: false, moveSpeed: 1, moveCount: 0, ease: 'linear', easePower: 2 };

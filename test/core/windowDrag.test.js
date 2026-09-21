@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { dragOnWindow } from '../../src/core/windowDrag.js';
+import { dragOnWindow } from '../../src/core/windowDrag.ts';
 
 /** A stand-in for window that remembers what is still listening. */
 function fakeTarget() {

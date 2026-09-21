@@ -24,7 +24,7 @@
  *   for tests
  * @returns {() => void} ends the drag early and removes the listeners; safe to call twice
  */
-export function dragOnWindow(onMove, onEnd, target = typeof window !== 'undefined' ? window : null) {
+export function dragOnWindow(onMove: (e: PointerEvent) => void, onEnd?: ((e: PointerEvent) => void) | null, target: EventTarget | null = typeof window !== 'undefined' ? window : null): () => void {
     if (!target) return () => { };
 
     let done = false;
@@ -38,8 +38,8 @@ export function dragOnWindow(onMove, onEnd, target = typeof window !== 'undefine
         target.removeEventListener('pointercancel', end);
     };
 
-    const move = (e) => { if (!done) onMove(e); };
-    const end = (e) => { stop(); onEnd?.(e); };
+    const move = (e: Event) => { if (!done) onMove(e as PointerEvent); };
+    const end = (e: Event) => { stop(); onEnd?.(e as PointerEvent); };
 
     target.addEventListener('pointermove', move);
     target.addEventListener('pointerup', end);

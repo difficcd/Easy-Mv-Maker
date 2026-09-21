@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PLAYBACK_RATES, RATE_DEFAULT, safePlaybackRate, playbackRateCodec } from '../../src/core/playbackRate.js';
+import { PLAYBACK_RATES, RATE_DEFAULT, safePlaybackRate, playbackRateCodec } from '../../src/core/playbackRate.ts';
 
 test('every offered rate survives a round trip', () => {
     for (const r of PLAYBACK_RATES) {

@@ -10,6 +10,8 @@
 //
 // The floor is the whole reason it is not just (end - start). A cut can be dragged to zero
 // length, and every one of these divides by it.
+import type { TimeSpan } from './types.ts';
+
 const MIN_CUT_SECONDS = 0.0001;
 
 /**
@@ -17,7 +19,7 @@ const MIN_CUT_SECONDS = 0.0001;
  * @param {{startTime: number, endTime: number}} ac
  * @returns {number}
  */
-export function cutDuration(ac) {
+export function cutDuration(ac: TimeSpan): number {
     return Math.max(MIN_CUT_SECONDS, ac.endTime - ac.startTime);
 }
 
@@ -31,6 +33,6 @@ export function cutDuration(ac) {
  * @param {number} time
  * @returns {number}
  */
-export function cutProgress(ac, time) {
+export function cutProgress(ac: TimeSpan, time: number): number {
     return Math.max(0, Math.min(1, (time - ac.startTime) / cutDuration(ac)));
 }

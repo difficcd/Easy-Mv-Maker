@@ -32,7 +32,7 @@ export const RATE_DEFAULT = 1;
  * @param {unknown} v
  * @returns {number}
  */
-export function safePlaybackRate(v) {
+export function safePlaybackRate(v: unknown): number {
     const n = typeof v === 'number' ? v : parseFloat(String(v));
     if (!Number.isFinite(n) || n < RATE_MIN || n > RATE_MAX) return RATE_DEFAULT;
     return n;
@@ -40,6 +40,6 @@ export function safePlaybackRate(v) {
 
 /** For `useStored`. A rate that will not decode is the default, not a frozen clock. */
 export const playbackRateCodec = {
-    decode: (/** @type {string} */ raw) => safePlaybackRate(raw),
-    encode: (/** @type {number} */ value) => String(safePlaybackRate(value)),
+    decode: (raw: string) => safePlaybackRate(raw),
+    encode: (value: number) => String(safePlaybackRate(value)),
 };

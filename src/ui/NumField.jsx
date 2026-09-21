@@ -1,5 +1,5 @@
 import React from 'react';
-import { clampNum, liveNumber, commitNumber } from '../core/numInput';
+import { clampNum, liveNumber, commitNumber } from '../core/numInput.ts';
 
 // A number input you can actually type into. The rules, and why the plain controlled input does
 // not work, are in numInput.js; this is the component around them.
