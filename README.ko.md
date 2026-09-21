@@ -169,7 +169,7 @@ src/
   ui/              패널; ui/dialogs/ 는 대화상자 하나당 파일 하나
   i18n.js          영어 사전(~710 항목)과 tr() 조회; i18n.ja.js는 일본어
   globals.d.ts     앰비언트 선언 (EyeDropper, Capacitor, File System Access…)
-server/index.js    프로젝트 저장 + 백업 순환 + 영상/음원 가져오기 API
+server/            API: index.js가 배선, projects·backups·youtube가 라우트 모듈, paths.js가 모든 경로를 만듦
 scripts/           위 검사 가드들, 핫패스 벤치마크, 폰트 서브셋
 test/              단위 테스트 (node --test), src/ 구조를 그대로 — src/core는 test/core — 그리고 smoke/
 ```
