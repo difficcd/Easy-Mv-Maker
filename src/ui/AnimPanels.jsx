@@ -6,7 +6,7 @@ import { CAMERA_DEFAULT, CAMERA_PRESETS, resolveCamera } from '../core/camera.js
 import { randomId } from '../core/ids.ts';
 
 import { upsertKey, patchKey, removeKey, snapProgress } from '../core/keyframes.ts';
-import { readStored, writeStored, arrayCodec } from '../core/persist.js';
+import { readStored, writeStored, arrayCodec } from '../core/persist.ts';
 import { NumField } from './NumField';
 import { tr } from '../i18n';
 import { swayPointAt, swayWeightAt } from '../core/sway.js';

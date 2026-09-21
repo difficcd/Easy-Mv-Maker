@@ -14,7 +14,7 @@
 // that exact shape came up during the conversion.
 
 import { JA } from './i18n.ja.js';
-import { readStored, writeStored } from './core/persist.js';
+import { readStored, writeStored } from './core/persist.ts';
 
 /** The languages with a dictionary. Korean needs none: it is the key. */
 export const LANGS = ['en', 'ko', 'ja'];

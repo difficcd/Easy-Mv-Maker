@@ -252,10 +252,12 @@ export function mergeDown(layers, layerId, flattenVisibleLeaves) {
 }
 
 /** A blank drawable layer. The one shape, so a layer made anywhere has every field. */
-export const mkLayer = (id, name = `L${id}`) => ({ id, name, type: 'layer', strokes: [], redoStrokes: [], visible: true, parentId: null });
+/** @returns {Layer} */
+export const mkLayer = (id, name = `L${id}`) => ({ id, name, type: /** @type {const} */ ('layer'), strokes: [], redoStrokes: [], visible: true, parentId: null });
 
 /** A blank folder. */
-export const mkFolder = (id) => ({ id, name: `Folder ${id}`, type: 'folder', visible: true, collapsed: false, parentId: null });
+/** @returns {Layer} */
+export const mkFolder = (id) => ({ id, name: `Folder ${id}`, type: /** @type {const} */ ('folder'), visible: true, collapsed: false, parentId: null });
 
 /**
  * The next free layer id within a cut. Layer ids are per cut, not global (see the gotchas):

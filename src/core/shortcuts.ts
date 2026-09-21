@@ -3,6 +3,13 @@
 // Shortcut matching fails quietly - the key simply does nothing - so the rules are worth stating
 // rather than leaving implied by a string concatenation.
 
+/** A key press as the shortcut table reads it. */
+export interface KeyPress { key: string; ctrl: boolean; shift: boolean; alt: boolean; inField: boolean; combo: string }
+/** What the app is doing, for the shortcuts that only make sense in a state. */
+export interface ShortcutState { currentCut?: unknown; clipboard?: unknown; selection?: unknown; textEdit?: unknown }
+/** An action to take, with its argument for the tool switch. */
+export interface Shortcut { action: string; arg?: string }
+
 /**
  * Selecting a tool is a binding like any other, distinguished by this prefix so the handler can
  * route it without a list of tool ids to keep in step with the toolbar.
@@ -10,7 +17,7 @@
 export const TOOL_PREFIX = 'tool.';
 
 /** The tool a binding selects, or null if it is not a tool binding. */
-export const toolFromAction = (action) =>
+export const toolFromAction = (action: unknown): string | null =>
     (typeof action === 'string' && action.startsWith(TOOL_PREFIX)) ? action.slice(TOOL_PREFIX.length) : null;
 
 /**
@@ -21,7 +28,9 @@ export const toolFromAction = (action) =>
  * coming from another app guesses right, and avoid the four already taken by undo, redo and the
  * brush-size keys.
  */
-export const DEFAULT_KEYS = {
+export type Keymap = Record<string, string>;
+
+export const DEFAULT_KEYS: Keymap = {
     undo: 'j', redo: 'k',
     brushDown: '[', brushUp: ']',
     zoomOut: 'ctrl+[', zoomIn: 'ctrl+]',
@@ -44,7 +53,7 @@ export const DEFAULT_KEYS = {
 };
 
 /** What each binding is called in the settings panel. */
-export const KEY_LABELS = {
+export const KEY_LABELS: Record<string, string> = {
     undo: '실행 취소', redo: '다시 실행',
     brushDown: '브러시 작게', brushUp: '브러시 크게',
     zoomOut: '캔버스 축소', zoomIn: '캔버스 확대', resetView: '줌 초기화',
@@ -74,8 +83,8 @@ export const KEY_LABELS = {
  *  - a printable key is lowercased, while a named one (Tab, ArrowLeft, F5) keeps its spelling,
  *    since those are already canonical and lowercasing them would lose the distinction.
  */
-export function keyOf(e) {
-    const p = [];
+export function keyOf(e: { key?: string, ctrlKey?: boolean, metaKey?: boolean, altKey?: boolean, shiftKey?: boolean }): string {
+    const p: string[] = [];
     if (e.ctrlKey || e.metaKey) p.push('ctrl');
     if (e.altKey) p.push('alt');
     if (e.shiftKey) p.push('shift');
@@ -92,7 +101,7 @@ export function keyOf(e) {
  *
  * @returns {string|null} the action name, or null
  */
-export function matchShortcut(keymap, combo) {
+export function matchShortcut(keymap: Keymap | null | undefined, combo: string | null | undefined): string | null {
     if (!keymap || !combo) return null;
     const want = String(combo).toLowerCase();
     for (const action of Object.keys(keymap)) {
@@ -109,15 +118,16 @@ export function matchShortcut(keymap, combo) {
  * first, so a clash means one of the two silently never fires; showing it is the difference
  * between a broken key and a confusing one.
  */
-export function findConflicts(keymap) {
-    const byKey = new Map();
-    for (const action of Object.keys(keymap || {})) {
-        const bound = keymap[action];
+export function findConflicts(keymap: Keymap | null | undefined): Record<string, string[]> {
+    const byKey = new Map<string, string[]>();
+    const map = keymap || {};
+    for (const action of Object.keys(map)) {
+        const bound = map[action];
         if (!bound) continue;
         const k = String(bound).toLowerCase();
         byKey.set(k, [...(byKey.get(k) || []), action]);
     }
-    const out = {};
+    const out: Record<string, string[]> = {};
     for (const [k, actions] of byKey) if (actions.length > 1) out[k] = actions;
     return out;
 }
@@ -134,9 +144,9 @@ export function findConflicts(keymap) {
  * @param {unknown} value whatever was stored, already parsed
  * @returns {Record<string, string>} always a fresh object, so editing it cannot touch the defaults
  */
-export function keymapFrom(value) {
+export function keymapFrom(value: unknown): Keymap {
     return value && typeof value === 'object' && !Array.isArray(value)
-        ? { ...DEFAULT_KEYS, ...value }
+        ? { ...DEFAULT_KEYS, ...(value as Keymap) }
         : { ...DEFAULT_KEYS };
 }
 
@@ -161,7 +171,7 @@ export function keymapFrom(value) {
  * @param {{selection: boolean, textEdit: boolean, currentCut: boolean, clipboard: boolean}} state
  * @returns {{action: string, arg?: string} | null}
  */
-export function shortcutFor(press, keymap, state) {
+export function shortcutFor(press: KeyPress, keymap: Keymap, state: ShortcutState): Shortcut | null {
     const { key, ctrl, shift, alt, inField } = press;
     if (ctrl && (key === 's' || key === 'S')) return { action: 'save' };
     if (inField) return null;

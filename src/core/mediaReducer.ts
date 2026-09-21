@@ -12,8 +12,38 @@
 // Actions are built by the exported creators, so a mistyped one is a type error rather than a
 // silent no-op.
 
+import type { TimeSpan } from './types.ts';
+
+/** Where the audio clip sits on the timeline, and how far into the file it starts. */
+export interface AudioClip extends TimeSpan { offset: number }
+/** The reference video track. */
+export interface VideoOverlay extends TimeSpan { name?: string; offset: number; duration: number; w?: number; h?: number; opacity?: number; cuts?: number[]; cutStart?: number; cutOffset?: number; [k: string]: any }
+/** The media state: the audio track and the reference video, or neither. */
+export interface MediaState {
+    audioFile: { name: string } | null;
+    audioUrl: string | null;
+    audioDuration: number;
+    audioData: AudioClip | null;
+    videoOverlay: VideoOverlay | null;
+}
+/** Every action the reducer takes; the creators below build them. */
+export type MediaAction =
+    | { type: 'loadAudio', name: string, url: string }
+    | { type: 'setAudioDuration', duration: number }
+    | { type: 'setAudioClip', clip: AudioClip | null }
+    | { type: 'clearAudio' }
+    | { type: 'loadVideo', overlay: VideoOverlay }
+    | { type: 'clearVideo' }
+    | { type: 'setVideoCuts', cuts: number[], cutStart?: number, cutOffset?: number }
+    | { type: 'setVideoOpacity', opacity: number }
+    | { type: 'clearVideoCuts' }
+    | { type: 'moveTrack', which: 'audio' | 'video', startTime: number }
+    | { type: 'resizeAudio', edge: 'left' | 'right', startTime: number, endTime: number, offset: number }
+    | { type: 'restoreMedia', media: Partial<MediaState> | null | undefined }
+    | { type: 'clearMedia' };
+
 /** Nothing loaded. The duration is a placeholder so an empty timeline still has a length. */
-export const EMPTY_MEDIA = {
+export const EMPTY_MEDIA: MediaState = {
     audioFile: null,      // { name } — the label shown on the track
     audioUrl: null,       // object URL or data URL being played
     audioDuration: 30,    // length of the source, from the audio element
@@ -24,42 +54,42 @@ export const EMPTY_MEDIA = {
 // ── action creators ────────────────────────────────────────────────────────
 
 /** A piece of audio arrived. Its length is not known yet — the element reports that later. */
-export const loadAudio = (name, url) => ({ type: 'loadAudio', name, url });
+export const loadAudio = (name: string, url: string) => ({ type: 'loadAudio', name, url });
 /** The audio element has read the source and knows how long it is. */
-export const setAudioDuration = (duration) => ({ type: 'setAudioDuration', duration });
+export const setAudioDuration = (duration: number) => ({ type: 'setAudioDuration', duration });
 /** Where the clip sits on the timeline, and which part of the source it plays. */
-export const setAudioClip = (clip) => ({ type: 'setAudioClip', clip });
+export const setAudioClip = (clip: AudioClip | null) => ({ type: 'setAudioClip', clip });
 export const clearAudio = () => ({ type: 'clearAudio' });
 
-export const loadVideo = (overlay) => ({ type: 'loadVideo', overlay });
+export const loadVideo = (overlay: VideoOverlay) => ({ type: 'loadVideo', overlay });
 export const clearVideo = () => ({ type: 'clearVideo' });
 /** Scene-cut markers found by the detector, in video time. */
-export const setVideoCuts = (cuts, cutStart, cutOffset) => ({ type: 'setVideoCuts', cuts, cutStart, cutOffset });
+export const setVideoCuts = (cuts: number[], cutStart?: number, cutOffset?: number) => ({ type: 'setVideoCuts', cuts, cutStart, cutOffset });
 /** How strongly the overlay shows through, 0..1. A reference layer is usually wanted faint. */
-export const setVideoOpacity = (opacity) => ({ type: 'setVideoOpacity', opacity });
+export const setVideoOpacity = (opacity: number) => ({ type: 'setVideoOpacity', opacity });
 /** Throw away the detected scene markers without touching the video itself. */
 export const clearVideoCuts = () => ({ type: 'clearVideoCuts' });
 
 /** Drag a track along the timeline, keeping its length. */
-export const moveTrack = (which, startTime) => ({ type: 'moveTrack', which, startTime });
+export const moveTrack = (which: 'audio' | 'video', startTime: number) => ({ type: 'moveTrack', which, startTime });
 /** Drag one edge of the audio clip. The left edge also moves into the source. */
-export const resizeAudio = (edge, startTime, endTime, offset) => ({ type: 'resizeAudio', edge, startTime, endTime, offset });
+export const resizeAudio = (edge: 'left' | 'right', startTime: number, endTime: number, offset: number) => ({ type: 'resizeAudio', edge, startTime, endTime, offset });
 
 /** Restore both tracks at once, opening a project. */
-export const restoreMedia = (media) => ({ type: 'restoreMedia', media });
+export const restoreMedia = (media: Partial<MediaState> | null | undefined) => ({ type: 'restoreMedia', media });
 /** Everything gone: a new project. */
 export const clearMedia = () => ({ type: 'clearMedia' });
 
 // ── the reducer ────────────────────────────────────────────────────────────
 
 /** Move a track to an absolute start, keeping its duration and never before zero. */
-const shifted = (track, startTime) => {
+const shifted = <T extends TimeSpan>(track: T | null, startTime: number): T | null => {
     if (!track) return track;
     const start = Math.max(0, startTime);
     return { ...track, startTime: start, endTime: start + (track.endTime - track.startTime) };
 };
 
-export function mediaReducer(state, action) {
+export function mediaReducer(state: MediaState | null | undefined, action: MediaAction): MediaState {
     const s = state || EMPTY_MEDIA;
     switch (action.type) {
         case 'loadAudio':

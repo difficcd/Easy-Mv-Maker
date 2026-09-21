@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useStored } from './useStored.js';
-import { arrayCodec, numberCodec } from '../core/persist.js';
+import { arrayCodec, numberCodec } from '../core/persist.ts';
 
 /** How many recent theme colours are kept. */
 const RECENT_THEMES = 10;

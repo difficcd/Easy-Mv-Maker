@@ -14,6 +14,9 @@
 // Anything that must survive reliably belongs in the project file or IndexedDB. This is for
 // preferences: which panels are open, the theme, the recent colours.
 
+/** How a stored value goes to and from the string localStorage keeps. */
+export interface Codec<T> { decode: (raw: string) => T | undefined; encode: (value: T) => string }
+
 /**
  * A stored preference, or the fallback.
  *
@@ -27,11 +30,11 @@
  * @param {(raw: string) => T | undefined} [decode] defaults to the raw string
  * @returns {T}
  */
-export function readStored(key, fallback, decode) {
+export function readStored<T>(key: string, fallback: T, decode?: (raw: string) => T | undefined): T {
     try {
         const raw = localStorage.getItem(key);
         if (raw === null) return fallback;
-        const value = decode ? decode(raw) : /** @type {any} */ (raw);
+        const value = decode ? decode(raw) : (raw as unknown as T);
         return value === undefined ? fallback : value;
     } catch {
         return fallback;
@@ -49,7 +52,7 @@ export function readStored(key, fallback, decode) {
  * @param {T} value
  * @param {(value: T) => string} [encode] defaults to String
  */
-export function writeStored(key, value, encode) {
+export function writeStored<T>(key: string, value: T, encode?: (value: T) => string): void {
     try {
         localStorage.setItem(key, encode ? encode(value) : String(value));
     } catch {
@@ -58,7 +61,7 @@ export function writeStored(key, value, encode) {
 }
 
 /** JSON, for the preferences that are objects or arrays. */
-export const jsonCodec = {
+export const jsonCodec: Codec<any> = {
     decode: (raw) => JSON.parse(raw),
     encode: (value) => JSON.stringify(value),
 };
@@ -67,7 +70,7 @@ export const jsonCodec = {
  * JSON that must decode to an array, for the lists. A stored value of the wrong shape is treated
  * as absent rather than handed on to code that will index into it.
  */
-export const arrayCodec = {
+export const arrayCodec: Codec<any[]> = {
     decode: (raw) => { const v = JSON.parse(raw); return Array.isArray(v) ? v : undefined; },
     encode: (value) => JSON.stringify(value),
 };
@@ -79,19 +82,19 @@ export const arrayCodec = {
  * other stored '1'/'0' and defaulted to off - so both spellings are kept rather than migrated,
  * because changing the spelling would silently reset the preference for everyone who had set it.
  */
-export const onOffCodec = {
+export const onOffCodec: Codec<boolean> = {
     decode: (raw) => raw !== 'off',
     encode: (value) => (value ? 'on' : 'off'),
 };
 
 /** An on/off preference that defaults to off: only the literal '1' turns it on. */
-export const oneZeroCodec = {
+export const oneZeroCodec: Codec<boolean> = {
     decode: (raw) => raw === '1',
     encode: (value) => (value ? '1' : '0'),
 };
 
 /** A number, treating anything unparseable as absent. */
-export const numberCodec = {
+export const numberCodec: Codec<number> = {
     decode: (raw) => { const v = parseFloat(raw); return Number.isNaN(v) ? undefined : v; },
     encode: (value) => String(value),
 };

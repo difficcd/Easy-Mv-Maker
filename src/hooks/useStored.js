@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { readStored, writeStored } from '../core/persist.js';
+import { readStored, writeStored } from '../core/persist.ts';
 
 /**
  * State that remembers itself in localStorage.

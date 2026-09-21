@@ -3,7 +3,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { keyOf, matchShortcut, keymapFrom, toolFromAction, findConflicts, DEFAULT_KEYS, KEY_LABELS } from '../../src/core/shortcuts.js';
+import { keyOf, matchShortcut, keymapFrom, toolFromAction, findConflicts, DEFAULT_KEYS, KEY_LABELS } from '../../src/core/shortcuts.ts';
 
 const ev = (key, mods = {}) => ({ key, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...mods });
 
@@ -158,7 +158,7 @@ test('every binding still has a label', () => {
 });
 
 // ── what a key press does ──────────────────────────────────────────────────
-import { shortcutFor } from '../../src/core/shortcuts.js';
+import { shortcutFor } from '../../src/core/shortcuts.ts';
 const press = (key, o = {}) => ({ key, combo: keyOf({ key, ctrlKey: !!o.ctrl, shiftKey: !!o.shift, altKey: !!o.alt }), ctrl: !!o.ctrl, shift: !!o.shift, alt: !!o.alt, inField: !!o.inField });
 const idle = { selection: false, textEdit: false, currentCut: true, clipboard: false };
 

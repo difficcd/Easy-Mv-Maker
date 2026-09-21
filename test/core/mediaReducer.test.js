@@ -10,7 +10,7 @@ import {
     loadAudio, setAudioDuration, setAudioClip, clearAudio,
     loadVideo, clearVideo, setVideoCuts, setVideoOpacity, clearVideoCuts, moveTrack, resizeAudio,
     restoreMedia, clearMedia,
-} from '../../src/core/mediaReducer.js';
+} from '../../src/core/mediaReducer.ts';
 
 const clip = (startTime, endTime, offset = 0) => ({ startTime, endTime, offset });
 const withAudio = (c = clip(0, 10)) => mediaReducer(

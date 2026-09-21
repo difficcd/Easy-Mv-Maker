@@ -6,7 +6,7 @@ import { PLAYBACK_RATES, RATE_DEFAULT } from '../core/playbackRate.ts';
 import { TRACK_GUTTER, timeAtX, xAtTime } from '../core/timelineZoom.ts';
 import { gapAt } from '../core/cutOps.ts';
 import { toggled } from '../core/cutSelection.ts';
-import { mkCut } from '../core/document.js';
+import { mkCut } from '../core/document.ts';
 import { nextId } from '../core/ids.ts';
 
 // Bottom timeline: playback controls, the parts bar, the ruler, track and cut blocks,

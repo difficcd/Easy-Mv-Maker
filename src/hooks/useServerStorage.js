@@ -22,7 +22,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { apiFetch, putAsset } from '../core/api.ts';
-import { readStored, writeStored } from '../core/persist.js';
+import { readStored, writeStored } from '../core/persist.ts';
 import { randomId } from '../core/ids.ts';
 import { safeArray } from '../core/geometry.ts';
 import { tr } from '../i18n.js';
