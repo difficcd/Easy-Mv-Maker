@@ -173,6 +173,7 @@ src/
   hooks/           App state that has been given its own home: the canvas view, the layer cache, playback,
                    audio, history, autosave, panels, tool settings, shortcuts, the drag gestures
   ui/              panels; ui/dialogs/ one file per dialog
+  styles/          one stylesheet per area, imported in cascade order by styles/index.css
   i18n.js          the English dictionary (~710 entries) and the tr() lookup; i18n.ja.js the Japanese one
   globals.d.ts     ambient declarations (EyeDropper, Capacitor, File System Access…)
 server/            the API: index.js wires it; projects, backups and youtube are a route module each; paths.js builds every path

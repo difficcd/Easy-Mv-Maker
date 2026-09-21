@@ -1,0 +1,18 @@
+/* Scrollbars */
+::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+}
+
+::-webkit-scrollbar-track {
+    background: hsl(var(--ui-h) var(--ui-s) 10%);
+}
+
+::-webkit-scrollbar-thumb {
+    background: hsl(var(--ui-h) var(--ui-s) 25%);
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--ui-h) var(--ui-s) 38%);
+}

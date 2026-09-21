@@ -1,0 +1,407 @@
+/* The text editor is a docked panel now, not a window over the canvas: it had grown enough
+   controls to cover the drawing it was meant to be editing. It keeps the .right-panel chrome
+   and only needs its own scrolling body, so the header stays put while the controls scroll. */
+/* The CUT / LAYER tab's contents. It is a flex column so the cut list scrolls and the buttons
+   under it stay put, which is what the panel did before the tabs existed. */
+.cut-tab-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+
+.cut-tab-body[hidden] {
+    display: none;
+}
+
+.text-panel-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding-right: 2px;
+}
+
+.text-panel-body textarea {
+    width: 100%;
+    height: 110px;
+    resize: vertical;
+    background: hsl(var(--ui-h) var(--ui-s) 10%);
+    color: #e6e6ee;
+    caret-color: var(--accent-soft);
+    border: 1px solid hsl(var(--ui-h) var(--ui-s) 26%);
+    border-radius: 8px;
+    padding: 10px;
+    font: 14px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    outline: none;
+}
+
+.text-panel-body textarea:focus {
+    border-color: var(--accent-hi);
+}
+
+.text-panel-body textarea::placeholder {
+    color: rgba(255, 255, 255, 0.55);
+}
+
+/* Pulled out of the dock, the panel is inside .float-panel, which sizes itself to its content -
+   so the height has to come from somewhere or the body would grow without limit. */
+.float-panel .text-panel {
+    max-height: 80vh;
+}
+
+.text-panel-body textarea {
+    width: 100%;
+    height: 110px;
+    resize: vertical;
+    background: hsl(var(--ui-h) var(--ui-s) 10%);
+    color: #e6e6ee;
+    caret-color: var(--accent-soft);
+    border: 1px solid hsl(var(--ui-h) var(--ui-s) 26%);
+    border-radius: 8px;
+    padding: 10px;
+    font: 14px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    outline: none;
+}
+
+.text-panel-body textarea:focus {
+    border-color: var(--accent-hi);
+}
+
+.text-panel-body textarea::placeholder {
+    color: rgba(255, 255, 255, 0.55);
+}
+
+/* These must wrap. With nowrap the controls squeeze each other and spill out of the panel. */
+.text-editor-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 8px;
+    margin-top: 10px;
+}
+
+/* Keeps a label and its input from being split across a wrap. */
+.text-editor-row label {
+    white-space: nowrap;
+}
+
+.text-editor-label {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.75);
+    font-weight: 700;
+    letter-spacing: 0.4px;
+}
+
+.text-editor-num {
+    width: 72px;
+    height: 28px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(30, 30, 46, 0.7);
+    color: rgba(255, 255, 255, 0.92);
+    padding: 0 8px;
+    outline: none;
+}
+
+.text-editor-color {
+    width: 36px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: transparent;
+    border-radius: 8px;
+}
+
+.text-editor-font {
+    height: 28px;
+    min-width: 120px;
+    max-width: 100%;
+    flex: 0 1 auto;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(30, 30, 46, 0.7);
+    color: rgba(255, 255, 255, 0.92);
+    padding: 0 8px;
+    outline: none;
+}
+
+.text-panel {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.text-panel-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 10px;
+    font-weight: 800;
+    color: rgba(255, 255, 255, 0.65);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+}
+
+/* A text row's stand-in for the layer thumbnail: the same footprint, so names line up. */
+.text-row-glyph {
+    width: 42px;
+    height: 23px;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 3px;
+    font-size: 13px;
+    font-weight: 800;
+    color: hsl(var(--ui-h) var(--ui-s) 14%);
+    background: #fff;
+    border: 1px solid hsl(var(--ui-h) var(--ui-s) 30%);
+}
+
+canvas {
+    background: #fff;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, .7);
+}
+
+/* Right panel */
+.right-panel {
+    min-width: 0;
+    flex-shrink: 0;
+    background: hsl(var(--ui-h) var(--ui-s) 13%);
+    border-left: 1px solid hsl(var(--ui-h) var(--ui-s) 24%);
+    display: flex;
+    flex-direction: column;
+    padding: 10px;
+    /* Shares its bottom border with the timeline below so the two meet exactly. */
+    border-bottom: 1px solid hsl(var(--ui-h) var(--ui-s) 24%);
+    overflow: hidden;
+}
+
+.panel-title {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--accent-soft);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.cut-list {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.cut-item {
+    background: hsl(var(--ui-h) var(--ui-s) 15%);
+    border: 1px solid transparent;
+    border-radius: 8px;
+    padding: 8px;
+    cursor: pointer;
+    transition: border-color .15s;
+}
+
+.cut-item:hover {
+    border-color: hsl(var(--ui-h) var(--ui-s) 30%);
+}
+
+.cut-active {
+    border-color: var(--accent) !important;
+    background: hsl(var(--ui-h) var(--ui-s) 17%);
+}
+
+.cut-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.cut-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: #ccc;
+}
+
+.cut-settings {
+    padding: 6px 0;
+}
+
+.time-row {
+    display: flex;
+    gap: 8px;
+}
+
+.time-row label {
+    font-size: 10px;
+    color: #666;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+}
+
+.time-input {
+    width: 100%;
+    background: hsl(var(--ui-h) var(--ui-s) 10%);
+    border: 1px solid hsl(var(--ui-h) var(--ui-s) 23%);
+    color: #bbb;
+    padding: 3px 5px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-family: monospace;
+}
+
+.time-input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+/* Animation panels
+ *
+ * A label and its number box travel together. The rows wrap - they have to, since a number input
+ * will not shrink below the width it is given and the panel is only ~215px wide - and a wrap that
+ * lands between "X" and its field leaves both meaningless.
+ */
+.anim-field {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+/* One keyframe. Drawn as a card because a keyframe needs more controls than fit on a line here,
+ * and as bare wrapped rows two consecutive keys were indistinguishable. */
+.kf-card {
+    background: hsl(var(--ui-h) var(--ui-s) 13%);
+    border: 1px solid hsl(var(--ui-h) var(--ui-s) 21%);
+    border-radius: 5px;
+    padding: 3px 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.kf-card-head,
+.kf-card-body {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: 4px;
+    row-gap: 3px;
+    font-size: 9px;
+    color: #999;
+}
+
+.kf-index {
+    color: var(--accent-soft);
+    font-weight: 700;
+    flex-shrink: 0;
+    min-width: 16px;
+}
+
+/* Layer list */
+.layer-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    margin-top: 6px;
+}
+
+.layer-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 6px;
+    border-radius: 5px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: background .1s;
+    min-height: 32px;
+}
+
+.layer-row:hover {
+    background: hsl(var(--ui-h) var(--ui-s) 18%);
+}
+
+/* The selected row - a layer or a text - in the accent, so it cannot be mistaken for a hover.
+   Selected means "what the move tool moves and the pen draws on"; the grey hover state was
+   too close to it, and with a text and a layer side by side nobody could tell which was
+   selected. Tint at 14% and a 45% border, the accent ladder's "selected row" rung. */
+.layer-active {
+    background: color-mix(in srgb, var(--accent-soft) 14%, transparent);
+    border-color: color-mix(in srgb, var(--accent-soft) 45%, transparent);
+}
+
+.layer-folder {
+    cursor: default !important;
+    background: hsl(var(--ui-h) var(--ui-s) 14%);
+}
+
+.layer-name {
+    flex: 1;
+    font-size: 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #bbb;
+    margin-left: 3px;
+}
+
+.drop-line {
+    height: 2px;
+    background: var(--accent-hi);
+    border-radius: 1px;
+    margin: 1px 4px;
+}
+
+.drop-inside {
+    border: 1px dashed var(--accent) !important;
+    background: hsl(var(--ui-h) var(--ui-s) 17%);
+}
+
+/* Icon buttons */
+.icon-btn {
+    background: none;
+    border: none;
+    color: #666;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    padding: 2px;
+    flex-shrink: 0;
+    transition: color .12s, background .12s;
+}
+
+.icon-btn:hover {
+    color: #bbb;
+    background: hsl(var(--ui-h) var(--ui-s) 21%);
+}
+
+.del-btn:hover {
+    color: #999;
+}
+
+.small-btn {
+    background: hsl(var(--ui-h) var(--ui-s) 15%);
+    border: 1px solid hsl(var(--ui-h) var(--ui-s) 23%);
+    color: #888;
+    padding: 3px 8px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 10px;
+    font-family: inherit;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    transition: background .12s;
+}
+
+.small-btn:hover {
+    background: hsl(var(--ui-h) var(--ui-s) 18%);
+    color: #bbb;
+}

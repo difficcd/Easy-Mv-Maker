@@ -133,6 +133,10 @@ know storage exists at all, because reading it is `useStored`'s decoder.
 - `warpRender.js` / `shearSlices.js` / `swayRender.js` — a selection's rotate/skew/bend outline,
   the slice stack that draws a sheared bitmap, and the sway deformation.
 
+**styles/** — the stylesheets, one per area (top bar, toolbar, canvas, the cut/layer panel, the
+timeline, the colour panel, touch, …), imported in their original cascade order by
+`styles/index.css`. The order is load-bearing: some rules override others by position alone.
+
 **ui/** — everything App used to return inline. Panels: `AnimPanels.jsx` (`CutAnimPanel`,
 `LayerAnimPanel`, `JitterPanel`), `CutLayerPanel.jsx` + `LayerRows.jsx`, `ColorPanel.jsx`,
 `ToolsPanel.jsx`, `Timeline.jsx`, `TopBar.jsx`, `TextEditor.jsx`, `SwaySpine.jsx`. Dialogs: one

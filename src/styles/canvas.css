@@ -1,0 +1,148 @@
+/* Canvas */
+.canvas-area {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: radial-gradient(ellipse at center, hsl(var(--ui-h) var(--ui-s) 12%) 0%, hsl(var(--ui-h) var(--ui-s) 5%) 100%);
+    overflow: auto;
+}
+
+.canvas-stage {
+    position: relative;
+    display: inline-block;
+    max-width: 100%;
+    max-height: 100%;
+}
+
+/* The transparent-background checkerboard. It is CSS behind the canvas, never pixels in it:
+   painting it onto the canvas would put the squares into every exported frame. */
+.canvas-stage.checkered {
+    background-color: #fff;
+    background-image:
+        linear-gradient(45deg, #ccc 25%, transparent 25%),
+        linear-gradient(-45deg, #ccc 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #ccc 75%),
+        linear-gradient(-45deg, transparent 75%, #ccc 75%);
+    background-size: 16px 16px;
+    background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+}
+
+/* The global `canvas { background: #fff }` below would paint over the checkerboard, so the
+   drawing canvas gives up its own background when the stage is showing one. */
+.canvas-stage.checkered>canvas {
+    background: transparent;
+}
+
+/* The stage keeps the canvas aspect ratio (set inline from the project resolution) and is
+   capped to the area, so the canvas always fits. Drawing coords use getBoundingClientRect,
+   so CSS scaling is handled correctly. */
+.canvas-stage>canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+/* The mode bar: a row of the application, not something painted over the drawing.
+   It sits between the document tabs and the canvas and takes its own height, so a mode never
+   costs you sight of the artwork it is about. Hidden entirely when no mode is active, so the
+   canvas gets the space back. */
+/* The tab row and the pill that floats over it. The wrapper is what the pill is positioned
+   against; the row itself scrolls sideways, and an absolute child of a scrolling box is clipped. */
+.doc-tabs-wrap {
+    position: relative;
+    flex-shrink: 0;
+    container-type: inline-size;   /* the pill hides its sliders by this row's width, below */
+}
+
+/* A pill floating over the centre of the project tab row, out of the layout flow - the layout
+   used to jump when the bar appeared, and over the canvas it covered the zoom control. Sized to
+   its content, capped at the row's width, and no taller than the row. */
+.mode-bar {
+    position: absolute;
+    top: 2px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 30;
+    display: flex;
+    flex-wrap: nowrap;        /* always one row: a second row covered the panels below */
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    width: fit-content;
+    max-width: calc(100% - 24px);
+    overflow: hidden;
+    padding: 3px 12px;
+    border-radius: 999px;
+    background: hsl(var(--ui-h) var(--ui-s) 13%);
+    border: 1px solid color-mix(in srgb, var(--accent-soft) 30%, transparent);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+}
+
+.mode-group {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+/* Too narrow for the sliders: they go, the buttons stay. The sliders have Ctrl-drag on the
+   canvas as their other way in, the buttons have none. */
+@container (max-width: 820px) {
+    .mode-slider { display: none; }
+}
+
+/* Which mode this group belongs to. Named because two can be active at once now that they
+   share a row, and an unlabelled 취소 beside another 취소 is a coin toss.
+   A tinted chip rather than solid accent: --accent-soft is generated at 74% lightness from the
+   user's theme colour, so light text on it would be unreadable for some themes and there is no
+   contrast-computed token here to reach for. */
+.mode-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 2px 7px;
+    border-radius: 999px;
+    white-space: nowrap;
+    color: var(--accent-pale);
+    background: color-mix(in srgb, var(--accent-soft) 16%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent-soft) 34%, transparent);
+}
+
+.mode-hint {
+    font-size: 11px;
+    color: #aaa;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* A labelled slider in the mode bar - the selection's skew and bend. Reuses the v-slider track
+   and thumb so it reads as the same control as the ones in the tool panel; only the width is
+   its own, because the bar is a row and the panel is a column. */
+.mode-slider {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: #aaa;
+    white-space: nowrap;
+}
+.mode-slider input[type="range"] {
+    -webkit-appearance: none;
+    width: 64px;
+    height: 4px;
+    margin: 0;
+    background: hsl(var(--ui-h) var(--ui-s) 21%);
+    border-radius: 4px;
+    outline: none;
+}
+.mode-slider input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    background: var(--accent);
+    border-radius: 50%;
+    cursor: pointer;
+}

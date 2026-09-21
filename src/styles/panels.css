@@ -1,0 +1,19 @@
+/* Panel header, so the tool and colour panels share the same close (✕) affordance. */
+.panel-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    margin-bottom: 6px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid hsl(var(--ui-h) var(--ui-s) 21%);
+}
+
+/* A divider, so the two panels read as separate when both are open. */
+.color-panel {
+    border-left: 1px solid hsl(var(--ui-h) var(--ui-s) 24%);
+}
+
+.toolbar {
+    border-right: 1px solid hsl(var(--ui-h) var(--ui-s) 24%);
+}

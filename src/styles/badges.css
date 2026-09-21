@@ -1,0 +1,58 @@
+/* A status badge that can also be tapped for the explanation its tooltip carries. A tablet has
+   no hover, so a title attribute alone means the reason is unreachable on the device this app
+   is mainly used on. */
+.badge-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    cursor: pointer;
+}
+
+/* A media row folded away. The label stays so it can be brought back; only the strip of timeline
+   goes, which is the part taking height from the cut tracks. */
+.tl-track-collapsed {
+    height: 18px;
+    overflow: hidden;
+    opacity: 0.75;
+}
+
+.tl-track-collapsed .cut-block {
+    display: none;
+}
+
+/* The video track's name doubles as the way into its settings. Styled as text rather than a
+   button so the row still reads as a label. */
+.tl-track-name {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+    max-width: 90px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
+}
+
+.tl-track-name:hover {
+    color: var(--accent-pale);
+    text-decoration: underline;
+}
+
+/* Status badges in the top bar carry an icon next to their text now, so they need to lay out
+   as a row rather than relying on the text baseline. */
+.top-bar span,
+.top-bar .badge-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+
+/* The canvas takes focus so keystrokes reach the shortcuts, but a focus ring around the drawing
+   surface would be noise - it is not something anyone tabs to. */
+.canvas-stage canvas:focus {
+    outline: none;
+}

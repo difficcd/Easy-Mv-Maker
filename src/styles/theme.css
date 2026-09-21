@@ -1,0 +1,45 @@
+/* Theme colour: every UI colour is derived from the one colour below.
+   JS overwrites these with whatever the user picked, retheming the whole app. */
+:root {
+    --accent: #6d28d9;
+    --accent-lo: #5b21b6;
+    --accent-hi: #7c3aed;
+    --accent-deep: #4c1d95;
+    --accent-deeper: #3b1577;
+    --accent-mut: #5b3e8a;
+    --accent-mut2: #4a2e70;
+    --accent-soft: #7c8cff;
+    --accent-soft2: #818cf8;
+    --accent-bright: #c084fc;
+    --accent-pale: #c4b5fd;
+    --accent-pale2: #e9d5ff;
+    --accent-pale3: #ddd6fe;
+    --accent-glow: rgba(109, 40, 217, .5);
+    /* Hue and saturation of the UI neutrals (panel, button and border backgrounds).
+       At 0% saturation the UI is a completely neutral grey. */
+    --ui-h: 260;
+    --ui-s: 18%;
+}
+
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: 'Inter', system-ui, sans-serif;
+    background: #111;
+    color: #ddd;
+}
+
+.app-container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    width: 100vw;
+    background: hsl(var(--ui-h) var(--ui-s) 11%);
+    overflow: hidden;
+}
