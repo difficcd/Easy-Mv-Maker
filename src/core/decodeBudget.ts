@@ -7,6 +7,8 @@
 //
 // Neither needs a canvas or a bitmap to decide, which is why they are here and not in App.
 
+import type { Id } from './types.ts';
+
 /**
  * How many decoded frames may be held at once.
  *
@@ -33,13 +35,13 @@ export const DECODED_CAP = 120;
  * @param {Set<string>} [args.hot]
  * @returns {string[]} ids to release, in the order they should go
  */
-export function framesToRelease({ decoded, order, cap = DECODED_CAP, protect, hot }) {
+export function framesToRelease<K>({ decoded, order, cap = DECODED_CAP, protect, hot }: { decoded: Iterable<K>, order: Map<K, number>, cap?: number, protect?: Set<K> | null, hot?: Set<K> | null }): K[] {
     const ids = [...decoded];
     if (ids.length <= cap) return [];
     // Oldest first. An id with no recorded use sorts as 0, which is right: it was never touched
     // through the accounting path, so nothing says it is wanted.
     ids.sort((a, b) => (order.get(a) || 0) - (order.get(b) || 0));
-    const out = [];
+    const out: K[] = [];
     let want = ids.length - cap;
     for (const id of ids) {
         if (want <= 0) break;
@@ -61,14 +63,14 @@ export function framesToRelease({ decoded, order, cap = DECODED_CAP, protect, ho
  * @param {(cutId: any, layerId: any) => string} key
  * @returns {Set<string>}
  */
-export function layerKeysUsingBitmaps(cuts, ids, key) {
+export function layerKeysUsingBitmaps(cuts: Cut[] | null | undefined, ids: Iterable<Id>, key: (cutId: Id, layerId: Id) => string): Set<string> {
     const want = new Set(ids);
-    const out = new Set();
+    const out = new Set<string>();
     if (!want.size) return out;
     for (const c of cuts || []) {
         for (const l of c?.layers || []) {
             const strokes = l?.strokes || [];
-            if (strokes.some(s => s?.tool === 'paste' && want.has(s.bitmapId))) out.add(key(c.id, l.id));
+            if (strokes.some(s => s?.tool === 'paste' && s.bitmapId != null && want.has(s.bitmapId))) out.add(key(c.id, l.id));
         }
     }
     return out;
@@ -85,8 +87,8 @@ export function layerKeysUsingBitmaps(cuts, ids, key) {
  * @param {Set<string>} bases the keys to drop, without phase suffixes
  * @returns {string[]}
  */
-export function keysWithPhases(keys, bases) {
-    const out = [];
+export function keysWithPhases(keys: Iterable<string>, bases: Set<string>): string[] {
+    const out: string[] = [];
     for (const k of keys) {
         const hash = k.indexOf('#');
         if (bases.has(hash === -1 ? k : k.slice(0, hash))) out.push(k);
@@ -110,9 +112,9 @@ export const PREFETCH_BEHIND = { playing: 2, paused: 4 };
  * @param {boolean} playing
  * @returns {string[]} bitmap ids, highest priority first
  */
-export function prefetchWindow(cuts, time, currentCutId, playing) {
-    const frameIds = (c) => {
-        const ids = [];
+export function prefetchWindow(cuts: Cut[], time: number, currentCutId: Id | null | undefined, playing: boolean): Id[] {
+    const frameIds = (c: Cut | undefined) => {
+        const ids: Id[] = [];
         for (const l of (Array.isArray(c?.layers) ? c.layers : [])) {
             for (const s of (Array.isArray(l.strokes) ? l.strokes : [])) if (s.tool === 'paste' && s.bitmapId) ids.push(s.bitmapId);
         }
@@ -125,8 +127,8 @@ export function prefetchWindow(cuts, time, currentCutId, playing) {
     if (idx < 0) idx = 0;
     const ahead = playing ? PREFETCH_AHEAD.playing : PREFETCH_AHEAD.paused;
     const behind = playing ? PREFETCH_BEHIND.playing : PREFETCH_BEHIND.paused;
-    const ids = [];
-    const push = (c) => { if (c) ids.push(...frameIds(c)); };
+    const ids: Id[] = [];
+    const push = (c: Cut | undefined) => { if (c) ids.push(...frameIds(c)); };
     push(ordered[idx]);
     for (let d = 1; d <= ahead; d++) push(ordered[idx + d]);
     for (let d = 1; d <= behind; d++) push(ordered[idx - d]);

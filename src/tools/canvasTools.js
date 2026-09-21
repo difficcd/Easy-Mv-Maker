@@ -1,4 +1,4 @@
-import { shapePoints } from '../core/shapeStroke.js';
+import { shapePoints } from '../core/shapeStroke.ts';
 import { patchLayer, appendPoints } from '../core/layerOps.js';
 
 // What each tool does when the pen goes down, and when it moves.

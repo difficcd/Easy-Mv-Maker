@@ -1,6 +1,10 @@
 // Easing, the return-trip shapes, and the shared effect envelope.
 
-export function applyEase(t, type, power = 2) {
+import type { Point } from './types.ts';
+
+export type EaseType = 'linear' | 'in' | 'out' | 'inout';
+
+export function applyEase(t: number, type?: EaseType | string | null, power = 2): number {
     t = Math.max(0, Math.min(1, t));
     if (!type || type === 'linear') return t;
     const p = Math.max(1, power || 1);
@@ -11,7 +15,7 @@ export function applyEase(t, type, power = 2) {
 }
 
 // Triangle wave 0->1->0 (period 2); used for ping-pong path following.
-export function triwave(x) { const m = ((x % 2) + 2) % 2; return m < 1 ? m : 2 - m; }
+export function triwave(x: number): number { const m = ((x % 2) + 2) % 2; return m < 1 ? m : 2 - m; }
 
 // The three shapes a "왕복" (return) animation can take, and the cap they share.
 //
@@ -27,9 +31,9 @@ export function triwave(x) { const m = ((x % 2) + 2) % 2; return m < 1 ? m : 2 -
 //
 // One cycle is one whole trip in every case, so `speed` means the same thing to all three.
 export const SWING = {
-    through: (cycles) => Math.sin(2 * Math.PI * cycles),
-    there: (cycles) => (1 - Math.cos(2 * Math.PI * cycles)) / 2,
-    along: (cycles) => triwave(2 * cycles),
+    through: (cycles: number) => Math.sin(2 * Math.PI * cycles),
+    there: (cycles: number) => (1 - Math.cos(2 * Math.PI * cycles)) / 2,
+    along: (cycles: number) => triwave(2 * cycles),
 };
 
 /**
@@ -41,7 +45,7 @@ export const SWING = {
  * @param {number} [count] how many trips before it settles; 0 or less means forever
  * @returns {number}
  */
-export function swing(shape, t, speed = 1, count = 0) {
+export function swing(shape: (cycles: number) => number, t: number, speed = 1, count = 0): number {
     const cycles = (speed || 1) * t;
     // Settling at 0 rather than wherever the wave happened to be: every shape passes through 0 at
     // the end of a whole trip, so this is where it would have stopped anyway.
@@ -72,7 +76,7 @@ export function swing(shape, t, speed = 1, count = 0) {
  *   ease?: string, easePower?: number}} o
  * @returns {number}
  */
-export function effectAt(t01, { from = 0, to = 1, speed = 1, min = 0, max = 0, ease, easePower } = {}) {
+export function effectAt(t01: number, { from = 0, to = 1, speed = 1, min = 0, max = 0, ease, easePower }: { from?: number, to?: number, speed?: number, min?: number, max?: number, ease?: EaseType | string | null, easePower?: number } = {}): number {
     if (!(max > 0)) return 0;
     const lo = Math.max(0, Math.min(max, min));
     const a = Math.max(0, Math.min(1, from));
@@ -87,7 +91,7 @@ export function effectAt(t01, { from = 0, to = 1, speed = 1, min = 0, max = 0, e
 }
 
 // Sample a polyline path at normalized position s in [0,1].
-export function samplePath(path, s) {
+export function samplePath(path: readonly Point[], s: number): Point {
     const n = path.length;
     if (n === 1) return path[0];
     const idx = Math.max(0, Math.min(1, s)) * (n - 1);

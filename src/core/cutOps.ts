@@ -9,10 +9,12 @@
 // Each returns { cuts, snapAt } where snapAt is the timeline position to draw the snap guide at,
 // or null for no guide. The caller turns that into pixels; nothing here knows about the DOM.
 
+import type { Id } from './types.ts';
+
 const SNAP_PX = 8;
 
 /** Edges a cut can snap to on a given track: zero, plus every other cut's start and end. */
-function snapEdges(cuts, exceptId, track) {
+function snapEdges(cuts: Cut[], exceptId: Id, track: number) {
     const others = cuts.filter(o => o.id !== exceptId && o.track === track);
     return { others, edges: [0, ...others.flatMap(o => [o.startTime, o.endTime])] };
 }
@@ -25,7 +27,7 @@ function snapEdges(cuts, exceptId, track) {
  * zero, and zero passes the threshold - so the guide line was drawn on every drag regardless.
  * Reporting the hit explicitly is what fixes that.
  */
-const snapTo = (v, edges, pps) => {
+const snapTo = (v: number, edges: number[], pps: number): { v: number, hit: boolean, dist: number } => {
     for (const e of edges) {
         const d = Math.abs((v - e) * pps);
         if (d <= SNAP_PX) return { v: e, hit: true, dist: d };
@@ -37,7 +39,7 @@ const snapTo = (v, edges, pps) => {
  * Drag a whole cut to a new start time and track.
  * `dt` is the time delta from where the drag began; `trackOff` the track delta.
  */
-export function dragCut(cuts, { cutId, initialStart, initialTrack }, dt, trackOff, numTracks, pps) {
+export function dragCut(cuts: Cut[], { cutId, initialStart, initialTrack }: { cutId: Id, initialStart: number, initialTrack: number }, dt: number, trackOff: number, numTracks: number, pps: number): { cuts: Cut[], snapAt: number | null } {
     const tc = cuts.find(c => c.id === cutId);
     if (!tc) return { cuts, snapAt: null };
 
@@ -49,7 +51,7 @@ export function dragCut(cuts, { cutId, initialStart, initialTrack }, dt, trackOf
     // Both ends can snap; whichever is closer wins, so a cut can be aligned by either edge.
     const head = snapTo(start, edges, pps);
     const tail = snapTo(start + dur, edges, pps);
-    let snapAt = null;
+    let snapAt: number | null = null;
     if (head.hit && head.dist <= tail.dist) { start = head.v; snapAt = start; }
     else if (tail.hit) { start = tail.v - dur; snapAt = start + dur; }
 
@@ -74,7 +76,7 @@ export function dragCut(cuts, { cutId, initialStart, initialTrack }, dt, trackOf
  * Drag one edge of a cut. `edge` is 'left' or 'right'.
  * `initialStart`/`initialEnd` are the cut's bounds when the resize began.
  */
-export function resizeCut(cuts, { cutId, edge, initialStart, initialEnd }, dt, pps) {
+export function resizeCut(cuts: Cut[], { cutId, edge, initialStart, initialEnd }: { cutId: Id, edge: 'left' | 'right', initialStart: number, initialEnd: number }, dt: number, pps: number): { cuts: Cut[], snapAt: number | null } {
     const tc = cuts.find(c => c.id === cutId);
     if (!tc) return { cuts, snapAt: null };
 
@@ -110,7 +112,7 @@ export const MIN_GAP = 0.05;
  * @param {number} t
  * @returns {{start: number, end: number} | null}
  */
-export function gapAt(cuts, track, t) {
+export function gapAt(cuts: Cut[], track: number, t: number): { start: number, end: number } | null {
     const onTrack = cuts.filter(c => c.track === track);
     if (onTrack.some(c => t >= c.startTime && t < c.endTime)) return null;
     let start = 0, end = Infinity;

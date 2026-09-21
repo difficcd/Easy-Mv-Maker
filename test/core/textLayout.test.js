@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { layoutLine, charProgress } from '../../src/core/textLayout.js';
+import { layoutLine, charProgress } from '../../src/core/textLayout.ts';
 
 const chars = (s) => [...s];
 const even = (s, w = 10) => chars(s).map(() => w);

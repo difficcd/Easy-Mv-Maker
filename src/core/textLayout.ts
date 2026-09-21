@@ -12,6 +12,9 @@
 // Measurement stays with the caller. Character widths come from ctx.measureText, and keeping that
 // out means this file is pure and its arithmetic is testable.
 
+/** One character placed on its line: centre, offset from the baseline, tangent angle. */
+export interface PlacedChar { ch: string; x: number; y: number; angle: number; index: number }
+
 /**
  * @typedef {object} PlacedChar
  * @property {string} ch
@@ -35,12 +38,12 @@
  * @param {number} [opts.letterSpacing] extra px between characters
  * @returns {PlacedChar[]}
  */
-export function layoutLine(chars, widths, { curve = 0, letterSpacing = 0 } = {}) {
+export function layoutLine(chars: readonly string[], widths: readonly number[], { curve = 0, letterSpacing = 0 }: { curve?: number, letterSpacing?: number } = {}): PlacedChar[] {
     const n = Math.min(chars.length, widths.length);
     if (n === 0) return [];
 
     // Advance of each character including the gap that follows it, and the total the line spans.
-    const advances = [];
+    const advances: number[] = [];
     let total = 0;
     for (let i = 0; i < n; i++) {
         const adv = widths[i] + (i < n - 1 ? letterSpacing : 0);
@@ -49,7 +52,7 @@ export function layoutLine(chars, widths, { curve = 0, letterSpacing = 0 } = {})
     }
 
     // Distance from the start of the line to the middle of each character.
-    const centres = [];
+    const centres: number[] = [];
     let run = 0;
     for (let i = 0; i < n; i++) {
         centres.push(run + widths[i] / 2);
@@ -102,7 +105,7 @@ export function layoutLine(chars, widths, { curve = 0, letterSpacing = 0 } = {})
  * @param {number} [spread] 0..1
  * @returns {number} this character's own 0..1, clamped
  */
-export function charProgress(index, count, progress, spread = 0.5) {
+export function charProgress(index: number, count: number, progress: number, spread = 0.5): number {
     if (count <= 1 || spread <= 0) return Math.max(0, Math.min(1, progress));
     // The last character always keeps a tenth of the duration to move in.
     const s = Math.min(0.9, spread);

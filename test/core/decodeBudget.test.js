@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { framesToRelease, layerKeysUsingBitmaps, keysWithPhases, DECODED_CAP, prefetchWindow, PREFETCH_AHEAD, PREFETCH_BEHIND } from '../../src/core/decodeBudget.js';
+import { framesToRelease, layerKeysUsingBitmaps, keysWithPhases, DECODED_CAP, prefetchWindow, PREFETCH_AHEAD, PREFETCH_BEHIND } from '../../src/core/decodeBudget.ts';
 
 const ids = (n, prefix = 'f') => Array.from({ length: n }, (_, i) => `${prefix}${i}`);
 /** Used in the order given: f0 oldest, last newest. */

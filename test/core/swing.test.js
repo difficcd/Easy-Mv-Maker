@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { SWING, swing, triwave } from '../../src/core/easing.js';
+import { SWING, swing, triwave } from '../../src/core/easing.ts';
 
 // This was a naming change, not a motion change, so the test that matters is that every call site
 // still computes exactly what it computed before. The four originals are written out here

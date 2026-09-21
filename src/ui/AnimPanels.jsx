@@ -5,7 +5,7 @@ import { LAYER_ANIM_DEFAULT } from '../core/layerAnim.js';
 import { CAMERA_DEFAULT, CAMERA_PRESETS, resolveCamera } from '../core/camera.js';
 import { randomId } from '../core/ids.ts';
 
-import { upsertKey, patchKey, removeKey, snapProgress } from '../core/keyframes.js';
+import { upsertKey, patchKey, removeKey, snapProgress } from '../core/keyframes.ts';
 import { readStored, writeStored, arrayCodec } from '../core/persist.js';
 import { NumField } from './NumField';
 import { tr } from '../i18n';

@@ -7,7 +7,7 @@
 
 import { strokeSig, flattenLayersInUiOrder } from '../src/core/layerTree.ts';
 import { sampleWave, swayWeightAt } from '../src/core/sway.js';
-import { applyEase } from '../src/core/easing.js';
+import { applyEase } from '../src/core/easing.ts';
 import { pointInPolygon } from '../src/core/geometry.ts';
 
 const bench = (name, fn, iters) => {

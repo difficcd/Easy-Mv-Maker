@@ -1,4 +1,12 @@
-import { applyEase } from './easing.js';
+
+import type { Id } from './types.ts';
+
+/** The five values a keyframe can hold, all optional: a key only pins what it sets. */
+export interface KeyValues { tx?: number; ty?: number; rot?: number; scale?: number; op?: number }
+/** A keyframe: the values, where in the cut (0..1), and how to ease toward the next. */
+export interface Keyframe extends KeyValues { id?: Id; p: number; ease?: string; easePower?: number }
+
+import { applyEase } from './easing.ts';
 // Editing a part's keyframe list: the rules the panel applies before a list is stored.
 //
 // Two rules, both easy to lose inside a click handler. The list is always sorted by position,
@@ -11,13 +19,13 @@ import { applyEase } from './easing.js';
 export const KEY_SNAP = 0.005;
 
 /** The stored form of a list: sorted, or null when there is nothing to store. */
-export function keysOrNull(keys) {
+export function keysOrNull<K extends { p: number }>(keys: K[] | null | undefined): K[] | null {
     if (!Array.isArray(keys) || keys.length === 0) return null;
     return [...keys].sort((x, y) => x.p - y.p);
 }
 
 /** Progress clamped to the cut and rounded to a whole percent, which is what the panel shows. */
-export const snapProgress = (p) => Math.round(Math.max(0, Math.min(1, p)) * 100) / 100;
+export const snapProgress = (p: number): number => Math.round(Math.max(0, Math.min(1, p)) * 100) / 100;
 
 /**
  * The list with a key at `p` carrying `values` - replacing the key already there, if any, or
@@ -29,7 +37,7 @@ export const snapProgress = (p) => Math.round(Math.max(0, Math.min(1, p)) * 100)
  * @param {() => string} mkId
  * @returns {Array<object>} sorted
  */
-export function upsertKey(keys, p, values, mkId) {
+export function upsertKey(keys: Keyframe[] | null | undefined, p: number, values: Partial<Keyframe>, mkId: () => Id): Keyframe[] | null {
     const list = Array.isArray(keys) ? keys : [];
     const cur = list.find(k => Math.abs(k.p - p) < KEY_SNAP);
     const next = cur
@@ -39,18 +47,18 @@ export function upsertKey(keys, p, values, mkId) {
 }
 
 /** The list with the key at index `i` patched, re-sorted in case its position changed. */
-export function patchKey(keys, i, patch) {
+export function patchKey(keys: Keyframe[], i: number, patch: Partial<Keyframe>): Keyframe[] | null {
     return keysOrNull(keys.map((k, j) => j === i ? { ...k, ...patch } : k));
 }
 
 /** The list without the key at index `i`; null once it is empty. */
-export function removeKey(keys, i) {
+export function removeKey(keys: Keyframe[], i: number): Keyframe[] | null {
     return keysOrNull(keys.filter((_, j) => j !== i));
 }
 
 // Keyframe tweening: interpolates between the times you set, with per-segment easing.
 // This is tweening in the original animation sense of the word.
-export function sampleKeys(keys, p) {
+export function sampleKeys(keys: Keyframe[], p: number): KeyValues {
     const n = keys.length;
     if (p <= keys[0].p) return keys[0];
     if (p >= keys[n - 1].p) return keys[n - 1];
@@ -59,7 +67,7 @@ export function sampleKeys(keys, p) {
         if (p >= k0.p && p <= k1.p) {
             const span = Math.max(1e-6, k1.p - k0.p);
             const u = applyEase((p - k0.p) / span, k0.ease || 'linear', k0.easePower ?? 2);
-            const mix = (x, y) => (x ?? 0) + ((y ?? 0) - (x ?? 0)) * u;
+            const mix = (x: number | undefined, y: number | undefined) => (x ?? 0) + ((y ?? 0) - (x ?? 0)) * u;
             return {
                 tx: mix(k0.tx, k1.tx), ty: mix(k0.ty, k1.ty), rot: mix(k0.rot, k1.rot),
                 scale: mix(k0.scale, k1.scale), op: mix(k0.op ?? 1, k1.op ?? 1),
