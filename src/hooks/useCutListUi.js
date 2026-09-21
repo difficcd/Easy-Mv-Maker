@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { toggled } from '../core/cutSelection.js';
+import { toggled } from '../core/cutSelection.ts';
 
 // What is picked in the cut list, and how much of it is unfolded.
 //

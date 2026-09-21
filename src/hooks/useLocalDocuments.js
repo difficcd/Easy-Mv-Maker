@@ -22,7 +22,7 @@ import { saveProject, loadProject, listProjects, deleteProject, loadAutosave, au
 import { downloadBlob } from '../export/download.js';
 import { ZipWriter } from '../export/zip.js';
 import { splitProject, pieceFileName, piecesAreSequential } from '../core/splitProject.js';
-import { randomId, nextId } from '../core/ids.js';
+import { randomId, nextId } from '../core/ids.ts';
 import { safeArray } from '../core/geometry.ts';
 import { tr } from '../i18n.js';
 

@@ -1,10 +1,10 @@
 import { useRef, useState } from 'react';
 import { unpackMedia } from '../core/projectAssets.js';
-import { safeMediaSrc, detachMedia } from '../core/mediaEl.js';
+import { safeMediaSrc, detachMedia } from '../core/mediaEl.ts';
 import { loadVideo, clearVideo } from '../core/mediaReducer.js';
-import { fetchAsset } from '../core/api.js';
+import { fetchAsset } from '../core/api.ts';
 import { tr } from '../i18n.js';
-import { nextId } from '../core/ids.js';
+import { nextId } from '../core/ids.ts';
 import { parseClock } from '../core/timeCode.ts';
 import { importPlacement, buildImportedCuts, extractOptionsFor } from '../core/videoCuts.js';
 import { replaceBatchCuts } from '../core/cutsReducer.js';

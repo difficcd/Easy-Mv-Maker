@@ -5,7 +5,7 @@
 // re-render cost, which need a browser profile - so treat this as "is the CPU work in these
 // helpers worth caching", not as a full performance picture.
 
-import { strokeSig, flattenLayersInUiOrder } from '../src/core/layerTree.js';
+import { strokeSig, flattenLayersInUiOrder } from '../src/core/layerTree.ts';
 import { sampleWave, swayWeightAt } from '../src/core/sway.js';
 import { applyEase } from '../src/core/easing.js';
 import { pointInPolygon } from '../src/core/geometry.ts';

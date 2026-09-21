@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { ChevronRight, ChevronDown, Folder, FolderOpen, Eye, EyeOff, Waves, CornerDownRight, ArrowDownToLine, Film, Trash2 } from 'lucide-react';
 import { cutProgress } from '../core/cutTime.ts';
-import { flattenLayersInUiOrder, layerKey } from '../core/layerTree.js';
-import { canClip } from '../core/clipping.js';
+import { flattenLayersInUiOrder, layerKey } from '../core/layerTree.ts';
+import { canClip } from '../core/clipping.ts';
 import { setLayerClipped, mergeLayerDown } from '../core/cutsReducer.js';
 import { JitterPanel, LayerAnimPanel } from './AnimPanels';
 import { tr } from '../i18n';

@@ -15,7 +15,7 @@
 // of decoded frames is capped by an LRU (core/decodeBudget decides which to let go).
 
 import { framesToRelease, DECODED_CAP } from '../core/decodeBudget.js';
-import { randomId } from '../core/ids.js';
+import { randomId } from '../core/ids.ts';
 
 /**
  * @param {object} deps

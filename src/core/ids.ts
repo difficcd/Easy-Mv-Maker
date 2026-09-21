@@ -23,7 +23,7 @@ let last = 0;
  *
  * @returns {number}
  */
-export function nextId() {
+export function nextId(): number {
     const now = Date.now();
     last = now > last ? now : last + 1;
     return last;
@@ -45,7 +45,7 @@ export function nextId() {
  * @param {string} [prefix]
  * @returns {string}
  */
-export function randomId(prefix = '') {
+export function randomId(prefix = ''): string {
     return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
 }
 
@@ -53,6 +53,6 @@ export function randomId(prefix = '') {
  * Reset the counter. For tests only, so one test's calls cannot make another's assertions
  * depend on how many ids were handed out before it ran.
  */
-export function resetIds() {
+export function resetIds(): void {
     last = 0;
 }

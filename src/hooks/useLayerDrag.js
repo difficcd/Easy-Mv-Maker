@@ -6,7 +6,7 @@
 // reads `gesture.layerDrag` to leave the original out of the composite; `setDragTick` is how
 // the frame is asked to repaint with it hidden.
 
-import { flattenLayersInUiOrder } from '../core/layerTree.js';
+import { flattenLayersInUiOrder } from '../core/layerTree.ts';
 import { moveLayers } from '../core/cutsReducer.js';
 
 /**

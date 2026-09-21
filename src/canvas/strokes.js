@@ -2,7 +2,7 @@
 // context. The one place a stroke's points become pixels.
 
 import { imageDataCanvas, resetCtx, sizeCanvas } from './scratch.js';
-import { hexToRgb } from '../core/colour.js';
+import { hexToRgb } from '../core/colour.ts';
 import { drawWarped, isWarped } from './warpRender.js';
 import { catmullThrough } from '../core/catmullRom.ts';
 import { makeCanvas } from './canvasFactory.js';

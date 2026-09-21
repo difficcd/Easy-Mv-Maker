@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { nextId, resetIds } from '../../src/core/ids.js';
+import { nextId, resetIds } from '../../src/core/ids.ts';
 
 test('two ids handed out in the same millisecond are different', () => {
     // This is the whole point. Date.now() twice in a row is the same number, and two call sites

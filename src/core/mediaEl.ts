@@ -16,7 +16,7 @@
  *
  * @param {HTMLMediaElement | null | undefined} el
  */
-export function detachMedia(el) {
+export function detachMedia(el: HTMLMediaElement | null | undefined): void {
     if (!el) return;
     try {
         el.pause();
@@ -50,7 +50,7 @@ export function detachMedia(el) {
  * @param {'audio'|'video'} kind
  * @returns {string | null}
  */
-export function safeMediaSrc(url, kind) {
+export function safeMediaSrc(url: unknown, kind: 'audio' | 'video'): string | null {
     if (typeof url !== 'string' || !url) return null;
     if (url.startsWith('blob:')) return url;
     // The prefix must be the whole scheme-and-type, so `data:audio/mp3` passes and

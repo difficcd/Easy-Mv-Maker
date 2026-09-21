@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { withAlpha } from '../../src/core/colour.js';
+import { withAlpha } from '../../src/core/colour.ts';
 
 test('an hsl colour takes the alpha inside the function', () => {
     assert.equal(withAlpha('hsl(220 80% 74%)', 0.4), 'hsl(220 80% 74% / 0.4)');

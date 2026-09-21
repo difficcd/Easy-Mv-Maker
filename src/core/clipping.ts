@@ -19,6 +19,8 @@
 // where per-layer animation, sway and masking already interleave. Working out *what* clips to
 // *what* should not have to happen in there.
 
+import type { Id, LayerLike } from './types.ts';
+
 /**
  * Split layers into the groups the renderer composites.
  *
@@ -27,8 +29,8 @@
  * @returns {{base: any, clipped: any[]}[]} groups in UI order, topmost first. `clipped` is in UI
  *   order too, so a caller drawing bottom-to-top walks it backwards, exactly as it does `order`.
  */
-export function clipGroups(order) {
-    const groups = [];
+export function clipGroups<L extends LayerLike>(order: L[] | null | undefined): Array<{ base: L, clipped: L[] }> {
+    const groups: Array<{ base: L, clipped: L[] }> = [];
     const list = Array.isArray(order) ? order : [];
 
     // Walking upwards, because a clipped layer's base is below it: reverse, collect, reverse back.
@@ -52,7 +54,7 @@ export function clipGroups(order) {
  * @param {any} layerId
  * @returns {boolean}
  */
-export function canClip(order, layerId) {
+export function canClip(order: Array<{ id?: Id }> | null | undefined, layerId: Id): boolean {
     const list = Array.isArray(order) ? order : [];
     const i = list.findIndex(l => l?.id === layerId);
     return i >= 0 && i < list.length - 1;

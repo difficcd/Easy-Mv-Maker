@@ -6,15 +6,17 @@
 // `cuts` is in. That rule lived inside the click handler, where the one case worth a test (a
 // shift-click backwards, or across tracks) could not be checked.
 
+import type { Id, CutLike } from './types.ts';
+
 /** A copy of the set with `id` added if absent, removed if present. */
-export function toggled(set, id) {
+export function toggled<T>(set: Iterable<T>, id: T): Set<T> {
     const s = new Set(set);
     if (s.has(id)) s.delete(id); else s.add(id);
     return s;
 }
 
 /** Cuts in reading order: by track, then by start time. */
-export const inReadingOrder = (cuts) => [...cuts].sort((a, b) => a.track - b.track || a.startTime - b.startTime);
+export const inReadingOrder = <C extends CutLike>(cuts: Iterable<C>): C[] => [...cuts].sort((a, b) => a.track - b.track || a.startTime - b.startTime);
 
 /**
  * The selection after a click on `id`.
@@ -26,7 +28,7 @@ export const inReadingOrder = (cuts) => [...cuts].sort((a, b) => a.track - b.tra
  * @param {{ctrl?: boolean, shift?: boolean}} mods
  * @returns {Set<any>}
  */
-export function selectionAfterClick(selected, cuts, currentCutId, id, { ctrl = false, shift = false } = {}) {
+export function selectionAfterClick(selected: Iterable<Id>, cuts: CutLike[], currentCutId: Id | null | undefined, id: Id, { ctrl = false, shift = false }: { ctrl?: boolean, shift?: boolean } = {}): Set<Id> {
     if (ctrl) return toggled(selected, id);
     if (shift && currentCutId != null) {
         const ordered = inReadingOrder(cuts);
@@ -47,7 +49,7 @@ export function selectionAfterClick(selected, cuts, currentCutId, id, { ctrl = f
  * @param {Set<any>} selected
  * @param {any} id
  */
-export function cutsToCopy(cuts, selected, id) {
+export function cutsToCopy<C extends CutLike>(cuts: C[], selected: Set<Id>, id: Id): C[] {
     const ids = (selected.size > 1 && selected.has(id)) ? selected : new Set([id]);
     return inReadingOrder(cuts.filter(c => ids.has(c.id)));
 }

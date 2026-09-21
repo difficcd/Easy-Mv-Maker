@@ -17,10 +17,10 @@ import { computeCutAnim } from '../core/cutAnim.js';
 import { cutProgress } from '../core/cutTime.ts';
 import { safeArray } from '../core/geometry.ts';
 import { computeLayerAnim } from '../core/layerAnim.js';
-import { flattenLayersInUiOrder } from '../core/layerTree.js';
+import { flattenLayersInUiOrder } from '../core/layerTree.ts';
 import { computeTextAnim } from '../core/textAnim.js';
 import { computeCamera } from '../core/camera.js';
-import { clipGroups } from '../core/clipping.js';
+import { clipGroups } from '../core/clipping.ts';
 import { visibleCutsAt } from './selectCuts.js';
 
 /**

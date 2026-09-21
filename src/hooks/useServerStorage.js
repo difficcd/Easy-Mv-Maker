@@ -21,9 +21,9 @@
 // but that the cut was the narrowest.
 
 import { useState, useRef, useEffect } from 'react';
-import { apiFetch, putAsset } from '../core/api.js';
+import { apiFetch, putAsset } from '../core/api.ts';
 import { readStored, writeStored } from '../core/persist.js';
-import { randomId } from '../core/ids.js';
+import { randomId } from '../core/ids.ts';
 import { safeArray } from '../core/geometry.ts';
 import { tr } from '../i18n.js';
 

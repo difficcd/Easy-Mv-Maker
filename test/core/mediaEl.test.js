@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { safeMediaSrc } from '../../src/core/mediaEl.js';
+import { safeMediaSrc } from '../../src/core/mediaEl.ts';
 
 test('a blob url from our own bytes is allowed', () => {
     assert.equal(safeMediaSrc('blob:http://localhost:5175/abc-123', 'audio'), 'blob:http://localhost:5175/abc-123');

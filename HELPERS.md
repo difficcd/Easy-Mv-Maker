@@ -23,7 +23,7 @@ Which stored bitmaps are still reachable, for garbage collection.
 | `collectUsedBitmapIds` | Every bitmap id still referenced by anything that can bring it back: the cuts, the undo history, the cut clipboard, the lasso clipboard and the live selection. Freeing something an undo still needs is not a leak, it is an undo that comes back blank. |
 | `unusedBitmapIds` | Ids present in the store that nothing references any more. |
 
-## `src/core/api.js`
+## `src/core/api.ts`
 
 Talking to the local project server. The only thing these add to `fetch` is the check `fetch` does
 not do: a 404 or a 500 is a perfectly good response as far as it is concerned, and it rejects only
@@ -80,7 +80,7 @@ Camera moves: presets, drawn paths, and the transform they resolve to.
 | `resolveCamera` | Resolve a camera setting into the path and zoom range actually used. A drawn path wins over the preset's own, so somebody can pick "ken burns" for its zoom and then replace the movement without losing the zoom. |
 | `zoomForDrift` | The smallest zoom at which a camera may sit that far off centre without the frame running off the artwork. |
 
-## `src/core/clipping.js`
+## `src/core/clipping.ts`
 
 Clipping: a layer that only shows where the layer beneath it has paint.
 
@@ -134,7 +134,7 @@ The spline behind the curve ruler.
 |---|---|
 | `catmullThrough` | A Catmull-Rom spline through every anchor, not near it — which is why it is this and not a Bezier, since the user taps where the line should go. Carries pressure through, clamps the end neighbours so the line does not hook at each end, and returns fewer than three points unchanged. |
 
-## `src/core/colour.js`
+## `src/core/colour.ts`
 
 Putting an alpha on a colour that came from the theme.
 
@@ -233,7 +233,7 @@ Undo and redo, and the memory budget that bounds them.
 | `pushSnapshot` | Record a snapshot, returning the new list and position. The input is never modified, so the caller can keep the old pair if it wants to. |
 | `step` | Step one snapshot back or forward. |
 
-## `src/core/cutSelection.js`
+## `src/core/cutSelection.ts`
 
 Which cuts are selected after a click on one, and which are copied. The shift-run is in reading order (track, then start time), not creation order.
 
@@ -269,7 +269,7 @@ a browser.
 | `seamTimes` | Where each piece begins in the finished file, for progress or chapter marks. |
 | `queueProgress` | How far through, counted in frames rather than pieces - pieces differ in length, and a bar that jumps when a short one finishes reads as broken. |
 
-## `src/core/ids.js`
+## `src/core/ids.ts`
 
 Ids for the things a document is made of. These were `Date.now()`, written out nineteen times, and
 two of those sites had already worked the collision around by hand with `Date.now() + 1`.
@@ -323,7 +323,7 @@ Lasso selection: closing the path, bounding it, lifting the pixels.
 | `WARP_LIMIT` | Furthest a drag can push skew or bend — the sliders' range, so the two agree. |
 | `paintedBounds` | The tight integer box around every pixel with alpha, or null for an empty buffer. What Ctrl+T selects: the drawing, not the canvas. |
 
-## `src/core/recordBitrate.js`
+## `src/core/recordBitrate.ts`
 
 How many bits a second to ask the recorder for.
 
@@ -376,7 +376,7 @@ Layers: moving, merging, resolving which one a stroke lands on.
 | `offsetLayers` | Shift whole layers, and optionally the cut's texts, by a pixel offset. This is what a move-everything drag commits. |
 | `resolveDrawLayer` | Which layer a stroke should actually go into. The active layer is not always usable: it can be a folder, or point at something that no longer exists. |
 
-## `src/core/mediaEl.js`
+## `src/core/mediaEl.ts`
 
 The DOM side of the media tracks: `mediaReducer` says what the audio and video are, this says what to do to the elements playing them.
 
@@ -764,7 +764,7 @@ Small geometry, and the one array helper everything reaches for.
 | `dist` | Distance between two points. |
 | `safeArray` | Anything-to-array, for fields that older projects may not have at all. |
 
-## `src/core/layerTree.js`
+## `src/core/layerTree.ts`
 
 Reading a cut's layer tree: order, cache keys and change signatures.
 
