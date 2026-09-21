@@ -16,6 +16,13 @@
 import { collectUsedBitmapIds } from './bitmapRefs.ts';
 import { derivePartsFrom } from './partOps.ts';
 import { pieceRange } from './exportQueue.ts';
+import type { Id } from './types.ts';
+
+/** A stored document, as far as splitting needs to see it. */
+export interface ProjectDoc { cuts?: Cut[]; bitmaps?: Record<string, unknown>; compressedBitmaps?: string[]; assets?: unknown; savedAt?: string; [k: string]: any }
+/** One piece of a split project: a document of its own. */
+export interface Piece { id: Id; name: string; count: number; doc: ProjectDoc }
+
 
 /**
  * The pieces a project splits into, one per part.
@@ -35,11 +42,12 @@ import { pieceRange } from './exportQueue.ts';
  * @param {string} [fallbackName] what to call a part whose cuts carry no name
  * @returns {{id: string, name: string, count: number, doc: any}[]}
  */
-export function splitProject(doc, fallbackName = 'Part') {
-    const cuts = Array.isArray(doc?.cuts) ? doc.cuts : [];
+export function splitProject(doc: ProjectDoc | null | undefined, fallbackName = 'Part'): Piece[] {
+    if (!doc) return [];
+    const cuts = Array.isArray(doc.cuts) ? doc.cuts : [];
     if (!cuts.length) return [];
 
-    const groups = [];
+    const groups: Array<{ id: Id, name: string, cuts: Cut[] }> = [];
     for (const part of derivePartsFrom(cuts, fallbackName)) {
         groups.push({ id: part.id, name: part.name, cuts: cuts.filter(c => c.partId === part.id) });
     }
@@ -72,7 +80,7 @@ export function splitProject(doc, fallbackName = 'Part') {
  * @param {{doc: any}[]} pieces
  * @returns {boolean} true when each piece begins at or after the end of the one before it
  */
-export function piecesAreSequential(pieces) {
+export function piecesAreSequential(pieces: ReadonlyArray<{ doc: ProjectDoc }>): boolean {
     let end = -Infinity;
     for (const piece of pieces) {
         const { start, end: e } = pieceRange(piece.doc);
@@ -89,9 +97,9 @@ export function piecesAreSequential(pieces) {
  * @param {any[]} cuts
  * @returns {any}
  */
-function pieceOf(doc, cuts) {
+function pieceOf(doc: ProjectDoc, cuts: Cut[]): ProjectDoc {
     const keep = collectUsedBitmapIds({ cuts });
-    const bitmaps = {};
+    const bitmaps: Record<string, unknown> = {};
     for (const [id, value] of Object.entries(doc.bitmaps || {})) {
         if (keep.has(id)) bitmaps[id] = value;
     }
@@ -119,7 +127,7 @@ function pieceOf(doc, cuts) {
  * @param {string} name
  * @returns {string}
  */
-export function pieceFileName(index, total, name) {
+export function pieceFileName(index: number, total: number, name: unknown): string {
     const width = String(Math.max(1, total)).length;
     const safe = String(name || '').replace(/[\\/:*?"<>|]/g, '').trim().slice(0, 40) || 'part';
     return `${String(index + 1).padStart(width, '0')}_${safe}.emv`;

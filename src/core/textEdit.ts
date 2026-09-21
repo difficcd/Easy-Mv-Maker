@@ -16,6 +16,22 @@
 // say less than the two explicit lists do.
 
 import { clampNum } from './numInput.ts';
+import type { Id } from './types.ts';
+
+/** The text editor's draft: a text's fields plus which text it is, or null for a new one. */
+export interface TextEdit {
+    textId?: Id | null; cutId?: Id;
+    x: number; y: number; text: string;
+    fontSize?: number; fontFamily?: string; color?: string; opacity?: number; visible?: boolean;
+    outline?: boolean; outlineColor?: string; bold?: boolean; italic?: boolean; align?: string;
+    lineHeight?: number; letterSpacing?: number;
+    shadow?: boolean; shadowColor?: string; shadowBlur?: number;
+    gradient?: boolean; color2?: string; bgColor?: string;
+    rotation?: number; curve?: number; flipX?: boolean; flipY?: boolean;
+    anim?: any; noise?: number; noiseColor?: number; noiseFrom?: number; noiseTo?: number;
+    [k: string]: any;
+}
+
 
 /** Font sizes the renderer will accept. Matches clampFontSize in textRender. */
 const FONT_MIN = 6;
@@ -28,7 +44,7 @@ const FONT_MAX = 400;
  * @param {any} id the id to store it under - the existing one, or a fresh one for a new text
  * @returns {any}
  */
-export function textFromEdit(edit, id) {
+export function textFromEdit(edit: TextEdit, id: Id): CutText {
     return {
         id,
         // Rounded because a text's position is a pixel on the canvas, and a fractional one only
@@ -80,7 +96,7 @@ export function textFromEdit(edit, id) {
  * @param {{color: string, opacity: number}} now what the app is currently set to
  * @returns {any}
  */
-export function editFromText(t, now) {
+export function editFromText(t: CutText, now: { color: string, opacity: number }): TextEdit {
     return {
         x: t.x ?? 0,
         y: t.y ?? 0,
@@ -128,7 +144,7 @@ export function editFromText(t, now) {
  * @param {{color: string, opacity: number}} now
  * @returns {any}
  */
-export function blankTextEdit(at, now) {
+export function blankTextEdit(at: { x: number, y: number }, now: { color: string, opacity: number }): TextEdit {
     return {
         textId: null,
         x: at.x,

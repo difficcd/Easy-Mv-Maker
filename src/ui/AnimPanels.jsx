@@ -9,7 +9,7 @@ import { upsertKey, patchKey, removeKey, snapProgress } from '../core/keyframes.
 import { readStored, writeStored, arrayCodec } from '../core/persist.ts';
 import { NumField } from './NumField';
 import { tr } from '../i18n';
-import { swayPointAt, swayWeightAt } from '../core/sway.js';
+import { swayPointAt, swayWeightAt } from '../core/sway.ts';
 
 // Animation control panels, split out of App.jsx so editing the (frequently-tweaked)
 // animation UI doesn't require loading the whole component.

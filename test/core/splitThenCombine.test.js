@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { splitProject, piecesAreSequential } from '../../src/core/splitProject.js';
+import { splitProject, piecesAreSequential } from '../../src/core/splitProject.ts';
 import { planQueue, pieceRange } from '../../src/core/exportQueue.ts';
 import { playRange } from '../../src/core/playRange.ts';
 

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { importPlacement, frameDurations, partAssigner, buildImportedCuts, extractOptionsFor } from '../../src/core/videoCuts.js';
+import { importPlacement, frameDurations, partAssigner, buildImportedCuts, extractOptionsFor } from '../../src/core/videoCuts.ts';
 
 const rect = { x: 0, y: 0, w: 1920, h: 1080 };
 const ids = (n) => { let i = 0; return () => ++i; };

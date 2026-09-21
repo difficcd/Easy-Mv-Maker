@@ -23,7 +23,7 @@ import { FONT_PRESETS, fontGroups } from '../../src/core/fonts.ts';
 import { pointInPolygon, dist, safeArray } from '../../src/core/geometry.ts';
 import { sampleKeys } from '../../src/core/keyframes.ts';
 import { layerKey, strokeSig, flattenLayersInUiOrder, layerSig } from '../../src/core/layerTree.ts';
-import { swayWeightAt, sampleWave, sortSwayProfile } from '../../src/core/sway.js';
+import { swayWeightAt, sampleWave, sortSwayProfile } from '../../src/core/sway.ts';
 
 const near = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) < eps, `${a} ≈ ${b}`);
 

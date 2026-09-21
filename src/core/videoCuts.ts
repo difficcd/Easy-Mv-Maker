@@ -18,6 +18,22 @@
 //   parts           a long video arrives already grouped. The split is by count, so the last part
 //                   is the short one.
 
+import type { Id } from './types.ts';
+
+/** The import dialog's settings, as the dialog holds them. */
+export interface ImportConfig {
+    fps: number; maxFrames?: number; whole?: boolean;
+    rangeOn?: boolean; startText?: string; endText?: string;
+    quality?: string; scale?: number; dedupe?: string;
+    [k: string]: any;
+}
+/** What the extractor is asked for. */
+export interface ExtractOptions {
+    fps: number; maxFrames: number; start: number; end: number | null;
+    scale: number; quality: number; dedupe: string; nativeRes: boolean; format: string;
+    width: number; height: number;
+}
+
 /**
  * Where a run of imported cuts should start, and on which track.
  *
@@ -28,7 +44,7 @@
  * @param {any} currentCutId which cut is selected, deciding the track
  * @returns {{track: number, startAt: number}}
  */
-export function importPlacement(cuts, srcKey, currentCutId) {
+export function importPlacement(cuts: Cut[] | null | undefined, srcKey: string | undefined, currentCutId: Id | null | undefined): { track: number, startAt: number } {
     const kept = (Array.isArray(cuts) ? cuts : []).filter(c => c && c.videoSrc !== srcKey);
     const track = kept.find(c => c.id === currentCutId)?.track ?? 0;
     const startAt = kept.filter(c => c.track === track)
@@ -48,9 +64,9 @@ export function importPlacement(cuts, srcKey, currentCutId) {
  * @param {number} fps
  * @returns {number[]}
  */
-export function frameDurations(holds, count, fps) {
+export function frameDurations(holds: ArrayLike<number> | null | undefined, count: number, fps: number): number[] {
     const dur = 1 / Math.max(0.1, Number(fps) || 0);
-    const out = new Array(count);
+    const out: number[] = new Array(count);
     for (let i = 0; i < count; i++) {
         const held = Math.max(1, Math.floor(Number(holds?.[i]) || 1));
         out[i] = dur * held;
@@ -71,7 +87,7 @@ export function frameDurations(holds, count, fps) {
  * @param {string} label the name the user gave the import
  * @returns {(i: number) => {partId: string, partName: string}}
  */
-export function partAssigner(count, parts, batch, label) {
+export function partAssigner(count: number, parts: unknown, batch: string, label: string): (i: number) => { partId: string, partName: string } {
     const n = Math.max(1, Math.min(count || 1, Math.floor(Number(parts)) || 1));
     if (n <= 1) return () => ({ partId: batch, partName: label });
     const perPart = Math.ceil(count / n);
@@ -101,10 +117,10 @@ export function partAssigner(count, parts, batch, label) {
  * @param {() => any} opts.nextId
  * @returns {any[]}
  */
-export function buildImportedCuts({ bitmapIds, holds, fps, track, startAt, batch, label, srcKey, parts, rect, nextId }) {
+export function buildImportedCuts({ bitmapIds, holds, fps, track, startAt, batch, label, srcKey, parts, rect, nextId }: { bitmapIds: string[], holds?: ArrayLike<number> | null, fps: number, track: number, startAt: number, batch: string, label: string, srcKey?: string, parts?: unknown, rect: { x: number, y: number, w: number, h: number }, nextId: () => Id }): Cut[] {
     const durations = frameDurations(holds, bitmapIds.length, fps);
     const partOf = partAssigner(bitmapIds.length, parts, batch, label);
-    const made = [];
+    const made: Cut[] = [];
     let t = startAt;
     for (let i = 0; i < bitmapIds.length; i++) {
         const start = t;
@@ -127,7 +143,7 @@ export function buildImportedCuts({ bitmapIds, holds, fps, track, startAt, batch
 }
 
 /** What each quality tier asks the extractor for. */
-const QUALITY = {
+const QUALITY: Record<string, { quality: number, format: string, nativeRes: boolean }> = {
     // 'high' is WebP at q0.95 at the source's own size: visually lossless at 5-8x smaller than a
     // true-lossless PNG, which is why it is the default for large videos.
     lossless: { quality: 1, format: 'png', nativeRes: true },
@@ -149,17 +165,17 @@ const QUALITY = {
  * @param {(text: string) => number} parseClock
  * @returns {{opts: {fps: number, maxFrames: number, start: number, end: number | null, scale: number, quality: number, dedupe: string, nativeRes: boolean, format: string, width: number, height: number}, nativeRes: boolean}} `opts` without the progress and stop callbacks
  */
-export function extractOptionsFor(cfg, target, parseClock) {
+export function extractOptionsFor(cfg: ImportConfig, target: { w: number, h: number }, parseClock: (s: unknown) => number): { nativeRes: boolean, opts: ExtractOptions } {
     const rStart = cfg.rangeOn ? parseClock(cfg.startText) : 0;
     const rEnd = cfg.rangeOn ? parseClock(cfg.endText) : 0;
     const useRange = !!cfg.rangeOn && rEnd > rStart;
-    const tier = QUALITY[cfg.quality] || QUALITY.compressed;
+    const tier = QUALITY[cfg.quality ?? 'compressed'] || QUALITY.compressed;
     return {
         nativeRes: tier.nativeRes,
         opts: {
-            fps: cfg.fps, maxFrames: cfg.whole ? 0 : cfg.maxFrames,
+            fps: cfg.fps, maxFrames: cfg.whole ? 0 : (cfg.maxFrames ?? 0),
             start: useRange ? rStart : 0, end: useRange ? rEnd : null,
-            scale: tier.nativeRes ? 1 : cfg.scale, quality: tier.quality,
+            scale: tier.nativeRes ? 1 : (cfg.scale ?? 1), quality: tier.quality,
             dedupe: cfg.dedupe ?? 'exact', nativeRes: tier.nativeRes, format: tier.format,
             width: target.w, height: target.h,
         },

@@ -89,7 +89,7 @@ Clipping: a layer that only shows where the layer beneath it has paint.
 | `canClip` | Whether the clip toggle would do anything. False only for the bottom layer, which has nothing to clip to. |
 | `clipGroups` | Which layers clip to which base. A run of clipped layers all attach to the same base, and a clipped layer with nothing below it draws normally rather than vanishing. |
 
-## `src/core/videoCuts.js`
+## `src/core/videoCuts.ts`
 
 Turning extracted video frames into cuts: the arithmetic in the middle of the import, with the
 file reading and the bitmap storing taken off either end. It was inline in a function that also
@@ -555,7 +555,7 @@ Key bindings, and what a key event means.
 | `TOOL_PREFIX` | Selecting a tool is a binding like any other, distinguished by this prefix so the handler can route it without a list of tool ids to keep in step with the toolbar. |
 | `toolFromAction` | The tool a binding selects, or null if it is not a tool binding. |
 
-## `src/core/splitProject.js`
+## `src/core/splitProject.ts`
 
 Cutting one long project into pieces that can be worked on separately - the other half of #123,
 where the export queue is the combining. Advice to work in pieces is only followable if both
@@ -567,7 +567,7 @@ halves exist, and until this the pieces had to be made by hand.
 | `piecesAreSequential` | Whether the pieces lie end to end or overlap in time. A part is any group of cuts, adjacent or not, so grouping every other cut gives two pieces that both span the whole stretch - laying those end to end afterwards makes a longer film with the gaps blank. True of the grouping, not a fault, and worth asking about before the files are written. |
 | `pieceFileName` | `01_Chorus.emv` - padded so a directory listing is the running order, and stripped of the characters a file name cannot hold. |
 
-## `src/core/textEdit.js`
+## `src/core/textEdit.ts`
 
 A text object's twenty-odd fields, in one place instead of three. The app moved them across by
 hand twice - opening a text into the editor, writing the editor back out - with a third, shorter
@@ -817,7 +817,7 @@ A layer's (part's) animation at a moment: move, rotate, scale, path, keys, sway,
 | `mosaicBlockAt` | The block size at a moment, over `effectAt`. `mode: 'return'` keeps using the shared swing, so the control that already means "come back" goes on meaning it. |
 | `computeLayerAnim` | A layer (part) animation resolved to one instant: the offset, rotation, scale, alpha and sway to draw it with. |
 
-## `src/core/sway.js`
+## `src/core/sway.ts`
 
 Sway: a drawn curve as a waveform, the profile along the part, and the lagged displacement.
 

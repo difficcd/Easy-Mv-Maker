@@ -1,4 +1,4 @@
-import { swayWeightAt, swayDispAt } from '../core/sway.js';
+import { swayWeightAt, swayDispAt } from '../core/sway.ts';
 import { shearSlices } from './shearSlices.js';
 
 /**

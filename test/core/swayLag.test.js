@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { swayDispAt, swayWaveAt } from '../../src/core/sway.js';
+import { swayDispAt, swayWaveAt } from '../../src/core/sway.ts';
 import { swaySlices } from '../../src/canvas/swayRender.js';
 
 const WAVE = { amp: 100, speed: 1, curve: null, time: 0.3, lag: 0 };
