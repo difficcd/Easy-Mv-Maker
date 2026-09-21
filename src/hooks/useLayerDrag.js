@@ -7,7 +7,7 @@
 // the frame is asked to repaint with it hidden.
 
 import { flattenLayersInUiOrder } from '../core/layerTree.ts';
-import { moveLayers } from '../core/cutsReducer.js';
+import { moveLayers } from '../core/cutsReducer.ts';
 
 /**
  * @param {object} deps

@@ -86,7 +86,7 @@ import {
     updateLayer, setLayerAnim, upsertText, deleteText, toggleTextVisible as toggleTextVisibleAction,
     assignPartTo, renamePart as renamePartAction, ungroupPart as ungroupPartAction, removeBatch,
     insertCutsShifting, deleteTrack, moveCutGroup, patchCut, patchCuts,
-} from './core/cutsReducer.js';
+} from './core/cutsReducer.ts';
 import { migrateCuts, projectSettings, makeLoadProgress } from './core/projectFormat.ts';
 import { audioExt, videoExt, collectBitmaps, blobToDataURL, packMedia, fillBitmapStore, bitmapLoadCount } from './core/projectAssets.js';
 import { xAtTime } from './core/timelineZoom.ts';

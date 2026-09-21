@@ -163,7 +163,7 @@ Dragging and resizing cuts on the timeline, with snapping.
 | `gapAt` | The empty stretch of a track around a time, for a double-click to fill with a cut: null inside a cut or when too narrow to grab; runs a second past the click when nothing follows. |
 | `MIN_GAP` | Narrower than this and a gap is not worth a cut. |
 
-## `src/core/cutsReducer.js`
+## `src/core/cutsReducer.ts`
 
 Every change the document can undergo, as named actions. Build them with these creators - a mistyped action is then a type error rather than a silent no-op.
 
