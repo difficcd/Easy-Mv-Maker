@@ -1,0 +1,163 @@
+/* Top bar */
+.top-bar {
+    height: 48px;
+    background: hsl(var(--ui-h) var(--ui-s) 14%);
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    gap: 6px;
+    border-bottom: 1px solid hsl(var(--ui-h) var(--ui-s) 21%);
+    flex-shrink: 0;
+    overflow: visible;
+    /* overflow stays visible so the File and Media dropdowns are not clipped.
+       The entries are grouped under Media and stay short, so horizontal overflow is rare. */
+}
+
+/* Top-bar items never squash as the bar narrows; they scroll horizontally instead,
+   which keeps the text legible. */
+.top-bar>* {
+    flex-shrink: 0;
+}
+
+.menu-divider {
+    width: 1px;
+    height: 22px;
+    background: hsl(var(--ui-h) var(--ui-s) 28%);
+    margin: 0 2px;
+}
+
+.menu-spacer {
+    flex: 1 1 auto;
+    min-width: 8px;
+}
+
+/* Small palette buttons. */
+.pal-btn {
+    flex: 1;
+    min-width: 0;
+    height: 20px;
+    padding: 0;
+    font-size: 10px;
+    background: hsl(var(--ui-h) var(--ui-s) 17%);
+    border: 1px solid hsl(var(--ui-h) var(--ui-s) 28%);
+    color: #bbb;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.pal-btn:hover {
+    background: hsl(var(--ui-h) var(--ui-s) 23%);
+}
+
+.pal-btn.active {
+    background: var(--accent);
+    border-color: var(--accent-hi);
+    color: #fff;
+}
+
+.title {
+    margin: 0;
+    /* The mark, not a word: line-height 0 keeps the row from growing to fit a text box that is
+       no longer there, and the colour is what the svg draws in. */
+    display: flex;
+    align-items: center;
+    line-height: 0;
+    color: var(--accent-hi);
+}
+
+/* Top-bar buttons and dropdowns stay on one line. */
+.top-bar .button,
+.top-bar .time-input {
+    white-space: nowrap;
+}
+
+.button {
+    background: hsl(var(--ui-h) var(--ui-s) 17%);
+    border: 1px solid hsl(var(--ui-h) var(--ui-s) 28%);
+    color: #ccc;
+    padding: 5px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-family: inherit;
+    transition: background .15s, border-color .15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+    height: 32px;
+}
+
+.button:hover {
+    background: hsl(var(--ui-h) var(--ui-s) 23%);
+    border-color: hsl(var(--ui-h) var(--ui-s) 45%);
+}
+
+.button-primary {
+    background: var(--accent);
+    border-color: var(--accent-hi);
+    color: #fff;
+    font-weight: 600;
+}
+
+.button-primary:hover {
+    background: var(--accent-hi);
+}
+
+.audio-input-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: hsl(var(--ui-h) var(--ui-s) 17%);
+    color: #aaa;
+    padding: 5px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    border: 1px solid hsl(var(--ui-h) var(--ui-s) 28%);
+    font-size: 12px;
+    font-family: inherit;
+    height: 32px;
+    white-space: nowrap;
+}
+
+.audio-input-label:hover {
+    background: hsl(var(--ui-h) var(--ui-s) 23%);
+}
+
+/* File menu */
+.file-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    background: hsl(var(--ui-h) var(--ui-s) 15%);
+    border: 1px solid hsl(var(--ui-h) var(--ui-s) 28%);
+    border-radius: 8px;
+    z-index: 200;
+    min-width: 180px;
+    padding: 4px 0;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .6);
+}
+
+.file-menu-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    color: #ccc;
+    padding: 8px 16px;
+    cursor: pointer;
+    font-size: 12px;
+    font-family: inherit;
+}
+
+.file-menu-item:hover {
+    background: hsl(var(--ui-h) var(--ui-s) 22%);
+    color: #e0e0ff;
+}
+
+.file-menu-sep {
+    height: 1px;
+    background: hsl(var(--ui-h) var(--ui-s) 23%);
+    margin: 4px 0;
+}

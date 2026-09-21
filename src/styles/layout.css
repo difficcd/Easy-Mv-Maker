@@ -1,0 +1,47 @@
+/* Main layout */
+.main-content {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+.track-group-header {
+    font-size: 10px;
+    color: #8a8aa0;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    padding: 6px 4px 2px;
+    margin-top: 4px;
+    border-top: 1px solid hsl(var(--ui-h) var(--ui-s) 21%);
+}
+
+.cut-item.cut-multi {
+    outline: 1px solid var(--accent-soft);
+    outline-offset: -1px;
+}
+
+.splitter-v {
+    width: 4px;
+    cursor: col-resize;
+    background: transparent;
+    flex-shrink: 0;
+    touch-action: none;
+}
+
+.splitter-v:hover,
+.splitter-v:active {
+    background: var(--accent-soft);
+}
+
+.splitter-h {
+    height: 6px;
+    cursor: row-resize;
+    background: hsl(var(--ui-h) var(--ui-s) 15%);
+    flex-shrink: 0;
+    touch-action: none;
+}
+
+.splitter-h:hover,
+.splitter-h:active {
+    background: hsl(var(--ui-h) var(--ui-s) 30%);
+}

@@ -1,0 +1,162 @@
+/* The column count reflows with the width. The buttons keep a comfortable size, and the
+   label is dropped only when the cell is too narrow to hold it. */
+.toolbar .tool-grid {
+    grid-template-columns: repeat(auto-fit, minmax(42px, 1fr));
+}
+
+.toolbar .size-grid {
+    grid-template-columns: repeat(auto-fit, minmax(26px, 1fr));
+}
+
+.toolbar .tool-btn {
+    min-width: 0;
+    padding: 5px 2px;
+}
+
+.toolbar .tool-label {
+    font-size: 9px;
+    line-height: 1.1;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+
+/* Icon rail: larger icons and a bigger hit area. */
+.dock-rail {
+    width: 42px;
+    padding: 8px 0;
+    gap: 6px;
+}
+
+.dock-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+}
+
+/* Settings dialog: larger text and controls, for legibility. */
+.settings-modal .pal-tab {
+    font-size: 13px;
+    padding: 7px 16px;
+}
+
+.settings-modal .color-section-label {
+    font-size: 11px;
+}
+
+.settings-modal .key-row {
+    padding: 10px 4px;
+    font-size: 13px;
+}
+
+/* Theme hue picker strip. */
+.hue-line {
+    flex: 1;
+    height: 26px;
+    border-radius: 6px;
+    cursor: pointer;
+    border: 1px solid hsl(var(--ui-h) var(--ui-s) 26%);
+    background: linear-gradient(90deg,
+            hsl(0 70% 45%), hsl(60 70% 45%), hsl(120 70% 45%),
+            hsl(180 70% 45%), hsl(240 70% 45%), hsl(300 70% 45%), hsl(360 70% 45%));
+    touch-action: none;
+}
+
+/* Brush-size presets sit in a grid rather than a fixed layout, so they rearrange with width. */
+.size-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(24px, 1fr));
+    gap: 4px;
+    width: 100%;
+}
+
+.size-cell {
+    aspect-ratio: 1;
+    width: 100%;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border-radius: 4px;
+    background: hsl(var(--ui-h) var(--ui-s) 17%);
+    border: 1px solid hsl(var(--ui-h) var(--ui-s) 25%);
+    cursor: pointer;
+}
+
+.size-cell.active {
+    background: var(--accent);
+    border-color: var(--accent-hi);
+}
+
+/* Nothing inside the tool panel may exceed its width. */
+.toolbar>* {
+    max-width: 100%;
+}
+
+.slider-wrap {
+    min-width: 0;
+}
+
+/* Elements in the tool panel always fill the panel width instead of sizing to their content. */
+.toolbar .tool-grid,
+.toolbar .size-grid,
+.toolbar .slider-wrap,
+.toolbar .panel-head {
+    width: 100%;
+    min-width: 0;
+}
+
+/* Current colour: never stretched, so it stays a circle - filling the width makes it an oval. */
+.toolbar .color-picker {
+    width: 34px;
+    height: 34px;
+    min-width: 0;
+    flex-shrink: 0;
+    align-self: center;
+    border-radius: 50%;
+}
+
+.toolbar .color-picker::-webkit-color-swatch {
+    border-radius: 50%;
+}
+
+/* Recent colours: a fixed number of slots, empty ones left blank, so the layout does not
+   shift every time a colour is added. */
+.slot-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(22px, 1fr));
+    gap: 4px;
+    width: 100%;
+}
+
+.slot {
+    aspect-ratio: 1;
+    width: 100%;
+    padding: 0;
+    border-radius: 4px;
+    border: 1px solid hsl(var(--ui-h) var(--ui-s) 24%);
+    background: transparent;
+}
+
+.slot.filled {
+    cursor: pointer;
+    border-color: #0005;
+}
+
+.slot.sel {
+    outline: 2px solid var(--accent-soft);
+    outline-offset: -2px;
+}
+
+/* A faint chequerboard, so an empty slot reads as transparent. */
+.slot.empty {
+    background-image: linear-gradient(45deg, hsl(var(--ui-h) var(--ui-s) 18%) 25%, transparent 25%),
+        linear-gradient(-45deg, hsl(var(--ui-h) var(--ui-s) 18%) 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, hsl(var(--ui-h) var(--ui-s) 18%) 75%),
+        linear-gradient(-45deg, transparent 75%, hsl(var(--ui-h) var(--ui-s) 18%) 75%);
+    background-size: 8px 8px;
+    background-position: 0 0, 0 4px, 4px -4px, -4px 0;
+}

@@ -1,0 +1,65 @@
+/* ── Text editor: section headings ───────────────────────────────────────────
+   Every control used to sit as a sibling in one wrapping row, which is why it
+   was hard to work in - nothing told you where the font settings ended and the
+   effects began. A full-width heading forces a line break in the wrap container
+   and gives the row structure without moving any control out of it. */
+.te-section {
+    width: 100%;
+    margin: 8px 0 2px;
+    padding-top: 7px;
+    border-top: 1px solid hsl(var(--ui-h) var(--ui-s) 24%);
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--accent-soft);
+}
+
+/* The first heading follows the textarea, so it does not need its own rule above. */
+.te-section:first-of-type {
+    margin-top: 4px;
+    border-top: none;
+    padding-top: 0;
+}
+
+.te-check {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: #b8b8c6;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.te-check:hover {
+    color: #e6e6ee;
+}
+
+/* Done and Cancel used to sit in the flow of the controls, so they moved around
+   as options appeared and were easy to miss. */
+.te-footer {
+    width: 100%;
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-top: 10px;
+    padding-top: 9px;
+    border-top: 1px solid hsl(var(--ui-h) var(--ui-s) 24%);
+}
+
+/* Colour swatches read as part of the control they belong to, not as gaps. */
+.text-panel-body .text-editor-color {
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: 1px solid hsl(var(--ui-h) var(--ui-s) 32%);
+    border-radius: 5px;
+    background: none;
+    cursor: pointer;
+}
+
+.text-panel-body .text-editor-label {
+    font-size: 11px;
+    color: #9a9aa8;
+}

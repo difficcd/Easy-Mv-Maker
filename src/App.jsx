@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { PenLine, Pen, Feather, Eraser, Undo, Layers, GitBranch, Move, Type, Cloud, Minus, Grid3x3, PaintBucket, Waves } from 'lucide-react';
-import './App.css';
+import './styles/index.css';
 import { saveAutosave } from './db';
 import ColorPanel from './ui/ColorPanel';
 import { TopBar } from './ui/TopBar';

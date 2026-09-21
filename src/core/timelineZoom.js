@@ -5,14 +5,14 @@
 // time zero sits is not the left edge of the element - it is the left edge plus the width of that
 // column. Every conversion between a screen x and a time has to account for it, and the width was
 // written as a bare 60 in six places, none of which mentioned where the number came from. The one
-// place it is actually defined is `.tl-track-label` in App.css; TRACK_GUTTER below is the same
+// place it is actually defined is `.tl-track-label` in styles/timeline.css; TRACK_GUTTER below is the same
 // number, said once, and the two have to be changed together.
 //
 // Zooming about a point is the same three lines twice - once for the wheel, once for a two-finger
 // pinch - and getting it subtly wrong does not look like a bug, it looks like the timeline
 // drifting slightly whenever you zoom. Both go through zoomAnchored now.
 
-/** Width of the sticky track-label column, in px. Must match `.tl-track-label` in App.css. */
+/** Width of the sticky track-label column, in px. Must match `.tl-track-label` in styles/timeline.css. */
 export const TRACK_GUTTER = 60;
 
 // Below ten pixels a second the cuts are too small to grab; above three hundred a few seconds

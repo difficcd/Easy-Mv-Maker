@@ -1,0 +1,5 @@
+/* Indeterminate bar for work whose total is unknown, such as reading or parsing a file. */
+@keyframes mvIndet {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(250%); }
+}

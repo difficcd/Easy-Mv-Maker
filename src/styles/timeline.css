@@ -1,0 +1,166 @@
+/* Timeline */
+.timeline {
+    background: hsl(var(--ui-h) var(--ui-s) 10%);
+    border-top: 1px solid hsl(var(--ui-h) var(--ui-s) 21%);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+}
+
+.tl-controls {
+    background: hsl(var(--ui-h) var(--ui-s) 13%);
+    display: flex;
+    align-items: center;
+    padding: 0 14px;
+    gap: 10px;
+    border-bottom: 1px solid hsl(var(--ui-h) var(--ui-s) 21%);
+    height: 44px;
+    flex-shrink: 0;
+}
+
+.time-display {
+    font-family: monospace;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--accent-soft);
+    width: 105px;
+    letter-spacing: .5px;
+}
+
+.tl-tracks {
+    flex: 1;
+    overflow: auto;
+    position: relative;
+}
+
+.ruler {
+    height: 20px;
+}
+
+.tl-track {
+    height: 38px;
+    position: relative;
+    margin-bottom: 6px;
+    background: hsl(var(--ui-h) var(--ui-s) 12%);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+}
+
+/* The width here is also TRACK_GUTTER in core/timelineZoom.js, which every conversion between a
+   screen x and a time subtracts. Change one and the playhead stops landing where it should. */
+.tl-track-label {
+    position: sticky;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 60px;
+    background: hsl(var(--ui-h) var(--ui-s) 12%);
+    border-right: 1px solid hsl(var(--ui-h) var(--ui-s) 21%);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 0 4px;
+    font-size: 10px;
+    color: #666;
+    z-index: 5;
+    flex-shrink: 0;
+    height: 100%;
+    border-radius: 4px 0 0 4px;
+    gap: 2px;
+}
+
+.cut-block {
+    position: absolute;
+    height: 100%;
+    background: var(--accent-lo);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 600;
+    user-select: none;
+    border: 1px solid var(--accent-hi);
+    color: #ddd;
+    overflow: hidden;
+}
+
+.cut-block-active {
+    background: var(--accent);
+    box-shadow: 0 0 8px var(--accent-glow);
+}
+
+.cut-block-selected {
+    outline: 2px solid var(--accent-soft);
+    outline-offset: -1px;
+}
+
+.chip {
+    background: hsl(var(--ui-h) var(--ui-s) 21%);
+    border: 1px solid hsl(var(--ui-h) var(--ui-s) 26%);
+    color: #ccc;
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 12px;
+    white-space: nowrap;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+}
+
+.chip:hover {
+    background: hsl(var(--ui-h) var(--ui-s) 25%);
+}
+
+.chip-active {
+    background: var(--accent);
+    border-color: var(--accent-soft);
+    color: #fff;
+}
+
+.rh {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 5px;
+    cursor: ew-resize;
+    background: rgba(255, 255, 255, .2);
+    z-index: 5;
+}
+
+.rh:hover {
+    background: rgba(255, 255, 255, .5);
+}
+
+.rh-left {
+    left: 0;
+    border-radius: 4px 0 0 4px;
+}
+
+.rh-right {
+    right: 0;
+    border-radius: 0 4px 4px 0;
+}
+
+.playhead {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--accent-hi);
+    z-index: 10;
+    pointer-events: none;
+}
+
+.playhead-dot {
+    position: absolute;
+    top: 0;
+    left: -4px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--accent-hi);
+    box-shadow: 0 0 6px rgba(147, 51, 234, .8);
+}
