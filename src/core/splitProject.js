@@ -15,7 +15,7 @@
 
 import { collectUsedBitmapIds } from './bitmapRefs.ts';
 import { derivePartsFrom } from './partOps.ts';
-import { pieceRange } from './exportQueue.js';
+import { pieceRange } from './exportQueue.ts';
 
 /**
  * The pieces a project splits into, one per part.

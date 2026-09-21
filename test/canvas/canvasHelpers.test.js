@@ -16,7 +16,7 @@ import { sizeCanvas, scratchCanvas } from '../../src/canvas/scratch.js';
 import { fitRect, seekTarget } from '../../src/canvas/videoFrames.js';
 import { targetCanvasFor } from '../../src/core/canvasSize.ts';
 import { hexToRgb } from '../../src/core/colour.ts';
-import { computeCutAnim } from '../../src/core/cutAnim.js';
+import { computeCutAnim } from '../../src/core/cutAnim.ts';
 import { cutDuration, cutProgress } from '../../src/core/cutTime.ts';
 import { applyEase, triwave } from '../../src/core/easing.ts';
 import { FONT_PRESETS, fontGroups } from '../../src/core/fonts.ts';

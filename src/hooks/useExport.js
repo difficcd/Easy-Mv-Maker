@@ -15,7 +15,7 @@
 // meet.
 
 import { tr } from '../i18n';
-import { pieceRange } from '../core/exportQueue.js';
+import { pieceRange } from '../core/exportQueue.ts';
 import { frameExportPlan, exportFileInfo, LONG_EXPORT_FRAMES } from '../core/frameExport.ts';
 import { EXPORT_FPS } from '../core/recordClock.ts';
 import { evaluateFrame } from '../engine/evaluateFrame.js';

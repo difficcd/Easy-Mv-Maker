@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { computeLayerAnim, LAYER_ANIM_DEFAULT } from '../../src/core/layerAnim.js';
+import { computeLayerAnim, LAYER_ANIM_DEFAULT } from '../../src/core/layerAnim.ts';
 import { staticCanvas } from '../../src/canvas/pixelEffects.js';
 
 const CUT = { startTime: 0, endTime: 10 };

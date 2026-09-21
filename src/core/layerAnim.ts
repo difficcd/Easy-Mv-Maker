@@ -5,8 +5,30 @@ import { cutProgress } from './cutTime.ts';
 import { SWING, applyEase, effectAt, samplePath, swing } from './easing.ts';
 import { sampleKeys } from './keyframes.ts';
 import { swayWaveAt } from './sway.js';
+import type { TimeSpan, Point } from './types.ts';
+import type { Keyframe } from './keyframes.ts';
 
-export const LAYER_ANIM_DEFAULT = { mode: 'progress', speed: 1, count: 0, tx: 0, ty: 0, rot: 0, scale: 0, pivotX: 0.5, pivotY: 0.5, path: null, ease: 'linear', easePower: 2, swayAmount: 0, swaySpeed: 1, swayCurve: null, swayProfile: null, swayAxis: 'y', swayLag: 0, keys: null, mosaic: 0, mosaicMin: 0, mosaicFrom: 0, mosaicTo: 1, mosaicSpeed: 1, mosaicRect: null, noise: 0, noiseFrom: 0, noiseTo: 1, noiseColor: 0 };
+/** A layer's (part's) animation, as the layer panel edits it. */
+export interface LayerAnimSettings {
+    mode: string; speed: number; count: number;
+    tx: number; ty: number; rot: number; scale: number; pivotX: number; pivotY: number;
+    path: Point[] | null; ease: string; easePower: number;
+    swayAmount: number; swaySpeed: number; swayCurve: number[] | null; swayProfile: Array<{ p: number, w: number }> | null; swayAxis: string; swayLag: number;
+    keys: Keyframe[] | null;
+    mosaic: number; mosaicMin: number; mosaicFrom: number; mosaicTo: number; mosaicSpeed: number; mosaicRect: { x: number, y: number, w: number, h: number } | null;
+    noise: number; noiseFrom: number; noiseTo: number; noiseColor: number;
+}
+/** The layer's transform and effects at a moment; null when nothing is animated. */
+export interface LayerAnimAt {
+    tx: number; ty: number; rot: number; sc: number; alpha: number; shear: number; px: number; py: number;
+    swayProfile: Array<{ p: number, w: number }> | null; swayAxis: 'x' | 'y'; swayDisp: number;
+    mosaic: number; mosaicRect: { x: number, y: number, w: number, h: number } | null;
+    noise: number; noiseColor: number;
+    swayWave: { amp: number, speed: number, curve: number[] | null, time: number, lag: number } | null;
+}
+
+
+export const LAYER_ANIM_DEFAULT: LayerAnimSettings = { mode: 'progress', speed: 1, count: 0, tx: 0, ty: 0, rot: 0, scale: 0, pivotX: 0.5, pivotY: 0.5, path: null, ease: 'linear', easePower: 2, swayAmount: 0, swaySpeed: 1, swayCurve: null, swayProfile: null, swayAxis: 'y', swayLag: 0, keys: null, mosaic: 0, mosaicMin: 0, mosaicFrom: 0, mosaicTo: 1, mosaicSpeed: 1, mosaicRect: null, noise: 0, noiseFrom: 0, noiseTo: 1, noiseColor: 0 };
 
 /**
  * The mosaic block size at a moment in a cut, in pixels. Under 2 means no mosaic.
@@ -16,9 +38,9 @@ export const LAYER_ANIM_DEFAULT = { mode: 'progress', speed: 1, count: 0, tx: 0,
  * @param {number} prog the layer's eased progress, for `mode: 'return'`
  * @returns {number}
  */
-export function mosaicBlockAt(a, t01, prog) {
+export function mosaicBlockAt(a: Partial<LayerAnimSettings> | null | undefined, t01: number, prog: number): number {
     const max = a?.mosaic || 0;
-    if (!(max > 0)) return 0;
+    if (!a || !(max > 0)) return 0;
     // There-and-back keeps using the shared swing, so the control that already says "come back"
     // goes on meaning that, and the window only says when the swing may happen.
     if (a.mode === 'return') {
@@ -31,13 +53,13 @@ export function mosaicBlockAt(a, t01, prog) {
     });
 }
 
-export function computeLayerAnim(layer, ac, time, cw = CANVAS_W, ch = CANVAS_H) {
+export function computeLayerAnim(layer: { anim?: Partial<LayerAnimSettings> | null }, ac: TimeSpan, time: number, cw = CANVAS_W, ch = CANVAS_H): LayerAnimAt | null {
     const a = layer.anim;
     if (!a) return null;
     const t = cutProgress(ac, time);
     const speed = a.speed || 1, count = a.count || 0;
     const keys = Array.isArray(a.keys) && a.keys.length >= 2 ? a.keys : null;
-    let tx, ty, rot, sc, alpha = 1, prog;
+    let tx: number, ty: number, rot: number, sc: number, alpha = 1, prog: number;
     if (keys) {
         // When keyframes exist they take over move, rotate, scale and opacity; the speed
         // multiplier only changes how fast they play.
@@ -55,7 +77,7 @@ export function computeLayerAnim(layer, ac, time, cw = CANVAS_W, ch = CANVAS_H) 
         sc = 1 + (a.scale || 0) * prog;
     }
     if (!keys && a.path && a.path.length > 1) {
-        let s;
+        let s: number;
         if (a.mode === 'return') s = swing(SWING.along, t, speed, count);
         else s = applyEase(t, a.ease, a.easePower);
         const p0 = a.path[0], pt = samplePath(a.path, s);
@@ -65,7 +87,7 @@ export function computeLayerAnim(layer, ac, time, cw = CANVAS_W, ch = CANVAS_H) 
     // toward the far end from the pivot — anchor the pivot at the top of the hair for a natural swing.
     // Sway 1 is a plain sine wave; sway 2 follows the waveform of a curve the user drew.
     const sway = a.swayAmount || 0;
-    const wave = !sway ? 0 : swayWaveAt(time, a.swaySpeed, a.swayCurve);
+    const wave = !sway ? 0 : swayWaveAt(time, a.swaySpeed ?? 1, a.swayCurve);
     const shear = (sway / 100) * wave;
     // With a per-point profile, the bend varies along the axis instead of being a single shear.
     // The renderer handles it as a slice warp, so only the values it needs are passed on.
@@ -82,7 +104,7 @@ export function computeLayerAnim(layer, ac, time, cw = CANVAS_W, ch = CANVAS_H) 
     // mosaic ramps because "gradually pixelate" is a thing; "gradually more broken signal" reads
     // as the strength control not working, which is how it was reported.
     const nf = Math.max(0, Math.min(1, a.noiseFrom ?? 0)), nt = Math.max(nf, Math.min(1, a.noiseTo ?? 1));
-    const noise = (a.noise > 0 && t >= nf && t <= nt) ? Math.min(1, a.noise) : 0;
+    const noise = (a.noise != null && a.noise > 0 && t >= nf && t <= nt) ? Math.min(1, a.noise) : 0;
     const noiseColor = noise ? Math.max(0, Math.min(1, a.noiseColor || 0)) : 0;
     if (tx === 0 && ty === 0 && rot === 0 && sc === 1 && shear === 0 && !prof && alpha === 1 && mosaic < 2 && !noise) return null;
     return {

@@ -253,7 +253,7 @@ Constructors for the pieces of a document. A cut was a literal in four places an
 | `mkCut` | A cut with one blank layer and no text — every field, every time. |
 | `firstCut` | The cut a new project opens with; a fresh object each call. |
 
-## `src/core/exportQueue.js`
+## `src/core/exportQueue.ts`
 
 Exporting several separately-made pieces as one file (#123). Past a certain number of cuts the app
 lags, and that is not really fixable, so the advice is to work in pieces - which is only advice
@@ -528,7 +528,7 @@ How each piece of a project is stored, and how it comes back.
 | `STORE_DATAURL` | Embedded as a base64 dataURL, so the JSON is self-contained. |
 | `videoExt` | The file extension for the video overlay, from its Blob MIME type. |
 
-## `src/core/projectFormat.js`
+## `src/core/projectFormat.ts`
 
 Reading a saved project, including ones written by older versions.
 
@@ -776,7 +776,7 @@ Reading a cut's layer tree: order, cache keys and change signatures.
 | `layerSig` | The cache key for one baked layer canvas. Two caches use it and compare their keys against each other, so for a layer that is not boiling both forms must come out byte-identical - otherwise every such layer misses the cache and is redrawn every frame, with no visible symptom. |
 | `flattenLayersInUiOrder` | The layer tree flattened the way the panel shows it, so an index in the list means the same thing to the UI and to the renderer. |
 
-## `src/core/cutAnim.js`
+## `src/core/cutAnim.ts`
 
 A cut's entrance and exit: the transform at a moment, from its animation settings.
 
@@ -807,7 +807,7 @@ Easing, the return-trip shapes, and the effect envelope the layer effects share.
 | `effectAt` | An effect that runs between two values over part of a cut: a `from..to` window, a `speed` within it, and a `min..max` range. The mosaic and the film grain were asked the same three questions, so they share one answer. Outside the window it *holds* rather than snapping back — coming back is what `mode: 'return'` is for. |
 | `samplePath` | Sample a polyline path at normalized position s in [0,1]. |
 
-## `src/core/layerAnim.js`
+## `src/core/layerAnim.ts`
 
 A layer's (part's) animation at a moment: move, rotate, scale, path, keys, sway, effects.
 

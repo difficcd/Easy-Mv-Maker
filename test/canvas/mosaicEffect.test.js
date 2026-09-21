@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { pixelateSize } from '../../src/canvas/pixelEffects.js';
-import { computeLayerAnim, LAYER_ANIM_DEFAULT } from '../../src/core/layerAnim.js';
+import { computeLayerAnim, LAYER_ANIM_DEFAULT } from '../../src/core/layerAnim.ts';
 
 const CUT = { startTime: 0, endTime: 10 };
 const anim = (o) => ({ ...LAYER_ANIM_DEFAULT, ...o });
