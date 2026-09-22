@@ -15,7 +15,7 @@
     "android:run": "npm run build && npx cap run android",
     "test": "node --experimental-strip-types --no-warnings=ExperimentalWarning --test \"test/**/*.test.js\"",
     "bench": "node scripts/bench.mjs",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.strict.json",
+    "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "check": "npm run typecheck && npm test && node scripts/hook-baseline.mjs && node scripts/helper-index.mjs && node scripts/unreachable.mjs && node scripts/unused-imports.mjs && node scripts/stroke-writes.mjs && node scripts/i18n-check.mjs && npm run build",
     "smoke": "node test/smoke/boot.mjs && node test/smoke/draw.mjs"
@@ -34,6 +34,7 @@
     "@capacitor/cli": "^8.5.2",
     "@napi-rs/canvas": "^1.0.9",
     "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
     "concurrently": "^10.0.5",
     "eslint": "^10.10.0",

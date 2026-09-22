@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { tr, setLangValue, getLang, LANGS } from '../../src/i18n.js';
-import { JA } from '../../src/i18n.ja.js';
+import { tr, setLangValue, getLang, LANGS } from '../../src/i18n.ts';
+import { JA } from '../../src/i18n.ja.ts';
 
 const HANGUL = /[가-힣]/;
 
@@ -14,8 +14,8 @@ const HANGUL = /[가-힣]/;
  * this reports them as orphans that do not exist.
  */
 function englishKeys() {
-    const src = readFileSync('src/i18n.js', 'utf8');
-    const body = src.slice(src.indexOf('const EN = {'));
+    const src = readFileSync('src/i18n.ts', 'utf8');
+    const body = src.slice(src.search(/const EN(?::[^=]*)? = {/));
     return [...body.matchAll(/^\s*'((?:[^'\\]|\\.)*)':/gm)]
         .map(m => m[1].replace(/\\n/g, '\n').replace(/\\'/g, "'").replace(/\\\\/g, '\\'));
 }

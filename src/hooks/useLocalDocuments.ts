@@ -18,13 +18,13 @@
 // Nothing here touches a canvas, a stroke, or the timeline.
 
 import { useState, useRef, useEffect } from 'react';
-import { saveProject, loadProject, listProjects, deleteProject, loadAutosave, autosaveKey } from '../db.js';
+import { saveProject, loadProject, listProjects, deleteProject, loadAutosave, autosaveKey } from '../db.ts';
 import { downloadBlob } from '../export/download.ts';
 import { ZipWriter } from '../export/zip.ts';
 import { splitProject, pieceFileName, piecesAreSequential } from '../core/splitProject.ts';
 import { randomId, nextId } from '../core/ids.ts';
 import { safeArray } from '../core/geometry.ts';
-import { tr } from '../i18n.js';
+import { tr } from '../i18n.ts';
 /** What the local side needs from the app: how to build and restore a document, how to empty it, and where to report. */
 export interface LocalDocumentDeps {
     buildData: (includeAudio?: boolean, assetSink?: any[] | null, blobsOk?: boolean) => Promise<any>;

@@ -1,5 +1,5 @@
 import { Plus } from 'lucide-react';
-import { tr } from '../i18n';
+import { tr } from '../i18n.ts';
 import type { Tab } from '../hooks/useLocalDocuments.ts';
 import type { PathCapture } from '../hooks/usePathCapture.ts';
 

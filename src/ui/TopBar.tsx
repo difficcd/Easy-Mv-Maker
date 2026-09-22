@@ -1,5 +1,5 @@
 import { ChevronDown, Download, Upload, Film, Settings, AlertTriangle, DatabaseBackup } from 'lucide-react';
-import { tr } from '../i18n';
+import { tr } from '../i18n.ts';
 import { Logo } from './Logo.tsx';
 import { clampCanvasSize } from '../core/canvasSize.ts';
 import { useDropdown } from '../hooks/useDropdown.ts';

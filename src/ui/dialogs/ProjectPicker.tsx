@@ -1,5 +1,5 @@
 import { Trash2 } from 'lucide-react';
-import { tr } from '../../i18n';
+import { tr } from '../../i18n.ts';
 import { Modal } from '../Modal.tsx';
 /** One saved project or backup in the list: what a listing returns. */
 export interface ProjectRow { id: string; name: string; savedAt?: number | string | null; [k: string]: any }

@@ -26,6 +26,9 @@ import { ANIM_DEFAULT } from './cutAnim.ts';
 import { safeArray } from './geometry.ts';
 import { LAYER_ANIM_DEFAULT } from './layerAnim.ts';
 import type { Id } from './types.ts';
+
+/** Where a cut sits: what a group drag remembers of each cut from before the drag began. */
+export interface CutPlacement { id: Id; startTime: number; endTime: number; track: number }
 import type { CutAnimSettings } from './cutAnim.ts';
 import type { CameraSettings } from './camera.ts';
 import type { LayerAnimSettings } from './layerAnim.ts';
@@ -87,7 +90,7 @@ export const insertCutsShifting = (track: number, at: number, shift: number, new
 /** Delete a track, closing the gap by pulling every track below it up one. */
 export const deleteTrack = (track: number) => ({ type: 'deleteTrack' as const, track });
 /** Move several cuts together, keeping their relative layout and staying in bounds. */
-export const moveCutGroup = (group: Cut[], dt: number, trackOff: number, numTracks: number) => ({ type: 'moveCutGroup' as const, group, dt, trackOff, numTracks });
+export const moveCutGroup = (group: CutPlacement[], dt: number, trackOff: number, numTracks: number) => ({ type: 'moveCutGroup' as const, group, dt, trackOff, numTracks });
 /** Replace the cuts imported from one video source with a fresh set. */
 export const replaceBatchCuts = (videoSrc: string | undefined, newCuts: Cut[]) => ({ type: 'replaceBatchCuts' as const, videoSrc, newCuts });
 
@@ -233,7 +236,7 @@ export function cutsReducer(cuts: Cut[] | null | undefined, action: CutsAction):
             const maxTrack = Math.max(...group.map(g => g.track));
             const dt = Math.max(action.dt, -minStart);
             const trackOff = Math.max(-minTrack, Math.min(action.numTracks - 1 - maxTrack, action.trackOff));
-            const byId = new Map<Id, Cut>(group.map(g => [g.id, g]));
+            const byId = new Map<Id, CutPlacement>(group.map(g => [g.id, g]));
             return list.map(c => {
                 const g = byId.get(c.id);
                 if (!g) return c;

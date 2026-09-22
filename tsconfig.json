@@ -1,26 +1,19 @@
 {
-  // Checking only - no files are emitted, Vite does the building. Two purposes, two configs:
+  // Checking only - no files are emitted, Vite does the building.
   //
-  // This one covers everything under src, JavaScript included, with the strict options off so
-  // the existing .js/.jsx is checked for the mistakes that otherwise surface at runtime - a
-  // name that does not exist, a misspelt prop - without going red end to end. (An unbound
-  // accentSoft was the first bug it caught.)
-  //
-  // tsconfig.strict.json extends it for the TypeScript files only, with strict on: a file that
-  // has been converted is held to the full standard, and the JavaScript is left as it is until
-  // its turn. `npm run typecheck` runs both.
+  // Everything under src is TypeScript and held to strict (#268). This began as a lenient
+  // check over the JavaScript, with a second config holding the converted files to strict
+  // until the last folder was through; with nothing left to convert, the one config is strict.
+  // (An unbound accentSoft was the first bug the checker caught, back when it was lenient.)
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "jsx": "react-jsx",
-    "allowJs": true,
-    "checkJs": true,
     "noEmit": true,
     "skipLibCheck": true,
-    "strict": false,
-    "noImplicitAny": false,
+    "strict": true,
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     // Importers name a .ts module with its extension: Node's type stripping needs the real file

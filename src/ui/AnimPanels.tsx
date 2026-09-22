@@ -14,7 +14,7 @@ import type { PathCapture } from '../hooks/usePathCapture.ts';
 import { upsertKey, patchKey, removeKey, snapProgress } from '../core/keyframes.ts';
 import { readStored, writeStored, arrayCodec } from '../core/persist.ts';
 import { NumField } from './NumField.tsx';
-import { tr } from '../i18n';
+import { tr } from '../i18n.ts';
 import { swayPointAt, swayWeightAt } from '../core/sway.ts';
 
 /** A named motion, built in or saved by the user: the layer-animation fields it sets. */

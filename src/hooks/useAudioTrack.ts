@@ -3,7 +3,7 @@ import { loadAudio, setAudioDuration, setAudioClip, clearAudio } from '../core/m
 import { detachMedia, safeMediaSrc } from '../core/mediaEl.ts';
 import { fetchAsset } from '../core/api.ts';
 import { blobToDataURL, unpackMedia } from '../core/projectAssets.ts';
-import { tr } from '../i18n.js';
+import { tr } from '../i18n.ts';
 import type { MediaAction } from '../core/mediaReducer.ts';
 
 

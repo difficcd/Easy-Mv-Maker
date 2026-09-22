@@ -1,5 +1,5 @@
 import React from 'react';
-import { tr } from '../../i18n';
+import { tr } from '../../i18n.ts';
 import { Modal } from '../Modal.tsx';
 
 // Link input. This used window.prompt, but once the browser blocks dialogs - one tick of

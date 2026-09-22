@@ -11,7 +11,7 @@ import { preparePath } from '../core/pathMotion.ts';
 import { curveToWave } from '../core/sway.ts';
 import { clampRegion } from '../canvas/pixelEffects.ts';
 import { setCutCamera } from '../core/cutsReducer.ts';
-import { tr } from '../i18n.js';
+import { tr } from '../i18n.ts';
 import type { Id, PressurePoint } from '../core/types.ts';
 import type { CutsAction } from '../core/cutsReducer.ts';
 import type { LayerAnimSettings } from '../core/layerAnim.ts';

@@ -1,6 +1,6 @@
 // Decoding a video file into frames, and finding its scene cuts.
 
-import { tr } from '../i18n.js';
+import { tr } from '../i18n.ts';
 import { makeCanvas } from './canvasFactory.ts';
 import type { Rect } from '../core/lassoOps.ts';
 import type { ExtractOptions } from '../core/videoCuts.ts';

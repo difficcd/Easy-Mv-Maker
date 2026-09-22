@@ -1,13 +1,13 @@
 // Japanese, keyed by the same Korean source text as the English dictionary.
 //
-// A missing entry falls back to English rather than to the Korean key - see tr() in i18n.js.
+// A missing entry falls back to English rather than to the Korean key - see tr() in i18n.ts.
 // That is what makes this shippable while incomplete: a gap shows English, which a Japanese
 // reader can work with, rather than Korean, which they generally cannot.
 //
 // Only the trimmed form of a key is kept. tr() retries with the key trimmed and puts the
 // original padding back around the translation, so 'ファイルエラー: ' needs no separate entry.
 
-export const JA = {
+export const JA: Record<string, string> = {
     // -- Tools ---------------------------------------------
     '펜': 'ペン',
     '연필': '鉛筆',

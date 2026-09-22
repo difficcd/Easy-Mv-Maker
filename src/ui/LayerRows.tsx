@@ -5,7 +5,7 @@ import { flattenLayersInUiOrder, layerKey } from '../core/layerTree.ts';
 import { canClip } from '../core/clipping.ts';
 import { setLayerClipped, mergeLayerDown } from '../core/cutsReducer.ts';
 import { JitterPanel, LayerAnimPanel } from './AnimPanels.tsx';
-import { tr } from '../i18n';
+import { tr } from '../i18n.ts';
 import type { Id } from '../core/types.ts';
 
 /**

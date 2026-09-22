@@ -1,6 +1,6 @@
 import { Layers, Undo, Redo, Trash, Repeat, ClipboardPaste, Pipette } from 'lucide-react';
 import { NumField } from './NumField.tsx';
-import { tr } from '../i18n';
+import { tr } from '../i18n.ts';
 import { BRUSH_MIN, BRUSH_MAX } from '../core/brushSize.ts';
 import type React from 'react';
 

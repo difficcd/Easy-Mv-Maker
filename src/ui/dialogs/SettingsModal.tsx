@@ -1,5 +1,5 @@
 import { KeyConflicts, KeyRows } from './ToolKeysModal.tsx';
-import { tr } from '../../i18n';
+import { tr } from '../../i18n.ts';
 import { TOOL_PREFIX } from '../../core/shortcuts.ts';
 import { Modal } from '../Modal.tsx';
 import { fmt } from '../../core/timeCode.ts';

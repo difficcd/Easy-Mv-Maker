@@ -24,7 +24,7 @@ import { Notices } from './ui/Notices.tsx';
 import { DocTabs } from './ui/DocTabs.tsx';
 import { CanvasStage, canvasCursor } from './ui/CanvasStage.tsx';
 import { DockRail, DockSlot, FloatingPanels, DockHint, ReopenRight } from './ui/PanelDock.tsx';
-import { tr, loadLang, saveLang, setLangValue } from './i18n';
+import { tr, loadLang, saveLang, setLangValue } from './i18n.ts';
 import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, patchLayer, nextLayerId, appendLayer, appendFolder, removeLayerTree } from './core/layerOps.ts';
 import { mkCut, firstCut } from './core/document.ts';
 import { selectionAfterClick, cutsToCopy } from './core/cutSelection.ts';
@@ -73,6 +73,7 @@ import { useAutosave } from './hooks/useAutosave.ts';
 import { useAudioTrack } from './hooks/useAudioTrack.ts';
 import { useToolSettings } from './hooks/useToolSettings.ts';
 import {
+
     mediaReducer, EMPTY_MEDIA, setAudioClip, clearAudio,
     loadVideo, clearVideo, setVideoCuts, setVideoOpacity, clearVideoCuts, moveTrack, resizeAudio,
 } from './core/mediaReducer.ts';
@@ -109,6 +110,18 @@ import { DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_
 import { hexToRgb } from './core/colour.ts';
 import { pointInPolygon, safeArray } from './core/geometry.ts';
 import { flattenLayersInUiOrder } from './core/layerTree.ts';
+import type { Id } from './core/types.ts';
+import type { TextEdit } from './core/textEdit.ts';
+import type { BitmapStore } from './canvas/bitmapStore.ts';
+import type { RenderState } from './hooks/useExport.ts';
+import type { CutDragData, CutResizeData } from './ui/Timeline.tsx';
+import type { Point, PressurePoint } from './core/types.ts';
+import type { CutAnimSettings } from './core/cutAnim.ts';
+import type { CameraSettings } from './core/camera.ts';
+import type { LayerAnimSettings } from './core/layerAnim.ts';
+import type { ToolContext } from './tools/canvasTools.ts';
+import type { AssetOut } from './core/projectAssets.ts';
+
 
 
 
@@ -133,7 +146,7 @@ const TIMELINE_TAIL_PAD = 60;  // empty room past the end, to drag into
 // Theme colour: one picked colour is varied in lightness and saturation to derive the rest,
 // which are planted as CSS variables. That is what makes buttons, the active tab and the glow
 // all follow at once.
-const hexToHsl = (hex) => {
+const hexToHsl = (hex: string) => {
     const h = String(hex).replace('#', '');
     const r = parseInt(h.slice(0, 2), 16) / 255, g = parseInt(h.slice(2, 4), 16) / 255, b = parseInt(h.slice(4, 6), 16) / 255;
     const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
@@ -148,8 +161,8 @@ const hexToHsl = (hex) => {
     const sat = d ? d / (1 - Math.abs(2 * l - 1)) : 0;
     return { h: hh, s: sat, l };
 };
-const hsl = (h, s, l) => `hsl(${h.toFixed(0)} ${Math.max(0, Math.min(100, s * 100)).toFixed(0)}% ${Math.max(0, Math.min(100, l * 100)).toFixed(0)}%)`;
-const applyTheme = (base, uiSat = 3) => {
+const hsl = (h: number, s: number, l: number) => `hsl(${h.toFixed(0)} ${Math.max(0, Math.min(100, s * 100)).toFixed(0)}% ${Math.max(0, Math.min(100, l * 100)).toFixed(0)}%)`;
+const applyTheme = (base: string, uiSat = 3) => {
     // A bad value yields hsl(NaN ...), which CSS ignores, silently reverting to the default.
     // Guard against it up front.
     if (!/^#[0-9a-fA-F]{6}$/.test(String(base))) base = DEFAULT_THEME;
@@ -201,7 +214,7 @@ const DEFAULT_THEME = '#36354b';
 setLangValue(loadLang());
 // Turns a hue (0-360) into a theme base colour, holding saturation and lightness at values
 // that suit the UI.
-const hueToHex = (h) => {
+const hueToHex = (h: number) => {
     const s = 0.7, l = 0.45;
     const c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = l - c / 2;
     const t = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
@@ -228,8 +241,8 @@ export default function App() {
     const [numTracks, setNumTracks] = useState(2);
     const [onionPrev, setOnionPrev] = useState(false);
     const [onionNext, setOnionNext] = useState(false);
-    const [resizingData, setResizingData] = useState(null);
-    const [draggingCutData, setDraggingCutData] = useState(null);
+    const [resizingData, setResizingData] = useState<CutResizeData | null>(null);
+    const [draggingCutData, setDraggingCutData] = useState<CutDragData | null>(null);
     const [currentCutId, setCurrentCutId] = useState(1);
     /**
      * The cut being edited. Derived rather than stored, so it cannot drift from currentCutId.
@@ -278,7 +291,7 @@ export default function App() {
         decode: (raw) => ({ audio: false, video: false, ...JSON.parse(raw) }),
         encode: JSON.stringify,
     });
-    const toggleTrackHidden = (which) => setHiddenTracks(h => ({ ...h, [which]: !h[which] }));
+    const toggleTrackHidden = (which: 'audio' | 'video') => setHiddenTracks((h: { audio: boolean, video: boolean }) => ({ ...h, [which]: !h[which] }));
     // Everything bringing a video into the project remembers. The logic stays here; what it
     // keeps does not.
     const vid = useVideoImportState();
@@ -294,11 +307,11 @@ export default function App() {
     // Make failures visible. Once the browser blocks dialogs, alert is swallowed and the app
     // looks like it simply did nothing - which is exactly why one bug here took so long to find.
     const isExporting = useRef(false);
-    const mediaRecorderRef = useRef(null);
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const exportEndRef = useRef(0);
     const exportStartRef = useRef(0);
     // How the playback loop asks the recorder for a frame; null means the stream samples itself.
-    const requestFrameRef = useRef(null);
+    const requestFrameRef = useRef<(() => void) | null>(null);
 
     const {
         tool, setTool, etool, rulerMode, setRulerMode, softMode, setSoftMode, handleSetTool,
@@ -312,15 +325,15 @@ export default function App() {
         busy: () => !!selection || !!textEdit,
         leaveCurve: () => { if (curve.anchorsRef.current) curve.commit(); },
     });
-    const lassoClipRef = useRef(null); // copied lasso pixels: { bitmapId, w, h }
+    const lassoClipRef = useRef<{ bitmapId: string, w: number, h: number } | null>(null); // copied lasso pixels
     // What is picked in the cut list, and how much of it is unfolded. Cleared together.
     const cutList = useCutListUi();
     const [hasLassoClip, setHasLassoClip] = useState(false);
-    const fileHandleRef = useRef(null);
+    const fileHandleRef = useRef<any>(null);
     // Shared by both document hooks: the server backup falls back to it for a name, and the
     // local save writes it. Owned here because the two hooks cannot both create it.
     const localNameRef = useRef('');
-    const canvasRef = useRef(null);
+    const canvasRef = useRef<HTMLCanvasElement | null>(null);
     // One pointer gesture at a time: the stroke being drawn, the lasso loop, the layers or the
     // selection being dragged, the path being recorded. All refs - a pointer move arrives far
     // more often than a frame, and re-rendering on each one is what made the lasso miss the pen.
@@ -328,7 +341,7 @@ export default function App() {
     // While the liquify brush is down: the layer's pixels being pushed around, and the canvas
     // the overlay shows them from. The layer itself is hidden until the pen lifts.
     /** Layers a gesture is drawing on the overlay instead, so the composite must skip them. */
-    const hiddenByGesture = (cutId, layerId) => {
+    const hiddenByGesture = (cutId: Id, layerId: Id) => {
         const d = gesture.layerDrag.current;
         if (d && d.cutId === cutId && d.layerIds.includes(layerId)) return true;
         const q = liquify.ref.current;
@@ -337,7 +350,7 @@ export default function App() {
     const [dragTick, setDragTick] = useState(0); // signal to redraw with the original hidden while dragging
     const boilPhaseRef = useRef(0);       // boiling-motion phase; advancing it over time makes the strokes shimmer in place
     const [boilTick, setBoilTick] = useState(0); // phase ticker so the boiling motion previews even while paused for editing
-    const timelineRef = useRef(null);
+    const timelineRef = useRef<HTMLDivElement | null>(null);
 
     // Which panels are on screen, and the Tab that folds them all away and puts them back.
     const {
@@ -347,31 +360,31 @@ export default function App() {
     // User-adjustable canvas resolution. Shadows the imported defaults for the whole component.
     const [canvasSize, setCanvasSize] = useState({ w: CANVAS_W_DEFAULT, h: CANVAS_H_DEFAULT });
     const CANVAS_W = canvasSize.w, CANVAS_H = canvasSize.h;
-    const [copiedCut, setCopiedCut] = useState(null);
-    const [selection, setSelection] = useState(null);
-    const [textEdit, setTextEdit] = useState(null);
-    const [selectedText, setSelectedText] = useState(null);
+    const [copiedCut, setCopiedCut] = useState<Cut | null>(null);
+    const [selection, setSelection] = useState<any>(null);
+    const [textEdit, setTextEdit] = useState<TextEdit | null>(null);
+    const [selectedText, setSelectedText] = useState<{ cutId: Id, textId: Id } | null>(null);
     // The pixels strokes point at - fills, pastes, video frames - and the rules for decoding and
     // releasing them: canvas/bitmapStore. Made once; the canvas size is read when a frame is
     // decoded, since it can change after the store exists.
-    const canvasSizeRef = useRef(/** @type {[number, number]} */ ([CANVAS_W, CANVAS_H]));
+    const canvasSizeRef = useRef<[number, number]>([CANVAS_W, CANVAS_H]);
     canvasSizeRef.current = [CANVAS_W, CANVAS_H];
-    const bitmapStore = useRef(null);
+    const bitmapStore = useRef<BitmapStore | null>(null);
     if (!bitmapStore.current) bitmapStore.current = createBitmapStore({ canvasSize: () => canvasSizeRef.current });
     const { store: storeBitmap, storeBlob: storeBitmapBlob, decodeFrame: decodeFrameBitmap, touch: touchDecoded, trim: trimDecodedFrames, clone: cloneBitmapId } = bitmapStore.current;
-    const bitmapStoreRef = useRef(bitmapStore.current.map);
-    const paintFrameRef = useRef(/** @type {((t: number, playing: boolean) => void) | null} */(null)); // set below, beside paintFrame
-    const renderStateRef = useRef(/** @type {{cuts: any[], currentCutId: any, cw: number, ch: number}} */({ cuts: [], currentCutId: null, cw: 1920, ch: 1080 })); // set below, beside liveRef
-    const prefetchRef = useRef(null); // prefetchFramesAt, called by the rAF loop with the real playhead
-    const canvasAreaRef = useRef(null);
-    const videoFileRef = useRef(null);
-    const playheadRef = useRef(null);        // moved imperatively during playback
+    const bitmapStoreRef = useRef(bitmapStore.current!.map);
+    const paintFrameRef = useRef<((t: number, playing: boolean) => void) | null>(null); // set below, beside paintFrame
+    const renderStateRef = useRef<RenderState>({ cuts: [], currentCutId: null, cw: 1920, ch: 1080 }); // set below, beside liveRef
+    const prefetchRef = useRef<((t: number, playing: boolean) => void) | null>(null); // prefetchFramesAt, called by the rAF loop with the real playhead
+    const canvasAreaRef = useRef<HTMLDivElement | null>(null);
+    const videoFileRef = useRef<HTMLInputElement | null>(null);
+    const playheadRef = useRef<HTMLDivElement | null>(null);        // moved imperatively during playback
     // What paintFrame keeps between frames - the effects' scratch canvases, the snow tile, the
     // painted-once flag. One object, made once; see canvas/framePaint.
     const frameScratch = useRef(createFrameScratch());
-    const dataUrlCacheRef = useRef(new Map()); // id -> {imageData, url}; avoids re-encoding bitmaps each autosave
-    const liveRef = useRef(/** @type {any} */ ({})); // latest {cuts, copiedCut, selection} for safe bitmap GC from effects
-    const textAreaRef = useRef(null);
+    const dataUrlCacheRef = useRef(new Map<string, { imageData: ImageData, url: string }>()); // avoids re-encoding bitmaps each autosave
+    const liveRef = useRef<any>({}); // latest {cuts, copiedCut, selection} for safe bitmap GC from effects
+    const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
     // Which document is loaded, as a number that changes whenever the whole thing is replaced.
     //
     // Long jobs - extracting frames from a video, detecting scenes - can be sent to the
@@ -382,9 +395,9 @@ export default function App() {
     const docEpochRef = useRef(0);
     const cutDragMovedRef = useRef(false); // distinguishes a click (select) from a real drag (move)
     const cutDragArmedRef = useRef(false); // long-press must arm before a touch can drag a cut
-    const cutDragTimerRef = useRef(null);
-    const [animLayer, setAnimLayer] = useState(null); // {cutId, layerId} whose part-anim panel is open
-    const [jitterLayer, setJitterLayer] = useState(null); // {cutId, layerId} whose boiling-settings panel is open
+    const cutDragTimerRef = useRef<any>(null);
+    const [animLayer, setAnimLayer] = useState<{ cutId: Id, layerId: Id } | null>(null); // whose part-anim panel is open
+    const [jitterLayer, setJitterLayer] = useState<{ cutId: Id, layerId: Id } | null>(null); // whose boiling-settings panel is open
     // A transparent canvas is a different document, not a different view: the frame really has
     // no background, and the checkerboard behind it is CSS on the element rather than pixels.
     // Painting the checkerboard in would put it in every export.
@@ -399,7 +412,7 @@ export default function App() {
     // The lang state exists only to trigger a redraw; lookups read the module variable.
     // Nothing here is memoised, so changing it re-renders the whole tree in the new language.
     const [lang, setLang] = useState(loadLang);
-    const changeLang = (l) => { setLangValue(l); saveLang(l); setLang(l); };
+    const changeLang = (l: string) => { setLangValue(l); saveLang(l); setLang(l); };
     // What the app looks like: the accent, the chrome's saturation, and the recent colours.
     const { themeColor, setThemeColor, themeRecent, uiSat, setUiSat } = useAppearance({ applyTheme, defaultTheme: DEFAULT_THEME });
     // One place writes the keymap. It used to be written in three: here, and again inside each
@@ -413,20 +426,20 @@ export default function App() {
     const { view, setView, zoomCanvas, resetView, spaceDown, spaceDownRef, panningRef, lastInteractRef,
         onAreaPointerDown, onAreaPointerMove, onAreaPointerUp } = useCanvasView({ canvasAreaRef });
     // {cutId, layerId} while the sway profile is being dragged on the canvas rather than typed.
-    const [spineEdit, setSpineEdit] = useState(null);
+    const [spineEdit, setSpineEdit] = useState<{ cutId: Id, layerId: Id } | null>(null);
 
 
     const isDraggingOrResizingRef = useRef(false);
 
-    const updLayers = (cutId, fn) => dispatchCuts(patchCut(cutId, fn));
+    const updLayers = (cutId: Id, fn: (cut: Cut) => Partial<Cut>) => dispatchCuts(patchCut(cutId, fn));
 
     // Work out which layer to actually draw into: if the active one is a folder or missing,
     // fall back to the topmost visible drawing layer. A hidden active layer is kept, but made
     // visible again on commit, so a stroke never disappears.
-    const resolveDrawLayer = (cut) => resolveDrawLayerPure(cut, flattenLayersInUiOrder);
+    const resolveDrawLayer = (cut: Cut | null | undefined) => resolveDrawLayerPure(cut, flattenLayersInUiOrder);
     // Commit the stroke to its target layer and force that layer and its parent folders
     // visible, so the result is always on screen.
-    const commitStrokeToLayer = (cutId, layerId, st, place) => {
+    const commitStrokeToLayer = (cutId: Id, layerId: Id, st: Stroke | Stroke[], place?: (strokes: Stroke[], st: Stroke | Stroke[]) => Stroke[]) => {
         // A missing layer yields null; an empty patch then leaves the cut alone rather than
         // writing a half-formed one.
         updLayers(cutId, c => commitStroke(c.layers, layerId, st, place) || {});
@@ -442,20 +455,20 @@ export default function App() {
     // The strokes that put a selection back, or null - with the selection cancelled - if either
     // of its bitmaps is gone. Both commits start this way; a selection whose pixels have been
     // evicted has nothing to commit and must not leave a half-made pair behind.
-    const takeSelectionStrokes = (sel) => {
+    const takeSelectionStrokes = (sel: any) => {
         if (!sel) return null;
         const store = bitmapStoreRef.current;
-        const has = (id) => { const e = store.get(id); return !!(e?.imageData || e?.imageBitmap); };
+        const has = (id: string) => { const e = store.get(id); return !!(e?.imageData || e?.imageBitmap); };
         if (!has(sel.bitmapId) || !has(sel.maskBitmapId)) { cancelSelection(); return null; }
         return selectionStrokes(sel, nextId(), nextId());
     };
 
-    const commitSelectionImpl = (sel) => {
+    const commitSelectionImpl = (sel: any) => {
         const strokes = takeSelectionStrokes(sel);
         if (!strokes) return;
         const { erase, paste } = strokes;
         updLayers(sel.cutId, c => ({
-            layers: c.layers.map(l => l.id !== sel.sourceLayerId ? l : { ...l, strokes: [...l.strokes, erase, paste] }),
+            layers: c.layers.map(l => l.id !== sel.sourceLayerId ? l : { ...l, strokes: [...(l.strokes || []), erase, paste] }),
         }));
         cancelSelection();
     };
@@ -471,9 +484,9 @@ export default function App() {
         const { erase, paste } = strokes;
         const newId = nextLayerId(cuts.find(c => c.id === sel.cutId)?.layers);
         updLayers(sel.cutId, c => {
-            const layers = patchLayer(c.layers, sel.sourceLayerId, l => ({ strokes: [...l.strokes, erase] }));
+            const layers = patchLayer(c.layers, sel.sourceLayerId, l => ({ strokes: [...(l.strokes || []), erase] }));
             const partLayer = { id: newId, name: tr('파츠 {0}', newId), type: 'layer', parentId: null, visible: true, redoStrokes: [], strokes: [paste] };
-            return { layers: [...layers, partLayer], activeLayerId: newId };
+            return { layers: [...layers, partLayer as Layer], activeLayerId: newId };
         });
         cancelSelection();
         setAnimLayer({ cutId: sel.cutId, layerId: newId }); // open its anim panel
@@ -485,7 +498,7 @@ export default function App() {
         if (selection) commitSelectionImpl(selection);
         const source = renderLassoSource();
         if (!source) return;
-        const b = paintedBounds(source.ctx.getImageData(0, 0, CANVAS_W, CANVAS_H).data, CANVAS_W, CANVAS_H);
+        const b = paintedBounds(source.ctx!.getImageData(0, 0, CANVAS_W, CANVAS_H).data, CANVAS_W, CANVAS_H);
         if (!b) { notices.setToast(tr('이 레이어에는 아직 그린 것이 없습니다')); return; }
         handleSetTool('lasso');
         liftLassoSelection([{ x: b.x, y: b.y }, { x: b.x + b.w, y: b.y }, { x: b.x + b.w, y: b.y + b.h }, { x: b.x, y: b.y + b.h }], source);
@@ -498,7 +511,7 @@ export default function App() {
         if (!sel) return;
         const cache = new Map();
         const bitmapId = cloneBitmapId(sel.bitmapId, cache);
-        lassoClipRef.current = { bitmapId, w: Math.max(1, Math.round(sel.tw)), h: Math.max(1, Math.round(sel.th)) };
+        lassoClipRef.current = { bitmapId: bitmapId!, w: Math.max(1, Math.round(sel.tw)), h: Math.max(1, Math.round(sel.th)) };
         setHasLassoClip(true);
         commitSelectionImpl(sel); // keep the original in place
     };
@@ -625,7 +638,7 @@ export default function App() {
         },
         // handleSetTool does the tidying a switch needs (committing a curve in progress,
         // refusing while the text editor is open).
-        tool: (id) => handleSetTool(id),
+        tool: (id?: string) => handleSetTool(id!),
         // Arrows throughout: several of these are declared further down, and the object is
         // built at render time.
         undo: () => globalUndo(), redo: () => globalRedo(),
@@ -717,7 +730,7 @@ export default function App() {
     useEffect(() => {
         if (!resizingData && !draggingCutData) return;
         isDraggingOrResizingRef.current = true;
-        const mv = (e) => {
+        const mv = (e: PointerEvent) => {
             if (resizingData) {
                 // Absolute drag: offset from the fixed start point applied to the edge's
                 // initial value. (The old incremental form drifted/jumped against snapping.)
@@ -772,7 +785,7 @@ export default function App() {
                 // Same as the resize above: the guide line is set out here so the state change
                 // stays pure. dragCut places the cut at initialStart + dt, reading the others
                 // only to snap against them, and they do not move during the drag.
-                const r = dragCut(liveRef.current.cuts, draggingCutData, dt, trackOff, numTracks, pps);
+                const r = dragCut(liveRef.current.cuts, draggingCutData as { cutId: Id, initialStart: number, initialTrack: number }, dt, trackOff, numTracks, pps);
                 setSnapLinePos(r.snapAt == null ? null : xAtTime(r.snapAt, pps));
                 dispatchCuts(replaceCuts(r.cuts));
             }
@@ -808,7 +821,7 @@ export default function App() {
             lassoClip: lassoClipRef.current,
             selection: live.selection,
         });
-        for (const id of dead) { bitmapStoreRef.current.delete(id); dataUrlCacheRef.current.delete(id); }
+        for (const id of dead) { bitmapStoreRef.current.delete(String(id)); dataUrlCacheRef.current.delete(String(id)); }
     };
     // assetSink: when provided (server save), whole-image frame bitmaps are NOT inlined as base64
     // in the JSON; they're collected here to upload as separate binary assets. This keeps the JSON
@@ -818,12 +831,12 @@ export default function App() {
     //  - blobsOk (IndexedDB autosave): frames stored as Blob objects (IDB persists them natively,
     //    so autosave stays cheap and low-memory even for a huge import).
     //  - neither (local .emv file): frames embedded as base64 dataURLs so the file is self-contained.
-    const buildData = async (includeAudio = true, assetSink = null, blobsOk = false) => {
+    const buildData = async (includeAudio = true, assetSink: AssetOut[] | null = null, blobsOk = false) => {
         const { bitmaps, compressed, assets } = await collectBitmaps(cuts, {
             store: bitmapStoreRef.current, cache: dataUrlCacheRef.current,
             assetSink, blobsOk, blobToDataURL, imageDataToDataURL,
         });
-        const out = {
+        const out: Record<string, any> = {
             version: '1.5', appName: 'EasyMVMaker', savedAt: new Date().toISOString(), numTracks, onionPrev, onionNext, pps: tl.pps, bitmaps, compressedBitmaps: compressed,
             canvas: { w: CANVAS_W, h: CANVAS_H },
             cuts: cuts.map(c => ({ ...c, layers: c.layers.map(l => ({ ...l, redoStrokes: [] })) }))
@@ -855,7 +868,7 @@ export default function App() {
      * Load a document into the app. False means it did not happen - the file was not ours, or
      * another open was already running - so a caller must not record the project's identity.
      */
-    const restore = async (data, assetBase = null, label = tr('프로젝트 여는 중')) => {
+    const restore = async (data: any, assetBase: string | null = null, label = tr('프로젝트 여는 중')): Promise<boolean> => {
         if (data.appName !== 'EasyMVMaker') { alert(tr('올바른 .emv 파일이 아닙니다.')); return false; }
         if (restoreBusyRef.current) return false;
         // Set inside the try, so that nothing between here and the finally can leave the flag up.
@@ -968,7 +981,7 @@ export default function App() {
         const nc = mkCut({ id: nextId(), name: `Cut ${cuts.length + 1}`, startTime: ns, endTime: ns + DEFAULT_CUT_DURATION, track: trk });
         dispatchCuts(addCuts([nc])); setCurrentCutId(nc.id); setCurrentTime(ns);
     };
-    const handleDeleteCut = (id) => {
+    const handleDeleteCut = (id: Id) => {
         const ids = (cutList.selectedCutIds.size > 1 && cutList.selectedCutIds.has(id)) ? new Set(cutList.selectedCutIds) : new Set([id]);
         const nc = cuts.filter(c => !ids.has(c.id));
         dispatchCuts(replaceCuts(nc));
@@ -983,30 +996,30 @@ export default function App() {
         cancelSelection();
         setSelectedText(null);
     };
-    const updCutTime = (id, field, val) => { let v = Math.max(0, parseFloat(val) || 0); if (field === 'track') { v = Math.round(v); if (v >= numTracks) setNumTracks(v + 1); } dispatchCuts(updateCut(id, { [field]: v })); };
-    const renameCut = (id, name) => dispatchCuts(updateCut(id, { name }));
-    const updCutAnim = (id, patch) => dispatchCuts(setCutAnim(id, patch));
-    const updCutCamera = (id, patch) => dispatchCuts(setCutCamera(id, patch));
-    const updLayerAnim = (cutId, layerId, patch) => dispatchCuts(setLayerAnim(cutId, layerId, patch));
+    const updCutTime = (id: Id, field: 'startTime' | 'endTime' | 'track', val: string) => { let v = Math.max(0, parseFloat(val) || 0); if (field === 'track') { v = Math.round(v); if (v >= numTracks) setNumTracks(v + 1); } dispatchCuts(updateCut(id, { [field]: v })); };
+    const renameCut = (id: Id, name: string) => dispatchCuts(updateCut(id, { name }));
+    const updCutAnim = (id: Id, patch: Partial<CutAnimSettings>) => dispatchCuts(setCutAnim(id, patch));
+    const updCutCamera = (id: Id, patch: Partial<CameraSettings> | null) => dispatchCuts(setCutCamera(id, patch));
+    const updLayerAnim = (cutId: Id, layerId: Id, patch: Partial<LayerAnimSettings>) => dispatchCuts(setLayerAnim(cutId, layerId, patch));
     const handleAddTrack = () => setNumTracks(p => p + 1);
-    const handleDeleteTrack = (i) => { if (numTracks <= 1) return; if (!window.confirm(tr('Track {0} 삭제?', i))) return; dispatchCuts(deleteTrack(i)); setNumTracks(p => p - 1); };
+    const handleDeleteTrack = (i: number) => { if (numTracks <= 1) return; if (!window.confirm(tr('Track {0} 삭제?', i))) return; dispatchCuts(deleteTrack(i)); setNumTracks(p => p - 1); };
     // Click a cut in the list: plain = select one, Ctrl/Cmd = toggle, Shift = range (timeline order).
     // Plain, Ctrl and Shift clicks are three selection rules; core/cutSelection has them.
-    const handleCutClick = (e, id) => {
+    const handleCutClick = (e: React.MouseEvent, id: Id) => {
         cutList.setSelectedCutIds(p => selectionAfterClick(p, cuts, currentCutId, id, { ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey }));
-        setCurrentCutId(id);
+        setCurrentCutId(id as number);
     };
-    const handleCopyCut = (id) => {
+    const handleCopyCut = (id: Id) => {
         // The whole multi-selection when this cut is in it, else just this one. Deep-copied,
         // so later edits to the originals do not reach the clipboard.
         const arr = cutsToCopy(cuts, cutList.selectedCutIds, id).map(c => JSON.parse(JSON.stringify(c)));
-        if (arr.length) setCopiedCut(arr);
+        if (arr.length) setCopiedCut(arr as any);
     };
     // Deep-clone a cut's contents: remap layer ids to 1..N (rewriting parentId so
     // folder hierarchy survives), clone referenced bitmaps to fresh ids, copy texts.
     // Layer ids are renumbered and stroke pixels are copied - see cutClone for why both are
     // necessary. cloneBitmapId is passed in because it is the one part that touches the store.
-    const cloneCutContents = (srcCut) => cloneCutContentsPure(srcCut, cloneBitmapId);
+    const cloneCutContents = (srcCut: Cut) => cloneCutContentsPure(srcCut, cloneBitmapId as (id: Id, cache: Map<Id, Id>) => Id);
 
     // Paste goes right after the current cut, on its track, and pushes whatever follows on
     // that track aside by the pasted span - the same insertion duplicate uses. It used to add
@@ -1029,9 +1042,9 @@ export default function App() {
     // later cuts on the same track to make room. This is the core frame-by-frame flow.
     // Tweening: fills the gap between this cut and the next with generated in-between frames.
     // Not a crossfade - distance-field morphing, so the shapes themselves move and deform.
-    const flattenCutToImageData = (cut) => {
+    const flattenCutToImageData = (cut: Cut) => {
         const cnv = document.createElement('canvas'); cnv.width = CANVAS_W; cnv.height = CANVAS_H;
-        const c2 = cnv.getContext('2d');
+        const c2 = cnv.getContext('2d')!;
         const order = flattenLayersInUiOrder(cut.layers || []).filter(l => l.type === 'layer' && l.visible !== false);
         for (let i = order.length - 1; i >= 0; i--) { const lc = ensureLayerCanvas(cut.id, order[i]); if (lc) c2.drawImage(lc, 0, 0); }
         return c2.getImageData(0, 0, CANVAS_W, CANVAS_H);
@@ -1055,17 +1068,17 @@ export default function App() {
                 const bitmapId = storeBitmap(img);
                 const st = A.endTime + i * dur;
                 const nc = mkCut({ id: nextId(), name: `${A.name}~${i + 1}`, startTime: st, endTime: st + dur, track: A.track });
-                nc.layers[0].strokes.push({ id: nextId(), tool: 'paste', bitmapId, x: 0, y: 0 });
+                nc.layers[0]!.strokes!.push({ id: nextId(), tool: 'paste', bitmapId, x: 0, y: 0 });
                 newCuts.push(nc);
                 notices.setProgress({ label: tr('중간 프레임 만드는 중'), done: i + 1, total: n });
                 await new Promise(r => setTimeout(r, 0)); // yield to the UI between frames so it does not look frozen
             }
             dispatchCuts(insertCutsShifting(A.track, A.endTime, n * dur, newCuts));
-        } catch (e) { alert(tr('트위닝 실패: ') + e.message); }
+        } catch (e: any) { alert(tr('트위닝 실패: ') + e.message); }
         finally { notices.setProgress(null); }
     };
 
-    const handleDuplicateCut = (id) => {
+    const handleDuplicateCut = (id: Id) => {
         const cut = cuts.find(c => c.id === (id ?? currentCutId));
         if (!cut) return;
         const dur = cut.endTime - cut.startTime;
@@ -1080,11 +1093,11 @@ export default function App() {
 
     // What each does to the layer stack lives in core/layerOps; these only stop the click from
     // also selecting the cut row underneath.
-    const handleAddLayer = (e, cutId) => { e.stopPropagation(); updLayers(cutId, appendLayer); };
-    const handleAddFolder = (e, cutId) => { e.stopPropagation(); updLayers(cutId, appendFolder); };
-    const handleDeleteLayer = (e, cutId, layerId) => { e.stopPropagation(); updLayers(cutId, c => removeLayerTree(c, layerId)); };
-    const handleToggleVisible = (e, cutId, layerId) => { e.stopPropagation(); updLayers(cutId, c => ({ layers: patchLayer(c.layers, layerId, l => ({ visible: !l.visible })) })); };
-    const handleSetActive = (e, cutId, layerId) => {
+    const handleAddLayer = (e: React.MouseEvent, cutId: Id) => { e.stopPropagation(); updLayers(cutId, appendLayer); };
+    const handleAddFolder = (e: React.MouseEvent, cutId: Id) => { e.stopPropagation(); updLayers(cutId, appendFolder); };
+    const handleDeleteLayer = (e: React.MouseEvent, cutId: Id, layerId: Id) => { e.stopPropagation(); updLayers(cutId, c => removeLayerTree(c, layerId)); };
+    const handleToggleVisible = (e: React.MouseEvent, cutId: Id, layerId: Id) => { e.stopPropagation(); updLayers(cutId, c => ({ layers: patchLayer(c.layers, layerId, l => ({ visible: !l.visible })) })); };
+    const handleSetActive = (e: React.MouseEvent, cutId: Id, layerId: Id) => {
         e.stopPropagation();
         const cut = cuts.find(c => c.id === cutId); if (!cut) return;
         const layer = cut.layers.find(l => l.id === layerId); if (!layer || layer.type === 'folder') return;
@@ -1093,13 +1106,13 @@ export default function App() {
         // layer rather than a text picked earlier.
         setSelectedText(null);
     };
-    const handleToggleFolder = (e, cutId, fid) => { e.stopPropagation(); updLayers(cutId, c => ({ layers: patchLayer(c.layers, fid, l => ({ collapsed: !l.collapsed })) })); };
+    const handleToggleFolder = (e: React.MouseEvent, cutId: Id, fid: Id) => { e.stopPropagation(); updLayers(cutId, c => ({ layers: patchLayer(c.layers, fid, l => ({ collapsed: !l.collapsed })) })); };
     // Boiling: wobbles the strokes already on the layer. Each click cycles off, light, strong,
     // and it never alters the stored strokes.
     // Opens and closes the boiling settings, where strength, wavelength, speed and the minimum
     // width are entered directly.
-    const updLayerProps = (cutId, layerId, obj) => dispatchCuts(updateLayer(cutId, layerId, obj));
-    const toggleJitterPanel = (e, cutId, layerId) => { e.stopPropagation(); setJitterLayer(j => (j && j.cutId === cutId && j.layerId === layerId) ? null : { cutId, layerId }); };
+    const updLayerProps = (cutId: Id, layerId: Id, obj: Partial<Layer>) => dispatchCuts(updateLayer(cutId, layerId, obj));
+    const toggleJitterPanel = (e: React.MouseEvent, cutId: Id, layerId: Id) => { e.stopPropagation(); setJitterLayer(j => (j && j.cutId === cutId && j.layerId === layerId) ? null : { cutId, layerId }); };
 
     // Reordering layers by drag: the state and handlers are the hook's, the moves are layerOps.
     const { dragLayerInfo, dropInfo, onLayerDragStart, onLayerDragOver, onLayerDrop, onListDrop, onLayerDragEnd } = useLayerDnD({ updLayers });
@@ -1108,20 +1121,20 @@ export default function App() {
     // the drawing keeps the shape it had when it was made. Turning the preference off later does
     // not go back and change work that is already on the canvas.
     // 0.5 is the neutral value the renderer treats as "no pressure information".
-    const getPos = (e) => {
-        const c = canvasRef.current, r = c.getBoundingClientRect();
+    const getPos = (e: React.PointerEvent | PointerEvent) => {
+        const c = canvasRef.current!, r = c.getBoundingClientRect();
         const pressure = pressureOn && e.pressure > 0 ? e.pressure : 0.5;
         return { x: (e.clientX - r.left) * (c.width / r.width), y: (e.clientY - r.top) * (c.height / r.height), pressure };
     };
     // Fast strokes get coalesced by the browser into one event; this recovers every
     // intermediate sample so quick curves stay curved instead of going polygonal.
-    const samplesOf = (e, pos) => {
+    const samplesOf = (e: any, pos: PressurePoint): PressurePoint[] => {
         const raw = e.getCoalescedEvents ? e.getCoalescedEvents() : null;
         return raw && raw.length > 1 ? raw.map(getPos) : [pos];
     };
     // A stroke as it begins, with the pen's current settings. The eraser keeps its own width;
     // `pen` records whether pressure was on and the pointer a stylus, which the renderer reads.
-    const newStroke = (tool, points, e) => ({
+    const newStroke = (tool: string, points: PressurePoint[], e: any) => ({
         id: nextId(), tool, color, opacity, size: tool === 'eraser' ? eraserSize : brushSize, points,
         pen: pressureOn && e.pointerType === 'pen',
     });
@@ -1160,8 +1173,8 @@ export default function App() {
     // repaint replaces it with an identical result. The curve ruler and every drag stroke end
     // this way; it was two copies, and the curve's had grown a different idea of which layer
     // to fall back to.
-    const commitLiveStroke = (st) => {
-        const mc = canvasRef.current; if (mc) drawStrokesOnCtx(mc.getContext('2d'), [st], false, bitmapStoreRef.current);
+    const commitLiveStroke = (st: Stroke) => {
+        const mc = canvasRef.current; if (mc) drawStrokesOnCtx(mc.getContext('2d')!, [st], false, bitmapStoreRef.current);
         clearLiveOverlay();
         // The target was fixed when the gesture began. If somehow it was not, resolve one the
         // way startDraw does rather than trusting activeLayerId, which can name a folder.
@@ -1173,7 +1186,7 @@ export default function App() {
     // Blur brush: uses the path it travels as a mask and blurs the layer pixels beneath it.
     // This spreads what is already drawn rather than adding a vector stroke, so it works on
     // raster data.
-    const applyBlurStroke = (st) => {
+    const applyBlurStroke = (st: Stroke) => {
         const cut = currentCut;
         const layer = cut?.layers.find(l => l.id === gesture.target.current);
         if (!cut || !layer) return;
@@ -1183,17 +1196,17 @@ export default function App() {
         const box = regionBounds(st.points, rad + 4, CANVAS_W, CANVAS_H);
         if (!box) return;
         const blurred = blurMaskedRegion(src, box, st.points, rad, () => document.createElement('canvas'));
-        const bitmapId = storeBitmap(blurred.getContext('2d').getImageData(0, 0, box.w, box.h));
+        const bitmapId = storeBitmap(blurred.getContext('2d')!.getImageData(0, 0, box.w, box.h));
         commitStrokeToLayer(currentCutId, layer.id, { id: nextId(), tool: 'paste', bitmapId, x: box.x, y: box.y, w: box.w, h: box.h });
     };
 
     // Reads the rectangle from the composited canvas, pixelates it in blocks, and stamps the
     // result onto the active layer.
-    const applyMosaic = (rect) => {
+    const applyMosaic = (rect: { x0: number, y0: number, x1: number, y1: number }) => {
         const box = rectBounds(rect, CANVAS_W, CANVAS_H);
         if (!box) return;
         // Off the composited canvas, not one layer: a mosaic covers what is on screen.
-        const pixels = mosaic(canvasRef.current.getContext('2d').getImageData(box.x, box.y, box.w, box.h), mosaicBlock);
+        const pixels = mosaic(canvasRef.current!.getContext('2d')!.getImageData(box.x, box.y, box.w, box.h), mosaicBlock);
         const bitmapId = storeBitmap(pixels);
         // Through the same two guards a stroke goes through. Addressing c.activeLayerId
         // directly had the two silent failures the lasso paste had: a folder or a stale id
@@ -1232,7 +1245,7 @@ export default function App() {
     const { rebinding, setRebinding } = dialogs;
     useEffect(() => {
         if (!rebinding) return;
-        const h = (e) => {
+        const h = (e: KeyboardEvent) => {
             e.preventDefault(); e.stopPropagation();
             if (e.key === 'Escape') { setRebinding(null); return; }
             if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return; // ignore a modifier pressed on its own
@@ -1284,7 +1297,7 @@ export default function App() {
     // Open the text editor for a new text at this point. The editor is a docked panel, so the
     // point is only where the text will sit on the canvas; it no longer positions anything on
     // screen.
-    const openTextEditorAt = (pos, currentCut) => {
+    const openTextEditorAt = (pos: Point, currentCut: Cut) => {
         setTextEdit({
             cutId: currentCutId,
             layerId: currentCut.activeLayerId,
@@ -1295,10 +1308,10 @@ export default function App() {
     // Bucket fill. The region is worked out against what is actually visible at and above the
     // active layer, so a line drawn on a layer above still acts as a boundary, and the result
     // lands as a pasted bitmap rather than a stroke - a filled region has no path to store.
-    const floodFillAt = (pos, currentCut, activeLayer) => {
+    const floodFillAt = (pos: Point, currentCut: Cut, activeLayer: Layer) => {
         const tmpCanvas = document.createElement('canvas');
         sizeCanvas(tmpCanvas, CANVAS_W, CANVAS_H);
-        const tctx = tmpCanvas.getContext('2d');
+        const tctx = tmpCanvas.getContext('2d')!;
 
         // Through ensureLayerCanvas, not layerCanvasCache directly. The cache is keyed by layer
         // id alone, so an entry can hold pixels from before the last stroke; ensureLayerCanvas
@@ -1307,7 +1320,7 @@ export default function App() {
         // which leaked straight across it.
         const activeCanvas = ensureLayerCanvas(currentCut.id, activeLayer);
         if (activeCanvas) tctx.drawImage(activeCanvas, 0, 0);
-        else drawStrokesOnCtx(tctx, activeLayer.strokes, false, bitmapStoreRef.current);
+        else drawStrokesOnCtx(tctx, activeLayer.strokes || [], false, bitmapStoreRef.current);
 
         const stack = flattenLayersInUiOrder(currentCut?.layers || []).filter(l => l.type === 'layer' && l.visible !== false);
         const activeIndex = stack.findIndex(l => l.id === activeLayer.id);
@@ -1334,7 +1347,7 @@ export default function App() {
         noteColorUsed(color);
         // Through commitStrokeToLayer for the reveal - a fill into a hidden layer landed and
         // showed nothing - with insertFill as the placement, since paint goes under the ink.
-        commitStrokeToLayer(currentCutId, activeLayer.id, stroke, (strokes, st) => insertFill(strokes, st, region.overPaint));
+        commitStrokeToLayer(currentCutId, activeLayer.id, stroke, (strokes: Stroke[], st: Stroke) => insertFill(strokes, st, region.overPaint));
     };
 
     /**
@@ -1347,7 +1360,7 @@ export default function App() {
      * already knows which layer it belongs to, in gesture.target, fixed when it began in case
      * the active layer changed underneath it.
      */
-    const toolCtx = (e, pos, layer) => ({
+    const toolCtx = (e: any, pos: PressurePoint, layer: Layer | null): ToolContext => ({
         e, pos, layer, tool, etool,
         cut: currentCut, cutId: currentCutId,
         gesture,
@@ -1360,7 +1373,7 @@ export default function App() {
         commitStrokeToLayer, updLayers, floodFillAt,
     });
 
-    const startDraw = (e) => {
+    const startDraw = (e: React.PointerEvent<HTMLCanvasElement>) => {
         // No drawing while panning with space or the middle button - canvas-area handles that.
         if (spaceDownRef.current || e.button === 1 || panningRef.current) return;
         // Palm rejection: only a stylus (S Pen) or mouse may draw — ignore finger/touch.
@@ -1368,7 +1381,7 @@ export default function App() {
         const pos = getPos(e);
         // Eyedropper fallback: sample the composited canvas pixel under the click.
         if (pickingColor) {
-            try { const d = canvasRef.current.getContext('2d').getImageData(Math.round(pos.x), Math.round(pos.y), 1, 1).data; if (d[3] > 0) applyColor('#' + [d[0], d[1], d[2]].map(v => v.toString(16).padStart(2, '0')).join('')); } catch { }
+            try { const d = canvasRef.current!.getContext('2d')!.getImageData(Math.round(pos.x), Math.round(pos.y), 1, 1).data; if (d[3] > 0) applyColor('#' + [d[0], d[1], d[2]].map(v => v.toString(16).padStart(2, '0')).join('')); } catch { }
             setPickingColor(false); return;
         }
         // Recording a camera path. Checked before the part path because a camera belongs to the
@@ -1394,7 +1407,7 @@ export default function App() {
         if (tool === 'text') {
             const hit = hitTestText(pos, currentCut);
             if (hit) { startTextDrag(e, pos, hit, true); return; }
-            openTextEditorAt(pos, currentCut);
+            openTextEditorAt(pos, currentCut!);
             gesture.drawing.current = false;
             e.preventDefault();
             return;
@@ -1431,9 +1444,9 @@ export default function App() {
 
     // Which resize handle the pointer is over, or null. Only used for the cursor, so it is set
     // from the hover pass below and never read by anything that draws.
-    const [hoverHandle, setHoverHandle] = useState(/** @type {string|null} */(null));
+    const [hoverHandle, setHoverHandle] = useState<string | null>(null);
 
-    const onDraw = (e) => {
+    const onDraw = (e: React.PointerEvent<HTMLCanvasElement>) => {
         // Hovering, not drawing: the only thing to work out is what the cursor should say. A
         // selection has eight handles and hitTestSelection already knows which one a point is
         // over; without this the cursor said "move" over all of them, so the one gesture that
@@ -1529,12 +1542,12 @@ export default function App() {
         if (!activeLayer) return null;
         const tmpCanvas = document.createElement('canvas');
         sizeCanvas(tmpCanvas, CANVAS_W, CANVAS_H);
-        const ctx = tmpCanvas.getContext('2d');
-        drawStrokesOnCtx(ctx, activeLayer.strokes, true, bitmapStoreRef.current);
+        const ctx = tmpCanvas.getContext('2d')!;
+        drawStrokesOnCtx(ctx, activeLayer.strokes || [], true, bitmapStoreRef.current);
         return { activeLayer, ctx };
     };
 
-    const liftLassoSelection = (points, source = renderLassoSource()) => {
+    const liftLassoSelection = (points: Point[], source = renderLassoSource()) => {
         if (!source) return;
         const { activeLayer, ctx } = source;
 
@@ -1545,7 +1558,7 @@ export default function App() {
         // Which pixels come along, and the hole they leave, are worked out in core/lassoOps -
         // both from one pass, because a mask that drifts from its selection leaves a ghost of
         // the lifted artwork behind in the layer.
-        const mk = (iw, ih) => new ImageData(iw, ih);
+        const mk = (iw: number, ih: number) => new ImageData(iw, ih);
         const { selection: sel, eraseMask, hasContent, painted } = cutOutPolygon({
             layer: ctx.getImageData(minX, minY, w, h),
             poly, minX, minY, w, h,
@@ -1589,12 +1602,12 @@ export default function App() {
         if (!String(textEdit.text ?? '').trim()) { setTextEdit(null); return; }
         const id = textEdit.textId ?? nextId();
         const obj = textFromEdit(textEdit, id);
-        dispatchCuts(upsertText(textEdit.cutId, obj));
-        setSelectedText({ cutId: textEdit.cutId, textId: id });
+        dispatchCuts(upsertText(textEdit.cutId!, obj));
+        setSelectedText({ cutId: textEdit.cutId!, textId: id });
         setTextEdit(null);
     };
 
-    const openEditText = (cutId, textId) => {
+    const openEditText = (cutId: Id, textId: Id) => {
         const cut = cuts.find(c => c.id === cutId);
         const t = safeArray(cut?.texts).find(tt => tt.id === textId);
         if (!t) return;
@@ -1602,19 +1615,19 @@ export default function App() {
         setTextEdit({ cutId, textId, ...editFromText(t, { color, opacity }) });
     };
 
-    const deleteTextObject = (cutId, textId) => {
+    const deleteTextObject = (cutId: Id, textId: Id) => {
         dispatchCuts(deleteText(cutId, textId));
         if (selectedText?.cutId === cutId && selectedText?.textId === textId) setSelectedText(null);
     };
 
-    const toggleTextVisible = (cutId, textId) => {
+    const toggleTextVisible = (cutId: Id, textId: Id) => {
         dispatchCuts(toggleTextVisibleAction(cutId, textId));
     };
 
 
-    const paintFrame = useCallback((t, playing) => {
+    const paintFrame = useCallback((t: number, playing: boolean) => {
         const canvas = canvasRef.current; if (!canvas) return;
-        paintFrameOnto(canvas.getContext('2d'), {
+        paintFrameOnto(canvas.getContext('2d')!, {
             t, playing, cw: CANVAS_W, ch: CANVAS_H, cuts, currentCutId, currentCut, transparentBg, selection,
             onionPrev, onionNext, videoOverlay, videoEl: vid.elRef.current,
             bitmapStore: bitmapStoreRef.current, requestFrameDecode, ensureLayerCanvas, flattenClipGroup, hiddenByGesture,
@@ -1635,7 +1648,7 @@ export default function App() {
                 if (selectedText?.cutId === currentCutId) {
             const c = cuts.find(cc => cc.id === selectedText.cutId);
             const t = safeArray(c?.texts).find(tt => tt.id === selectedText.textId && tt.visible !== false);
-            if (t) drawTextSelection(ctx, measureTextBox(t), view.zoom);
+            if (t) drawTextSelection(ctx!, measureTextBox(t), view.zoom);
         }
 
         if (selection?.bitmapId) {
@@ -1648,16 +1661,16 @@ export default function App() {
             const th = Math.max(1, Math.round(selection.th));
 
             const box = { x: tx, y: ty, w: tw, h: th, rot: selection.rot, skew: selection.skew, bend: selection.bend };
-            drawFloatingSelection(ctx, bmp || (img && imageDataCanvas(img)), box, view.zoom);
+            drawFloatingSelection(ctx!, bmp || (img && imageDataCanvas(img)) || null, box, view.zoom);
         }
 
         // Recorded motion paths (per layer) shown while editing so they're visible/redrawable.
         if (!isPlaying) {
             const cc = currentCut;
             for (const l of (cc?.layers || [])) {
-                const open = !!animLayer && animLayer.cutId === cc.id && animLayer.layerId === l.id;
-                drawMotionPath(ctx, l.anim?.path, open);
-                if (open) drawMosaicRegion(ctx, l.anim?.mosaicRect, view.zoom);
+                const open = !!animLayer && animLayer.cutId === cc!.id && animLayer.layerId === l.id;
+                drawMotionPath(ctx!, l.anim?.path, open);
+                if (open) drawMosaicRegion(ctx!, l.anim?.mosaicRect, view.zoom);
             }
         }
 
@@ -1706,7 +1719,7 @@ export default function App() {
     });
 
     // Lay a whole video under the drawing layers (overlay/rotoscope use). No frame cuts.
-    const loadVideoOverlay = (blob, name, startAt = 0, offset = 0, clipDur = null) => {
+    const loadVideoOverlay = (blob: Blob, name: string, startAt = 0, offset = 0, clipDur: number | null = null) => {
         vid.blobRef.current = blob;
         const url = URL.createObjectURL(blob);
         const v = vid.elRef.current || document.createElement('video');
@@ -1726,7 +1739,7 @@ export default function App() {
     };
     // Detect scene cuts (precise, with optional range + sensitivity) and store the markers. Runs on
     // the stored video blob so it can be re-run with different settings without re-importing.
-    const runSceneDetect = ({ threshold = 14, rangeOn = false, startText = '0:00', endText = '', cutStart = null, cutOffset = null } = {}) => {
+    const runSceneDetect = ({ threshold = 14, rangeOn = false, startText = '0:00', endText = '', cutStart = null, cutOffset = null }: { threshold?: number, rangeOn?: boolean, startText?: string, endText?: string, cutStart?: number | null, cutOffset?: number | null } = {}) => {
         const blob = vid.blobRef.current; if (!blob) return;
         const cs = cutStart != null ? cutStart : (videoOverlay?.startTime ?? 0);
         const co = cutOffset != null ? cutOffset : (videoOverlay?.offset ?? 0);
@@ -1759,7 +1772,7 @@ export default function App() {
     // without downloading again (session only — keeps at most 3 to bound memory).
     // Recents keep only the source key/link, never the video data — the downloaded file is
     // dropped right after extraction, so re-importing the same link re-downloads it.
-    const openVideoImport = (file, name, src) => {
+    const openVideoImport = (file: File, name?: string, src?: { url: string, key: string } | null) => {
         // A new import must always raise the settings dialog. That dialog only shows while
         // vid.cfg && !vid.busyBg, so if an earlier extraction was sent to the background and
         // then failed to finish cleanly, the flag stays true and no later import ever opens the
@@ -1781,19 +1794,19 @@ export default function App() {
                 const sw = v.videoWidth || 0, sh = v.videoHeight || 0;
                 URL.revokeObjectURL(u);
                 const parts = Math.max(1, Math.min(30, Math.round(dur / 30)));
-                vid.setCfg(vi => (vi && vi.file === file) ? { ...vi, durationSec: dur, parts, srcW: sw, srcH: sh } : vi);
+                vid.setCfg((vi: any) => (vi && vi.file === file) ? { ...vi, durationSec: dur, parts, srcW: sw, srcH: sh } : vi);
             };
             v.src = u;
         } catch { }
     };
-    const reimportRecent = (v) => {
+    const reimportRecent = (v: any) => {
         if (v.url) loadYoutubeVideo(v.url);        // same link → download again
         else videoFileRef.current?.click();        // local file: the browser can't reopen it for us
     };
 
     // Imported frame sets, derived from the cuts themselves (so they survive save/load).
     const videoBatches = deriveVideoBatches(cuts, tr('영상'));
-    const deleteVideoBatch = (batchId) => {
+    const deleteVideoBatch = (batchId: Id) => {
         const b = videoBatches.find(x => x.id === batchId);
         if (!b || !window.confirm(tr('"{0}" 프레임 {1}컷을 삭제할까요?', b.label, b.count))) return;
         const left = cuts.filter(c => c.videoBatch !== batchId);
@@ -1804,7 +1817,7 @@ export default function App() {
     };
 
     // Select a part: scope playback to it and jump the playhead to its start.
-    const selectPart = (partId) => {
+    const selectPart = (partId: Id | null) => {
         cutList.setActivePartId(partId);
         const p = partId ? parts.find(x => x.id === partId) : null;
         if (p) {
@@ -1823,20 +1836,20 @@ export default function App() {
         dispatchCuts(assignPartTo(cutList.selectedCutIds, pid, name));
         cutList.setActivePartId(pid);
     };
-    const renamePart = (partId) => {
+    const renamePart = (partId: Id) => {
         const p = parts.find(x => x.id === partId); if (!p) return;
         const name = window.prompt(tr('파트 이름 변경:'), p.name);
         if (name == null) return;
         dispatchCuts(renamePartAction(partId, name));
     };
     // Ungroup a part (cuts stay, just lose their part membership).
-    const ungroupPart = (partId) => {
+    const ungroupPart = (partId: Id) => {
         dispatchCuts(ungroupPartAction(partId));
         if (cutList.activePartId === partId) cutList.setActivePartId(null);
     };
 
     // Local-only: pull a video by URL through the API, then reuse the frame-import dialog.
-    const loadYoutubeVideo = async (presetUrl) => {
+    const loadYoutubeVideo = async (presetUrl?: unknown) => {
         const url = typeof presetUrl === 'string' ? presetUrl : null;
         if (!url) { notices.setLinkPrompt({ kind: 'video' }); return; } // raise the input dialog and stop here
         vid.setBusy({ done: 0, total: 0, fetching: true });
@@ -1848,7 +1861,7 @@ export default function App() {
             openVideoImport(file, 'YT ' + (url.match(/(?:v=|youtu\.be\/|shorts\/)([\w-]{6,})/)?.[1] || tr('영상')), { url, key: 'yt:' + url });
         } catch (e) {
             console.error('[import]', e);
-            notices.setError(tr('영상 가져오기 실패: ') + e.message);
+            notices.setError(tr('영상 가져오기 실패: ') + (e as any).message);
         } finally { vid.setBusy(null); }
     };
 
@@ -1957,7 +1970,7 @@ export default function App() {
                     themeColor={themeColor} setThemeColor={setThemeColor} themeRecent={themeRecent} defaultTheme={DEFAULT_THEME}
                     uiSat={uiSat} setUiSat={setUiSat}
                     keymap={keymap} setKeymap={setKeymap} defaultKeys={DEFAULT_KEYS} keyLabels={KEY_LABELS} conflicts={findConflicts(keymap)}
-                    videoOpacity={videoOverlay ? (videoOverlay.opacity ?? 1) : null} setVideoOpacity={v => dispatchMedia(setVideoOpacity(v))}
+                    videoOpacity={videoOverlay ? (videoOverlay.opacity ?? 1) : undefined} setVideoOpacity={v => dispatchMedia(setVideoOpacity(v))}
                     setShowToolKeys={dialogs.setToolKeys}
                     lang={lang} changeLang={changeLang}
                     playbackRate={playbackRate} setPlaybackRate={setPlaybackRate} playbackRates={PLAYBACK_RATES}
@@ -1982,7 +1995,7 @@ export default function App() {
                     placeholder="https://www.youtube.com/watch?v=..."
                     onClose={() => notices.setLinkPrompt(null)}
                     onSubmit={(url) => {
-                        const kind = notices.linkPrompt.kind;
+                        const kind = notices.linkPrompt!.kind;
                         notices.setLinkPrompt(null);
                         if (kind === 'audio') loadYoutubeAudio(url); else loadYoutubeVideo(url);
                     }} />
@@ -2044,7 +2057,7 @@ export default function App() {
                     cursor={canvasCursor({ spaceDown, selection, hoverHandle, tool })}
                     spine={{
                         layer: spineLayer,
-                        onChange: (prof) => updLayerAnim(spineEdit.cutId, spineEdit.layerId, { swayProfile: prof }),
+                        onChange: (prof) => updLayerAnim(spineEdit!.cutId, spineEdit!.layerId, { swayProfile: prof }),
                         onClose: () => setSpineEdit(null),
                     }} />
 
@@ -2073,7 +2086,7 @@ export default function App() {
                 cutList={cutList}
                 audio={audio}
                 openPlaybackSettings={() => dialogs.openSettings('play')}
-                openVideoSettings={() => vid.setSceneCfg(c => c || { threshold: 14, rangeOn: false, startText: '0:00', endText: '' })}
+                openVideoSettings={() => vid.setSceneCfg((c: any) => c || { threshold: 14, rangeOn: false, startText: '0:00', endText: '' })}
                 sceneDetect={vid.scene}
                 setSceneCfg={vid.setSceneCfg}
                 addCuts={cs => dispatchCuts(addCuts(cs))}

@@ -1,4 +1,4 @@
-import { tr } from './i18n.js';
+import { tr } from './i18n.ts';
 // Minimal IndexedDB wrapper (no deps) used for local autosave / crash recovery.
 // A project record is the same JSON shape produced by App's buildData(), so it
 // round-trips through the existing restore() path unchanged.
@@ -8,11 +8,11 @@ const DB_VERSION = 1;
 const STORE = 'projects';
 const AUTOSAVE_ID = 'autosave';
 
-let dbPromise = null;
+let dbPromise: Promise<IDBDatabase> | null = null;
 
-function openDB() {
+function openDB(): Promise<IDBDatabase> {
     if (dbPromise) return dbPromise;
-    dbPromise = new Promise((resolve, reject) => {
+    dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
         if (typeof indexedDB === 'undefined') { reject(new Error('IndexedDB unavailable')); return; }
         const req = indexedDB.open(DB_NAME, DB_VERSION);
         req.onupgradeneeded = () => {
@@ -45,26 +45,26 @@ function openDB() {
  * @param {(result: any) => T} [map]
  * @returns {Promise<T>}
  */
-async function run(mode, make, map) {
+async function run<T = void>(mode: IDBTransactionMode, make: (store: IDBObjectStore) => IDBRequest, map?: (result: any) => T): Promise<T> {
     const db = await openDB();
-    return /** @type {Promise<T>} */ (new Promise((resolve, reject) => {
-        let t;
+    return new Promise<T>((resolve, reject) => {
+        let t: IDBTransaction;
         try { t = db.transaction(STORE, mode); } catch (e) { reject(e); return; }
-        let value = /** @type {any} */ (undefined);
+        let value: any = undefined;
         let failed = false;
-        const fail = (e) => { if (!failed) { failed = true; reject(e instanceof Error ? e : new Error(String(e || 'IndexedDB failed'))); } };
-        let req;
+        const fail = (e: unknown) => { if (!failed) { failed = true; reject(e instanceof Error ? e : new Error(String(e || 'IndexedDB failed'))); } };
+        let req: IDBRequest;
         try { req = make(t.objectStore(STORE)); } catch (e) { fail(e); return; }
         req.onsuccess = () => { try { value = map ? map(req.result) : undefined; } catch (e) { fail(e); } };
         req.onerror = () => fail(req.error);
         t.oncomplete = () => { if (!failed) resolve(value); };
         t.onabort = () => fail(t.error || new Error('IndexedDB transaction aborted'));
         t.onerror = () => fail(t.error);
-    }));
+    });
 }
 
 /** @returns {Promise<void>} */
-export function saveProject(id, data, name) {
+export function saveProject(id: string, data: any, name?: string): Promise<void> {
     return run('readwrite', (store) => store.put({
         id,
         name: name ?? data?.name ?? id,
@@ -73,20 +73,20 @@ export function saveProject(id, data, name) {
     }));
 }
 
-export function loadProject(id) {
+export function loadProject(id: string): Promise<any> {
     return run('readonly', (store) => store.get(id), (r) => (r ? r.data : null));
 }
 
-export function listProjects() {
+export function listProjects(): Promise<Array<{ id: string, name: string, savedAt: string }>> {
     return run('readonly', (store) => store.getAll(),
-        (rows) => (rows || []).map(r => ({ id: r.id, name: r.name, savedAt: r.savedAt })));
+        (rows: any[]) => (rows || []).map(r => ({ id: r.id, name: r.name, savedAt: r.savedAt })));
 }
 
 /** @returns {Promise<void>} */
-export function deleteProject(id) {
+export function deleteProject(id: string): Promise<void> {
     return run('readwrite', (store) => store.delete(id));
 }
 
 export const autosaveKey = AUTOSAVE_ID;
-export const saveAutosave = (data) => saveProject(AUTOSAVE_ID, data, tr('(자동저장)'));
+export const saveAutosave = (data: any) => saveProject(AUTOSAVE_ID, data, tr('(자동저장)'));
 export const loadAutosave = () => loadProject(AUTOSAVE_ID);

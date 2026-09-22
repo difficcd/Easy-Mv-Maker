@@ -38,7 +38,7 @@ export type MediaAction =
     | { type: 'setVideoOpacity', opacity: number }
     | { type: 'clearVideoCuts' }
     | { type: 'moveTrack', which: 'audio' | 'video', startTime: number }
-    | { type: 'resizeAudio', edge: 'left' | 'right', startTime: number, endTime: number, offset: number }
+    | { type: 'resizeAudio', edge: 'left' | 'right', startTime: number | null, endTime: number | null, offset: number | null }
     | { type: 'restoreMedia', media: Partial<MediaState> | null | undefined }
     | { type: 'clearMedia' };
 
@@ -73,7 +73,7 @@ export const clearVideoCuts = () => ({ type: 'clearVideoCuts' }) as const;
 /** Drag a track along the timeline, keeping its length. */
 export const moveTrack = (which: 'audio' | 'video', startTime: number) => ({ type: 'moveTrack', which, startTime }) as const;
 /** Drag one edge of the audio clip. The left edge also moves into the source. */
-export const resizeAudio = (edge: 'left' | 'right', startTime: number, endTime: number, offset: number) => ({ type: 'resizeAudio', edge, startTime, endTime, offset }) as const;
+export const resizeAudio = (edge: 'left' | 'right', startTime: number | null, endTime: number | null, offset: number | null) => ({ type: 'resizeAudio', edge, startTime, endTime, offset }) as const;
 
 /** Restore both tracks at once, opening a project. */
 export const restoreMedia = (media: Partial<MediaState> | null | undefined) => ({ type: 'restoreMedia', media }) as const;
@@ -143,8 +143,8 @@ export function mediaReducer(state: MediaState | null | undefined, action: Media
             // under the new start has to be the audio that was there before, or the track slides
             // out of sync with everything cut against it. The right edge is a plain trim.
             const next = action.edge === 'left'
-                ? { ...s.audioData, startTime: action.startTime, offset: Math.max(0, action.offset) }
-                : { ...s.audioData, endTime: action.endTime };
+                ? { ...s.audioData, startTime: action.startTime ?? s.audioData.startTime, offset: Math.max(0, action.offset ?? 0) }
+                : { ...s.audioData, endTime: action.endTime ?? s.audioData.endTime };
             return { ...s, audioData: next };
         }
 
