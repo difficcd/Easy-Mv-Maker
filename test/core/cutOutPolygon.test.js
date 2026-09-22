@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cutOutPolygon, cropImageData } from '../../src/core/lassoOps.js';
+import { cutOutPolygon, cropImageData } from '../../src/core/lassoOps.ts';
 import { pointInPolygon } from '../../src/core/geometry.ts';
 
 /** Node has no ImageData; core/ takes it as an argument for exactly this reason. */

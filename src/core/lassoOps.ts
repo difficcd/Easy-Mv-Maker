@@ -5,6 +5,15 @@
 // answers are small and both were buried in a pointer-up handler, where the awkward case - a
 // path whose ends nearly meet - could not be checked.
 
+import type { Id, Point } from './types.ts';
+
+/** An axis-aligned box in canvas pixels. */
+export interface Rect { x: number; y: number; w: number; h: number }
+/** Where a floating selection sits and how big it is: the transform the handles edit. */
+export interface SelectionBox { tx: number; ty: number; tw: number; th: number }
+/** A floating selection, as far as writing it back needs: its pixels, its mask, where it was lifted from and where it is now. */
+export interface FloatingSelection extends SelectionBox { x: number; y: number; bitmapId: string; maskBitmapId: string; rot?: number; skew?: number; bend?: number; [k: string]: any }
+
 /**
  * Close a freehand path into a polygon.
  *
@@ -17,7 +26,7 @@
  * @param {number} [snap] how close the ends must be to count as already closed, in pixels
  * @returns {Array<{x:number,y:number}>} a closed ring: the first point repeated at the end
  */
-export function closeLassoPath(pts, snap = 8) {
+export function closeLassoPath(pts: Point[] | null | undefined, snap = 8): Point[] {
     if (!Array.isArray(pts) || pts.length < 2) return Array.isArray(pts) ? [...pts] : [];
     const first = pts[0];
     const last = pts[pts.length - 1];
@@ -35,7 +44,7 @@ export function closeLassoPath(pts, snap = 8) {
  *
  * @returns {{x:number,y:number,w:number,h:number}} w or h of 0 means there is nothing to lift
  */
-export function lassoBounds(pts, canvasW, canvasH) {
+export function lassoBounds(pts: readonly Point[] | null | undefined, canvasW: number, canvasH: number): Rect {
     if (!Array.isArray(pts) || !pts.length) return { x: 0, y: 0, w: 0, h: 0 };
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const p of pts) {
@@ -73,7 +82,7 @@ export const MIN_SELECTION_SIZE = 2;
  * @param {number} dy
  * @returns {{tx:number,ty:number,tw:number,th:number}}
  */
-export function applyResize(handle, startSel, dx, dy) {
+export function applyResize(handle: string, startSel: SelectionBox, dx: number, dy: number): SelectionBox {
     const min = MIN_SELECTION_SIZE;
     let left = startSel.tx, top = startSel.ty;
     let right = startSel.tx + startSel.tw, bottom = startSel.ty + startSel.th;
@@ -135,7 +144,7 @@ export function applyResize(handle, startSel, dx, dy) {
  *   `painted` is where the taken pixels actually sit inside the box, relative to it, or null
  *   when nothing was taken. The caller crops the selection to it; the mask is left alone.
  */
-export function cutOutPolygon({ layer, poly, minX, minY, w, h, makeImageData, inside }) {
+export function cutOutPolygon({ layer, poly, minX, minY, w, h, makeImageData, inside }: { layer: ImageData, poly: number[][], minX: number, minY: number, w: number, h: number, makeImageData: (w: number, h: number) => ImageData, inside: (pt: number[], poly: number[][]) => boolean }): { selection: ImageData, eraseMask: ImageData, hasContent: boolean, painted: Rect | null } {
     const selection = makeImageData(w, h);
     const eraseMask = makeImageData(w, h);
     let hasContent = false;
@@ -182,7 +191,7 @@ export function cutOutPolygon({ layer, poly, minX, minY, w, h, makeImageData, in
  * @param {{x: number, y: number, w: number, h: number}} box
  * @param {(w: number, h: number) => {data: Uint8ClampedArray, width: number, height: number}} makeImageData
  */
-export function cropImageData(src, box, makeImageData) {
+export function cropImageData(src: ImageData, box: Rect, makeImageData: (w: number, h: number) => ImageData): ImageData {
     const out = makeImageData(box.w, box.h);
     for (let y = 0; y < box.h; y++) {
         const from = ((y + box.y) * src.width + box.x) * 4;
@@ -208,9 +217,9 @@ export function cropImageData(src, box, makeImageData) {
  * @param {number} pasteId id for the pixels
  * @returns {{erase: object, paste: object}}
  */
-export function selectionStrokes(sel, eraseId, pasteId) {
-    const erase = { id: eraseId, tool: 'eraseBitmap', bitmapId: sel.maskBitmapId, x: Math.round(sel.x), y: Math.round(sel.y) };
-    const paste = {
+export function selectionStrokes(sel: FloatingSelection, eraseId: Id, pasteId: Id): { erase: Stroke, paste: Stroke } {
+    const erase: Stroke = { id: eraseId, tool: 'eraseBitmap', bitmapId: sel.maskBitmapId, x: Math.round(sel.x), y: Math.round(sel.y) };
+    const paste: Stroke = {
         id: pasteId, tool: 'paste', bitmapId: sel.bitmapId,
         x: Math.round(sel.tx), y: Math.round(sel.ty),
         w: Math.max(1, Math.round(sel.tw)), h: Math.max(1, Math.round(sel.th)),
@@ -224,7 +233,7 @@ export function selectionStrokes(sel, eraseId, pasteId) {
 const TWO_PI = Math.PI * 2;
 
 /** An angle folded into [-pi, pi), which is the range the rotation slider shows. */
-const normaliseAngle = (a) => {
+const normaliseAngle = (a: number): number => {
     const m = (a + Math.PI) % TWO_PI;
     return (m < 0 ? m + TWO_PI : m) - Math.PI;
 };
@@ -247,7 +256,7 @@ const normaliseAngle = (a) => {
  * @param {{x: number, y: number}} pos where the pointer is now
  * @returns {{rot: number}}
  */
-export function applyRotateDrag(startSel, startPos, pos) {
+export function applyRotateDrag(startSel: SelectionBox & { rot?: number }, startPos: Point, pos: Point): { rot: number } {
     const cx = startSel.tx + startSel.tw / 2;
     const cy = startSel.ty + startSel.th / 2;
     const swept = Math.atan2(pos.y - cy, pos.x - cx) - Math.atan2(startPos.y - cy, startPos.x - cx);
@@ -270,9 +279,9 @@ export const WARP_LIMIT = 1;
  * @param {number} dy
  * @returns {{skew: number, bend: number}}
  */
-export function applyWarpDrag(startSel, dx, dy) {
+export function applyWarpDrag(startSel: { th?: number, skew?: number, bend?: number }, dx: number, dy: number): { skew: number, bend: number } {
     const half = Math.max(1, (startSel.th || 0) / 2);
-    const clamp = (v) => Math.max(-WARP_LIMIT, Math.min(WARP_LIMIT, v));
+    const clamp = (v: number) => Math.max(-WARP_LIMIT, Math.min(WARP_LIMIT, v));
     return {
         skew: clamp((startSel.skew || 0) + dx / half),
         bend: clamp((startSel.bend || 0) - dy / half),
@@ -290,7 +299,7 @@ export function applyWarpDrag(startSel, dx, dy) {
  * @param {number} h
  * @returns {{x: number, y: number, w: number, h: number} | null} integer pixel bounds
  */
-export function paintedBounds(data, w, h) {
+export function paintedBounds(data: Uint8ClampedArray, w: number, h: number): Rect | null {
     let x0 = w, y0 = h, x1 = -1, y1 = -1;
     for (let y = 0; y < h; y++) {
         const row = y * w * 4;
