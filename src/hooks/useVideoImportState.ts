@@ -25,7 +25,7 @@ export interface ImportRunDeps {
     setCanvasSize: (size: { w: number, h: number }) => void;
     storeBitmapBlob: (blob: Blob, w: number, h: number) => string | Promise<string>;
     dispatchCuts: (action: CutsAction) => void;
-    setCurrentCutId: (id: Cut['id']) => void;
+    setCurrentCutId: (id: DocId | null) => void;
     setCurrentTime: (t: number) => void;
     loadAudioUrl: (url: string, name: string, startTime: number, offset: number, duration: number | null) => void;
     gcBitmaps: () => void;

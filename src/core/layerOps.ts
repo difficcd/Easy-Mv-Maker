@@ -31,7 +31,7 @@ export function isDescendantOf(layers: Layer[], maybeChildId: Id, folderId: Id):
  * `position` is 'before', 'after', or 'inside' (only meaningful when the target is a folder).
  * Returns a new array, or null when the move is refused and the caller should change nothing.
  */
-export function moveLayer(layers: Layer[] | null | undefined, layerId: Id, targetId: Id, position: DropPosition = 'after'): Layer[] | null {
+export function moveLayer(layers: Layer[] | null | undefined, layerId: DocId, targetId: DocId, position: DropPosition = 'after'): Layer[] | null {
     if (!Array.isArray(layers) || layerId === targetId) return null;
 
     const from = layers.findIndex(l => l.id === layerId);
@@ -228,7 +228,7 @@ export function offsetLayers(cut: Cut | null | undefined, layerIds: Iterable<Id>
  * @param {(layers: Array) => Array} flattenVisibleLeaves ordering helper (flattenLayersInUiOrder)
  * @returns {{layers: Array, activeLayerId: any} | null} null when there is nothing to merge into
  */
-export function mergeDown(layers: Layer[] | null | undefined, layerId: Id, flattenVisibleLeaves: (layers: Layer[]) => Layer[]): { layers: Layer[], activeLayerId: Id } | null {
+export function mergeDown(layers: Layer[] | null | undefined, layerId: DocId, flattenVisibleLeaves: (layers: Layer[]) => Layer[]): { layers: Layer[], activeLayerId: DocId } | null {
     const list = Array.isArray(layers) ? layers : [];
     const src = list.find(l => l.id === layerId);
     if (!src || src.type === 'folder') return null;
@@ -258,10 +258,10 @@ export function mergeDown(layers: Layer[] | null | undefined, layerId: Id, flatt
 }
 
 /** A blank drawable layer. The one shape, so a layer made anywhere has every field. */
-export const mkLayer = (id: Id, name = `L${id}`): Layer => ({ id, name, type: 'layer', strokes: [], redoStrokes: [], visible: true, parentId: null });
+export const mkLayer = (id: DocId, name = `L${id}`): Layer => ({ id, name, type: 'layer', strokes: [], redoStrokes: [], visible: true, parentId: null });
 
 /** A blank folder. */
-export const mkFolder = (id: Id): Layer => ({ id, name: `Folder ${id}`, type: 'folder', visible: true, collapsed: false, parentId: null });
+export const mkFolder = (id: DocId): Layer => ({ id, name: `Folder ${id}`, type: 'folder', visible: true, collapsed: false, parentId: null });
 
 /**
  * The next free layer id within a cut. Layer ids are per cut, not global (see the gotchas):
@@ -279,7 +279,7 @@ export const nextLayerId = (layers: Layer[] | null | undefined): number => Math.
  * @param {{layers: any[]}} cut
  * @returns {{layers: any[], activeLayerId: number}}
  */
-export function appendLayer(cut: Cut | null | undefined): { layers: Layer[], activeLayerId: Id } {
+export function appendLayer(cut: Cut | null | undefined): { layers: Layer[], activeLayerId: DocId } {
     const layers = Array.isArray(cut?.layers) ? cut.layers : [];
     const id = nextLayerId(layers);
     return { layers: [...layers, mkLayer(id)], activeLayerId: id };
@@ -308,7 +308,7 @@ export function appendFolder(cut: Cut | null | undefined): { layers: Layer[] } {
  * @param {any} layerId
  * @returns {{layers: any[], activeLayerId: any}}
  */
-export function removeLayerTree(cut: Cut | null | undefined, layerId: Id): { layers: Layer[], activeLayerId: Id | null } {
+export function removeLayerTree(cut: Cut | null | undefined, layerId: DocId): { layers: Layer[], activeLayerId: DocId | null } {
     const layers = Array.isArray(cut?.layers) ? cut.layers : [];
     const gone = new Set<Id>([layerId]);
     // Folders can nest, so walk until no new child turns up.
@@ -319,7 +319,8 @@ export function removeLayerTree(cut: Cut | null | undefined, layerId: Id): { lay
     }
     let kept = layers.filter(l => !gone.has(l.id));
     if (!kept.some(l => l.type === 'layer')) kept = [...kept, mkLayer(nextLayerId(kept))];
-    const activeLayerId: Id | null = gone.has(cut?.activeLayerId) ? (kept.find(l => l.type === 'layer')?.id ?? null) : (cut?.activeLayerId ?? null);
+    const wasActive = cut?.activeLayerId;
+    const activeLayerId: DocId | null = (wasActive != null && gone.has(wasActive)) ? (kept.find(l => l.type === 'layer')?.id ?? null) : (wasActive ?? null);
     return { layers: kept, activeLayerId };
 }
 
@@ -350,7 +351,7 @@ export function dropPositionFor(clientY: number, rect: { top: number, height: nu
  * @param {any} layerId
  * @returns {any[] | null}
  */
-export function moveLayerToEnd(layers: Layer[] | null | undefined, layerId: Id): Layer[] | null {
+export function moveLayerToEnd(layers: Layer[] | null | undefined, layerId: DocId): Layer[] | null {
     if (!Array.isArray(layers)) return null;
     const i = layers.findIndex(l => l.id === layerId);
     if (i < 0) return null;

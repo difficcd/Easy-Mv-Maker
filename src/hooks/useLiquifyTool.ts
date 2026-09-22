@@ -3,10 +3,10 @@ import { sizeCanvas } from '../canvas/scratch.ts';
 import { pushAlong } from '../core/liquify.ts';
 import { selectionStrokes } from '../core/lassoOps.ts';
 import { nextId } from '../core/ids.ts';
-import type { Id, Point } from '../core/types.ts';
+import type { Point } from '../core/types.ts';
 
 /** A liquify drag in flight: the layer's pixels being pushed, where the pointer last was, and the box touched so far. */
-interface LiquifyDrag { cutId: Id; layerId: Id; canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D; image: ImageData; last: Point; box: { x0: number, y0: number, x1: number, y1: number } | null }
+interface LiquifyDrag { cutId: DocId; layerId: DocId; canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D; image: ImageData; last: Point; box: { x0: number, y0: number, x1: number, y1: number } | null }
 
 
 // Liquify: the layer's pixels are copied out when the pen goes down, pushed around in that copy
@@ -27,7 +27,7 @@ interface LiquifyDrag { cutId: Id; layerId: Id; canvas: HTMLCanvasElement; ctx: 
  * @param {(cutId: any, layerId: any, strokes: any) => void} opts.commitStrokeToLayer
  * @param {() => void} opts.onHiddenChanged tell App the layer's visibility in the composite moved
  */
-export function useLiquifyTool({ overlay, ensureLayerCanvas, size, brush, storeBitmap, commitStrokeToLayer, onHiddenChanged }: { overlay: { clear: () => void, ctx: () => CanvasRenderingContext2D | null }, ensureLayerCanvas: (cutId: Id, layer: Layer) => HTMLCanvasElement | null, size: { cw: number, ch: number }, brush: { size: number, strength: number }, storeBitmap: (img: ImageData) => string, commitStrokeToLayer: (cutId: Id, layerId: Id, strokes: Stroke[]) => void, onHiddenChanged: () => void }) {
+export function useLiquifyTool({ overlay, ensureLayerCanvas, size, brush, storeBitmap, commitStrokeToLayer, onHiddenChanged }: { overlay: { clear: () => void, ctx: () => CanvasRenderingContext2D | null }, ensureLayerCanvas: (cutId: DocId, layer: Layer) => HTMLCanvasElement | null, size: { cw: number, ch: number }, brush: { size: number, strength: number }, storeBitmap: (img: ImageData) => string, commitStrokeToLayer: (cutId: DocId | null, layerId: DocId, strokes: Stroke[]) => void, onHiddenChanged: () => void }) {
     const ref = useRef<LiquifyDrag | null>(null);
     const { cw, ch } = size;
 

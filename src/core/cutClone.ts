@@ -20,7 +20,7 @@ import type { Id } from './types.ts';
  *   id; given the shared cache so it can return the same new id for a repeated old one
  * @returns {{layers: Layer[], activeLayerId: any, texts: CutText[]}} the contents, ready for a new cut
  */
-export function cloneCutContents(srcCut: Cut | null | undefined, cloneBitmapId: (id: Id, cache: Map<Id, Id>) => Id): { layers: Layer[], activeLayerId: Id, texts: CutText[] } {
+export function cloneCutContents(srcCut: Cut | null | undefined, cloneBitmapId: (id: Id, cache: Map<Id, Id>) => Id): { layers: Layer[], activeLayerId: DocId, texts: CutText[] } {
     const srcLayers = Array.isArray(srcCut?.layers) ? srcCut.layers : [];
 
     // Renumbered in order, so the copy reads 1..n whatever the original had.
@@ -45,7 +45,8 @@ export function cloneCutContents(srcCut: Cut | null | undefined, cloneBitmapId: 
 
     // Falling back to any real layer matters: with none, drawing into the copy would have nowhere
     // to go and the first stroke would vanish.
-    const activeLayerId = idMap.get(srcCut?.activeLayerId) ?? layers.find(l => l.type === 'layer')?.id ?? 1;
+    const srcActive = srcCut?.activeLayerId;
+    const activeLayerId = (srcActive != null ? idMap.get(srcActive) : undefined) ?? layers.find(l => l.type === 'layer')?.id ?? 1;
     const texts: CutText[] = (Array.isArray(srcCut?.texts) ? srcCut.texts : []).map(t => JSON.parse(JSON.stringify(t)));
     return { layers, activeLayerId, texts };
 }

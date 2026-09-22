@@ -28,7 +28,7 @@ export const inReadingOrder = <C extends CutLike = Cut>(cuts: Iterable<C>): C[] 
  * @param {{ctrl?: boolean, shift?: boolean}} mods
  * @returns {Set<any>}
  */
-export function selectionAfterClick(selected: Iterable<Id>, cuts: CutLike[], currentCutId: Id | null | undefined, id: Id, { ctrl = false, shift = false }: { ctrl?: boolean, shift?: boolean } = {}): Set<Id> {
+export function selectionAfterClick(selected: Iterable<DocId>, cuts: Cut[], currentCutId: DocId | null | undefined, id: DocId, { ctrl = false, shift = false }: { ctrl?: boolean, shift?: boolean } = {}): Set<DocId> {
     if (ctrl) return toggled(selected, id);
     if (shift && currentCutId != null) {
         const ordered = inReadingOrder(cuts);
@@ -49,7 +49,7 @@ export function selectionAfterClick(selected: Iterable<Id>, cuts: CutLike[], cur
  * @param {Set<any>} selected
  * @param {any} id
  */
-export function cutsToCopy<C extends CutLike>(cuts: C[], selected: Set<Id>, id: Id): C[] {
-    const ids = (selected.size > 1 && selected.has(id)) ? selected : new Set([id]);
+export function cutsToCopy<C extends CutLike>(cuts: C[], selected: Set<DocId>, id: DocId | null): C[] {
+    const ids = new Set<Id>(id != null && selected.size > 1 && selected.has(id) ? selected : (id != null ? [id] : []));
     return inReadingOrder(cuts.filter(c => ids.has(c.id)));
 }

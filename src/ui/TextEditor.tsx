@@ -106,7 +106,7 @@ export function TextEditor({ textEdit, setTextEdit, textAreaRef, commitText, can
                 <button className="button" title={tr('기울임')} onClick={() => patch(te => ({ italic: !te.italic }))}
                     style={{ height: 26, width: 28, padding: 0, fontStyle: 'italic', background: textEdit.italic ? 'hsl(var(--ui-h) var(--ui-s) 29%)' : undefined }}>I</button>
                 <select className="time-input" style={{ width: 52 }} title={tr('정렬')} value={textEdit.align || 'left'}
-                    onChange={e => patch({ align: e.target.value })}>
+                    onChange={e => patch({ align: e.target.value as 'left' | 'center' | 'right' })}>
                     <option value="left">◧</option><option value="center">▣</option><option value="right">◨</option>
                 </select>
                 <select className="time-input" style={{ width: 54 }} title={tr('줄간격')} value={textEdit.lineHeight ?? 1.25}

@@ -255,7 +255,8 @@ export function textStaticGate(text: CutText | Pick<TextObject, 'noise' | 'noise
 /** A signature of everything that changes how a text renders, for the static's per-canvas cache. */
 const textStaticSig = (text: CutText, ta: TextAnimAt | null): string => {
     let sig = '';
-    for (const k in text) if (k !== 'noise' && k !== 'noiseFrom' && k !== 'noiseTo' && k !== 'noiseColor') sig += `${k}=${text[k]};`;
+    const fields = text as unknown as Record<string, unknown>;
+    for (const k in fields) if (k !== 'noise' && k !== 'noiseFrom' && k !== 'noiseTo' && k !== 'noiseColor') sig += `${k}=${fields[k]};`;
     if (ta) sig += `|${ta.chars ?? ''},${ta.dx},${ta.dy},${ta.scale},${ta.rot},${ta.blur},${ta.perChar ? 'pc' : ''}`;
     return sig;
 };

@@ -12,14 +12,14 @@ import { curveToWave } from '../core/sway.ts';
 import { clampRegion } from '../canvas/pixelEffects.ts';
 import { setCutCamera } from '../core/cutsReducer.ts';
 import { tr } from '../i18n.ts';
-import type { Id, PressurePoint } from '../core/types.ts';
+import type { PressurePoint } from '../core/types.ts';
 import type { CutsAction } from '../core/cutsReducer.ts';
 import type { LayerAnimSettings } from '../core/layerAnim.ts';
 import type { Gesture } from './useGesture.ts';
 import type { PressEvent } from './useLayerDrag.ts';
 
 /** What is being recorded for a part: its motion path (no mode), its sway curve, or its mosaic rectangle. */
-export interface PathCapture { cutId: Id; layerId: Id; mode?: 'sway' | 'mosaicRect' }
+export interface PathCapture { cutId: DocId; layerId: DocId; mode?: 'sway' | 'mosaicRect' }
 
 
 /**
@@ -31,11 +31,11 @@ export interface PathCapture { cutId: Id; layerId: Id; mode?: 'sway' | 'mosaicRe
  * @param {number} deps.cw
  * @param {number} deps.ch
  */
-export function usePathCapture({ gesture, dispatchCuts, updLayerAnim, notices, cw, ch }: { gesture: Gesture, dispatchCuts: (action: CutsAction) => void, updLayerAnim: (cutId: Id, layerId: Id, patch: Partial<LayerAnimSettings>) => void, notices: { setToast: (s: string) => void }, cw: number, ch: number }) {
+export function usePathCapture({ gesture, dispatchCuts, updLayerAnim, notices, cw, ch }: { gesture: Gesture, dispatchCuts: (action: CutsAction) => void, updLayerAnim: (cutId: DocId, layerId: DocId, patch: Partial<LayerAnimSettings>) => void, notices: { setToast: (s: string) => void }, cw: number, ch: number }) {
     /** {cutId, layerId, mode?} while recording a part's path, sway curve or mosaic rectangle. */
     const [pathCapture, setPathCapture] = useState<PathCapture | null>(null);
     /** {cutId} while drawing a camera path. */
-    const [cameraCapture, setCameraCapture] = useState<{ cutId: Id } | null>(null);
+    const [cameraCapture, setCameraCapture] = useState<{ cutId: DocId } | null>(null);
 
     /** True while a press should record points rather than draw. */
     const active = !!(cameraCapture || pathCapture);

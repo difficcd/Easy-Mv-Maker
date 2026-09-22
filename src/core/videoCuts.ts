@@ -117,7 +117,7 @@ export function partAssigner(count: number, parts: unknown, batch: string, label
  * @param {() => any} opts.nextId
  * @returns {any[]}
  */
-export function buildImportedCuts({ bitmapIds, holds, fps, track, startAt, batch, label, srcKey, parts, rect, nextId }: { bitmapIds: string[], holds?: ArrayLike<number> | null, fps: number, track: number, startAt: number, batch: string, label: string, srcKey?: string, parts?: unknown, rect: { x: number, y: number, w: number, h: number }, nextId: () => Id }): Cut[] {
+export function buildImportedCuts({ bitmapIds, holds, fps, track, startAt, batch, label, srcKey, parts, rect, nextId }: { bitmapIds: string[], holds?: ArrayLike<number> | null, fps: number, track: number, startAt: number, batch: string, label: string, srcKey?: string, parts?: unknown, rect: { x: number, y: number, w: number, h: number }, nextId: () => DocId }): Cut[] {
     const durations = frameDurations(holds, bitmapIds.length, fps);
     const partOf = partAssigner(bitmapIds.length, parts, batch, label);
     const made: Cut[] = [];

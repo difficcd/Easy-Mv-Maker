@@ -4,26 +4,25 @@ import { safeArray } from '../core/geometry.ts';
 import { CutAnimPanel, CameraPanel } from './AnimPanels.tsx';
 import { LayerRows } from './LayerRows.tsx';
 import { tr } from '../i18n.ts';
-import type { Id } from '../core/types.ts';
 import type { LayerRowDeps } from './LayerRows.tsx';
 import { inReadingOrder } from '../core/cutSelection.ts';
 
 /** The CUT / LAYER panel's props, grouped by what they are about. */
 export interface CutLayerPanelProps {
     /** the document as the panel lists it, plus everything the layer rows need */
-    doc: { cuts: Cut[]; currentCutId: Id | null | undefined; copiedCut: unknown; videoBatches: Array<{ id: any, label: string, count: number }>; layerRows: LayerRowDeps };
+    doc: { cuts: Cut[]; currentCutId: DocId | null | undefined; copiedCut: unknown; videoBatches: Array<{ id: PartId, label: string, count: number }>; layerRows: LayerRowDeps };
     cutOps: {
-        handleAddCut: () => void; handleCopyCut: (id: Id) => void; handleCutClick: (e: React.MouseEvent, id: Id) => void; handleDeleteCut: (id: Id) => void;
-        handleDuplicateCut: (id: Id) => void; handlePasteCut: () => void; renameCut: (id: Id, name: string) => void; deleteVideoBatch: (id: any) => void;
-        updCutAnim: (cutId: Id, patch: any) => void; updCutTime: (cutId: Id, field: 'startTime' | 'endTime', value: string) => void; updCutCamera: (cutId: Id, patch: any) => void;
+        handleAddCut: () => void; handleCopyCut: (id: DocId | null) => void; handleCutClick: (e: React.MouseEvent, id: DocId) => void; handleDeleteCut: (id: DocId | null) => void;
+        handleDuplicateCut: (id: DocId | null) => void; handlePasteCut: () => void; renameCut: (id: DocId, name: string) => void; deleteVideoBatch: (id: PartId) => void;
+        updCutAnim: (cutId: DocId | null, patch: any) => void; updCutTime: (cutId: DocId, field: 'startTime' | 'endTime', value: string) => void; updCutCamera: (cutId: DocId | null, patch: any) => void;
     };
-    layerOps: { handleAddFolder: (e: React.MouseEvent, cutId: Id) => void; handleAddLayer: (e: React.MouseEvent, cutId: Id) => void; onListDrop: (e: React.DragEvent, cutId: Id) => void; handleSetTool: (tool: string) => void };
+    layerOps: { handleAddFolder: (e: React.MouseEvent, cutId: DocId | null) => void; handleAddLayer: (e: React.MouseEvent, cutId: DocId | null) => void; onListDrop: (e: React.DragEvent, cutId: DocId) => void; handleSetTool: (tool: string) => void };
     /** the text list and the editor that arrives as a tab */
-    text: { selectedText: { cutId: Id, textId: Id } | null; setSelectedText: (sel: { cutId: Id, textId: Id } | null) => void; openEditText: (cutId: Id, textId: Id) => void; deleteTextObject: (cutId: Id, textId: Id) => void; toggleTextVisible: (cutId: Id, textId: Id) => void; textEditorBody: React.ReactNode; cancelText: () => void };
-    camera: { cameraCapture: { cutId: Id } | null; setCameraCapture: (c: { cutId: Id } | null) => void };
+    text: { selectedText: { cutId: DocId, textId: DocId } | null; setSelectedText: (sel: { cutId: DocId, textId: DocId } | null) => void; openEditText: (cutId: DocId, textId: DocId) => void; deleteTextObject: (cutId: DocId, textId: DocId) => void; toggleTextVisible: (cutId: DocId, textId: DocId) => void; textEditorBody: React.ReactNode; cancelText: () => void };
+    camera: { cameraCapture: { cutId: DocId } | null; setCameraCapture: (c: { cutId: DocId } | null) => void };
     panel: { showRight: boolean; setShowRight: (on: boolean) => void; rightW: number; rightTab: string; setRightTab: (tab: string) => void };
     canvas: { canvasW: number; canvasH: number };
-    cutList: { collapsedCutIds: Set<Id>; expandedCuts: Set<Id>; renamingCutId: Id | null; setRenamingCutId: (id: Id | null) => void; selectedCutIds: Set<Id>; toggleCutCollapse: (id: Id) => void; toggleCutSettings: (id: Id) => void };
+    cutList: { collapsedCutIds: Set<DocId>; expandedCuts: Set<DocId>; renamingCutId: DocId | null; setRenamingCutId: (id: DocId | null) => void; selectedCutIds: Set<DocId>; toggleCutCollapse: (id: DocId) => void; toggleCutSettings: (id: DocId) => void };
 }
 
 // CUT / LAYER panel: the cut list, each cut's layer tree, cut animation and text list.

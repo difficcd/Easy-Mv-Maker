@@ -4,7 +4,6 @@ import { ANIM_DEFAULT } from '../core/cutAnim.ts';
 import { LAYER_ANIM_DEFAULT } from '../core/layerAnim.ts';
 import { CAMERA_DEFAULT, CAMERA_PRESETS, resolveCamera } from '../core/camera.ts';
 import { randomId } from '../core/ids.ts';
-import type { Id } from '../core/types.ts';
 import type { CutAnimSettings } from '../core/cutAnim.ts';
 import type { CameraSettings } from '../core/camera.ts';
 import type { LayerAnimSettings } from '../core/layerAnim.ts';
@@ -23,12 +22,12 @@ interface MovePreset { id: string; label: string; v: Partial<LayerAnimSettings> 
 export interface LayerAnimPanelProps {
     cut: Cut;
     layer: Layer;
-    updLayerAnim: (cutId: Id, layerId: Id, patch: Partial<LayerAnimSettings>) => void;
-    updLayers: (cutId: Id, fn: (cut: Cut) => Partial<Cut>) => void;
+    updLayerAnim: (cutId: DocId, layerId: DocId, patch: Partial<LayerAnimSettings>) => void;
+    updLayers: (cutId: DocId | null, fn: (cut: Cut) => Partial<Cut>) => void;
     pathCapture: PathCapture | null;
     setPathCapture: (f: PathCapture | null | ((p: PathCapture | null) => PathCapture | null)) => void;
-    spineEdit: { cutId: Id, layerId: Id } | null;
-    setSpineEdit: (s: { cutId: Id, layerId: Id } | null) => void;
+    spineEdit: { cutId: DocId, layerId: DocId } | null;
+    setSpineEdit: (s: { cutId: DocId, layerId: DocId } | null) => void;
     /** where the playhead is in this cut, 0..1, for placing a keyframe */
     cutProgress?: number;
 }
@@ -60,7 +59,7 @@ const NumIn = ({ value, onChange, step = 1, min = undefined, max = undefined, w 
 };
 
 // Per-cut animation (in/out, deform, move, easing).
-export function CutAnimPanel({ cut, updCutAnim }: { cut: Cut, updCutAnim: (cutId: Id, patch: Partial<CutAnimSettings>) => void }) {
+export function CutAnimPanel({ cut, updCutAnim }: { cut: Cut, updCutAnim: (cutId: DocId | null, patch: Partial<CutAnimSettings>) => void }) {
     const a: CutAnimSettings = { ...ANIM_DEFAULT, ...cut.anim };
     const set = (o: Partial<CutAnimSettings>) => updCutAnim(cut.id, o);
     return (
@@ -127,7 +126,7 @@ export function CutAnimPanel({ cut, updCutAnim }: { cut: Cut, updCutAnim: (cutId
  * different things: that one moves the drawing inside the frame, this one moves the frame. Putting
  * them in one list made it impossible to tell at a glance which was which.
  */
-export function CameraPanel({ cut, updCutCamera, cameraCapture, setCameraCapture, canvasW, canvasH }: { cut: Cut, updCutCamera: (cutId: Id, patch: Partial<CameraSettings> | null) => void, cameraCapture: { cutId: Id } | null, setCameraCapture: (c: { cutId: Id } | null) => void, canvasW: number, canvasH: number }) {
+export function CameraPanel({ cut, updCutCamera, cameraCapture, setCameraCapture, canvasW, canvasH }: { cut: Cut, updCutCamera: (cutId: DocId | null, patch: Partial<CameraSettings> | null) => void, cameraCapture: { cutId: DocId } | null, setCameraCapture: (c: { cutId: DocId } | null) => void, canvasW: number, canvasH: number }) {
     const c: CameraSettings = { ...CAMERA_DEFAULT, ...cut.camera };
     const set = (o: Partial<CameraSettings> | null) => updCutCamera(cut.id, o);
     // What the camera actually resolves to, preset included. Reading the raw fields would show
@@ -435,7 +434,7 @@ export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCaptur
 
 // Boiling-line settings, per layer. Strength, wavelength, speed and a minimum-width
 // threshold are all exposed, the threshold being what stops hairlines shimmering wildly.
-export function JitterPanel({ cut, layer, updLayer }: { cut: Cut, layer: Layer, updLayer: (cutId: Id, layerId: Id, patch: Partial<Layer>) => void }) {
+export function JitterPanel({ cut, layer, updLayer }: { cut: Cut, layer: Layer, updLayer: (cutId: DocId | null, layerId: DocId, patch: Partial<Layer>) => void }) {
     const on = !!layer.roughen;
     const set = (o: Partial<Layer>) => updLayer(cut.id, layer.id, o);
     return (
@@ -449,7 +448,7 @@ export function JitterPanel({ cut, layer, updLayer }: { cut: Cut, layer: Layer, 
             </div>
             {on && <>
                 <div style={R()}>
-                    <NumIn label={tr('강도')} value={layer.roughen} onChange={v => set({ roughen: Math.max(0.1, v) })} step={0.2} min={0.1} w={48} title={tr('흔들리는 폭(px)')} />
+                    <NumIn label={tr('강도')} value={layer.roughen ?? 0} onChange={v => set({ roughen: Math.max(0.1, v) })} step={0.2} min={0.1} w={48} title={tr('흔들리는 폭(px)')} />
                     <NumIn label={tr('파장')} value={layer.roughWave ?? 1} onChange={v => set({ roughWave: v })} step={0.1} min={0.2} w={48} title={tr('물결 길이 배수 — 크게 하면 더 완만하고 둥글게')} />
                 </div>
                 <div style={R()}>

@@ -55,7 +55,9 @@ know storage exists at all, because reading it is `useStored`'s decoder.
 
 **core/** — pure logic, all of it tested, all of it TypeScript (the first folder converted; the
 shapes the modules share are in `types.ts`, and the document's own are declared in
-`src/document.d.ts`).
+`src/document.d.ts`, which lists every field a cut, layer, stroke or text can hold and has no
+index signature, so a misspelt one is an error. Ids there are `DocId` - a number, from `nextId`
+- or `PartId` - a string; the wider `Id` is for a helper that does not care which it was given).
 
 - `cutsReducer.ts` — **every change to the document goes through here.** `cuts` is a `useReducer`
   and the actions are built by exported creator functions (`updateCut`, `upsertText`,

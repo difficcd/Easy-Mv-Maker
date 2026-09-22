@@ -243,7 +243,7 @@ export default function App() {
     const [onionNext, setOnionNext] = useState(false);
     const [resizingData, setResizingData] = useState<CutResizeData | null>(null);
     const [draggingCutData, setDraggingCutData] = useState<CutDragData | null>(null);
-    const [currentCutId, setCurrentCutId] = useState(1);
+    const [currentCutId, setCurrentCutId] = useState<DocId | null>(1);
     /**
      * The cut being edited. Derived rather than stored, so it cannot drift from currentCutId.
      *
@@ -363,7 +363,7 @@ export default function App() {
     const [copiedCut, setCopiedCut] = useState<Cut | null>(null);
     const [selection, setSelection] = useState<any>(null);
     const [textEdit, setTextEdit] = useState<TextEdit | null>(null);
-    const [selectedText, setSelectedText] = useState<{ cutId: Id, textId: Id } | null>(null);
+    const [selectedText, setSelectedText] = useState<{ cutId: DocId, textId: DocId } | null>(null);
     // The pixels strokes point at - fills, pastes, video frames - and the rules for decoding and
     // releasing them: canvas/bitmapStore. Made once; the canvas size is read when a frame is
     // decoded, since it can change after the store exists.
@@ -396,8 +396,8 @@ export default function App() {
     const cutDragMovedRef = useRef(false); // distinguishes a click (select) from a real drag (move)
     const cutDragArmedRef = useRef(false); // long-press must arm before a touch can drag a cut
     const cutDragTimerRef = useRef<any>(null);
-    const [animLayer, setAnimLayer] = useState<{ cutId: Id, layerId: Id } | null>(null); // whose part-anim panel is open
-    const [jitterLayer, setJitterLayer] = useState<{ cutId: Id, layerId: Id } | null>(null); // whose boiling-settings panel is open
+    const [animLayer, setAnimLayer] = useState<{ cutId: DocId, layerId: DocId } | null>(null); // whose part-anim panel is open
+    const [jitterLayer, setJitterLayer] = useState<{ cutId: DocId, layerId: DocId } | null>(null); // whose boiling-settings panel is open
     // A transparent canvas is a different document, not a different view: the frame really has
     // no background, and the checkerboard behind it is CSS on the element rather than pixels.
     // Painting the checkerboard in would put it in every export.
@@ -426,12 +426,12 @@ export default function App() {
     const { view, setView, zoomCanvas, resetView, spaceDown, spaceDownRef, panningRef, lastInteractRef,
         onAreaPointerDown, onAreaPointerMove, onAreaPointerUp } = useCanvasView({ canvasAreaRef });
     // {cutId, layerId} while the sway profile is being dragged on the canvas rather than typed.
-    const [spineEdit, setSpineEdit] = useState<{ cutId: Id, layerId: Id } | null>(null);
+    const [spineEdit, setSpineEdit] = useState<{ cutId: DocId, layerId: DocId } | null>(null);
 
 
     const isDraggingOrResizingRef = useRef(false);
 
-    const updLayers = (cutId: Id, fn: (cut: Cut) => Partial<Cut>) => dispatchCuts(patchCut(cutId, fn));
+    const updLayers = (cutId: DocId | null, fn: (cut: Cut) => Partial<Cut>) => dispatchCuts(patchCut(cutId, fn));
 
     // Work out which layer to actually draw into: if the active one is a folder or missing,
     // fall back to the topmost visible drawing layer. A hidden active layer is kept, but made
@@ -439,7 +439,7 @@ export default function App() {
     const resolveDrawLayer = (cut: Cut | null | undefined) => resolveDrawLayerPure(cut, flattenLayersInUiOrder);
     // Commit the stroke to its target layer and force that layer and its parent folders
     // visible, so the result is always on screen.
-    const commitStrokeToLayer = (cutId: Id, layerId: Id, st: Stroke | Stroke[], place?: (strokes: Stroke[], st: Stroke | Stroke[]) => Stroke[]) => {
+    const commitStrokeToLayer = (cutId: DocId | null, layerId: DocId, st: Stroke | Stroke[], place?: (strokes: Stroke[], st: Stroke | Stroke[]) => Stroke[]) => {
         // A missing layer yields null; an empty patch then leaves the cut alone rather than
         // writing a half-formed one.
         updLayers(cutId, c => commitStroke(c.layers, layerId, st, place) || {});
@@ -981,11 +981,13 @@ export default function App() {
         const nc = mkCut({ id: nextId(), name: `Cut ${cuts.length + 1}`, startTime: ns, endTime: ns + DEFAULT_CUT_DURATION, track: trk });
         dispatchCuts(addCuts([nc])); setCurrentCutId(nc.id); setCurrentTime(ns);
     };
-    const handleDeleteCut = (id: Id) => {
-        const ids = (cutList.selectedCutIds.size > 1 && cutList.selectedCutIds.has(id)) ? new Set(cutList.selectedCutIds) : new Set([id]);
+    const handleDeleteCut = (id: DocId | null) => {
+        const ids = (id != null && cutList.selectedCutIds.size > 1 && cutList.selectedCutIds.has(id))
+            ? new Set(cutList.selectedCutIds)
+            : new Set(id != null ? [id] : []);
         const nc = cuts.filter(c => !ids.has(c.id));
         dispatchCuts(replaceCuts(nc));
-        if (ids.has(currentCutId)) setCurrentCutId(nc.length > 0 ? nc[0].id : null);
+        if (currentCutId != null && ids.has(currentCutId)) setCurrentCutId(nc.length > 0 ? nc[0].id : null);
         cutList.setSelectedCutIds(new Set());
     };
     // Clear all drawing + text in the current cut (every layer's strokes), keeping the layers.
@@ -996,20 +998,20 @@ export default function App() {
         cancelSelection();
         setSelectedText(null);
     };
-    const updCutTime = (id: Id, field: 'startTime' | 'endTime' | 'track', val: string) => { let v = Math.max(0, parseFloat(val) || 0); if (field === 'track') { v = Math.round(v); if (v >= numTracks) setNumTracks(v + 1); } dispatchCuts(updateCut(id, { [field]: v })); };
-    const renameCut = (id: Id, name: string) => dispatchCuts(updateCut(id, { name }));
-    const updCutAnim = (id: Id, patch: Partial<CutAnimSettings>) => dispatchCuts(setCutAnim(id, patch));
-    const updCutCamera = (id: Id, patch: Partial<CameraSettings> | null) => dispatchCuts(setCutCamera(id, patch));
-    const updLayerAnim = (cutId: Id, layerId: Id, patch: Partial<LayerAnimSettings>) => dispatchCuts(setLayerAnim(cutId, layerId, patch));
+    const updCutTime = (id: DocId, field: 'startTime' | 'endTime' | 'track', val: string) => { let v = Math.max(0, parseFloat(val) || 0); if (field === 'track') { v = Math.round(v); if (v >= numTracks) setNumTracks(v + 1); } dispatchCuts(updateCut(id, { [field]: v })); };
+    const renameCut = (id: DocId, name: string) => dispatchCuts(updateCut(id, { name }));
+    const updCutAnim = (id: DocId | null, patch: Partial<CutAnimSettings>) => dispatchCuts(setCutAnim(id, patch));
+    const updCutCamera = (id: DocId | null, patch: Partial<CameraSettings> | null) => dispatchCuts(setCutCamera(id, patch));
+    const updLayerAnim = (cutId: DocId, layerId: DocId, patch: Partial<LayerAnimSettings>) => dispatchCuts(setLayerAnim(cutId, layerId, patch));
     const handleAddTrack = () => setNumTracks(p => p + 1);
     const handleDeleteTrack = (i: number) => { if (numTracks <= 1) return; if (!window.confirm(tr('Track {0} 삭제?', i))) return; dispatchCuts(deleteTrack(i)); setNumTracks(p => p - 1); };
     // Click a cut in the list: plain = select one, Ctrl/Cmd = toggle, Shift = range (timeline order).
     // Plain, Ctrl and Shift clicks are three selection rules; core/cutSelection has them.
-    const handleCutClick = (e: React.MouseEvent, id: Id) => {
+    const handleCutClick = (e: React.MouseEvent, id: DocId) => {
         cutList.setSelectedCutIds(p => selectionAfterClick(p, cuts, currentCutId, id, { ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey }));
         setCurrentCutId(id as number);
     };
-    const handleCopyCut = (id: Id) => {
+    const handleCopyCut = (id: DocId | null) => {
         // The whole multi-selection when this cut is in it, else just this one. Deep-copied,
         // so later edits to the originals do not reach the clipboard.
         const arr = cutsToCopy(cuts, cutList.selectedCutIds, id).map(c => JSON.parse(JSON.stringify(c)));
@@ -1078,7 +1080,7 @@ export default function App() {
         finally { notices.setProgress(null); }
     };
 
-    const handleDuplicateCut = (id: Id) => {
+    const handleDuplicateCut = (id: DocId | null) => {
         const cut = cuts.find(c => c.id === (id ?? currentCutId));
         if (!cut) return;
         const dur = cut.endTime - cut.startTime;
@@ -1093,11 +1095,11 @@ export default function App() {
 
     // What each does to the layer stack lives in core/layerOps; these only stop the click from
     // also selecting the cut row underneath.
-    const handleAddLayer = (e: React.MouseEvent, cutId: Id) => { e.stopPropagation(); updLayers(cutId, appendLayer); };
-    const handleAddFolder = (e: React.MouseEvent, cutId: Id) => { e.stopPropagation(); updLayers(cutId, appendFolder); };
-    const handleDeleteLayer = (e: React.MouseEvent, cutId: Id, layerId: Id) => { e.stopPropagation(); updLayers(cutId, c => removeLayerTree(c, layerId)); };
-    const handleToggleVisible = (e: React.MouseEvent, cutId: Id, layerId: Id) => { e.stopPropagation(); updLayers(cutId, c => ({ layers: patchLayer(c.layers, layerId, l => ({ visible: !l.visible })) })); };
-    const handleSetActive = (e: React.MouseEvent, cutId: Id, layerId: Id) => {
+    const handleAddLayer = (e: React.MouseEvent, cutId: DocId | null) => { e.stopPropagation(); updLayers(cutId, appendLayer); };
+    const handleAddFolder = (e: React.MouseEvent, cutId: DocId | null) => { e.stopPropagation(); updLayers(cutId, appendFolder); };
+    const handleDeleteLayer = (e: React.MouseEvent, cutId: DocId | null, layerId: DocId) => { e.stopPropagation(); updLayers(cutId, c => removeLayerTree(c, layerId)); };
+    const handleToggleVisible = (e: React.MouseEvent, cutId: DocId | null, layerId: DocId) => { e.stopPropagation(); updLayers(cutId, c => ({ layers: patchLayer(c.layers, layerId, l => ({ visible: !l.visible })) })); };
+    const handleSetActive = (e: React.MouseEvent, cutId: DocId | null, layerId: DocId) => {
         e.stopPropagation();
         const cut = cuts.find(c => c.id === cutId); if (!cut) return;
         const layer = cut.layers.find(l => l.id === layerId); if (!layer || layer.type === 'folder') return;
@@ -1106,13 +1108,13 @@ export default function App() {
         // layer rather than a text picked earlier.
         setSelectedText(null);
     };
-    const handleToggleFolder = (e: React.MouseEvent, cutId: Id, fid: Id) => { e.stopPropagation(); updLayers(cutId, c => ({ layers: patchLayer(c.layers, fid, l => ({ collapsed: !l.collapsed })) })); };
+    const handleToggleFolder = (e: React.MouseEvent, cutId: DocId | null, fid: DocId) => { e.stopPropagation(); updLayers(cutId, c => ({ layers: patchLayer(c.layers, fid, l => ({ collapsed: !l.collapsed })) })); };
     // Boiling: wobbles the strokes already on the layer. Each click cycles off, light, strong,
     // and it never alters the stored strokes.
     // Opens and closes the boiling settings, where strength, wavelength, speed and the minimum
     // width are entered directly.
-    const updLayerProps = (cutId: Id, layerId: Id, obj: Partial<Layer>) => dispatchCuts(updateLayer(cutId, layerId, obj));
-    const toggleJitterPanel = (e: React.MouseEvent, cutId: Id, layerId: Id) => { e.stopPropagation(); setJitterLayer(j => (j && j.cutId === cutId && j.layerId === layerId) ? null : { cutId, layerId }); };
+    const updLayerProps = (cutId: DocId | null, layerId: DocId, obj: Partial<Layer>) => dispatchCuts(updateLayer(cutId, layerId, obj));
+    const toggleJitterPanel = (e: React.MouseEvent, cutId: DocId, layerId: DocId) => { e.stopPropagation(); setJitterLayer(j => (j && j.cutId === cutId && j.layerId === layerId) ? null : { cutId, layerId }); };
 
     // Reordering layers by drag: the state and handlers are the hook's, the moves are layerOps.
     const { dragLayerInfo, dropInfo, onLayerDragStart, onLayerDragOver, onLayerDrop, onListDrop, onLayerDragEnd } = useLayerDnD({ updLayers });
@@ -1191,11 +1193,11 @@ export default function App() {
         const layer = cut?.layers.find(l => l.id === gesture.target.current);
         if (!cut || !layer) return;
         const src = ensureLayerCanvas(cut.id, layer); if (!src) return;
-        const rad = Math.max(2, st.size);
+        const rad = Math.max(2, st.size ?? 1);
         // Only the affected region is processed, which keeps large canvases cheap.
         const box = regionBounds(st.points, rad + 4, CANVAS_W, CANVAS_H);
         if (!box) return;
-        const blurred = blurMaskedRegion(src, box, st.points, rad, () => document.createElement('canvas'));
+        const blurred = blurMaskedRegion(src, box, st.points ?? [], rad, () => document.createElement('canvas'));
         const bitmapId = storeBitmap(blurred.getContext('2d')!.getImageData(0, 0, box.w, box.h));
         commitStrokeToLayer(currentCutId, layer.id, { id: nextId(), tool: 'paste', bitmapId, x: box.x, y: box.y, w: box.w, h: box.h });
     };
@@ -1297,10 +1299,10 @@ export default function App() {
     // Open the text editor for a new text at this point. The editor is a docked panel, so the
     // point is only where the text will sit on the canvas; it no longer positions anything on
     // screen.
-    const openTextEditorAt = (pos: Point, currentCut: Cut) => {
+    const openTextEditorAt = (pos: Point, cut: Cut) => {
         setTextEdit({
-            cutId: currentCutId,
-            layerId: currentCut.activeLayerId,
+            cutId: cut.id,
+            layerId: cut.activeLayerId,
             ...blankTextEdit(pos, { color, opacity }),
         });
     };
@@ -1308,7 +1310,7 @@ export default function App() {
     // Bucket fill. The region is worked out against what is actually visible at and above the
     // active layer, so a line drawn on a layer above still acts as a boundary, and the result
     // lands as a pasted bitmap rather than a stroke - a filled region has no path to store.
-    const floodFillAt = (pos: Point, currentCut: Cut, activeLayer: Layer) => {
+    const floodFillAt = (pos: Point, cut: Cut, activeLayer: Layer) => {
         const tmpCanvas = document.createElement('canvas');
         sizeCanvas(tmpCanvas, CANVAS_W, CANVAS_H);
         const tctx = tmpCanvas.getContext('2d')!;
@@ -1318,16 +1320,16 @@ export default function App() {
         // compares the layer's signature and redraws when it does not match. Reading the map
         // raw meant a line drawn and then immediately filled inside was invisible to the fill,
         // which leaked straight across it.
-        const activeCanvas = ensureLayerCanvas(currentCut.id, activeLayer);
+        const activeCanvas = ensureLayerCanvas(cut.id, activeLayer);
         if (activeCanvas) tctx.drawImage(activeCanvas, 0, 0);
         else drawStrokesOnCtx(tctx, activeLayer.strokes || [], false, bitmapStoreRef.current);
 
-        const stack = flattenLayersInUiOrder(currentCut?.layers || []).filter(l => l.type === 'layer' && l.visible !== false);
+        const stack = flattenLayersInUiOrder(cut?.layers || []).filter(l => l.type === 'layer' && l.visible !== false);
         const activeIndex = stack.findIndex(l => l.id === activeLayer.id);
         for (let i = 0; i < activeIndex; i++) {
             // Same for the layers above: they are boundaries for the fill, so a stale one is a
             // boundary that is not there.
-            const lc = ensureLayerCanvas(currentCut.id, stack[i]);
+            const lc = ensureLayerCanvas(cut.id, stack[i]);
             if (lc) tctx.drawImage(lc, 0, 0);
         }
 
@@ -1347,7 +1349,7 @@ export default function App() {
         noteColorUsed(color);
         // Through commitStrokeToLayer for the reveal - a fill into a hidden layer landed and
         // showed nothing - with insertFill as the placement, since paint goes under the ink.
-        commitStrokeToLayer(currentCutId, activeLayer.id, stroke, (strokes: Stroke[], st: Stroke) => insertFill(strokes, st, region.overPaint));
+        commitStrokeToLayer(cut.id, activeLayer.id, stroke, (strokes: Stroke[], st: Stroke | Stroke[]) => insertFill(strokes, st as Stroke, region.overPaint));
     };
 
     /**
@@ -1607,7 +1609,7 @@ export default function App() {
         setTextEdit(null);
     };
 
-    const openEditText = (cutId: Id, textId: Id) => {
+    const openEditText = (cutId: DocId, textId: DocId) => {
         const cut = cuts.find(c => c.id === cutId);
         const t = safeArray(cut?.texts).find(tt => tt.id === textId);
         if (!t) return;
@@ -1615,12 +1617,12 @@ export default function App() {
         setTextEdit({ cutId, textId, ...editFromText(t, { color, opacity }) });
     };
 
-    const deleteTextObject = (cutId: Id, textId: Id) => {
+    const deleteTextObject = (cutId: DocId, textId: DocId) => {
         dispatchCuts(deleteText(cutId, textId));
         if (selectedText?.cutId === cutId && selectedText?.textId === textId) setSelectedText(null);
     };
 
-    const toggleTextVisible = (cutId: Id, textId: Id) => {
+    const toggleTextVisible = (cutId: DocId, textId: DocId) => {
         dispatchCuts(toggleTextVisibleAction(cutId, textId));
     };
 
@@ -1806,7 +1808,7 @@ export default function App() {
 
     // Imported frame sets, derived from the cuts themselves (so they survive save/load).
     const videoBatches = deriveVideoBatches(cuts, tr('영상'));
-    const deleteVideoBatch = (batchId: Id) => {
+    const deleteVideoBatch = (batchId: PartId) => {
         const b = videoBatches.find(x => x.id === batchId);
         if (!b || !window.confirm(tr('"{0}" 프레임 {1}컷을 삭제할까요?', b.label, b.count))) return;
         const left = cuts.filter(c => c.videoBatch !== batchId);
@@ -1817,7 +1819,7 @@ export default function App() {
     };
 
     // Select a part: scope playback to it and jump the playhead to its start.
-    const selectPart = (partId: Id | null) => {
+    const selectPart = (partId: PartId | null) => {
         cutList.setActivePartId(partId);
         const p = partId ? parts.find(x => x.id === partId) : null;
         if (p) {
@@ -1836,14 +1838,14 @@ export default function App() {
         dispatchCuts(assignPartTo(cutList.selectedCutIds, pid, name));
         cutList.setActivePartId(pid);
     };
-    const renamePart = (partId: Id) => {
+    const renamePart = (partId: PartId) => {
         const p = parts.find(x => x.id === partId); if (!p) return;
         const name = window.prompt(tr('파트 이름 변경:'), p.name);
         if (name == null) return;
         dispatchCuts(renamePartAction(partId, name));
     };
     // Ungroup a part (cuts stay, just lose their part membership).
-    const ungroupPart = (partId: Id) => {
+    const ungroupPart = (partId: PartId) => {
         dispatchCuts(ungroupPartAction(partId));
         if (cutList.activePartId === partId) cutList.setActivePartId(null);
     };

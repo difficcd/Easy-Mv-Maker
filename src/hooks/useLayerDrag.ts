@@ -45,7 +45,9 @@ export function useLayerDrag({ gesture, cuts, dispatchCuts, setDragTick, liveCtx
     };
 
     /** The press, with the layers that will move. */
-    const begin = (e: PressEvent, pos: Point, cutId: Id, layerIds: Id[]) => {
+    const begin = (e: PressEvent, pos: Point, cutId: DocId | null, layerIds: Id[]) => {
+        // No cut, no layers to move.
+        if (cutId == null) return;
         gesture.begin(e);
         gesture.layerDrag.current = { cutId, layerIds, startPos: { x: pos.x, y: pos.y }, dx: 0, dy: 0 };
         renderPreview();            // draw immediately on press so the screen does not flash empty

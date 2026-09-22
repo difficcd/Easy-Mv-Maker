@@ -41,8 +41,8 @@ export interface TextObject {
     color2?: string;
     /** rounded highlight painted behind the text */
     bgColor?: string;
-    /** stroke width in px */
-    outline?: number;
+    /** whether to stroke an outline; its width follows the font size */
+    outline?: boolean;
     outlineColor?: string;
     shadow?: boolean;
     shadowColor?: string;

@@ -52,7 +52,7 @@ export function bakeFactor(rate: unknown): number {
 /** A duration in seconds, k times longer. Anything that is not a number is left as it is. */
 const longer = (v: unknown, k: number) => (Number.isFinite(Number(v)) ? Number(v) * k : v);
 /** A rate per second, k times slower. Zero stays zero - it means "stopped", not "very slow". */
-const slower = (v: unknown, k: number) => (Number.isFinite(Number(v)) && Number(v) !== 0 ? Number(v) / k : v);
+const slower = (v: number, k: number): number => (Number.isFinite(Number(v)) && Number(v) !== 0 ? Number(v) / k : v);
 
 /** @param {any} anim @param {number} k */
 function scaleCutAnim(anim: any, k: number) {
@@ -81,8 +81,9 @@ function scaleTextAnim(anim: any, k: number) {
 function scaleLayer(layer: Layer, k: number): Layer {
     const out = { ...layer };
     // swaySpeed drives sin(2*PI*swaySpeed*time) off the absolute clock.
-    if (layer.anim?.swaySpeed !== undefined) {
-        out.anim = { ...layer.anim, swaySpeed: slower(layer.anim.swaySpeed, k) };
+    const anim = layer.anim;
+    if (anim?.swaySpeed !== undefined) {
+        out.anim = { ...anim, swaySpeed: slower(anim.swaySpeed, k) };
     }
     // roughSpeed multiplies a phase that advances at a fixed rate per second, so it is the only
     // handle on how fast a boiling line boils.
