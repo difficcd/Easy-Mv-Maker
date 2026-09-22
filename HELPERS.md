@@ -1291,7 +1291,7 @@ What each tool does when the pen goes down, and when it moves.
 |---|---|
 | `TOOLS` | One entry per tool, keyed by the effective tool name, each `{down, move}` over the same context object (`toolCtx` in App). The value is that a tool's two halves sit together — they used to be 150 lines apart in two switches. The *end* of a gesture is deliberately not here: it is decided by which gesture is in flight, not by which tool is selected now, and the two can differ. |
 
-## `src/export/byteWriter.js`
+## `src/export/byteWriter.ts`
 
 A growable byte buffer, little-endian. Both export formats want one for the same reason: a JS array
 holds each byte as a number - eight bytes of heap per byte of output - so a handful of full-size
@@ -1301,7 +1301,7 @@ frames becomes hundreds of megabytes before anything is written.
 |---|---|
 | `ByteWriter` | Doubles a Uint8Array instead of collecting bytes in an array. `u32` uses `>>>` so a CRC or an offset with its top bit set does not come out negative and write the wrong bytes. |
 
-## `src/export/download.js`
+## `src/export/download.ts`
 
 Handing a finished file to the browser. Written three times over - the project save's fallback,
 the frame/GIF export and the screen recording - and two of the three never revoked the object URL,
@@ -1311,7 +1311,7 @@ which pins the whole Blob for the life of the page.
 |---|---|
 | `downloadBlob` | Save a Blob to the user's downloads under a given name. Revokes the URL on a delay, because the click only starts the download and revoking mid-read cancels it. |
 
-## `src/export/gif.js`
+## `src/export/gif.ts`
 
 A GIF89a encoder, because a transparent animation is what was asked for and no browser API makes
 one: MediaRecorder loses the alpha channel above about 480p, and WebCodecs reports `alpha: 'keep'`
@@ -1326,7 +1326,7 @@ unsupported for every codec it offers.
 | `lzwEncode` | GIF's variable-width LZW, including the clear code when the table fills - a decoder that did not expect it would read garbage from the first full table on. |
 | `paletteBits` | The bit width for a colour table of a given size, never below the 2 GIF requires. |
 
-## `src/export/recorder.js`
+## `src/export/recorder.ts`
 
 The pieces of recording the canvas to a video that do not depend on the app.
 
@@ -1336,7 +1336,7 @@ The pieces of recording the canvas to a video that do not depend on the app.
 | `frameSource` | A canvas stream that takes a frame only when asked, so the recording is painted on a fixed grid (#156); falls back to self-sampling at the given fps where requestFrame is missing. |
 | `startRecorder` | A started MediaRecorder over the tracks, retried without the type if the browser refuses it, handing the finished Blob to a callback. |
 
-## `src/export/zip.js`
+## `src/export/zip.ts`
 
 A store-only ZIP writer, for the PNG frame sequence a transparent project exports as.
 

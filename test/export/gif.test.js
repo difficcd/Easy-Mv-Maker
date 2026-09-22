@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { buildPalette, toIndices, lzwEncode, paletteBits, encodeGif, GifWriter } from '../../src/export/gif.js';
+import { buildPalette, toIndices, lzwEncode, paletteBits, encodeGif, GifWriter } from '../../src/export/gif.ts';
 
 const rgba = (...px) => new Uint8ClampedArray(px.flat());
 const OPAQUE_RED = [255, 0, 0, 255];

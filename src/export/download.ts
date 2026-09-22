@@ -25,7 +25,7 @@
  * @param {string} name file name offered to the browser
  * @returns {void}
  */
-export function downloadBlob(blob, name) {
+export function downloadBlob(blob: Blob, name: string): void {
     const url = URL.createObjectURL(blob);
     const a = Object.assign(document.createElement('a'), { href: url, download: name, style: 'display:none' });
     document.body.appendChild(a);

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { pickRecordingType } from '../../src/export/recorder.js';
+import { pickRecordingType } from '../../src/export/recorder.ts';
 
 test('mp4 with h264 is preferred when the browser has it', () => {
     assert.deepEqual(pickRecordingType(t => t === 'video/mp4;codecs=h264' || t.startsWith('video/webm')), { mimeType: 'video/mp4;codecs=h264', ext: 'mp4' });
