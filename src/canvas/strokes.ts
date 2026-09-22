@@ -151,11 +151,11 @@ const JITTER_SPACING = 6;
 
 const _smoothCache = new WeakMap<object, { n: number, pts: PressurePoint[] }>();
 
-function jitterBasePoints(stroke: Stroke): PressurePoint[] {
+function jitterBasePoints(stroke: Stroke, points: PressurePoint[]): PressurePoint[] {
     const hit = _smoothCache.get(stroke);
-    if (hit && hit.n === stroke.points.length) return hit.pts;
-    const pts = resamplePts(smoothPoints(stroke.points), JITTER_SPACING);
-    _smoothCache.set(stroke, { n: stroke.points.length, pts });
+    if (hit && hit.n === points.length) return hit.pts;
+    const pts = resamplePts(smoothPoints(points), JITTER_SPACING);
+    _smoothCache.set(stroke, { n: points.length, pts });
     return pts;
 }
 
@@ -272,7 +272,7 @@ function takeScratch(w: number, h: number): CanvasRenderingContext2D {
  * @param {Map<string, any> | undefined} bitmapStore
  * @returns {CanvasImageSource | null}
  */
-function strokePixels(s: { bitmapId?: string | null, imageData?: ImageData }, bitmapStore: BitmapLookup | null | undefined): CanvasImageSource | null {
+function strokePixels(s: { bitmapId?: string | null, imageData?: ImageData | null }, bitmapStore: BitmapLookup | null | undefined): CanvasImageSource | null {
     const entry = s.bitmapId ? bitmapStore?.get(s.bitmapId) : undefined;
     if (entry?.imageBitmap) return entry.imageBitmap;
     const img = entry?.imageData || s.imageData;
@@ -311,7 +311,7 @@ export function drawStrokesOnCtx(ctx: CanvasRenderingContext2D, strokes: readonl
             if (!src) return;
             ctx.globalCompositeOperation = 'destination-out';
             ctx.globalAlpha = 1.0;
-            ctx.drawImage(src, s.x, s.y);
+            ctx.drawImage(src, s.x ?? 0, s.y ?? 0);
             ctx.globalCompositeOperation = 'source-over';
             ctx.globalAlpha = 1.0;
             return;
@@ -325,28 +325,35 @@ export function drawStrokesOnCtx(ctx: CanvasRenderingContext2D, strokes: readonl
             // it. Only pastes that carry the fields take this path, so nothing older changes.
             if (isWarped(s)) {
                 const src = bmp || (img && imageDataCanvas(img));
-                if (src) drawWarped(ctx, src, src.width, src.height, { x: s.x, y: s.y, w: s.w ?? src.width, h: s.h ?? src.height, rot: s.rot, skew: s.skew, bend: s.bend });
+                if (src) drawWarped(ctx, src, src.width, src.height, { x: s.x ?? 0, y: s.y ?? 0, w: s.w ?? src.width, h: s.h ?? src.height, rot: s.rot, skew: s.skew, bend: s.bend });
                 return;
             }
             if (bmp) {
-                if (typeof s.w === 'number' && typeof s.h === 'number') ctx.drawImage(bmp, s.x, s.y, s.w, s.h);
-                else ctx.drawImage(bmp, s.x, s.y);
+                if (typeof s.w === 'number' && typeof s.h === 'number') ctx.drawImage(bmp, s.x ?? 0, s.y ?? 0, s.w, s.h);
+                else ctx.drawImage(bmp, s.x ?? 0, s.y ?? 0);
             } else if (img) {
                 if (typeof s.w === 'number' && typeof s.h === 'number' && (s.w !== img.width || s.h !== img.height)) {
-                    ctx.drawImage(imageDataCanvas(img), s.x, s.y, s.w, s.h);
+                    ctx.drawImage(imageDataCanvas(img), s.x ?? 0, s.y ?? 0, s.w, s.h);
                 } else {
-                    ctx.putImageData(img, s.x, s.y);
+                    ctx.putImageData(img, s.x ?? 0, s.y ?? 0);
                 }
             }
-            else if (s.imageData) ctx.putImageData(s.imageData, s.x, s.y);
+            else if (s.imageData) ctx.putImageData(s.imageData, s.x ?? 0, s.y ?? 0);
             return;
         }
         if (s.tool === 'fill') {
-            ctx.fillStyle = s.color; ctx.globalAlpha = s.opacity ?? 1;
+            ctx.fillStyle = s.color ?? '#000'; ctx.globalAlpha = s.opacity ?? 1;
             ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
             ctx.globalAlpha = 1.0; return;
         }
         if (!s.points?.length) return;
+        // Past here the stroke is a drawn one, and these are what it is drawn with. Whatever
+        // made it set them - newStroke in App, the curve tool, the shape tools - so the defaults
+        // stand in only for a document written before the field, exactly as the text branch
+        // above defaults its own font and colour.
+        const points = s.points;
+        const baseSize = s.size ?? 1;
+        const baseColor = s.color ?? '#000';
         // Boiling, from either the per-stroke "rough" pen or the layer effect (layerRough).
         //
         // The rough pen has had no button since the layer effect replaced it, so no new stroke
@@ -357,8 +364,8 @@ export function drawStrokesOnCtx(ctx: CanvasRenderingContext2D, strokes: readonl
         // The dot pen uses this below, so it has to be computed before the pen branch.
         // Strokes under the minimum width are skipped: the thinner the line, the more violent
         // the same amplitude looks.
-        const tooThin = roughMinSize > 0 && (s.size || 0) < roughMinSize;
-        const roughAmp = (s.tool === 'rough') ? (s.roughAmp ?? Math.max(1.5, s.size * 0.35)) : ((layerRough && s.tool !== 'eraser' && !tooThin) ? layerRough : 0);
+        const tooThin = roughMinSize > 0 && (baseSize || 0) < roughMinSize;
+        const roughAmp = (s.tool === 'rough') ? (s.roughAmp ?? Math.max(1.5, baseSize * 0.35)) : ((layerRough && s.tool !== 'eraser' && !tooThin) ? layerRough : 0);
         // Seed = a per-stroke value plus the time phase, so each frame wobbles differently and
         // strokes stay independent of one another.
         const roughSeed = (s.id || 0) + roughPhase * 7919;
@@ -366,21 +373,21 @@ export function drawStrokesOnCtx(ctx: CanvasRenderingContext2D, strokes: readonl
         // once per change, so caching there buys nothing and only costs memory.
         const smooth = (p: readonly PressurePoint[]) => {
             if (!roughAmp) return smoothPoints(p);
-            return roughenPoints(jitterBasePoints(s), roughAmp, roughSeed, roughWave);
+            return roughenPoints(jitterBasePoints(s, points), roughAmp, roughSeed, roughWave);
         };
         // Dot pen: hard square stamps (pixel-art look), no anti-aliased round stroke.
         if (s.tool === 'pen') {
-            const base = Math.max(1, Math.round(s.size));
+            const base = Math.max(1, Math.round(baseSize));
             ctx.globalCompositeOperation = 'source-over';
             ctx.globalAlpha = s.opacity ?? 1;
-            ctx.fillStyle = s.color;
+            ctx.fillStyle = baseColor;
             // The dot pen follows pressure too, through the stamp size. It used to be a fixed
             // size, so drawing with a tablet showed no pressure at all; the stamp itself stays
             // the same hard-edged pixel shape.
             const dotHasPr = s.pen === true || s.points.some((p: PressurePoint) => p.pressure !== undefined && p.pressure !== 0.5);
             const sizeAt = (pr: number) => Math.max(1, Math.round(base * (dotHasPr ? Math.min(2, Math.max(0.15, pr * 2)) : 1)));
             const stamp = (x: number, y: number, size: number) => { const half = size / 2; ctx.fillRect(Math.round(x - half), Math.round(y - half), size, size); };
-            const P = roughAmp ? roughenPoints(jitterBasePoints(s), roughAmp, roughSeed, roughWave) : s.points;
+            const P = roughAmp ? roughenPoints(jitterBasePoints(s, points), roughAmp, roughSeed, roughWave) : s.points;
             if (P.length === 1) {
                 stamp(P[0].x, P[0].y, sizeAt(P[0].pressure ?? 0.5));
             } else {
@@ -405,7 +412,6 @@ export function drawStrokesOnCtx(ctx: CanvasRenderingContext2D, strokes: readonl
         // Pressure at a point of a smoothed path, or the neutral 0.5 when the stroke has none.
         // Every tool below asked this question in its own words.
         const prAt = (pts: readonly PressurePoint[], i: number) => hasPressure && pts.length > 1 ? pressureAt(pts, Math.max(1, i)) : 0.5;
-        const baseColor = s.color;
         const baseOpacity = s.opacity ?? 1;
         // Marker: draw the whole stroke opaque on a temp canvas, then composite once.
         // Compositing per-segment with a translucent multiply darkens every overlap,
@@ -415,7 +421,7 @@ export function drawStrokesOnCtx(ctx: CanvasRenderingContext2D, strokes: readonl
             const tmp = tctx.canvas;
             tctx.lineCap = 'round'; tctx.lineJoin = 'round'; tctx.strokeStyle = baseColor; tctx.fillStyle = baseColor;
             const mp = smooth(s.points);
-            const mw = mp.map((_, i) => hasPressure ? s.size * prAt(mp, i) * 2 : s.size);
+            const mw = mp.map((_, i) => hasPressure ? baseSize * prAt(mp, i) * 2 : baseSize);
             smoothStroke(tctx, mp, mw, () => { });
             ctx.save();
             ctx.globalCompositeOperation = 'multiply';
@@ -432,7 +438,7 @@ export function drawStrokesOnCtx(ctx: CanvasRenderingContext2D, strokes: readonl
             const tmp = tctx.canvas;
             tctx.lineCap = 'round'; tctx.lineJoin = 'round'; tctx.strokeStyle = baseColor; tctx.fillStyle = baseColor;
             const pp = smooth(s.points);
-            const pw = pp.map((_, i) => s.size * (0.65 + 0.35 * Math.min(1, prAt(pp, i) * 2)));
+            const pw = pp.map((_, i) => baseSize * (0.65 + 0.35 * Math.min(1, prAt(pp, i) * 2)));
             smoothStroke(tctx, pp, pw, (i) => { tctx.globalAlpha = 0.5 + 0.5 * Math.min(1, prAt(pp, i) * 2); });
             tctx.globalAlpha = 1; tctx.globalCompositeOperation = 'destination-in';
             const pat = tctx.createPattern(grainTile(), 'repeat'); if (pat) { tctx.fillStyle = pat; tctx.fillRect(0, 0, tmp.width, tmp.height); }
@@ -445,12 +451,12 @@ export function drawStrokesOnCtx(ctx: CanvasRenderingContext2D, strokes: readonl
         // overlap and feather at the edges (instead of a plain blurred line).
         if (s.tool === 'soft') {
             const { r, g, b } = hexToRgb(baseColor);
-            const R = Math.max(2, s.size * 0.9);
+            const R = Math.max(2, baseSize * 0.9);
             const stamp = softStamp(r, g, b, R), half = stamp.width / 2;
             ctx.save();
             ctx.globalAlpha = baseOpacity;
             const put = (x: number, y: number) => ctx.drawImage(stamp, x - half, y - half);
-            const P = roughAmp ? roughenPoints(jitterBasePoints(s), roughAmp, roughSeed, roughWave) : s.points;
+            const P = roughAmp ? roughenPoints(jitterBasePoints(s, points), roughAmp, roughSeed, roughWave) : s.points;
             if (P.length === 1) put(P[0].x, P[0].y);
             for (let i = 1; i < P.length; i++) {
                 const a = P[i - 1], c = P[i], d = Math.hypot(c.x - a.x, c.y - a.y);
@@ -472,7 +478,7 @@ export function drawStrokesOnCtx(ctx: CanvasRenderingContext2D, strokes: readonl
         // the eraser and anything older that never got its own branch. This used to carry pencil
         // and airbrush cases too, which could not be reached and said otherwise.
         const widths = pts.map((_, i) => {
-            const w = s.size * (hasPressure ? prAt(pts, i) * 2 : 1);
+            const w = baseSize * (hasPressure ? prAt(pts, i) * 2 : 1);
             return s.tool === 'brush' ? w * taperAt(Math.max(1, i), n) : w;
         });
         smoothStroke(ctx, pts, widths, () => { ctx.globalAlpha = isEraser ? 1 : baseOpacity; });

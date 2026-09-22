@@ -1,6 +1,6 @@
 import { shapePoints } from '../core/shapeStroke.ts';
 import { patchLayer, appendPoints } from '../core/layerOps.ts';
-import type { Id, PressurePoint } from '../core/types.ts';
+import type { PressurePoint } from '../core/types.ts';
 import type { Gesture } from '../hooks/useGesture.ts';
 
 /**
@@ -16,14 +16,14 @@ export interface ToolContext {
     /** the effective tool: the ruler's or the air tool's mode, else the tool itself */
     etool: string;
     cut: Cut | null | undefined;
-    cutId: Id;
+    cutId: DocId | null;
     gesture: Gesture;
     overlay: { renderStroke: (full?: boolean) => void; scheduleStroke: () => void; restartStroke: () => void; renderLasso: () => void };
     tools: { curve: any; liquify: any; mosaic: any };
     newStroke: (tool: string, points: PressurePoint[], e: any) => any;
     samplesOf: (e: any, pos: PressurePoint) => PressurePoint[];
-    commitStrokeToLayer: (cutId: Id, layerId: Id, stroke: any) => void;
-    updLayers: (cutId: Id, fn: (cut: Cut) => Partial<Cut>) => void;
+    commitStrokeToLayer: (cutId: DocId | null, layerId: DocId, stroke: any) => void;
+    updLayers: (cutId: DocId | null, fn: (cut: Cut) => Partial<Cut>) => void;
     floodFillAt: (pos: PressurePoint, cut: Cut, layer: Layer) => void;
 }
 /** A tool's two halves. A tool with no `move` does everything on the press. */

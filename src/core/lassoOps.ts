@@ -5,7 +5,7 @@
 // answers are small and both were buried in a pointer-up handler, where the awkward case - a
 // path whose ends nearly meet - could not be checked.
 
-import type { Id, Point } from './types.ts';
+import type { Point } from './types.ts';
 
 /** An axis-aligned box in canvas pixels. */
 export interface Rect { x: number; y: number; w: number; h: number }
@@ -217,7 +217,7 @@ export function cropImageData(src: ImageData, box: Rect, makeImageData: (w: numb
  * @param {number} pasteId id for the pixels
  * @returns {{erase: object, paste: object}}
  */
-export function selectionStrokes(sel: FloatingSelection, eraseId: Id, pasteId: Id): { erase: Stroke, paste: Stroke } {
+export function selectionStrokes(sel: FloatingSelection, eraseId: DocId, pasteId: DocId): { erase: Stroke, paste: Stroke } {
     const erase: Stroke = { id: eraseId, tool: 'eraseBitmap', bitmapId: sel.maskBitmapId, x: Math.round(sel.x), y: Math.round(sel.y) };
     const paste: Stroke = {
         id: pasteId, tool: 'paste', bitmapId: sel.bitmapId,

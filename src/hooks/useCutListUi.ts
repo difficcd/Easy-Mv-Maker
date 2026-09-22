@@ -1,6 +1,5 @@
 import { useCallback, useState } from 'react';
 import { toggled } from '../core/cutSelection.ts';
-import type { Id } from '../core/types.ts';
 
 
 // What is picked in the cut list, and how much of it is unfolded.
@@ -18,19 +17,19 @@ import type { Id } from '../core/types.ts';
 
 export function useCutListUi() {
     // --- picked ---
-    const [selectedCutIds, setSelectedCutIds] = useState<Set<Id>>(new Set());
+    const [selectedCutIds, setSelectedCutIds] = useState<Set<DocId>>(new Set());
     /** The rubber-band rectangle, in content pixels, while dragging over the timeline. */
     const [marquee, setMarquee] = useState<any>(null);
     /** Scope playback and editing to one part; null is the whole film. */
-    const [activePartId, setActivePartId] = useState<Id | null>(null);
+    const [activePartId, setActivePartId] = useState<PartId | null>(null);
 
     // --- unfolded ---
-    const [expandedCuts, setExpandedCuts] = useState<Set<Id>>(new Set());
-    const [collapsedCutIds, setCollapsedCutIds] = useState<Set<Id>>(new Set());
-    const [renamingCutId, setRenamingCutId] = useState<Id | null>(null);
+    const [expandedCuts, setExpandedCuts] = useState<Set<DocId>>(new Set());
+    const [collapsedCutIds, setCollapsedCutIds] = useState<Set<DocId>>(new Set());
+    const [renamingCutId, setRenamingCutId] = useState<DocId | null>(null);
 
-    const toggleCutSettings = useCallback((id: Id) => setExpandedCuts(p => toggled(p, id)), []);
-    const toggleCutCollapse = useCallback((id: Id) => setCollapsedCutIds(p => toggled(p, id)), []);
+    const toggleCutSettings = useCallback((id: DocId) => setExpandedCuts(p => toggled(p, id)), []);
+    const toggleCutCollapse = useCallback((id: DocId) => setCollapsedCutIds(p => toggled(p, id)), []);
 
     /**
      * Forget all of it, for a document that is being replaced.

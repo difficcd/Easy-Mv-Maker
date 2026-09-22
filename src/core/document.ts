@@ -6,7 +6,6 @@
 // guard against (two ids in the same millisecond). One constructor, one shape.
 
 import { mkLayer } from './layerOps.ts';
-import type { Id } from './types.ts';
 
 
 /**
@@ -14,7 +13,7 @@ import type { Id } from './types.ts';
  *
  * @param {{id: number, name: string, startTime: number, endTime: number, track?: number}} args
  */
-export function mkCut({ id, name, startTime, endTime, track = 0 }: { id: Id, name: string, startTime: number, endTime: number, track?: number }): Cut {
+export function mkCut({ id, name, startTime, endTime, track = 0 }: { id: DocId, name: string, startTime: number, endTime: number, track?: number }): Cut {
     return { id, name, startTime, endTime, track, layers: [mkLayer(1)], activeLayerId: 1, texts: [] };
 }
 

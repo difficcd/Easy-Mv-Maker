@@ -12,9 +12,9 @@
 import type { Id } from './types.ts';
 
 /** A part as the timeline shows it: derived from the cuts that carry its id. */
-export interface Part { id: Id; name: string; count: number; start: number; end: number }
+export interface Part { id: PartId; name: string; count: number; start: number; end: number }
 /** A batch of cuts one video import produced. */
-export interface VideoBatch { id: Id; label: string; count: number; start: number; end: number }
+export interface VideoBatch { id: PartId; label: string; count: number; start: number; end: number }
 
 /**
  * Group cuts into parts, in timeline order.
@@ -61,13 +61,13 @@ export function deriveVideoBatches(cuts: Cut[] | null | undefined, fallbackName 
 }
 
 /** Put the given cuts in a part, taking them out of whichever one they were in. */
-export function assignPart(cuts: Cut[] | null | undefined, cutIds: Iterable<Id> | Set<Id> | null | undefined, partId: Id, name: string): Cut[] {
+export function assignPart(cuts: Cut[] | null | undefined, cutIds: Iterable<Id> | Set<Id> | null | undefined, partId: PartId, name: string): Cut[] {
     const ids = cutIds instanceof Set ? cutIds : new Set(cutIds || []);
     return (Array.isArray(cuts) ? cuts : []).map(c => ids.has(c.id) ? { ...c, partId, partName: name } : c);
 }
 
 /** Rename a part, which means renaming it on every cut that belongs to it. */
-export function renamePartIn(cuts: Cut[] | null | undefined, partId: Id, name: string): Cut[] {
+export function renamePartIn(cuts: Cut[] | null | undefined, partId: PartId, name: string): Cut[] {
     return (Array.isArray(cuts) ? cuts : []).map(c => c.partId === partId ? { ...c, partName: name } : c);
 }
 

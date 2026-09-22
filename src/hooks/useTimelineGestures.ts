@@ -34,7 +34,7 @@ export interface TimelineGestureDeps {
     timelineMounted: boolean;
     cuts: Cut[];
     currentCutId: Id | null | undefined;
-    setCurrentCutId: (id: Cut['id']) => void;
+    setCurrentCutId: (id: DocId | null) => void;
     maxTime: number;
     pps: number;
     setPps: (f: number | ((prev: number) => number)) => void;
@@ -47,8 +47,8 @@ export interface TimelineGestureDeps {
     audioData: AudioClip | null;
     setScrubbing: (on: boolean) => void;
     setMarquee: (m: { x: number, y: number, w: number, h: number } | null) => void;
-    selectedCutIds: Set<Id>;
-    setSelectedCutIds: (ids: Set<Id>) => void;
+    selectedCutIds: Set<DocId>;
+    setSelectedCutIds: (ids: Set<DocId>) => void;
     videoOverlay: VideoOverlay | null;
 }
 /** A mouse or pen press as the handlers read it; React's PointerEvent has all of it. */
@@ -153,7 +153,7 @@ export function useTimelineGestures({
         const sx = e.clientX - rect.left + el.scrollLeft;
         const sy = e.clientY - rect.top + el.scrollTop;
         const additive = e.shiftKey || e.ctrlKey || e.metaKey;
-        const base = additive ? new Set<Id>(selectedCutIds) : new Set<Id>();
+        const base = additive ? new Set<DocId>(selectedCutIds) : new Set<DocId>();
         const downX = e.clientX, downY = e.clientY;
         let dragging = false;
 
@@ -168,7 +168,7 @@ export function useTimelineGestures({
                 // agrees with what is on screen whatever the zoom and scroll are.
                 const l = Math.min(downX, ev.clientX), r = Math.max(downX, ev.clientX);
                 const t = Math.min(downY, ev.clientY), b = Math.max(downY, ev.clientY);
-                const sel = new Set(base);
+                const sel = new Set<DocId>(base);
                 el.querySelectorAll('.cut-block[data-cutid]').forEach(node => {
                     const nr = node.getBoundingClientRect();
                     if (nr.right >= l && nr.left <= r && nr.bottom >= t && nr.top <= b) {

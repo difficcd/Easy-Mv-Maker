@@ -16,14 +16,13 @@
 // say less than the two explicit lists do.
 
 import { clampNum } from './numInput.ts';
-import type { Id } from './types.ts';
 
 /** The text editor's draft: a text's fields plus which text it is, or null for a new one. */
 export interface TextEdit {
-    textId?: Id | null; cutId?: Id;
+    textId?: DocId | null; cutId?: DocId;
     x: number; y: number; text: string;
     fontSize?: number; fontFamily?: string; color?: string; opacity?: number; visible?: boolean;
-    outline?: boolean; outlineColor?: string; bold?: boolean; italic?: boolean; align?: string;
+    outline?: boolean; outlineColor?: string; bold?: boolean; italic?: boolean; align?: 'left' | 'center' | 'right';
     lineHeight?: number; letterSpacing?: number;
     shadow?: boolean; shadowColor?: string; shadowBlur?: number;
     gradient?: boolean; color2?: string; bgColor?: string;
@@ -44,7 +43,7 @@ const FONT_MAX = 400;
  * @param {any} id the id to store it under - the existing one, or a fresh one for a new text
  * @returns {any}
  */
-export function textFromEdit(edit: TextEdit, id: Id): CutText {
+export function textFromEdit(edit: TextEdit, id: DocId): CutText {
     return {
         id,
         // Rounded because a text's position is a pixel on the canvas, and a fractional one only

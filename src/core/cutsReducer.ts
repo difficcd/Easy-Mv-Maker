@@ -40,20 +40,20 @@ export const replaceCuts = (cuts: Cut[]) => ({ type: 'replaceCuts' as const, cut
 /** Append cuts: a new cut, a tween, an imported video's frames. */
 export const addCuts = (cuts: Cut[]) => ({ type: 'addCuts' as const, cuts });
 /** Change fields on one cut (name, start/end time, track, activeLayerId). */
-export const updateCut = (cutId: Id, patch: Partial<Cut>) => ({ type: 'updateCut' as const, cutId, patch });
+export const updateCut = (cutId: Id | null, patch: Partial<Cut>) => ({ type: 'updateCut' as const, cutId, patch });
 /** Merge into a cut's animation, over the defaults. */
-export const setCutAnim = (cutId: Id, patch: Partial<CutAnimSettings>) => ({ type: 'setCutAnim' as const, cutId, patch });
+export const setCutAnim = (cutId: DocId | null, patch: Partial<CutAnimSettings>) => ({ type: 'setCutAnim' as const, cutId, patch });
 /**
  * Merge into a cut's camera move. Passing null clears it, which is not the same as setting every
  * field back to its default: the renderer skips the transform entirely when there is no camera
  * object at all, and that is the state every existing project is in.
  */
-export const setCutCamera = (cutId: Id, patch: Partial<CameraSettings> | null) => ({ type: 'setCutCamera' as const, cutId, patch });
+export const setCutCamera = (cutId: DocId | null, patch: Partial<CameraSettings> | null) => ({ type: 'setCutCamera' as const, cutId, patch });
 /** Empty a cut's drawing and text, keeping its layers. */
-export const clearCut = (cutId: Id) => ({ type: 'clearCut' as const, cutId });
+export const clearCut = (cutId: DocId | null) => ({ type: 'clearCut' as const, cutId });
 
 /** Change fields on one layer. */
-export const updateLayer = (cutId: Id, layerId: Id, patch: Partial<Layer>) => ({ type: 'updateLayer' as const, cutId, layerId, patch });
+export const updateLayer = (cutId: DocId | null, layerId: DocId, patch: Partial<Layer>) => ({ type: 'updateLayer' as const, cutId, layerId, patch });
 /**
  * Clip a layer to the one below it, or stop clipping.
  *
@@ -61,25 +61,25 @@ export const updateLayer = (cutId: Id, layerId: Id, patch: Partial<Layer>) => ({
  * cached canvas is still correct. What has to be invalidated is the frame, and paintFrame already
  * re-runs when cuts change.
  */
-export const setLayerClipped = (cutId: Id, layerId: Id, clipped: boolean) => ({ type: 'setLayerClipped' as const, cutId, layerId, clipped });
+export const setLayerClipped = (cutId: DocId | null, layerId: DocId, clipped: boolean) => ({ type: 'setLayerClipped' as const, cutId, layerId, clipped });
 /** Merge into a layer's animation, over the defaults. */
-export const setLayerAnim = (cutId: Id, layerId: Id, patch: Partial<LayerAnimSettings>) => ({ type: 'setLayerAnim' as const, cutId, layerId, patch });
+export const setLayerAnim = (cutId: DocId | null, layerId: DocId, patch: Partial<LayerAnimSettings>) => ({ type: 'setLayerAnim' as const, cutId, layerId, patch });
 /** Flatten a layer into the one below it. */
-export const mergeLayerDown = (cutId: Id, layerId: Id, flattenVisibleLeaves: (layers: Layer[]) => Layer[]) => ({ type: 'mergeLayerDown' as const, cutId, layerId, flattenVisibleLeaves });
+export const mergeLayerDown = (cutId: DocId | null, layerId: DocId, flattenVisibleLeaves: (layers: Layer[]) => Layer[]) => ({ type: 'mergeLayerDown' as const, cutId, layerId, flattenVisibleLeaves });
 /** Shift whole layers (and optionally the cut's texts) by a pixel offset. Bumps rev. */
-export const moveLayers = (cutId: Id, layerIds: Iterable<Id>, dx: number, dy: number) => ({ type: 'moveLayers' as const, cutId, layerIds, dx, dy });
+export const moveLayers = (cutId: DocId | null, layerIds: Iterable<Id>, dx: number, dy: number) => ({ type: 'moveLayers' as const, cutId, layerIds, dx, dy });
 
 /** Add a text if it is new, otherwise update it in place. */
-export const upsertText = (cutId: Id, text: CutText) => ({ type: 'upsertText' as const, cutId, text });
+export const upsertText = (cutId: DocId | null, text: CutText) => ({ type: 'upsertText' as const, cutId, text });
 /** Move a text to an absolute position. */
-export const moveText = (cutId: Id, textId: Id, x: number, y: number) => ({ type: 'moveText' as const, cutId, textId, x, y });
-export const deleteText = (cutId: Id, textId: Id) => ({ type: 'deleteText' as const, cutId, textId });
-export const toggleTextVisible = (cutId: Id, textId: Id) => ({ type: 'toggleTextVisible' as const, cutId, textId });
+export const moveText = (cutId: DocId | null, textId: DocId, x: number, y: number) => ({ type: 'moveText' as const, cutId, textId, x, y });
+export const deleteText = (cutId: DocId | null, textId: DocId) => ({ type: 'deleteText' as const, cutId, textId });
+export const toggleTextVisible = (cutId: DocId | null, textId: DocId) => ({ type: 'toggleTextVisible' as const, cutId, textId });
 
-export const assignPartTo = (cutIds: Iterable<Id>, partId: Id, name: string) => ({ type: 'assignPartTo' as const, cutIds, partId, name });
-export const renamePart = (partId: Id, name: string) => ({ type: 'renamePart' as const, partId, name });
-export const ungroupPart = (partId: Id) => ({ type: 'ungroupPart' as const, partId });
-export const removeBatch = (batchId: Id) => ({ type: 'removeBatch' as const, batchId });
+export const assignPartTo = (cutIds: Iterable<Id>, partId: PartId, name: string) => ({ type: 'assignPartTo' as const, cutIds, partId, name });
+export const renamePart = (partId: PartId, name: string) => ({ type: 'renamePart' as const, partId, name });
+export const ungroupPart = (partId: PartId) => ({ type: 'ungroupPart' as const, partId });
+export const removeBatch = (batchId: PartId) => ({ type: 'removeBatch' as const, batchId });
 
 /**
  * Insert cuts at a point on a track, pushing everything later on that track along to make room.
@@ -95,7 +95,7 @@ export const moveCutGroup = (group: CutPlacement[], dt: number, trackOff: number
 export const replaceBatchCuts = (videoSrc: string | undefined, newCuts: Cut[]) => ({ type: 'replaceBatchCuts' as const, videoSrc, newCuts });
 
 /** Escape hatch: run a function over one cut. Prefer a named action. */
-export const patchCut = (cutId: Id, fn: (cut: Cut) => Partial<Cut>) => ({ type: 'patchCut' as const, cutId, fn });
+export const patchCut = (cutId: Id | null, fn: (cut: Cut) => Partial<Cut>) => ({ type: 'patchCut' as const, cutId, fn });
 /** Escape hatch: run a function over the whole list. Prefer a named action. */
 export const patchCuts = (fn: (cuts: Cut[]) => Cut[]) => ({ type: 'patchCuts' as const, fn });
 
@@ -132,8 +132,8 @@ export type CutsAction =
     | ReturnType<typeof patchCut>
     | ReturnType<typeof patchCuts>;
 
-const mapCut = (cuts: Cut[], cutId: Id, fn: (cut: Cut) => Cut): Cut[] => cuts.map(c => c.id === cutId ? fn(c) : c);
-const mapLayer = (cut: Cut, layerId: Id, fn: (layer: Layer) => Layer): Cut => ({ ...cut, layers: safeArray(cut.layers).map(l => l.id === layerId ? fn(l) : l) });
+const mapCut = (cuts: Cut[], cutId: Id | null, fn: (cut: Cut) => Cut): Cut[] => cuts.map(c => c.id === cutId ? fn(c) : c);
+const mapLayer = (cut: Cut, layerId: DocId, fn: (layer: Layer) => Layer): Cut => ({ ...cut, layers: safeArray(cut.layers).map(l => l.id === layerId ? fn(l) : l) });
 const mapTexts = (cut: Cut, fn: (texts: CutText[]) => CutText[]): Cut => ({ ...cut, texts: fn(safeArray(cut.texts)) });
 
 // ── the reducer ────────────────────────────────────────────────────────────

@@ -20,10 +20,10 @@ export interface CutDragData { cutId: Id | 'audio' | 'video'; startX: number; st
 export interface CutResizeData { cutId: Id | 'audio'; edge: 'left' | 'right'; startX: number; initialStart: number; initialEnd: number; [k: string]: any }
 /** The timeline's props, grouped by what they are about. The four hook bundles arrive whole. */
 export interface TimelineProps {
-    doc: { cuts: Cut[]; currentCutId: Id | null | undefined; setCurrentCutId: (id: Cut['id']) => void; parts: Part[]; numTracks: number; maxTime: number };
+    doc: { cuts: Cut[]; currentCutId: Id | null | undefined; setCurrentCutId: (id: DocId | null) => void; parts: Part[]; numTracks: number; maxTime: number };
     view: { showBottom: boolean; setShowBottom: (f: (v: boolean) => boolean) => void; timelineH: number; timelineRef: React.RefObject<HTMLDivElement | null>; playheadRef: React.RefObject<HTMLDivElement | null>; fmt: (s: number) => string };
     tracks: { hiddenTracks: { audio?: boolean, video?: boolean }; toggleTrackHidden: (which: 'audio' | 'video') => void; handleAddTrack: () => void; handleDeleteTrack: (track: number) => void };
-    partOps: { makePartFromSelection: () => void; selectPart: (id: Id | null) => void; renamePart: (id: Id) => void; ungroupPart: (id: Id) => void };
+    partOps: { makePartFromSelection: () => void; selectPart: (id: PartId | null) => void; renamePart: (id: PartId) => void; ungroupPart: (id: PartId) => void };
     drag: { cutDragArmedRef: { current: boolean }; cutDragMovedRef: { current: boolean }; cutDragTimerRef: { current: any }; draggingCutData: CutDragData | null; setDraggingCutData: (d: CutDragData | null) => void; setResizingData: (d: CutResizeData | null) => void };
     media: { audioData: AudioClip | null; audioFile: { name: string } | null; videoOverlay: VideoOverlay | null; removeVideoOverlay: () => void };
     rate: { loopPlay: boolean; setLoopPlay: (f: (v: boolean) => boolean) => void; playbackRate: number; setPlaybackRate: (r: number) => void };
@@ -35,7 +35,7 @@ export interface TimelineProps {
     /** useTimelineView's bundle */
     tl: { pps: number; snapLinePos: number | null; win: { left: number, right: number }; [k: string]: any };
     /** useCutListUi's bundle */
-    cutList: { activePartId: Id | null; marquee: { x: number, y: number, w: number, h: number } | null; selectedCutIds: Set<Id>; setSelectedCutIds: (f: Set<Id> | ((p: Set<Id>) => Set<Id>)) => void; [k: string]: any };
+    cutList: { activePartId: PartId | null; marquee: { x: number, y: number, w: number, h: number } | null; selectedCutIds: Set<DocId>; setSelectedCutIds: (f: Set<DocId> | ((p: Set<DocId>) => Set<DocId>)) => void; [k: string]: any };
     /** useAudioTrack's bundle */
     audio: { muted: boolean; setMuted: (f: (v: boolean) => boolean) => void; handleDeleteAudio: () => void; [k: string]: any };
     openPlaybackSettings: () => void;

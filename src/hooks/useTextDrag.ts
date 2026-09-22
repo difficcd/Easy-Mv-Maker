@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import { moveText } from '../core/cutsReducer.ts';
 import { measureTextBox as measureTextBoxPure } from '../canvas/textRender.ts';
 import { safeArray } from '../core/geometry.ts';
-import type { Id, Point } from '../core/types.ts';
+import type { Point } from '../core/types.ts';
 import type { CutsAction } from '../core/cutsReducer.ts';
 import type { TextObject, TextBox } from '../canvas/textRender.ts';
 import type { PressEvent } from './useLayerDrag.ts';
@@ -10,7 +10,7 @@ import type { PressEvent } from './useLayerDrag.ts';
 /** A text under the pointer, with the box it was found by. */
 export interface TextHit { text: CutText; box: TextBox }
 /** A text drag in flight: where it started, whether it has moved, and the position waiting for the next frame. */
-interface TextDrag { cutId: Id; textId: Id; startPos: Point; startText: Point; moved: boolean; clickToEdit: boolean; pending?: { cutId: Id, textId: Id, x: number, y: number } | null }
+interface TextDrag { cutId: DocId; textId: DocId; startPos: Point; startText: Point; moved: boolean; clickToEdit: boolean; pending?: { cutId: DocId, textId: DocId, x: number, y: number } | null }
 
 
 /**
@@ -34,7 +34,7 @@ interface TextDrag { cutId: Id; textId: Id; startPos: Point; startText: Point; m
  * @param {(sel: {cutId: number, textId: number} | null) => void} deps.setSelectedText
  * @param {(e: PointerEvent) => void} deps.beginGesture claims the pointer for the canvas
  */
-export function useTextDrag({ dispatchCuts, currentCutId, setSelectedText, beginGesture }: { dispatchCuts: (action: CutsAction) => void, currentCutId: Id, setSelectedText: (sel: { cutId: Id, textId: Id } | null) => void, beginGesture: (e: PressEvent) => void }) {
+export function useTextDrag({ dispatchCuts, currentCutId, setSelectedText, beginGesture }: { dispatchCuts: (action: CutsAction) => void, currentCutId: DocId | null, setSelectedText: (sel: { cutId: DocId, textId: DocId } | null) => void, beginGesture: (e: PressEvent) => void }) {
     const dragRef = useRef<TextDrag | null>(null);
     const rafRef = useRef(0);
     const measureCtxRef = useRef<CanvasRenderingContext2D | null>(null);
@@ -82,6 +82,8 @@ export function useTextDrag({ dispatchCuts, currentCutId, setSelectedText, begin
      * edit rather than a zero-length drag - endTextDrag reports it so App can open the editor.
      */
     const startTextDrag = (e: PressEvent, pos: Point, hit: { text: CutText }, clickToEdit: boolean) => {
+        // No cut, nothing to drag a text in: the last one was deleted.
+        if (currentCutId == null) return;
         setSelectedText({ cutId: currentCutId, textId: hit.text.id });
         beginGesture(e);
         dragRef.current = {
