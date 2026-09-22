@@ -12,7 +12,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { dilateMask } from '../../src/canvas/fill.js';
 import { applyCutAnim } from '../../src/canvas/layerComposite.js';
-import { sizeCanvas, scratchCanvas } from '../../src/canvas/scratch.js';
+import { sizeCanvas, scratchCanvas } from '../../src/canvas/scratch.ts';
 import { fitRect, seekTarget } from '../../src/canvas/videoFrames.js';
 import { targetCanvasFor } from '../../src/core/canvasSize.ts';
 import { hexToRgb } from '../../src/core/colour.ts';

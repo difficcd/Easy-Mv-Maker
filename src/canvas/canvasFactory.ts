@@ -8,8 +8,7 @@
 //
 // Nothing else changes: the browser never calls setCanvasFactory.
 
-/** @type {() => HTMLCanvasElement} */
-let factory = () => document.createElement('canvas');
+let factory: () => HTMLCanvasElement = () => document.createElement('canvas');
 
 /**
  * A fresh canvas, sized when a size is given.
@@ -17,7 +16,7 @@ let factory = () => document.createElement('canvas');
  * @param {number} [h]
  * @returns {HTMLCanvasElement}
  */
-export function makeCanvas(w, h) {
+export function makeCanvas(w?: number | null, h?: number | null): HTMLCanvasElement {
     const c = factory();
     if (w != null && h != null) { c.width = w; c.height = h; }
     return c;
@@ -27,4 +26,4 @@ export function makeCanvas(w, h) {
  * Swap the source of canvases - for tests, which have no document.
  * @param {() => HTMLCanvasElement} fn
  */
-export function setCanvasFactory(fn) { factory = fn; }
+export function setCanvasFactory(fn: () => HTMLCanvasElement): void { factory = fn; }

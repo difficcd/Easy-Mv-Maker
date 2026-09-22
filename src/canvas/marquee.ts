@@ -7,6 +7,8 @@
 // every marquee in a paint program does. Everything is sized in screen pixels, divided by the
 // zoom, so it is the same to the eye at any magnification.
 
+import type { Point } from '../core/types.ts';
+
 /** A handle's half-size on screen, and the wider radius within which a press still takes it. */
 export const HANDLE_PX = 6;
 export const HANDLE_GRAB_PX = 12;
@@ -17,7 +19,7 @@ export const HANDLE_GRAB_PX = 12;
  * @param {number} zoom the view zoom, so screen sizes can be turned into canvas sizes
  * @param {boolean} [closed]
  */
-export function drawMarquee(ctx, pts, zoom, closed = false) {
+export function drawMarquee(ctx: CanvasRenderingContext2D, pts: readonly Point[] | null | undefined, zoom: number, closed = false): void {
     if (!pts || pts.length < 2) return;
     const z = zoom || 1;
     ctx.save();
@@ -44,7 +46,7 @@ export function drawMarquee(ctx, pts, zoom, closed = false) {
  * @param {number} y
  * @param {number} zoom
  */
-export function drawHandle(ctx, x, y, zoom, round = false) {
+export function drawHandle(ctx: CanvasRenderingContext2D, x: number, y: number, zoom: number, round = false): void {
     const z = zoom || 1;
     const hs = HANDLE_PX / z;
     ctx.save();

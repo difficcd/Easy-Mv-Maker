@@ -12,11 +12,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createCanvas, ImageData, DOMMatrix } from '@napi-rs/canvas';
-import { setCanvasFactory, makeCanvas } from '../../src/canvas/canvasFactory.js';
+import { setCanvasFactory, makeCanvas } from '../../src/canvas/canvasFactory.ts';
 import { drawStrokesOnCtx } from '../../src/canvas/strokes.js';
 import { pixelateCanvas, staticCanvas, grainTile, mosaic } from '../../src/canvas/pixelEffects.js';
 import { bucketFillTransparentRegion } from '../../src/canvas/fill.js';
-import { scratchCanvas } from '../../src/canvas/scratch.js';
+import { scratchCanvas } from '../../src/canvas/scratch.ts';
 
 setCanvasFactory(() => /** @type {any} */ (createCanvas(1, 1)));
 // The fill and the morph build ImageData themselves; Node has no global for it.

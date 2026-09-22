@@ -5,7 +5,7 @@
 // and so the text box and the selection use the same marquee, which they did not: the text box
 // was a one-pixel accent line that vanished on light artwork and shrank with the zoom.
 
-import { drawMarquee, drawHandle } from './marquee.js';
+import { drawMarquee, drawHandle } from './marquee.ts';
 import { drawWarped, warpedOutline, warpedHandles, rotateKnob } from './warpRender.js';
 
 import { withAlpha } from '../core/colour.ts';

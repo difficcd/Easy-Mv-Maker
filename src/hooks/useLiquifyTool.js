@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { sizeCanvas } from '../canvas/scratch.js';
+import { sizeCanvas } from '../canvas/scratch.ts';
 import { pushAlong } from '../core/liquify.ts';
 import { selectionStrokes } from '../core/lassoOps.ts';
 import { nextId } from '../core/ids.ts';

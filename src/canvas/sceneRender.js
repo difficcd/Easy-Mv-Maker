@@ -7,9 +7,9 @@
 // selection whose mask applies. Nothing here reads state.
 
 import { applyCutAnim } from './layerComposite.js';
-import { imageDataCanvas, scratchCanvas } from './scratch.js';
+import { imageDataCanvas, scratchCanvas } from './scratch.ts';
 import { applyPartTransform, drawMaskedLayer } from './layerComposite.js';
-import { drawSwayed } from './swayRender.js';
+import { drawSwayed } from './swayRender.ts';
 import { pixelateCanvas, pixelateRegion, clampRegion, staticCanvas } from './pixelEffects.js';
 
 /**

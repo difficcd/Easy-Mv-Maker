@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { drawMarquee, drawHandle, HANDLE_PX, HANDLE_GRAB_PX } from '../../src/canvas/marquee.js';
+import { drawMarquee, drawHandle, HANDLE_PX, HANDLE_GRAB_PX } from '../../src/canvas/marquee.ts';
 
 /** Records widths and dash patterns at each stroke, which is all the marquee is about. */
 function fakeCtx() {

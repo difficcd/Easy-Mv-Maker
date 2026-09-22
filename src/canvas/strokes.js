@@ -1,11 +1,11 @@
 // Drawing strokes: smoothing a hand path, the boiling line, and rendering every brush onto a
 // context. The one place a stroke's points become pixels.
 
-import { imageDataCanvas, resetCtx, sizeCanvas } from './scratch.js';
+import { imageDataCanvas, resetCtx, sizeCanvas } from './scratch.ts';
 import { hexToRgb } from '../core/colour.ts';
 import { drawWarped, isWarped } from './warpRender.js';
 import { catmullThrough } from '../core/catmullRom.ts';
-import { makeCanvas } from './canvasFactory.js';
+import { makeCanvas } from './canvasFactory.ts';
 
 // Remove hand/sampling jitter before drawing: weighted moving average over position and
 // pressure, keeping the endpoints fixed. Without this the curve wobbles unnaturally.

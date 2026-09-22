@@ -74,7 +74,7 @@ test('scratchCanvas says which slot was wrong instead of dereferencing undefined
     // The real failure was `Cannot read properties of undefined (reading 'current')`, thrown four
     // frames deep in the composite loop with nothing naming the slot. This is the same mistake
     // made deliberately: an object holding refs, where a ref belongs.
-    const { scratchCanvas } = await import('../../src/canvas/scratch.js');
+    const { scratchCanvas } = await import('../../src/canvas/scratch.ts');
     const pair = { full: { current: null }, small: { current: null } };
     assert.throws(() => scratchCanvas(pair.small_typo, 10, 10), /scratchCanvas needs a ref/);
     assert.throws(() => scratchCanvas(pair, 10, 10), /got \{full,small\}/);

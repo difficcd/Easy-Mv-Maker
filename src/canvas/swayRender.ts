@@ -1,5 +1,10 @@
 import { swayWeightAt, swayDispAt } from '../core/sway.ts';
-import { shearSlices } from './shearSlices.js';
+import { shearSlices, type ShearSlice } from './shearSlices.ts';
+import type { SwayProfile } from '../core/sway.ts';
+
+/** What the sway is doing at this instant, for when the lag makes that differ along the axis. */
+export interface SwayWave { amp: number; speed: number; curve?: readonly number[] | null; time: number; lag?: number }
+
 
 /**
  * Bending a layer along an axis: hair swinging from its roots, a ribbon trailing from where it
@@ -37,13 +42,13 @@ export const SWAY_SLICES = 64;
  * @param {number} [args.slices]
  * @returns {Array<{a0: number, len: number, k: number, m: number}>}
  */
-export function swaySlices({ profile, disp, span, wave, slices = SWAY_SLICES }) {
+export function swaySlices({ profile, disp, span, wave, slices = SWAY_SLICES }: { profile: SwayProfile | null | undefined, disp: number, span: number, wave?: SwayWave | null, slices?: number }): ShearSlice[] {
     // Without a lag the displacement is one number for the whole span and `disp` is it. With
     // one, the phase differs at every position, so it has to be asked for per slice - which is
     // also why the slices exist at all.
     const at = (wave && wave.lag)
-        ? (pos) => swayDispAt(pos / span, wave) * swayWeightAt(profile, pos / span)
-        : (pos) => disp * swayWeightAt(profile, pos / span);
+        ? (pos: number) => swayDispAt(pos / span, wave) * swayWeightAt(profile, pos / span)
+        : (pos: number) => disp * swayWeightAt(profile, pos / span);
     return shearSlices(at, 0, span, slices);
 }
 
@@ -64,7 +69,7 @@ export function swaySlices({ profile, disp, span, wave, slices = SWAY_SLICES }) 
  * @param {number} args.cw
  * @param {number} args.ch
  */
-export function drawSwayed(ctx, src, { profile, axis, disp, wave, cw, ch }) {
+export function drawSwayed(ctx: CanvasRenderingContext2D, src: CanvasImageSource, { profile, axis, disp, wave, cw, ch }: { profile: SwayProfile | null | undefined, axis: 'x' | 'y', disp: number, wave?: SwayWave | null, cw: number, ch: number }): void {
     const vertical = axis === 'y';
     const span = vertical ? ch : cw;
     for (const { a0, len, k, m } of swaySlices({ profile, disp, span, wave })) {
