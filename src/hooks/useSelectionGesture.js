@@ -6,7 +6,7 @@
 
 import { applyResize, applyWarpDrag, applyRotateDrag } from '../core/lassoOps.ts';
 import { warpedOutline, warpedHandles, rotateKnob } from '../canvas/warpRender.js';
-import { HANDLE_GRAB_PX } from '../canvas/marquee.js';
+import { HANDLE_GRAB_PX } from '../canvas/marquee.ts';
 import { pointInPolygon } from '../core/geometry.ts';
 
 /**

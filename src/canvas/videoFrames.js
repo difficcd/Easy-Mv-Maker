@@ -1,7 +1,7 @@
 // Decoding a video file into frames, and finding its scene cuts.
 
 import { tr } from '../i18n.js';
-import { makeCanvas } from './canvasFactory.js';
+import { makeCanvas } from './canvasFactory.ts';
 
 // Letterbox rect: fit source into destination preserving aspect ratio.
 export function fitRect(sw, sh, dw, dh) {

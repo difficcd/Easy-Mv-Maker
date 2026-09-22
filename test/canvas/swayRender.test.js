@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { swaySlices, SWAY_SLICES } from '../../src/canvas/swayRender.js';
+import { swaySlices, SWAY_SLICES } from '../../src/canvas/swayRender.ts';
 import { swayWeightAt } from '../../src/core/sway.ts';
 
 const SPAN = 1080;

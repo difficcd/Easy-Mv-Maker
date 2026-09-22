@@ -651,7 +651,7 @@ Putting one layer onto the frame: where it sits, and how a floating selection is
 | `drawMaskedLayer` | Layer minus the lifted region. `destination-out` on a **shared scratch**, never on the frame — erasing on the frame would take the artwork already there, and a fresh canvas per masked layer per frame is 8MB sixty times a second. |
 | `applyCutAnim` | Put a cut animation onto a context; the caller owns the save/restore. Written out at both places that draw a cut - the artwork and the text over it - and if the two disagreed about the pivot, an animation would slide a text off its own drawing. |
 
-## `src/canvas/swayRender.js`
+## `src/canvas/swayRender.ts`
 
 Bending a layer along an axis - hair swinging from its roots, a ribbon trailing from where it is held.
 
@@ -661,7 +661,7 @@ Bending a layer along an axis - hair swinging from its roots, a ribbon trailing 
 | `swaySlices` | The shear each slice gets, as `offset(a) = k*a + m`. Separate from the drawing because this is where the correctness lives: a slice that translates rigidly instead of shearing tears the image into visible bands. |
 | `SWAY_SLICES` | How many slices. More only fits the curve better — it is the shear, not the count, that removes the seams. |
 
-## `src/canvas/marquee.js`
+## `src/canvas/marquee.ts`
 
 The selection chrome, drawn so it can be seen on anything and sized for the screen.
 
@@ -712,7 +712,7 @@ Compositing the evaluated scene onto the frame - what was the middle of paintFra
 | `drawOnionCut` | A neighbouring cut's visible layers, faint, bottom to top. |
 | `ONION_ALPHA` | How faint. |
 
-## `src/canvas/shearSlices.js`
+## `src/canvas/shearSlices.ts`
 
 One slice rule, shared by every warp that displaces pixels along an axis.
 
@@ -875,7 +875,7 @@ The bucket fill: flood a region of an ImageData, and the mask around it.
 | `dilateMask` | Grow a bitmask outwards by r pixels (square structuring element, done separably so it stays O(w*h) whatever r is). Used to bleed a bucket fill under the line that bounds it. |
 | `bucketFillTransparentRegion` | Flood fill across the transparent region under a point, with a tolerance and an optional spread so the fill creeps under the anti-aliased edge of a line instead of leaving a halo. |
 
-## `src/canvas/imageCodec.js`
+## `src/canvas/imageCodec.ts`
 
 ImageData to and from a data URL, for persistence.
 
@@ -893,7 +893,7 @@ Strokes become pixels here: smoothing a hand path, the boiling line, and every b
 | `smoothPoints` | A raw hand stroke resampled to 2px and corner-cut three times, ready to render as a Catmull-Rom; sparse input (zoomed-out or fast strokes) is interpolated through a Catmull-Rom first so the corner-cutting works at the stroke's scale, not the resample's. |
 | `drawStrokesOnCtx` | Draw a list of strokes onto a context: the one place that knows what each tool looks like. Clears first unless told not to, and takes the boiling options so a roughened layer draws its own phase. |
 
-## `src/canvas/canvasFactory.js`
+## `src/canvas/canvasFactory.ts`
 
 Where the canvas modules get a canvas from - the browser's document, or whatever a test hands in.
 
@@ -902,7 +902,7 @@ Where the canvas modules get a canvas from - the browser's document, or whatever
 | `makeCanvas` | A fresh canvas from the current factory, sized when a size is given. Every canvas module makes its canvases through this, which is what lets them run on @napi-rs/canvas in the unit tests. |
 | `setCanvasFactory` | Swap the source of canvases. The tests call it once; the browser never does. |
 
-## `src/canvas/scratch.js`
+## `src/canvas/scratch.ts`
 
 Scratch canvases: sizing, one-per-ref reuse, and drawing an ImageData through a canvas.
 

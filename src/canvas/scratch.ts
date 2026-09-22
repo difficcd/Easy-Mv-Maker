@@ -1,6 +1,6 @@
 // Scratch canvases: sizing, one-per-ref reuse, and drawing an ImageData through a canvas.
 
-import { makeCanvas } from './canvasFactory.js';
+import { makeCanvas } from './canvasFactory.ts';
 
 /**
  * Give a canvas these dimensions, reallocating only if it does not already have them.
@@ -13,7 +13,7 @@ import { makeCanvas } from './canvasFactory.js';
  *
  * @returns {boolean} true if the canvas was resized, and so is already blank
  */
-export function sizeCanvas(cnv, w, h) {
+export function sizeCanvas(cnv: HTMLCanvasElement, w: number, h: number): boolean {
     if (cnv.width === w && cnv.height === h) return false;
     cnv.width = w;
     cnv.height = h;
@@ -36,7 +36,7 @@ export function sizeCanvas(cnv, w, h) {
  * @param {number} h
  * @returns {{ canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D }}
  */
-export function scratchCanvas(ref, w, h) {
+export function scratchCanvas(ref: { current: HTMLCanvasElement | null }, w: number, h: number): { canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D } {
     // Named, because the mistake is always the same one and the error it used to give was
     // "Cannot read properties of undefined (reading 'current')" from inside the composite loop -
     // a stack four frames deep with nothing in it saying which slot was wrong. Passing an object
@@ -45,7 +45,7 @@ export function scratchCanvas(ref, w, h) {
         throw new TypeError('scratchCanvas needs a ref ({current}), got ' + (ref ? `{${Object.keys(ref)}}` : String(ref)));
     }
     const canvas = ref.current || (ref.current = makeCanvas());
-    const ctx = /** @type {CanvasRenderingContext2D} */ (canvas.getContext('2d'));
+    const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
     if (!sizeCanvas(canvas, w, h)) ctx.clearRect(0, 0, w, h);
     return { canvas, ctx };
 }
@@ -62,7 +62,7 @@ export function scratchCanvas(ref, w, h) {
 // The contract is that the result is used immediately. It is valid until the next call, which is
 // enough for "put it in a canvas, draw it, done" and is what all four sites do. Holding one
 // across another call would hand you somebody else's pixels.
-let _imgCanvas = null;
+let _imgCanvas: HTMLCanvasElement | null = null;
 
 /**
  * A canvas holding this ImageData, ready to be drawn.
@@ -70,10 +70,10 @@ let _imgCanvas = null;
  * @param {ImageData} img
  * @returns {HTMLCanvasElement} valid until the next call
  */
-export function imageDataCanvas(img) {
+export function imageDataCanvas(img: ImageData): HTMLCanvasElement {
     if (!_imgCanvas) _imgCanvas = makeCanvas();
     sizeCanvas(_imgCanvas, img.width, img.height);
-    const cx = _imgCanvas.getContext('2d');
+    const cx = _imgCanvas.getContext('2d')!;
     resetCtx(cx);
     cx.putImageData(img, 0, 0);
     return _imgCanvas;
@@ -88,7 +88,7 @@ export function imageDataCanvas(img) {
  * @param {CanvasRenderingContext2D} cx
  * @returns {CanvasRenderingContext2D} the same context
  */
-export function resetCtx(cx) {
+export function resetCtx(cx: CanvasRenderingContext2D): CanvasRenderingContext2D {
     cx.setTransform(1, 0, 0, 1, 0, 0);
     cx.globalAlpha = 1;
     cx.globalCompositeOperation = 'source-over';

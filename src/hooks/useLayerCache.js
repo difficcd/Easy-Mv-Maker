@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { sizeCanvas, scratchCanvas } from '../canvas/scratch.js';
+import { sizeCanvas, scratchCanvas } from '../canvas/scratch.ts';
 import { drawStrokesOnCtx } from '../canvas/strokes.js';
 import { safeArray } from '../core/geometry.ts';
 import { layerKey, layerSig } from '../core/layerTree.ts';

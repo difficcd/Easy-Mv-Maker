@@ -20,7 +20,7 @@ import { frameExportPlan, exportFileInfo, LONG_EXPORT_FRAMES } from '../core/fra
 import { EXPORT_FPS } from '../core/recordClock.ts';
 import { evaluateFrame } from '../engine/evaluateFrame.ts';
 import { pendingBitmapIds } from '../engine/pendingBitmaps.ts';
-import { scratchCanvas } from '../canvas/scratch.js';
+import { scratchCanvas } from '../canvas/scratch.ts';
 import { frameName, ZipWriter } from '../export/zip.ts';
 import { GifWriter } from '../export/gif.ts';
 import { downloadBlob } from '../export/download.ts';

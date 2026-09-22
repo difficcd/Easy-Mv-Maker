@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { swayDispAt, swayWaveAt } from '../../src/core/sway.ts';
-import { swaySlices } from '../../src/canvas/swayRender.js';
+import { swaySlices } from '../../src/canvas/swayRender.ts';
 
 const WAVE = { amp: 100, speed: 1, curve: null, time: 0.3, lag: 0 };
 const near = (a, b, tol = 1e-9) => Math.abs(a - b) <= tol;

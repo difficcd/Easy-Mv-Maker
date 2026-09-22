@@ -20,7 +20,7 @@ import { drawScene, drawVideoOverlay, drawOnionCut, drawSceneTexts } from './sce
 import { drawTextObject, textNeedsBox } from './textRender.js';
 import { grainTile } from './pixelEffects.js';
 import { fitRect } from './videoFrames.js';
-import { makeCanvas } from './canvasFactory.js';
+import { makeCanvas } from './canvasFactory.ts';
 
 /** How many times a second the boiling-line motion advances. */
 export const BOIL_FPS = 10;

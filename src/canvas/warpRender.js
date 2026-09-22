@@ -6,7 +6,7 @@
 // exactly at their shared edge. shearSlices is where that rule lives; this file only supplies the
 // curve.
 
-import { shearSlices } from './shearSlices.js';
+import { shearSlices } from './shearSlices.ts';
 
 /**
  * The largest change of slope allowed where two slices meet, in radians.
