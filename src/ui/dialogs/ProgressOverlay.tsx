@@ -1,4 +1,4 @@
-import { tr } from '../../i18n';
+import { tr } from '../../i18n.ts';
 
 // Progress for opening or uploading a large project. total 0 means the length is unknown,
 // which shows as an indeterminate bar.

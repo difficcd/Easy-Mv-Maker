@@ -3,7 +3,7 @@ import { Plus, FolderPlus, Trash2, Copy, CopyPlus, ClipboardPaste, Eye, EyeOff, 
 import { safeArray } from '../core/geometry.ts';
 import { CutAnimPanel, CameraPanel } from './AnimPanels.tsx';
 import { LayerRows } from './LayerRows.tsx';
-import { tr } from '../i18n';
+import { tr } from '../i18n.ts';
 import type { Id } from '../core/types.ts';
 import type { LayerRowDeps } from './LayerRows.tsx';
 import { inReadingOrder } from '../core/cutSelection.ts';

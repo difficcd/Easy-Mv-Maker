@@ -41,7 +41,7 @@ export function strokeWrites(src) {
 export const ALLOWED = [
     // The hole a lifted selection leaves in the layer it came from. Revealing that layer would
     // be wrong - the user hid it, and its pixels are now floating somewhere else.
-    { file: 'src/App.jsx', match: 'sel.sourceLayerId' },
+    { file: 'src/App.tsx', match: 'sel.sourceLayerId' },
     // The eraser extending the stroke it is already drawing. The first point went through
     // commitStrokeToLayer, so the layer has been resolved and revealed already; this only adds
     // points to that stroke, and appendPoints leaves the list alone if it is not there.

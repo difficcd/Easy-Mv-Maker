@@ -1,7 +1,7 @@
-import React from 'react'
-import ReactDOM from 'react-dom/client'
-import App from './App.jsx'
-import './index.css'
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App.tsx';
+import './index.css';
 
 const isNativeCapacitor = (() => {
     try { return !!window.Capacitor; } catch { return false; }
@@ -27,7 +27,7 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
     })
 }
 
-const showFatalOverlay = (title, err) => {
+const showFatalOverlay = (title: string, err: unknown) => {
     try {
         const root = document.getElementById('root') || document.body;
         const box = document.createElement('div');
@@ -44,7 +44,8 @@ const showFatalOverlay = (title, err) => {
             'overflow:auto',
             '-webkit-text-size-adjust:100%',
         ].join(';');
-        const msg = (err && (err.stack || err.message)) ? (err.stack || err.message) : String(err ?? '');
+        const e = err as { stack?: string, message?: string } | null | undefined;
+        const msg = (e && (e.stack || e.message)) ? (e.stack || e.message) : String(err ?? '');
         box.textContent =
             `${title}\n\n` +
             `URL: ${location.href}\n` +
@@ -64,7 +65,7 @@ window.addEventListener('unhandledrejection', (e) => {
 });
 
 try {
-    ReactDOM.createRoot(document.getElementById('root')).render(
+    ReactDOM.createRoot(document.getElementById('root')!).render(
         <React.StrictMode>
             <App />
         </React.StrictMode>,

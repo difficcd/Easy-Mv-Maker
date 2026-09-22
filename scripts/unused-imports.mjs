@@ -1,6 +1,6 @@
 // Imports nothing in the file uses.
 //
-// The refactoring that pulled hooks and pure modules out of App.jsx left its import list behind:
+// The refactoring that pulled hooks and pure modules out of App.tsx left its import list behind:
 // twenty-eight names at the top of the file that nothing below them mentioned, and one name
 // imported twice from the same module because the second import was easier to add than to check
 // for the first. None of it broke anything, which is the problem - a dead import is invisible

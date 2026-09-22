@@ -1,5 +1,5 @@
 import React from 'react';
-import { tr } from '../i18n';
+import { tr } from '../i18n.ts';
 import { NumField, clampNum } from './NumField.tsx';
 import { FONT_PRESETS, fontGroups } from '../core/fonts.ts';
 import { TEXT_ANIM_DEFAULT } from '../core/textAnim.ts';

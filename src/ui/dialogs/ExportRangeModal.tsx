@@ -1,5 +1,5 @@
 import React from 'react';
-import { tr } from '../../i18n';
+import { tr } from '../../i18n.ts';
 import { Modal } from '../Modal.tsx';
 import { fmt, parseClock } from '../../core/timeCode.ts';
 

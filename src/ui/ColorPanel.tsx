@@ -1,6 +1,6 @@
 import React from 'react';
 import { Droplets } from 'lucide-react';
-import { tr } from '../i18n';
+import { tr } from '../i18n.ts';
 /** The colour panel's props: the colour, how to change it, the eyedropper, the recent list, and the panel frame. */
 export interface ColorPanelProps {
     color: string;

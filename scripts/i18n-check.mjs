@@ -14,8 +14,8 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-const DICT = 'src/i18n.js';
-const JA_DICT = 'src/i18n.ja.js';
+const DICT = 'src/i18n.ts';
+const JA_DICT = 'src/i18n.ja.ts';
 const HANGUL = /[가-힣]/;
 // A single-quoted JS string: anything but a quote or a backslash, or an escape pair.
 const STRING = "((?:[^'\\\\]|\\\\.)*)";
@@ -53,7 +53,7 @@ const missing = [...used].filter(([text]) => HANGUL.test(text) && !keys.has(text
 if (missing.length) {
     console.error(`${missing.length} string(s) used with tr() but not translated:`);
     for (const [text, path] of missing) console.error(`  ${path}\n    ${text}`);
-    console.error('\nAdd them to src/i18n.js, or the English UI shows Korean.');
+    console.error('\nAdd them to src/i18n.ts, or the English UI shows Korean.');
     process.exit(1);
 }
 
@@ -71,7 +71,7 @@ const stale = [...jaKeys].filter(k => !keys.has(k) && !trimmed.has(k));
 if (stale.length) {
     console.error(`${stale.length} Japanese entr(y/ies) with no English key:`);
     for (const k of stale) console.error(`    ${k}`);
-    console.error('\nRemove them from src/i18n.ja.js, or fix the key if the string was reworded.');
+    console.error('\nRemove them from src/i18n.ja.ts, or fix the key if the string was reworded.');
     process.exit(1);
 }
 
@@ -86,7 +86,7 @@ const orphans = [...keys].filter(k => !new RegExp("['\"`]\\s*" + esc(k) + "\\s*[
 if (orphans.length) {
     console.error(`${orphans.length} dictionary entr(y/ies) whose key appears nowhere in src/:`);
     for (const k of orphans) console.error(`    ${k}`);
-    console.error('\nRemove them from src/i18n.js and src/i18n.ja.js, or the string was reworded and the row needs its new key.');
+    console.error('\nRemove them from src/i18n.ts and src/i18n.ja.ts, or the string was reworded and the row needs its new key.');
     process.exit(1);
 }
 

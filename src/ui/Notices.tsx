@@ -1,4 +1,4 @@
-import { tr } from '../i18n';
+import { tr } from '../i18n.ts';
 /** A count of things done out of a total. */
 interface Progress { done: number; total: number }
 /** The frame extraction in progress: its count, and whether it is still fetching the file. */

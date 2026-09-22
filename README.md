@@ -12,7 +12,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=000" alt="React 19">
   <img src="https://img.shields.io/badge/Vite-8-646CFF?logo=vite&logoColor=fff" alt="Vite 8">
-  <img src="https://img.shields.io/badge/TypeScript-checkJs-3178C6?logo=typescript&logoColor=fff" alt="TypeScript checkJs">
+  <img src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=fff" alt="TypeScript strict">
   <img src="https://img.shields.io/badge/HTML5%20Canvas-2D-E34F26?logo=html5&logoColor=fff" alt="HTML5 Canvas 2D">
   <img src="https://img.shields.io/badge/Express-API-000000?logo=express&logoColor=fff" alt="Express API">
   <img src="https://img.shields.io/badge/Capacitor-Android-119EFF?logo=capacitor&logoColor=fff" alt="Capacitor Android">
@@ -100,17 +100,15 @@ npm run smoke      # boots the built app in a headless browser and draws a strok
 `npm run check` is the gate: typecheck, the unit tests, then six static guards, then the build.
 The same steps run in CI on every push and pull request.
 
-The code is moving to TypeScript one folder at a time (#268); `src/core/`, `src/engine/`,
-`src/export/`, `src/canvas/`, `src/hooks/`, `src/ui/` and `src/tools/` are done; `App` and the
-few top-level files follow. The point is not the annotations -
-the JavaScript was already typed through JSDoc - but two things the JSDoc could not give.
-`strict`: the JavaScript is checked leniently (no null checks, implicit `any` allowed), and a
-converted module is held to `strict` by `tsconfig.strict.json`, which has found missing null
-guards and a function returning ids of the wrong type. And named shapes: a `Scene`, a
-`CutsAction`, a `StoreEntry` is an interface another file can import, where a JSDoc typedef
-was local to its file. Importers name a `.ts` module with its extension - that is what Node's
-own type stripping needs in the tests (`--experimental-strip-types`, no extra dependency), and
-the bundler and `tsc` accept it. New modules are written in TypeScript.
+The code is TypeScript, moved from JavaScript one folder at a time (#268), and every file is
+held to `strict`. The point was never the annotations - the JavaScript was already typed through
+JSDoc - but two things JSDoc could not give. Strictness: the JavaScript was checked leniently
+(no null checks, implicit `any` allowed), and `strict` found missing null guards, a function
+returning ids of the wrong type, and settings typed narrower or looser than what the app stores.
+And named shapes: a `Scene`, a `CutsAction`, a `PlaybackDeps` is an interface another file can
+import, where a JSDoc typedef was local to its file. Importers name a module with its extension -
+that is what Node's own type stripping needs in the tests (`--experimental-strip-types`, no extra
+dependency), and the bundler and `tsc` accept it.
 
 | Guard | What it fails on |
 |---|---|
@@ -176,7 +174,7 @@ npm run android:open     # open Android Studio -> run, or Build > Generate Signe
 
 ```
 src/
-  App.jsx          the component: state and wiring (~2,100 lines)
+  App.tsx          the component: state and wiring (~2,100 lines)
   tools/           the drawing tools as a dispatch table, in TypeScript: what each one does on pointer down and move
   core/            pure logic, in TypeScript - reducers, timeline geometry, lasso, shapes, persistence, export planning
   canvas/          anything that draws on a 2D context, in TypeScript: strokes, text, sway slices, layer compositing
@@ -186,7 +184,7 @@ src/
                    audio, history, autosave, panels, tool settings, shortcuts, the drag gestures
   ui/              panels, in TypeScript (.tsx); ui/dialogs/ one file per dialog
   styles/          one stylesheet per area, imported in cascade order by styles/index.css
-  i18n.js          the English dictionary (~710 entries) and the tr() lookup; i18n.ja.js the Japanese one
+  i18n.ts          the English dictionary (~710 entries) and the tr() lookup; i18n.ja.ts the Japanese one
   globals.d.ts     ambient declarations (EyeDropper, Capacitor, File System Access…)
 server/            the API: index.js wires it; projects, backups and youtube are a route module each; paths.js builds every path
 scripts/           the check guards above, the hot-path benchmark, font subsetting
@@ -196,7 +194,7 @@ test/              unit tests (node --test), mirroring src/ - test/core for src/
 Nothing under `core/`, `engine/` or `export/` touches a canvas or React, and `tools/` touches neither React nor a context it owns - where one of them
 needs an `ImageData`, it takes a constructor as an argument. `canvas/` draws on a context it is
 handed rather than one it owns. That split is what keeps the tests framework-free. [ARCHITECTURE.md](ARCHITECTURE.md)
-is the map to read before editing `App.jsx`, and [HELPERS.md](HELPERS.md) lists every shared
+is the map to read before editing `App.tsx`, and [HELPERS.md](HELPERS.md) lists every shared
 export.
 
 The Korean source text doubles as the translation key, gettext style, so a missing entry shows

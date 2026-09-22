@@ -25,7 +25,7 @@ import { apiFetch, putAsset } from '../core/api.ts';
 import { readStored, writeStored } from '../core/persist.ts';
 import { randomId } from '../core/ids.ts';
 import { safeArray } from '../core/geometry.ts';
-import { tr } from '../i18n.js';
+import { tr } from '../i18n.ts';
 import type { AssetOut } from '../core/projectAssets.ts';
 
 /** What the server side needs from the app: whether the API is there, how to build and restore a document, and where to report. */

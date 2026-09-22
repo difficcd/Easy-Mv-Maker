@@ -21,7 +21,7 @@ const INDEX = 'HELPERS.md';
 // hand-kept list is a guard with a hole in it: src/engine went unindexed when it was created,
 // and src/export did the same the next time - each time the check passed while missing things.
 // Only ui/ is excluded, since those export React components, which are found by reading the
-// screen rather than an index. App.jsx is a file, not a directory, so it never enters.
+// screen rather than an index. App.tsx is a file, not a directory, so it never enters.
 const EXCLUDE = new Set(['ui']);
 const DIRS = [
     ...readdirSync('src', { withFileTypes: true })

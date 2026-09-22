@@ -1,5 +1,5 @@
 import { RotateCcw } from 'lucide-react';
-import { tr } from '../i18n';
+import { tr } from '../i18n.ts';
 import { SwaySpine } from './SwaySpine.tsx';
 import type React from 'react';
 import type { View } from '../core/viewZoom.ts';

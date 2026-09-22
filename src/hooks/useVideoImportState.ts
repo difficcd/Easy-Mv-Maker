@@ -3,7 +3,7 @@ import { unpackMedia } from '../core/projectAssets.ts';
 import { safeMediaSrc, detachMedia } from '../core/mediaEl.ts';
 import { loadVideo, clearVideo } from '../core/mediaReducer.ts';
 import { fetchAsset } from '../core/api.ts';
-import { tr } from '../i18n.js';
+import { tr } from '../i18n.ts';
 import { nextId } from '../core/ids.ts';
 import { parseClock } from '../core/timeCode.ts';
 import { importPlacement, buildImportedCuts, extractOptionsFor } from '../core/videoCuts.ts';

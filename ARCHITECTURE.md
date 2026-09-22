@@ -9,8 +9,8 @@ Frame-by-frame MV/animation app. Vite + React 19. Capacitor wraps it for Android
 
 ## Files
 
-App.jsx is around 2,400 lines and shrinking; it is mostly wiring now — which hook owns what, and
-which component gets which props. **Put new pure logic in a module, not in App.jsx** — anything
+App.tsx is around 2,100 lines; it is mostly wiring now — which hook owns what, and
+which component gets which props. **Put new pure logic in a module, not in App.tsx** — anything
 that is a function of its arguments belongs next to its tests. See [#234] for where the rest of
 App is going and why.
 
@@ -19,7 +19,7 @@ something belongs:
 
 ```
 src/
-  App.jsx  main.jsx  i18n.js  db.js  *.css      the component, boot, strings, storage
+  App.tsx  main.tsx  i18n.ts  db.ts  *.css      the component, boot, strings, storage
   core/     pure logic — no React, no DOM, no canvas. Every file here has tests.
   engine/   what a frame *is* at time t. Pure; no canvas.
   canvas/   drawing. Pure apart from the 2D context it is handed.
@@ -47,11 +47,11 @@ That is how `measureTextBox` takes a context and `cloneCutContents` takes a bitm
 keymap went one better: `keymapFrom` takes a value that has already been parsed and does not
 know storage exists at all, because reading it is `useStored`'s decoder.
 
-- `src/App.jsx` — the `App()` component: state, handlers, JSX. Use the section map below to jump.
-- `src/i18n.js` — `tr()` plus the English dictionary. Korean source text is the lookup key, so
+- `src/App.tsx` — the `App()` component: state, handlers, JSX. Use the section map below to jump.
+- `src/i18n.ts` — `tr()` plus the English dictionary. Korean source text is the lookup key, so
   write UI strings in Korean and add the English to the dictionary. Called `tr`, not `t` — `t` is
   a local variable in dozens of places.
-- `src/db.js` — IndexedDB autosave (`saveAutosave`, `loadAutosave`, plus project CRUD).
+- `src/db.ts` — IndexedDB autosave (`saveAutosave`, `loadAutosave`, plus project CRUD).
 
 **core/** — pure logic, all of it tested, all of it TypeScript (the first folder converted; the
 shapes the modules share are in `types.ts`, and the document's own are declared in
@@ -222,7 +222,7 @@ needs a document takes those two functions rather than the document.
   `youtube.js` are one route family each; `paths.js` builds every path, so `safeId` cannot be
   forgotten by a route.
   Proxied at `/api` (vite.config).
-- `src/main.jsx` — boot + service-worker register (PWA, skipped in Capacitor) + fatal-error
+- `src/main.tsx` — boot + service-worker register (PWA, skipped in Capacitor) + fatal-error
   overlay. That overlay is how a render crash shows up — check the page text for "Unhandled".
 - `public/` — `manifest.webmanifest`, `icon.svg`, `sw.js` (caches app shell; `/api` excluded).
 - `android/`, `capacitor.config.json` — Capacitor Android wrapper. The APK build needs **JDK 21**.
@@ -236,7 +236,7 @@ needs a document takes those two functions rather than the document.
 - `layer.anim` (LAYER_ANIM_DEFAULT): `tx/ty/rot/scale/pivotX/pivotY/path` + `mode(progress|return)/speed/count/ease/easePower`.
 - Animations apply **only while `isPlaying`** (editing is at rest); export captures them via playback.
 
-## App.jsx key handlers (search these names)
+## App.tsx key handlers (search these names)
 - Drawing: `startDraw`/`onDraw`/`stopDraw`. Each does the cross-cutting part — palm rejection
   (ignore `pointerType==='touch'`), the eyedropper, a path being recorded, a floating selection,
   a text under the pointer — and then hands over to `TOOLS[etool]` in `tools/canvasTools.ts`.
@@ -321,7 +321,7 @@ decide between modes before any tool sees the event.
     behind: a group that only refers to itself is dead however busy it looks.
   - `unused-imports` — a name imported and never used, or imported twice. The other checks
     cannot see these: `unreachable` asks what App's own names reach and an import is not one of
-    them. Twenty-eight had piled up in App.jsx alone, left behind by the extractions.
+    them. Twenty-eight had piled up in App.tsx alone, left behind by the extractions.
   - `stroke-writes` — every write that adds a stroke to a layer goes through `commitStroke`,
     which refuses an id naming no layer and reveals the layer it writes to. Both failures are
     silent and both shipped, four times: the lasso paste and the mosaic evaporated, the bucket

@@ -27,7 +27,7 @@ const makeCuts = (n) => Array.from({ length: n }, (_, i) => ({
     videoBatch: 'vb1', videoLabel: 'clip',
 }));
 
-// The two per-render aggregations in App.jsx, reproduced exactly in shape.
+// The two per-render aggregations in App.tsx, reproduced exactly in shape.
 const aggregateParts = (cuts) => {
     const m = new Map();
     for (const c of cuts) {
@@ -49,7 +49,7 @@ const makeLayers = (n) => Array.from({ length: n }, (_, i) => ({
     parentId: i % 5 === 0 ? null : 'L' + (Math.floor(i / 5) * 5), visible: true,
 }));
 
-console.log('\nPer-render derived values (App.jsx recomputes these on every render)');
+console.log('\nPer-render derived values (App.tsx recomputes these on every render)');
 for (const n of [50, 200, 1000]) {
     const cuts = makeCuts(n);
     bench(`parts aggregation, ${n} cuts`, () => aggregateParts(cuts), 2000);

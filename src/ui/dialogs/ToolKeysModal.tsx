@@ -1,5 +1,5 @@
 import { AlertTriangle } from 'lucide-react';
-import { tr } from '../../i18n';
+import { tr } from '../../i18n.ts';
 import { TOOL_PREFIX } from '../../core/shortcuts.ts';
 import { Modal } from '../Modal.tsx';
 import type { Keymap } from '../../core/shortcuts.ts';

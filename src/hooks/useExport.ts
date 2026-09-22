@@ -14,7 +14,7 @@
 // called long before this is - recording and playback are one clock, and App is where the two
 // meet.
 
-import { tr } from '../i18n.js';
+import { tr } from '../i18n.ts';
 import { pieceRange } from '../core/exportQueue.ts';
 import { frameExportPlan, exportFileInfo, LONG_EXPORT_FRAMES } from '../core/frameExport.ts';
 import { EXPORT_FPS } from '../core/recordClock.ts';

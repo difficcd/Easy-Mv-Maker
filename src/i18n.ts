@@ -13,20 +13,20 @@
 // .map(t => ... t('표시') ...) would let the local shadow the function and throw at runtime;
 // that exact shape came up during the conversion.
 
-import { JA } from './i18n.ja.js';
+import { JA } from './i18n.ja.ts';
 import { readStored, writeStored } from './core/persist.ts';
 
 /** The languages with a dictionary. Korean needs none: it is the key. */
-export const LANGS = ['en', 'ko', 'ja'];
+export const LANGS: readonly string[] = ['en', 'ko', 'ja'];
 
 let lang = 'en';
 
 export const getLang = () => lang;
-export const setLangValue = (l) => { lang = LANGS.includes(l) ? l : 'en'; };
+export const setLangValue = (l: string): void => { lang = LANGS.includes(l) ? l : 'en'; };
 // English is the default: the repository, the README and the screenshots are English, so a
 // first-time visitor should land in English. The others are one click away and are remembered.
-export const loadLang = () => readStored('mv_lang', 'en', (raw) => (LANGS.includes(raw) ? raw : undefined));
-export const saveLang = (l) => writeStored('mv_lang', l);
+export const loadLang = (): string => readStored('mv_lang', 'en', (raw: string) => (LANGS.includes(raw) ? raw : undefined));
+export const saveLang = (l: string): void => writeStored('mv_lang', l);
 
 /**
  * Look one string up in one dictionary, allowing for the padding some call sites add.
@@ -35,7 +35,7 @@ export const saveLang = (l) => writeStored('mv_lang', l);
  * keeps one key without the padding, and any surrounding whitespace from the original is
  * preserved around the translation.
  */
-const lookup = (dict, s) => {
+const lookup = (dict: Record<string, string>, s: string): string | null => {
     if (dict[s] != null) return dict[s];
     const core = s.trim();
     const hit = core && dict[core];
@@ -45,7 +45,7 @@ const lookup = (dict, s) => {
     return lead + hit + tail;
 };
 
-export const tr = (s, ...args) => {
+export const tr = (s: string, ...args: unknown[]): string => {
     let out = s;
     if (lang === 'en') {
         out = lookup(EN, s) ?? s;
@@ -55,10 +55,10 @@ export const tr = (s, ...args) => {
         // coverage shippable rather than all-or-nothing.
         out = lookup(JA, s) ?? lookup(EN, s) ?? s;
     }
-    return args.length ? out.replace(/\{(\d+)\}/g, (m, i) => (args[i] ?? m)) : out;
+    return args.length ? out.replace(/\{(\d+)\}/g, (m, i) => String(args[Number(i)] ?? m)) : out;
 };
 
-const EN = {
+const EN: Record<string, string> = {
     // -- Tools ---------------------------------------------
     '펜': 'Pen',
     '연필': 'Pencil',

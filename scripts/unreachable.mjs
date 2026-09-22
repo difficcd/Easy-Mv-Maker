@@ -13,12 +13,12 @@
 // bodies of its effects, and the arguments it hands to its hooks. Anything not reachable from a
 // root by a chain of references is dead, however many times it appears.
 //
-// Deliberately only App.jsx. It is the file where this happens, because it is the file big enough
+// Deliberately only App.tsx. It is the file where this happens, because it is the file big enough
 // to lose something in; the extracted hooks are small enough that a dead name in one is visible.
 
 import { readFileSync } from 'node:fs';
 
-const FILE = 'src/App.jsx';
+const FILE = 'src/App.tsx';
 const src = readFileSync(FILE, 'utf8');
 const lines = src.split('\n');
 

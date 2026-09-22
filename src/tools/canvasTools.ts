@@ -24,7 +24,7 @@ export interface ToolContext {
     samplesOf: (e: any, pos: PressurePoint) => PressurePoint[];
     commitStrokeToLayer: (cutId: Id, layerId: Id, stroke: any) => void;
     updLayers: (cutId: Id, fn: (cut: Cut) => Partial<Cut>) => void;
-    floodFillAt: (pos: PressurePoint, cut: Cut | null | undefined, layer: Layer | null) => void;
+    floodFillAt: (pos: PressurePoint, cut: Cut, layer: Layer) => void;
 }
 /** A tool's two halves. A tool with no `move` does everything on the press. */
 export interface Tool { down?: (c: ToolContext) => void; move?: (c: ToolContext) => void }
@@ -120,7 +120,7 @@ const ERASER: Tool = {
 
 const FILL: Tool = {
     // A fill is a single act, not a drag.
-    down: (c) => { c.gesture.drawing.current = false; c.floodFillAt(c.pos, c.cut, c.layer); },
+    down: (c) => { c.gesture.drawing.current = false; if (c.cut && c.layer) c.floodFillAt(c.pos, c.cut, c.layer); },
 };
 
 /** The move tool's press is handled before the table; there is nothing left for it to do. */

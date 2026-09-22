@@ -1,6 +1,6 @@
 import { Menu, Palette, ChevronRight } from 'lucide-react';
 import { Fragment } from 'react';
-import { tr } from '../i18n';
+import { tr } from '../i18n.ts';
 import type React from 'react';
 import type { Point } from '../core/types.ts';
 import type { Dock, PanelDrag } from '../hooks/usePanelLayout.ts';

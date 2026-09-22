@@ -1,6 +1,6 @@
 import React from 'react';
 import { swayWeightAt, swayPointAt, sortSwayProfile } from '../core/sway.ts';
-import { tr } from '../i18n';
+import { tr } from '../i18n.ts';
 import type { SwayPoint, SwayProfile } from '../core/sway.ts';
 
 /** The spine editor's props: the profile and its axis, how far it swings, the canvas size, and where edits go. */

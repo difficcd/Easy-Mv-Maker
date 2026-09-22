@@ -1,5 +1,5 @@
 import { Settings, Film, Waves, Lasso } from 'lucide-react';
-import { tr } from '../../i18n';
+import { tr } from '../../i18n.ts';
 import { Modal } from '../Modal.tsx';
 import type React from 'react';
 import type { Keymap } from '../../core/shortcuts.ts';

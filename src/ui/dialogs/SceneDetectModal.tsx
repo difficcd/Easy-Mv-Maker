@@ -1,4 +1,4 @@
-import { tr } from '../../i18n';
+import { tr } from '../../i18n.ts';
 import { Modal } from '../Modal.tsx';
 /** The scene-detect dialog's settings: how sensitive, and over which part of the video. */
 export interface SceneCfg { threshold: number; rangeOn?: boolean; startText?: string; endText?: string; [k: string]: any }

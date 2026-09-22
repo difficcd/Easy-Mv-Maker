@@ -12,7 +12,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=000" alt="React 19">
   <img src="https://img.shields.io/badge/Vite-8-646CFF?logo=vite&logoColor=fff" alt="Vite 8">
-  <img src="https://img.shields.io/badge/TypeScript-checkJs-3178C6?logo=typescript&logoColor=fff" alt="TypeScript checkJs">
+  <img src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=fff" alt="TypeScript strict">
   <img src="https://img.shields.io/badge/HTML5%20Canvas-2D-E34F26?logo=html5&logoColor=fff" alt="HTML5 Canvas 2D">
   <img src="https://img.shields.io/badge/Express-API-000000?logo=express&logoColor=fff" alt="Express API">
   <img src="https://img.shields.io/badge/Capacitor-Android-119EFF?logo=capacitor&logoColor=fff" alt="Capacitor Android">
@@ -97,15 +97,14 @@ npm run smoke      # 빌드된 앱을 헤드리스 브라우저에서 띄워 선
 
 `npm run check`가 관문입니다: 타입 검사, 단위 테스트, 정적 가드 여섯, 빌드. 같은 단계가 모든 푸시와 PR에서 CI로 돕니다.
 
-코드는 폴더 하나씩 TypeScript로 옮기는 중입니다(#268) — `src/core/`, `src/engine/`, `src/export/`,
-`src/canvas/`, `src/hooks/`, `src/ui/`, `src/tools/`는 끝났고 `App`과 최상위 파일 몇 개가 뒤따릅니다. 목적은 주석을 타입으로 바꾸는 것이 아니라(JS도 이미
-JSDoc으로 타입이 있었음) JSDoc이 줄 수 없던 두 가지입니다. 하나는 `strict` — JS는 느슨하게(null
-검사 없음, 암묵적 `any` 허용) 검사되고, 옮긴 모듈은 `tsconfig.strict.json`이 strict로 잡습니다.
-실제로 빠진 null 가드와 잘못된 타입의 id를 돌려주던 함수를 잡아냈습니다. 다른 하나는 이름 붙은
-모양 — `Scene`, `CutsAction`, `StoreEntry` 같은 인터페이스는 다른 파일이 import할 수 있지만 JSDoc
-typedef는 그 파일 안에서만 쓰였습니다. 옮긴 모듈은 `src/` 아래 `.ts` 파일이고, 주변 JS는 전처럼 검사합니다. `.ts` 모듈은 확장자까지
-적어 import합니다 — 테스트에서 Node 자체 타입 스트립(`--experimental-strip-types`, 추가 의존성
-없음)이 그걸 필요로 하고, 번들러와 `tsc`도 받아들입니다. 새 모듈은 TypeScript로 씁니다.
+코드는 TypeScript입니다 — JavaScript에서 폴더 하나씩 옮겼고(#268) 모든 파일이 `strict`로 검사됩니다.
+목적은 주석을 타입으로 바꾸는 것이 아니라(JS도 이미 JSDoc으로 타입이 있었음) JSDoc이 줄 수 없던
+두 가지였습니다. 하나는 엄격함 — JS는 느슨하게(null 검사 없음, 암묵적 `any` 허용) 검사됐고,
+`strict`는 빠진 null 가드, 잘못된 타입의 id를 돌려주던 함수, 실제 저장값보다 좁거나 느슨하게
+잡힌 설정 타입을 잡아냈습니다. 다른 하나는 이름 붙은 모양 — `Scene`, `CutsAction`, `PlaybackDeps`
+같은 인터페이스는 다른 파일이 import할 수 있지만 JSDoc typedef는 그 파일 안에서만 쓰였습니다.
+모듈은 확장자까지 적어 import합니다 — 테스트에서 Node 자체 타입 스트립(`--experimental-strip-types`,
+추가 의존성 없음)이 그걸 필요로 하고, 번들러와 `tsc`도 받아들입니다.
 
 | 가드 | 실패 조건 |
 |---|---|
@@ -170,7 +169,7 @@ npm run android:open     # Android Studio 열기 -> 실행, 또는 Build > Gener
 
 ```
 src/
-  App.jsx          컴포넌트: 상태와 배선 (~2,100줄)
+  App.tsx          컴포넌트: 상태와 배선 (~2,100줄)
   tools/           그리기 도구를 디스패치 테이블로, TypeScript: 포인터 다운·이동에 각 도구가 하는 일
   core/            순수 로직, TypeScript - 리듀서, 타임라인 기하, 올가미, 도형, 저장, 내보내기 계획
   canvas/          2D 컨텍스트에 그리는 모든 것, TypeScript: 선, 텍스트, 흔들림 슬라이스, 레이어 합성
@@ -180,7 +179,7 @@ src/
                    자동저장, 패널, 도구 설정, 단축키, 드래그 제스처
   ui/              패널, TypeScript(.tsx); ui/dialogs/ 는 대화상자 하나당 파일 하나
   styles/          영역별 스타일시트, styles/index.css가 캐스케이드 순서대로 import
-  i18n.js          영어 사전(~710 항목)과 tr() 조회; i18n.ja.js는 일본어
+  i18n.ts          영어 사전(~710 항목)과 tr() 조회; i18n.ja.ts는 일본어
   globals.d.ts     앰비언트 선언 (EyeDropper, Capacitor, File System Access…)
 server/            API: index.js가 배선, projects·backups·youtube가 라우트 모듈, paths.js가 모든 경로를 만듦
 scripts/           위 검사 가드들, 핫패스 벤치마크, 폰트 서브셋
@@ -190,7 +189,7 @@ test/              단위 테스트 (node --test), src/ 구조를 그대로 — 
 `core/`, `engine/`, `export/` 아래 어떤 것도 캔버스나 React를 건드리지 않고, `tools/`는 React도
 자기 소유의 컨텍스트도 건드리지 않습니다 — `ImageData`가 필요하면 생성자를 인자로 받습니다.
 `canvas/`는 자기 것이 아니라 건네받은 컨텍스트에 그립니다. 그 분리가 테스트를 프레임워크 없이
-유지시킵니다. [ARCHITECTURE.md](ARCHITECTURE.md)는 `App.jsx`를 고치기 전에 읽을 지도이고,
+유지시킵니다. [ARCHITECTURE.md](ARCHITECTURE.md)는 `App.tsx`를 고치기 전에 읽을 지도이고,
 [HELPERS.md](HELPERS.md)는 모든 공유 export의 목록입니다.
 
 한국어 원문이 gettext 식으로 번역 키를 겸하므로, 항목이 빠지면 빈 라벨 대신 한국어가 보입니다.

@@ -82,7 +82,7 @@ function makeFakeIndexedDB() {
 }
 
 globalThis.indexedDB = makeFakeIndexedDB();
-const { saveProject, loadProject, listProjects, deleteProject } = await import('../../src/db.js');
+const { saveProject, loadProject, listProjects, deleteProject } = await import('../../src/db.ts');
 
 test('a save resolves only once the transaction has committed', async () => {
     control.outcome = 'commit';

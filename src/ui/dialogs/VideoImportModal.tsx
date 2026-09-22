@@ -1,4 +1,4 @@
-import { tr } from '../../i18n';
+import { tr } from '../../i18n.ts';
 import { targetCanvasFor } from '../../core/canvasSize.ts';
 import { Modal } from '../Modal.tsx';
 import { parseClock } from '../../core/timeCode.ts';
