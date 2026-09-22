@@ -4,23 +4,45 @@ import { ANIM_DEFAULT } from '../core/cutAnim.ts';
 import { LAYER_ANIM_DEFAULT } from '../core/layerAnim.ts';
 import { CAMERA_DEFAULT, CAMERA_PRESETS, resolveCamera } from '../core/camera.ts';
 import { randomId } from '../core/ids.ts';
-
+import type { Id } from '../core/types.ts';
+import type { CutAnimSettings } from '../core/cutAnim.ts';
+import type { CameraSettings } from '../core/camera.ts';
+import type { LayerAnimSettings } from '../core/layerAnim.ts';
+import type { Keyframe } from '../core/keyframes.ts';
+import type { SwayPoint } from '../core/sway.ts';
+import type { PathCapture } from '../hooks/usePathCapture.ts';
 import { upsertKey, patchKey, removeKey, snapProgress } from '../core/keyframes.ts';
 import { readStored, writeStored, arrayCodec } from '../core/persist.ts';
-import { NumField } from './NumField';
+import { NumField } from './NumField.tsx';
 import { tr } from '../i18n';
 import { swayPointAt, swayWeightAt } from '../core/sway.ts';
+
+/** A named motion, built in or saved by the user: the layer-animation fields it sets. */
+interface MovePreset { id: string; label: string; v: Partial<LayerAnimSettings> }
+/** The part-animation panel's props: the layer, how to change it, and the two captures it can start. */
+export interface LayerAnimPanelProps {
+    cut: Cut;
+    layer: Layer;
+    updLayerAnim: (cutId: Id, layerId: Id, patch: Partial<LayerAnimSettings>) => void;
+    updLayers: (cutId: Id, fn: (cut: Cut) => Partial<Cut>) => void;
+    pathCapture: PathCapture | null;
+    setPathCapture: (f: PathCapture | null | ((p: PathCapture | null) => PathCapture | null)) => void;
+    spineEdit: { cutId: Id, layerId: Id } | null;
+    setSpineEdit: (s: { cutId: Id, layerId: Id } | null) => void;
+    /** where the playhead is in this cut, 0..1, for placing a keyframe */
+    cutProgress?: number;
+}
 
 // Animation control panels, split out of App.jsx so editing the (frequently-tweaked)
 // animation UI doesn't require loading the whole component.
 
-const EASE_OPTS = [['linear', '일정'], ['in', '천천히→빠르게'], ['out', '빠르게→천천히'], ['inout', '천천-빠-천천']];
+const EASE_OPTS: Array<[string, string]> = [['linear', '일정'], ['in', '천천히→빠르게'], ['out', '빠르게→천천히'], ['inout', '천천-빠-천천']];
 
 // One row of controls. Every row wraps: the panel is ~215px of usable width, a number box cannot
 // shrink below the width it was given, and the labels are longer in English than the Korean they
 // were sized for. Without wrapping the last control of a row is simply pushed outside the panel -
 // which is what put Count and Sway's Speed past the right edge.
-const R = (color = '#aaa', extra) => ({
+const R = (color = '#aaa', extra?: React.CSSProperties): React.CSSProperties => ({
     display: 'flex', flexWrap: 'wrap', alignItems: 'center',
     columnGap: 6, rowGap: 4, fontSize: 10, color, ...extra,
 });
@@ -29,7 +51,7 @@ const R = (color = '#aaa', extra) => ({
 // label and suffix are drawn inside the same inline box as the input so a wrap never separates a
 // field from the letter naming it - "X" ending a line with its input starting the next one is
 // unreadable, and that is what the keyframe list used to do.
-const NumIn = ({ value, onChange, step = 1, min = undefined, max = undefined, w = 56, title = '', label = undefined, suffix = undefined }) => {
+const NumIn = ({ value, onChange, step = 1, min = undefined, max = undefined, w = 56, title = '', label = undefined, suffix = undefined }: { value: number, onChange: (v: number) => void, step?: number, min?: number, max?: number, w?: number, title?: string, label?: React.ReactNode, suffix?: React.ReactNode }) => {
     const input = (
         <NumField value={value} onChange={onChange} step={step} min={min} max={max} width={w} title={title} />
     );
@@ -38,9 +60,9 @@ const NumIn = ({ value, onChange, step = 1, min = undefined, max = undefined, w 
 };
 
 // Per-cut animation (in/out, deform, move, easing).
-export function CutAnimPanel({ cut, updCutAnim }) {
-    const a = { ...ANIM_DEFAULT, ...cut.anim };
-    const set = (o) => updCutAnim(cut.id, o);
+export function CutAnimPanel({ cut, updCutAnim }: { cut: Cut, updCutAnim: (cutId: Id, patch: Partial<CutAnimSettings>) => void }) {
+    const a: CutAnimSettings = { ...ANIM_DEFAULT, ...cut.anim };
+    const set = (o: Partial<CutAnimSettings>) => updCutAnim(cut.id, o);
     return (
         <div style={{ marginTop: 8, borderTop: '1px solid hsl(var(--ui-h) var(--ui-s) 20%)', paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
             <div style={{ fontSize: 10, color: '#888' }}>{tr('컷 애니메이션 (재생 시 적용)')}</div>
@@ -105,9 +127,9 @@ export function CutAnimPanel({ cut, updCutAnim }) {
  * different things: that one moves the drawing inside the frame, this one moves the frame. Putting
  * them in one list made it impossible to tell at a glance which was which.
  */
-export function CameraPanel({ cut, updCutCamera, cameraCapture, setCameraCapture, canvasW, canvasH }) {
-    const c = { ...CAMERA_DEFAULT, ...cut.camera };
-    const set = (o) => updCutCamera(cut.id, o);
+export function CameraPanel({ cut, updCutCamera, cameraCapture, setCameraCapture, canvasW, canvasH }: { cut: Cut, updCutCamera: (cutId: Id, patch: Partial<CameraSettings> | null) => void, cameraCapture: { cutId: Id } | null, setCameraCapture: (c: { cutId: Id } | null) => void, canvasW: number, canvasH: number }) {
+    const c: CameraSettings = { ...CAMERA_DEFAULT, ...cut.camera };
+    const set = (o: Partial<CameraSettings> | null) => updCutCamera(cut.id, o);
     // What the camera actually resolves to, preset included. Reading the raw fields would show
     // zoom 1 while the picture visibly zooms, because a preset's zoom lives on the preset.
     const eff = resolveCamera(cut.camera, canvasW, canvasH);
@@ -158,14 +180,14 @@ export function CameraPanel({ cut, updCutCamera, cameraCapture, setCameraCapture
     );
 }
 
-const round2 = (v) => Math.round(v * 100) / 100;
+const round2 = (v: number) => Math.round(v * 100) / 100;
 // Zooming out past 1 shows blank paper around the artwork. That is a legitimate thing to want -
 // a pull-back reveal - but not by accident, so the floor sits well below 1 rather than at it.
-const clampZoom = (v) => Math.max(0.2, Math.min(8, v));
+const clampZoom = (v: number) => Math.max(0.2, Math.min(8, v));
 
 // Motion presets: rather than dialling in each value, drop in a common soft movement at once.
 // Each preset fills move, rotate and scale together with the ping-pong flag and the easing.
-const MOVE_PRESETS = [
+const MOVE_PRESETS: MovePreset[] = [
     { id: 'floatY', label: '둥실둥실', v: { mode: 'return', tx: 0, ty: -24, rot: 0, scale: 0, speed: 0.6, count: 0, ease: 'inout', easePower: 2 } },
     { id: 'driftX', label: '좌우 흐름', v: { mode: 'return', tx: 40, ty: 0, rot: 0, scale: 0, speed: 0.5, count: 0, ease: 'inout', easePower: 2 } },
     { id: 'breathe', label: '숨쉬기', v: { mode: 'return', tx: 0, ty: 0, rot: 0, scale: 0.06, speed: 0.8, count: 0, ease: 'inout', easePower: 2 } },
@@ -177,23 +199,23 @@ const MOVE_PRESETS = [
 
 // Per-layer ("part") animation (move/rotate/scale/path + ping-pong/speed/count/easing).
 // Presets the user saved: same shape as the built-in ones, kept in the browser.
-const loadCustomPresets = () => readStored('mv_move_presets', [], arrayCodec.decode);
-const saveCustomPresets = (list) => writeStored('mv_move_presets', list, arrayCodec.encode);
+const loadCustomPresets = (): MovePreset[] => readStored<MovePreset[]>('mv_move_presets', [], arrayCodec.decode);
+const saveCustomPresets = (list: MovePreset[]) => writeStored('mv_move_presets', list, arrayCodec.encode);
 
-export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCapture, setPathCapture, spineEdit, setSpineEdit, cutProgress = 0 }) {
-    const a = { ...LAYER_ANIM_DEFAULT, ...layer.anim };
+export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCapture, setPathCapture, spineEdit, setSpineEdit, cutProgress = 0 }: LayerAnimPanelProps) {
+    const a: LayerAnimSettings = { ...LAYER_ANIM_DEFAULT, ...layer.anim };
     const [custom, setCustom] = React.useState(loadCustomPresets);
-    const keys = Array.isArray(a.keys) ? a.keys : [];
+    const keys: Keyframe[] = Array.isArray(a.keys) ? a.keys : [];
     // The list rules - sorted, one key per instant, null when empty - are core/keyframes; the
     // panel only says which key and with what.
-    const setKeys = (list) => updLayerAnim(cut.id, layer.id, { keys: list });
+    const setKeys = (list: Keyframe[] | null) => updLayerAnim(cut.id, layer.id, { keys: list });
     // Add a key at the current playback position (progress through the cut), carrying the
     // current transform, overwriting any key already sitting there.
     const addKeyHere = () => {
         const val = { tx: a.tx || 0, ty: a.ty || 0, rot: a.rot || 0, scale: a.scale || 0, op: 1, ease: 'inout', easePower: 2 };
         setKeys(upsertKey(keys, snapProgress(cutProgress), val, () => randomId('k')));
     };
-    const updKey = (i, o) => setKeys(patchKey(keys, i, o));
+    const updKey = (i: number, o: Partial<Keyframe>) => setKeys(patchKey(keys, i, o));
     return (
         <div style={{ padding: '6px 8px', background: 'hsl(var(--ui-h) var(--ui-s) 10%)', borderTop: '1px solid hsl(var(--ui-h) var(--ui-s) 20%)', display: 'flex', flexDirection: 'column', gap: 5 }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -348,14 +370,14 @@ export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCaptur
                 Zero holds that point still; a negative value bends it the other way. */}
             {(() => {
                 const prof = Array.isArray(a.swayProfile) ? a.swayProfile : null;
-                const setProf = (arr) => updLayerAnim(cut.id, layer.id, { swayProfile: arr });
+                const setProf = (arr: Array<number | SwayPoint> | null) => updLayerAnim(cut.id, layer.id, { swayProfile: arr });
                 // A point may carry its own position now, so the panel reads through the same
                 // helper the renderer does rather than assuming every entry is a bare weight.
                 const pointAt = prof ? swayPointAt(prof) : null;
-                const points = prof ? prof.map((_, i) => pointAt(i)) : null;
+                const points: SwayPoint[] | null = prof ? prof.map((_, i) => pointAt!(i)) : null;
                 // Resizing keeps the shape by sampling the curve that exists, and spaces the new
                 // points evenly - a count is a request for "this many", not for particular places.
-                const resize = (n) => {
+                const resize = (n: number) => {
                     const cur = prof || [0, 1];
                     setProf(Array.from({ length: n }, (_, i) => {
                         const p = n > 1 ? i / (n - 1) : 0;
@@ -385,12 +407,12 @@ export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCaptur
                         </div>
                         {prof && (
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, paddingLeft: 26 }}>
-                                {points.map((pt, i) => (
+                                {points!.map((pt, i) => (
                                     <React.Fragment key={i}>
                                         <NumIn value={Math.round(pt.w * 100)} step={10} min={-100} max={100} w={46}
                                             label={<span style={{ color: '#667' }}>{Math.round(pt.p * 100)}%</span>}
                                             title={tr('{0} {1}% 지점의 흔들림 정도(%)', a.swayAxis === 'x' ? tr('왼쪽→오른쪽') : tr('위→아래'), Math.round(pt.p * 100))}
-                                            onChange={v => setProf(points.map((x, j) => (j === i ? { ...x, w: v / 100 } : x)))} />
+                                            onChange={v => setProf(points!.map((x, j) => (j === i ? { ...x, w: v / 100 } : x)))} />
                                     </React.Fragment>
                                 ))}
                             </div>
@@ -413,9 +435,9 @@ export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCaptur
 
 // Boiling-line settings, per layer. Strength, wavelength, speed and a minimum-width
 // threshold are all exposed, the threshold being what stops hairlines shimmering wildly.
-export function JitterPanel({ cut, layer, updLayer }) {
+export function JitterPanel({ cut, layer, updLayer }: { cut: Cut, layer: Layer, updLayer: (cutId: Id, layerId: Id, patch: Partial<Layer>) => void }) {
     const on = !!layer.roughen;
-    const set = (o) => updLayer(cut.id, layer.id, o);
+    const set = (o: Partial<Layer>) => updLayer(cut.id, layer.id, o);
     return (
         <div style={{ marginTop: 6, padding: '6px 8px', background: 'hsl(var(--ui-h) var(--ui-s) 13%)', border: '1px solid hsl(var(--ui-h) var(--ui-s) 20%)', borderRadius: 6, display: 'flex', flexDirection: 'column', gap: 5 }}>
             <div style={R('#e0a84e')}>

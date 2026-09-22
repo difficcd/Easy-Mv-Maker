@@ -1,6 +1,6 @@
 import React from 'react';
 import { tr } from '../../i18n';
-import { Modal } from '../Modal.jsx';
+import { Modal } from '../Modal.tsx';
 import { fmt, parseClock } from '../../core/timeCode.ts';
 
 /**
@@ -20,14 +20,14 @@ import { fmt, parseClock } from '../../core/timeCode.ts';
  * @param {(from: number, to: number) => void} p.onExport
  * @param {() => void} p.onClose
  */
-export function ExportRangeModal({ first, end, playhead, transparentBg, format, onExport, onClose }) {
+export function ExportRangeModal({ first, end, playhead, transparentBg, format, onExport, onClose }: { first: number, end: number, playhead: number, transparentBg: boolean, format: string, onExport: (from: number, to: number) => void, onClose: () => void }) {
     const fromHere = playhead > first && playhead < end;
     const [from, setFrom] = React.useState(fmt(fromHere ? playhead : first));
     const [to, setTo] = React.useState(fmt(end));
     const a = parseClock(from), b = parseClock(to);
     const ok = b > a;
     const what = transparentBg ? (format === 'gif' ? 'GIF' : tr('PNG 시퀀스')) : tr('영상');
-    const Field = ({ label, value, set, presets }) => (
+    const Field = ({ label, value, set, presets }: { label: string, value: string, set: (v: string) => void, presets: Array<[string, number]> }) => (
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
             <span style={{ width: 34 }}>{label}</span>
             <input className="time-input" style={{ width: 96 }} value={value} onChange={e => set(e.target.value)}

@@ -1,6 +1,35 @@
 import { RotateCcw } from 'lucide-react';
 import { tr } from '../i18n';
-import { SwaySpine } from './SwaySpine';
+import { SwaySpine } from './SwaySpine.tsx';
+import type React from 'react';
+import type { View } from '../core/viewZoom.ts';
+import type { SwayPoint } from '../core/sway.ts';
+
+/** The stage's props: the canvases, the view over them, the pointer handlers, and the spine editor when open. */
+export interface CanvasStageProps {
+    /** the scrolling area, measured when the view is fitted or panned */
+    canvasAreaRef: React.RefObject<HTMLDivElement | null>;
+    /** the document canvas */
+    canvasRef: React.RefObject<HTMLCanvasElement | null>;
+    /** the overlay the current gesture is drawn on */
+    liveCanvasRef: React.RefObject<HTMLCanvasElement | null>;
+    cw: number;
+    ch: number;
+    /** draws the checkerboard behind the stage */
+    transparentBg: boolean;
+    /** the pan and zoom over the stage */
+    view: View;
+    resetView: () => void;
+    /** the area's pointer handlers, and whether space is held for panning */
+    gesture: { spaceDown: boolean, onAreaPointerDown: (e: any) => void, onAreaPointerMove: (e: any) => void, onAreaPointerUp: (e: any) => void };
+    /** the canvas's own pointer handlers */
+    draw: { startDraw: (e: any) => void, onDraw: (e: any) => void, stopDraw: (e: any) => void, onPointerLeaveCanvas: (e: any) => void };
+    /** from canvasCursor, below */
+    cursor: string;
+    /** the sway-profile editor, open over the stage while a layer is being shaped */
+    spine: { layer: any, onChange: (profile: SwayPoint[]) => void, onClose: () => void };
+}
+
 
 // The drawing surface: the scrolling area, the zoomed stage inside it, and the two canvases.
 //
@@ -34,7 +63,7 @@ export function CanvasStage({
     canvasAreaRef, canvasRef, liveCanvasRef,
     cw, ch, transparentBg, view, resetView,
     gesture, draw, cursor, spine,
-}) {
+}: CanvasStageProps) {
     const { spaceDown, onAreaPointerDown, onAreaPointerMove, onAreaPointerUp } = gesture;
     const zoomed = view.zoom !== 1 || view.x !== 0 || view.y !== 0;
     return (
@@ -88,7 +117,7 @@ export function CanvasStage({
  * @param {{spaceDown: boolean, selection: any, hoverHandle: string|null, tool: string}} s
  * @returns {string}
  */
-export function canvasCursor({ spaceDown, selection, hoverHandle, tool }) {
+export function canvasCursor({ spaceDown, selection, hoverHandle, tool }: { spaceDown: boolean, selection: unknown, hoverHandle: string | null, tool: string }): string {
     if (spaceDown) return 'grab';
     if (selection) {
         // There is no rotate cursor in CSS, so the knob takes the grab hand - which at least

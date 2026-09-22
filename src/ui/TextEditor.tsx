@@ -1,8 +1,10 @@
 import React from 'react';
 import { tr } from '../i18n';
-import { NumField, clampNum } from './NumField';
+import { NumField, clampNum } from './NumField.tsx';
 import { FONT_PRESETS, fontGroups } from '../core/fonts.ts';
 import { TEXT_ANIM_DEFAULT } from '../core/textAnim.ts';
+import type { TextEdit } from '../core/textEdit.ts';
+
 
 /**
  * The text editor, which is a tab in the cut panel rather than a window over the canvas.
@@ -18,7 +20,7 @@ import { TEXT_ANIM_DEFAULT } from '../core/textAnim.ts';
  * @param {() => void} props.commitText
  * @param {() => void} props.cancelText
  */
-export function TextEditor({ textEdit, setTextEdit, textAreaRef, commitText, cancelText }) {
+export function TextEditor({ textEdit, setTextEdit, textAreaRef, commitText, cancelText }: { textEdit: TextEdit | null, setTextEdit: (fn: (te: TextEdit | null) => TextEdit | null) => void, textAreaRef: React.RefObject<HTMLTextAreaElement | null>, commitText: () => void, cancelText: () => void }) {
     if (!textEdit) return null;
     // Every control changed one field of the text being edited, and every one of them wrote out
     // the spread and the null guard again - twenty-four copies of the same three tokens, each an
@@ -27,7 +29,7 @@ export function TextEditor({ textEdit, setTextEdit, textAreaRef, commitText, can
     // It takes a function as well as an object, because four of the controls toggle a field and
     // so have to read what it was. Passing the object would have meant those four keeping the
     // long form, and a helper that covers most of the cases is the kind that gets forgotten.
-    const patch = (o) => setTextEdit(te => (te ? { ...te, ...(typeof o === 'function' ? o(te) : o) } : te));
+    const patch = (o: Partial<TextEdit> | ((te: TextEdit) => Partial<TextEdit>)) => setTextEdit(te => (te ? { ...te, ...(typeof o === 'function' ? o(te) : o) } : te));
     return (
         <div className="text-panel-body">
             <textarea
@@ -51,7 +53,7 @@ export function TextEditor({ textEdit, setTextEdit, textAreaRef, commitText, can
                     held to 6..400 where it is used instead - textRender clamps
                     for drawing, and commitText clamps what gets saved. */}
                 <NumField
-                    value={textEdit.fontSize}
+                    value={textEdit.fontSize ?? 36}
                     onChange={v => patch({ fontSize: v })}
                     className="text-editor-num"
                 />
@@ -158,7 +160,7 @@ export function TextEditor({ textEdit, setTextEdit, textAreaRef, commitText, can
                 {(() => {
                     const an = { ...TEXT_ANIM_DEFAULT, ...(textEdit.anim || {}) };
                     const on = !!textEdit.anim;
-                    const set = (o) => patch({ anim: { ...an, ...o } });
+                    const set = (o: Record<string, unknown>) => patch({ anim: { ...an, ...o } });
                     return (<>
                         <div className="te-section">{tr('애니메이션')}</div>
                         <label className="te-check" title={tr('재생할 때만 적용됩니다')}>

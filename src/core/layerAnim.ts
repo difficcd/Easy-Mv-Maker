@@ -4,7 +4,7 @@ import { CANVAS_H, CANVAS_W } from './canvasSize.ts';
 import { cutProgress } from './cutTime.ts';
 import { SWING, applyEase, effectAt, samplePath, swing } from './easing.ts';
 import { sampleKeys } from './keyframes.ts';
-import { swayWaveAt } from './sway.ts';
+import { swayWaveAt, type SwayProfile } from './sway.ts';
 import type { TimeSpan, Point } from './types.ts';
 import type { Keyframe } from './keyframes.ts';
 
@@ -13,7 +13,7 @@ export interface LayerAnimSettings {
     mode: string; speed: number; count: number;
     tx: number; ty: number; rot: number; scale: number; pivotX: number; pivotY: number;
     path: Point[] | null; ease: string; easePower: number;
-    swayAmount: number; swaySpeed: number; swayCurve: number[] | null; swayProfile: Array<{ p: number, w: number }> | null; swayAxis: string; swayLag: number;
+    swayAmount: number; swaySpeed: number; swayCurve: number[] | null; swayProfile: SwayProfile | null; swayAxis: string; swayLag: number;
     keys: Keyframe[] | null;
     mosaic: number; mosaicMin: number; mosaicFrom: number; mosaicTo: number; mosaicSpeed: number; mosaicRect: { x: number, y: number, w: number, h: number } | null;
     noise: number; noiseFrom: number; noiseTo: number; noiseColor: number;
@@ -21,7 +21,7 @@ export interface LayerAnimSettings {
 /** The layer's transform and effects at a moment; null when nothing is animated. */
 export interface LayerAnimAt {
     tx: number; ty: number; rot: number; sc: number; alpha: number; shear: number; px: number; py: number;
-    swayProfile: Array<{ p: number, w: number }> | null; swayAxis: 'x' | 'y'; swayDisp: number;
+    swayProfile: SwayProfile | null; swayAxis: 'x' | 'y'; swayDisp: number;
     mosaic: number; mosaicRect: { x: number, y: number, w: number, h: number } | null;
     noise: number; noiseColor: number;
     swayWave: { amp: number, speed: number, curve: number[] | null, time: number, lag: number } | null;

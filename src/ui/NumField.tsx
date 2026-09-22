@@ -1,5 +1,18 @@
 import React from 'react';
 import { clampNum, liveNumber, commitNumber } from '../core/numInput.ts';
+/** A number field's props: the value, where it goes, its range and step, and how it looks. */
+export interface NumFieldProps {
+    value: number;
+    onChange: (next: number) => void;
+    min?: number;
+    max?: number;
+    step?: number;
+    className?: string;
+    style?: React.CSSProperties;
+    title?: string;
+    width?: number | string;
+}
+
 
 // A number input you can actually type into. The rules, and why the plain controlled input does
 // not work, are in numInput.js; this is the component around them.
@@ -17,10 +30,10 @@ export { clampNum, liveNumber, commitNumber };
 export function NumField({
     value, onChange, min = undefined, max = undefined, step = 1,
     className = 'time-input', style = undefined, title = '', width = undefined,
-}) {
-    const [draft, setDraft] = React.useState(null); // a string while focused, otherwise null
+}: NumFieldProps) {
+    const [draft, setDraft] = React.useState<string | null>(null); // a string while focused, otherwise null
 
-    const commit = (raw) => {
+    const commit = (raw: string) => {
         const next = commitNumber(raw, { min, max, fallback: value });
         setDraft(null);
         if (next !== value) onChange(next);

@@ -1,14 +1,25 @@
 import React from 'react';
 import { Droplets } from 'lucide-react';
 import { tr } from '../i18n';
+/** The colour panel's props: the colour, how to change it, the eyedropper, the recent list, and the panel frame. */
+export interface ColorPanelProps {
+    color: string;
+    applyColor: (c: string) => void;
+    pickColor: () => void;
+    pickingColor: boolean;
+    recentColors: string[];
+    width: number;
+    onClose: () => void;
+}
+
 
 // --- Colour conversion (HSV <-> HEX) ---------------------------------------------------
-const hex2rgb = (h) => {
+const hex2rgb = (h: string) => {
     const x = String(h).replace('#', '');
     return { r: parseInt(x.slice(0, 2), 16), g: parseInt(x.slice(2, 4), 16), b: parseInt(x.slice(4, 6), 16) };
 };
-const rgb2hex = (r, g, b) => '#' + [r, g, b].map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
-const rgb2hsv = (r, g, b) => {
+const rgb2hex = (r: number, g: number, b: number): string => '#' + [r, g, b].map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
+const rgb2hsv = (r: number, g: number, b: number) => {
     r /= 255; g /= 255; b /= 255;
     const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
     let h = 0;
@@ -19,32 +30,32 @@ const rgb2hsv = (r, g, b) => {
     }
     return { h: (h * 60 + 360) % 360, s: mx ? d / mx : 0, v: mx };
 };
-const hsv2rgb = (h, s, v) => {
+const hsv2rgb = (h: number, s: number, v: number) => {
     const c = v * s, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = v - c;
     const t = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
     return { r: (t[0] + m) * 255, g: (t[1] + m) * 255, b: (t[2] + m) * 255 };
 };
-const hsv2hex = (h, s, v) => { const { r, g, b } = hsv2rgb(h, s, v); return rgb2hex(r, g, b); };
+const hsv2hex = (h: number, s: number, v: number): string => { const { r, g, b } = hsv2rgb(h, s, v); return rgb2hex(r, g, b); };
 
 export const RECENT_SLOTS = 30; // How many recent-colour slots to keep (fixed).
 
 // Colour wheel: the outer ring is hue, the inner square is saturation and value.
 // It sizes with the panel width so narrowing the panel never clips it out of sight.
-function ColorWheel({ color, onPick, size = 168 }) {
+function ColorWheel({ color, onPick, size = 168 }: { color: string, onPick: (hex: string) => void, size?: number }) {
     const WHEEL = Math.max(96, Math.round(size));
     const RING = Math.max(9, Math.round(WHEEL * 0.085));
     const R_OUT = WHEEL / 2 - 2, R_IN = R_OUT - RING;
     const SQ = Math.max(40, Math.floor((R_IN * 2) / Math.SQRT2) - 2);
-    const ringRef = React.useRef(null);
-    const sqRef = React.useRef(null);
-    const dragRef = React.useRef(null);
+    const ringRef = React.useRef<HTMLCanvasElement | null>(null);
+    const sqRef = React.useRef<HTMLCanvasElement | null>(null);
+    const dragRef = React.useRef<'ring' | 'sq' | null>(null);
     const { r, g, b } = hex2rgb(/^#[0-9a-fA-F]{6}$/.test(color) ? color : '#000000');
     const { h, s, v } = rgb2hsv(r, g, b);
 
     // The ring only carries hue, so it is drawn once.
     React.useEffect(() => {
         const c = ringRef.current; if (!c) return;
-        const ctx = c.getContext('2d');
+        const ctx = c.getContext('2d')!;
         ctx.clearRect(0, 0, WHEEL, WHEEL);
         const cx = WHEEL / 2, cy = WHEEL / 2;
         for (let a = 0; a < 360; a++) {
@@ -59,7 +70,7 @@ function ColorWheel({ color, onPick, size = 168 }) {
     // The square is redrawn whenever the hue changes.
     React.useEffect(() => {
         const c = sqRef.current; if (!c) return;
-        const ctx = c.getContext('2d');
+        const ctx = c.getContext('2d')!;
         ctx.fillStyle = `hsl(${h} 100% 50%)`;
         ctx.fillRect(0, 0, SQ, SQ);
         const gw = ctx.createLinearGradient(0, 0, SQ, 0);
@@ -70,13 +81,13 @@ function ColorWheel({ color, onPick, size = 168 }) {
         ctx.fillStyle = gb; ctx.fillRect(0, 0, SQ, SQ);
     }, [h, SQ]);
 
-    const ringFromEvent = (e, el) => {
+    const ringFromEvent = (e: { clientX: number, clientY: number }, el: Element) => {
         const r0 = el.getBoundingClientRect();
         const dx = e.clientX - r0.left - WHEEL / 2, dy = e.clientY - r0.top - WHEEL / 2;
         const a = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
         onPick(hsv2hex(a, s || 1, v || 1));
     };
-    const sqFromEvent = (e, el) => {
+    const sqFromEvent = (e: { clientX: number, clientY: number }, el: Element) => {
         const r0 = el.getBoundingClientRect();
         const ns = Math.max(0, Math.min(1, (e.clientX - r0.left) / SQ));
         const nv = Math.max(0, Math.min(1, 1 - (e.clientY - r0.top) / SQ));
@@ -84,14 +95,14 @@ function ColorWheel({ color, onPick, size = 168 }) {
     };
     // Capture the pointer so dragging outside the element keeps tracking - losing the drag
     // mid-pick is maddening.
-    const startDrag = (kind) => (e) => {
+    const startDrag = (kind: 'ring' | 'sq') => (e: React.PointerEvent<HTMLCanvasElement>) => {
         e.preventDefault();
         const el = e.currentTarget;
         try { el.setPointerCapture(e.pointerId); } catch { }
         dragRef.current = kind;
         (kind === 'ring' ? ringFromEvent : sqFromEvent)(e, el);
     };
-    const onMove = (kind) => (e) => {
+    const onMove = (kind: 'ring' | 'sq') => (e: React.PointerEvent<HTMLCanvasElement>) => {
         if (dragRef.current !== kind) return;
         (kind === 'ring' ? ringFromEvent : sqFromEvent)(e, e.currentTarget);
     };
@@ -125,8 +136,8 @@ export default function ColorPanel({
     recentColors,
     width,
     onClose,
-}) {
-    const swatch = (c, i, size, onPick) => (
+}: ColorPanelProps) {
+    const swatch = (c: string, i: number, size: number, onPick: () => void) => (
         <button key={i} onClick={onPick} title={c}
             style={{
                 width: size, height: size, borderRadius: 4, background: c, padding: 0, cursor: 'pointer',

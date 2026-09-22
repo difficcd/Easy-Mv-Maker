@@ -1,11 +1,30 @@
 import React from 'react';
 import { Plus, FolderPlus, Trash2, Copy, CopyPlus, ClipboardPaste, Eye, EyeOff, Settings, Video, ChevronDown, ChevronRight } from 'lucide-react';
 import { safeArray } from '../core/geometry.ts';
-import { CutAnimPanel, CameraPanel } from './AnimPanels';
-import { LayerRows } from './LayerRows';
+import { CutAnimPanel, CameraPanel } from './AnimPanels.tsx';
+import { LayerRows } from './LayerRows.tsx';
 import { tr } from '../i18n';
-
+import type { Id } from '../core/types.ts';
+import type { LayerRowDeps } from './LayerRows.tsx';
 import { inReadingOrder } from '../core/cutSelection.ts';
+
+/** The CUT / LAYER panel's props, grouped by what they are about. */
+export interface CutLayerPanelProps {
+    /** the document as the panel lists it, plus everything the layer rows need */
+    doc: { cuts: Cut[]; currentCutId: Id | null | undefined; copiedCut: unknown; videoBatches: Array<{ id: any, label: string, count: number }>; layerRows: LayerRowDeps };
+    cutOps: {
+        handleAddCut: () => void; handleCopyCut: (id: Id) => void; handleCutClick: (e: React.MouseEvent, id: Id) => void; handleDeleteCut: (id: Id) => void;
+        handleDuplicateCut: (id: Id) => void; handlePasteCut: () => void; renameCut: (id: Id, name: string) => void; deleteVideoBatch: (id: any) => void;
+        updCutAnim: (cutId: Id, patch: any) => void; updCutTime: (cutId: Id, field: 'startTime' | 'endTime', value: string) => void; updCutCamera: (cutId: Id, patch: any) => void;
+    };
+    layerOps: { handleAddFolder: (e: React.MouseEvent, cutId: Id) => void; handleAddLayer: (e: React.MouseEvent, cutId: Id) => void; onListDrop: (e: React.DragEvent, cutId: Id) => void; handleSetTool: (tool: string) => void };
+    /** the text list and the editor that arrives as a tab */
+    text: { selectedText: { cutId: Id, textId: Id } | null; setSelectedText: (sel: { cutId: Id, textId: Id } | null) => void; openEditText: (cutId: Id, textId: Id) => void; deleteTextObject: (cutId: Id, textId: Id) => void; toggleTextVisible: (cutId: Id, textId: Id) => void; textEditorBody: React.ReactNode; cancelText: () => void };
+    camera: { cameraCapture: { cutId: Id } | null; setCameraCapture: (c: { cutId: Id } | null) => void };
+    panel: { showRight: boolean; setShowRight: (on: boolean) => void; rightW: number; rightTab: string; setRightTab: (tab: string) => void };
+    canvas: { canvasW: number; canvasH: number };
+    cutList: { collapsedCutIds: Set<Id>; expandedCuts: Set<Id>; renamingCutId: Id | null; setRenamingCutId: (id: Id | null) => void; selectedCutIds: Set<Id>; toggleCutCollapse: (id: Id) => void; toggleCutSettings: (id: Id) => void };
+}
 
 // CUT / LAYER panel: the cut list, each cut's layer tree, cut animation and text list.
 // The rows of each tree are LayerRows; everything they need arrives as the `layerRows` bundle
@@ -17,7 +36,7 @@ const LAYER_LABEL_W = 330;
 
 export function CutLayerPanel({
     doc, cutOps, layerOps, text, camera, panel, canvas, cutList,
-}) {
+}: CutLayerPanelProps) {
     const { cuts, currentCutId, copiedCut, videoBatches, layerRows } = doc;
     const { handleAddCut, handleCopyCut, handleCutClick, handleDeleteCut, handleDuplicateCut, handlePasteCut, renameCut, deleteVideoBatch, updCutAnim, updCutTime, updCutCamera } = cutOps;
     const { handleAddFolder, handleAddLayer, onListDrop, handleSetTool } = layerOps;
@@ -33,7 +52,7 @@ export function CutLayerPanel({
     // Wide enough to name the buttons that open a panel. Below it they go back to being icons,
     // because a clipped label is worse than no label.
     const wideLayer = rightW >= LAYER_LABEL_W;
-    const tab = (id, label, active, onClose) => (
+    const tab = (id: string, label: string, active: boolean, onClose?: () => void) => (
         <div key={id} onClick={() => setRightTab(id)}
             style={{
                 display: 'flex', alignItems: 'center', gap: 6, padding: '4px 9px', cursor: 'pointer',
@@ -55,7 +74,7 @@ export function CutLayerPanel({
                     anything inside a button - the tabs are plain divs, so they get a stopPropagation
                     of their own rather than starting a panel drag. */}
                 <div className="panel-head" style={{ marginBottom: 8, gap: 2 }}
-                    onPointerDown={e => { if (/** @type {any} */ (e.target).closest('[data-tab]')) e.stopPropagation(); }}>
+                    onPointerDown={e => { if ((e.target as HTMLElement).closest('[data-tab]')) e.stopPropagation(); }}>
                     <div style={{ display: 'flex', alignItems: 'stretch', gap: 2, flex: 1, minWidth: 0, overflowX: 'auto' }} data-tab>
                         {tab('cut', 'CUT / LAYER', !showingText)}
                         {textEditorBody && tab('text', 'TEXT', showingText, cancelText)}
@@ -79,8 +98,8 @@ export function CutLayerPanel({
                                 {renamingCutId === cut.id
                                     ? <input className="time-input" style={{ flex: 1, minWidth: 0 }} autoFocus defaultValue={cut.name}
                                         onClick={e => e.stopPropagation()}
-                                        onBlur={e => { renameCut(cut.id, /** @type {any} */ (e.target).value.trim() || cut.name); setRenamingCutId(null); }}
-                                        onKeyDown={e => { if (e.key === 'Enter') { renameCut(cut.id, /** @type {any} */ (e.target).value.trim() || cut.name); setRenamingCutId(null); } if (e.key === 'Escape') setRenamingCutId(null); }} />
+                                        onBlur={e => { renameCut(cut.id, (e.target as HTMLInputElement).value.trim() || cut.name || ''); setRenamingCutId(null); }}
+                                        onKeyDown={e => { if (e.key === 'Enter') { renameCut(cut.id, (e.target as HTMLInputElement).value.trim() || cut.name || ''); setRenamingCutId(null); } if (e.key === 'Escape') setRenamingCutId(null); }} />
                                     : <span className="cut-name" onDoubleClick={e => { e.stopPropagation(); setRenamingCutId(cut.id); }} title={tr('더블클릭으로 이름 변경')}>{cut.name}</span>}
                                 <div style={{ display: 'flex', gap: 4 }}>
                                     <button className="icon-btn" onClick={e => { e.stopPropagation(); handleDuplicateCut(cut.id); }} title={tr('다음 프레임으로 복제 (Ctrl+D)')}><CopyPlus size={12} /></button>
@@ -161,13 +180,13 @@ export function CutLayerPanel({
                         </React.Fragment>
                     ); })}
                 </div>
-                <button className="button button-primary" style={{ width: '100%', marginTop: 10, opacity: currentCutId ? 1 : 0.4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, background: 'var(--accent)', borderColor: 'var(--accent-hi)', color: '#fff' }} onClick={() => handleDuplicateCut(currentCutId)} disabled={!currentCutId} title={tr('현재 컷을 다음 프레임으로 복제 (Ctrl+D)')}><CopyPlus size={14} /> {tr('다음 프레임 복제')}</button>
+                <button className="button button-primary" style={{ width: '100%', marginTop: 10, opacity: currentCutId ? 1 : 0.4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, background: 'var(--accent)', borderColor: 'var(--accent-hi)', color: '#fff' }} onClick={() => handleDuplicateCut(currentCutId!)} disabled={!currentCutId} title={tr('현재 컷을 다음 프레임으로 복제 (Ctrl+D)')}><CopyPlus size={14} /> {tr('다음 프레임 복제')}</button>
                 <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
                     <button className="button" style={{ flex: 1, minWidth: 0 }} onClick={handleAddCut}><Plus size={14} /> {tr('컷 추가')}</button>
                     <button className="button" style={{ flex: 1, minWidth: 0, opacity: copiedCut ? 1 : 0.4 }} onClick={handlePasteCut} disabled={!copiedCut} title={tr('컷 붙여넣기 (Ctrl+V)')}><ClipboardPaste size={14} /> {tr('붙여넣기')}</button>
                 </div>
                 {selectedCutIds.size > 1 && (
-                    <button className="button del-btn" style={{ width: '100%', marginTop: 6, borderColor: 'var(--accent-hi)' }} onClick={() => handleDeleteCut(currentCutId)} title={tr('선택한 컷 삭제 (Delete)')}>
+                    <button className="button del-btn" style={{ width: '100%', marginTop: 6, borderColor: 'var(--accent-hi)' }} onClick={() => handleDeleteCut(currentCutId!)} title={tr('선택한 컷 삭제 (Delete)')}>
                         <Trash2 size={14} /> {tr('선택 {0}컷 삭제', selectedCutIds.size)}
                     </button>
                 )}

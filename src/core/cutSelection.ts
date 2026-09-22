@@ -16,7 +16,7 @@ export function toggled<T>(set: Iterable<T>, id: T): Set<T> {
 }
 
 /** Cuts in reading order: by track, then by start time. */
-export const inReadingOrder = <C extends CutLike>(cuts: Iterable<C>): C[] => [...cuts].sort((a, b) => a.track - b.track || a.startTime - b.startTime);
+export const inReadingOrder = <C extends CutLike = Cut>(cuts: Iterable<C>): C[] => [...cuts].sort((a, b) => a.track - b.track || a.startTime - b.startTime);
 
 /**
  * The selection after a click on `id`.

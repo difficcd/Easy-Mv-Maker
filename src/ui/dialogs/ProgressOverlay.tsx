@@ -2,7 +2,7 @@ import { tr } from '../../i18n';
 
 // Progress for opening or uploading a large project. total 0 means the length is unknown,
 // which shows as an indeterminate bar.
-export function ProgressOverlay({ progress }) {
+export function ProgressOverlay({ progress }: { progress: { label: string, done: number, total: number } | null | undefined }) {
     if (!progress) return null;
     const { label, done, total } = progress;
     const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : null;

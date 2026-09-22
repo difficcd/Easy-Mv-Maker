@@ -1,15 +1,58 @@
 import { tr } from '../../i18n';
 import { targetCanvasFor } from '../../core/canvasSize.ts';
-import { Modal } from '../Modal.jsx';
+import { Modal } from '../Modal.tsx';
 import { parseClock } from '../../core/timeCode.ts';
-import { NumField, clampNum } from '../NumField.jsx';
+import { NumField, clampNum } from '../NumField.tsx';
+/**
+ * The import dialog's settings, with the file they are for. App fills every field when it opens
+ * the dialog, which is why none is optional here even though core's ImportConfig, written for
+ * any caller, leaves most of them so.
+ */
+export interface VideoImportCfg {
+    file: File;
+    srcKey?: string;
+    label?: string;
+    fps: number;
+    maxFrames: number;
+    scale: number;
+    whole: boolean;
+    withAudio: boolean;
+    /** 'exact' merges only identical frames; a number is a similarity threshold */
+    dedupe: 'exact' | number;
+    quality: string;
+    rangeOn: boolean;
+    startText: string;
+    endText: string;
+    parts: number;
+    canvasMode: string;
+    srcW: number;
+    srcH: number;
+}
+/** What the import dialog reads and drives. */
+export interface VideoImportProps {
+    videoImport: VideoImportCfg;
+    setVideoImport: (f: null | ((v: VideoImportCfg) => VideoImportCfg)) => void;
+    /** extraction progress while it runs, or null */
+    videoBusy: { done: number, total: number, skipped?: number } | null;
+    setVideoBusyBg: (on: boolean) => void;
+    videoStopRef: { current: boolean };
+    runVideoImport: () => void;
+    loadVideoOverlay: (file: File, name: string, startTime: number, offset: number, clip: number | null) => void;
+    loadAudioUrl: (url: string, name: string, startAt?: number, offset?: number, clipDur?: number | null) => void;
+    parseClock: (s: unknown) => number;
+    setShowHelp: (on: boolean) => void;
+    canvasW: number;
+    canvasH: number;
+    setCanvasSize: (size: { w: number, h: number }) => void;
+}
+
 
 // The video-to-frame-cuts import dialog. While extracting it shows only progress;
 // pressing "Send to background" closes it and the work continues in the corner chip.
 export function VideoImportModal({
     videoImport, setVideoImport, videoBusy, setVideoBusyBg, videoStopRef,
     runVideoImport, loadVideoOverlay, loadAudioUrl, parseClock, setShowHelp, canvasW, canvasH, setCanvasSize,
-}) {
+}: VideoImportProps) {
     return (
         <Modal title={tr('영상 → 프레임 컷')} onClose={() => setVideoImport(null)} width={420}
             closable={!videoBusy} panelStyle={{ color: '#ccc', fontSize: 12.5 }}>

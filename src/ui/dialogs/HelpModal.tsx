@@ -1,6 +1,9 @@
 import { Settings, Film, Waves, Lasso } from 'lucide-react';
 import { tr } from '../../i18n';
-import { Modal } from '../Modal.jsx';
+import { Modal } from '../Modal.tsx';
+import type React from 'react';
+import type { Keymap } from '../../core/shortcuts.ts';
+
 
 // Shortcut and gesture help.
 /**
@@ -14,10 +17,10 @@ import { Modal } from '../Modal.jsx';
  * row - a written "the gear" is only useful to someone who already knows which button that is.
  */
 function WhereIsIt() {
-    const Ico = ({ children }) => (
+    const Ico = ({ children }: { children: React.ReactNode }) => (
         <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 18, height: 18, verticalAlign: '-4px', borderRadius: 4, background: 'hsl(var(--ui-h) var(--ui-s) 24%)', margin: '0 2px' }}>{children}</span>
     );
-    const Row = ({ what, where }) => (
+    const Row = ({ what, where }: { what: React.ReactNode, where: React.ReactNode }) => (
         <div style={{ display: 'flex', gap: 8, padding: '2px 0' }}>
             <span style={{ width: 132, flexShrink: 0, color: '#9aa' }}>{what}</span>
             <span style={{ flex: 1 }}>{where}</span>
@@ -41,7 +44,7 @@ function WhereIsIt() {
     );
 }
 
-export function HelpModal({ keymap, onClose }) {
+export function HelpModal({ keymap, onClose }: { keymap: Keymap, onClose: () => void }) {
     return (
         <Modal title={tr('단축키 · 제스처')} onClose={onClose} width={460} maxHeight="80vh"
             panelStyle={{ fontSize: 12.5, color: '#ccc', lineHeight: 1.7 }}>

@@ -1,13 +1,13 @@
 import React from 'react';
 import { tr } from '../../i18n';
-import { Modal } from '../Modal.jsx';
+import { Modal } from '../Modal.tsx';
 
 // Link input. This used window.prompt, but once the browser blocks dialogs - one tick of
 // "prevent additional dialogs" and it sticks - prompt silently returns null and nothing
 // happens, so the button looks dead. Asking inside the app avoids that entirely.
-export function LinkPromptModal({ title, placeholder, onSubmit, onClose }) {
+export function LinkPromptModal({ title, placeholder, onSubmit, onClose }: { title: string, placeholder?: string, onSubmit: (url: string) => void, onClose: () => void }) {
     const [url, setUrl] = React.useState('');
-    const inputRef = React.useRef(null);
+    const inputRef = React.useRef<HTMLInputElement | null>(null);
     React.useEffect(() => { inputRef.current?.focus(); }, []);
     const submit = () => { const v = url.trim(); if (v) onSubmit(v); };
     return (

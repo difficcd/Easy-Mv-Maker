@@ -1,7 +1,20 @@
 import { AlertTriangle } from 'lucide-react';
 import { tr } from '../../i18n';
 import { TOOL_PREFIX } from '../../core/shortcuts.ts';
-import { Modal } from '../Modal.jsx';
+import { Modal } from '../Modal.tsx';
+import type { Keymap } from '../../core/shortcuts.ts';
+
+/** What both keymap editors share: the bindings, their defaults and labels, and the one waiting for a key. */
+export interface KeymapEditorProps {
+    keymap: Keymap;
+    setKeymap: (next: Keymap) => void;
+    defaultKeys: Keymap;
+    keyLabels: Record<string, string>;
+    /** the binding waiting for a keypress, if any */
+    rebinding: string | null;
+    setRebinding: (id: string | null) => void;
+}
+
 
 /**
  * The tool bindings, on their own.
@@ -10,7 +23,7 @@ import { Modal } from '../Modal.jsx';
  * group could be scanned, and they are looked for at different times: the general ones once, the
  * tool ones while deciding how to work.
  */
-export function ToolKeysModal({ keymap, setKeymap, defaultKeys, keyLabels, conflicts, rebinding, setRebinding, onClose }) {
+export function ToolKeysModal({ keymap, setKeymap, defaultKeys, keyLabels, conflicts, rebinding, setRebinding, onClose }: KeymapEditorProps & { conflicts: Record<string, string[]>, onClose: () => void }) {
     const ids = Object.keys(defaultKeys).filter(id => id.startsWith(TOOL_PREFIX));
     return (
         <Modal title={tr('도구 단축키')} onClose={onClose} width={400} maxHeight="80vh" z={1001}
@@ -38,7 +51,7 @@ export function ToolKeysModal({ keymap, setKeymap, defaultKeys, keyLabels, confl
  * @param {Record<string, string[]>} props.conflicts
  * @param {Record<string, string>} props.keyLabels
  */
-export function KeyConflicts({ conflicts, keyLabels }) {
+export function KeyConflicts({ conflicts, keyLabels }: { conflicts: Record<string, string[]>, keyLabels: Record<string, string> }) {
     return Object.entries(conflicts || {}).map(([key, actions]) => (
         <div key={key} style={{ fontSize: 11, color: '#e0a84e', padding: '4px 0' }}>
             <AlertTriangle size={11} style={{ verticalAlign: '-1px' }} />{' '}
@@ -68,7 +81,7 @@ export function KeyConflicts({ conflicts, keyLabels }) {
  * @param {(id: string|null) => void} props.setRebinding
  * @param {(next: Record<string, string>) => void} props.setKeymap
  */
-export function KeyRows({ ids, keymap, defaultKeys, keyLabels, rebinding, setRebinding, setKeymap }) {
+export function KeyRows({ ids, keymap, defaultKeys, keyLabels, rebinding, setRebinding, setKeymap }: KeymapEditorProps & { ids: string[] }) {
     return ids.map(id => {
         const waiting = rebinding === id;
         return (

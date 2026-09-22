@@ -37,7 +37,7 @@ works out what the frame *is* — which cuts, their animation, their layer group
 with no canvas involved and tests over it. `canvas/sceneRender.drawScene` then draws that answer.
 `paintFrame` in App is the two calls plus the parts that genuinely need the live canvas.
 
-**`tools/canvasTools.js` is one entry per drawing tool**, each `{down, move}` over a context
+**`tools/canvasTools.ts` is one entry per drawing tool**, each `{down, move}` over a context
 object App assembles per event (`toolCtx`). Adding a tool is adding an entry, and the context is
 the list of what a tool may touch.
 
@@ -143,23 +143,24 @@ frame is made of, and `SceneDeps` what the renderer needs from the app.
 timeline, the colour panel, touch, …), imported in their original cascade order by
 `styles/index.css`. The order is load-bearing: some rules override others by position alone.
 
-**ui/** — everything App used to return inline. Panels: `AnimPanels.jsx` (`CutAnimPanel`,
-`LayerAnimPanel`, `JitterPanel`), `CutLayerPanel.jsx` + `LayerRows.jsx`, `ColorPanel.jsx`,
-`ToolsPanel.jsx`, `Timeline.jsx`, `TopBar.jsx`, `TextEditor.jsx`, `SwaySpine.jsx`. Dialogs: one
+**ui/** — TypeScript (`.tsx`); every component's props are an interface. Everything App used to
+return inline. Panels: `AnimPanels.tsx` (`CutAnimPanel`,
+`LayerAnimPanel`, `JitterPanel`), `CutLayerPanel.tsx` + `LayerRows.tsx`, `ColorPanel.tsx`,
+`ToolsPanel.tsx`, `Timeline.tsx`, `TopBar.tsx`, `TextEditor.tsx`, `SwaySpine.tsx`. Dialogs: one
 file each under `ui/dialogs/` (settings, help, video import, scene detect, export range, link
-prompt, tool keys, project picker, progress overlay), all over `Modal.jsx`. And the chrome:
+prompt, tool keys, project picker, progress overlay), all over `Modal.tsx`. And the chrome:
 
-- `CanvasStage.jsx` — the scrolling area, the zoomed stage, and the two canvases. There are two
+- `CanvasStage.tsx` — the scrolling area, the zoomed stage, and the two canvases. There are two
   because the lower one is the document and the upper one is whatever the pointer is doing right
   now; drawing the second onto the first would repaint the scene at pointer rate. `canvasCursor`
   is here too, and the order of its checks is load-bearing.
-- `PanelDock.jsx` — where a panel is, as against what it contains. App builds the three panels
+- `PanelDock.tsx` — where a panel is, as against what it contains. App builds the three panels
   once and hands them over as `panelEls`, which is what lets one be dragged between the docks
   and a floating window without being rebuilt.
-- `DocTabs.jsx` — the project tabs, and the mode bar that floats over them as a pill.
-- `Notices.jsx` — the background chips, the frame-extraction chip, the failure banner. None of
+- `DocTabs.tsx` — the project tabs, and the mode bar that floats over them as a pill.
+- `Notices.tsx` — the background chips, the frame-extraction chip, the failure banner. None of
   them stops the work underneath; that is the rule they share.
-- `NumField.jsx` — **use NumField for any new numeric field.**
+- `NumField.tsx` — **use NumField for any new numeric field.**
 
 **hooks/** — TypeScript. State that belongs together, lifted out of App so its wiring is somewhere
 with a name; each hook's dependency bag is an interface (`PlaybackDeps`, `ExportDeps`, `LayerCacheDeps`, …). Each takes what it cannot own as arguments, and the rule for what it cannot own is the same
@@ -238,7 +239,7 @@ needs a document takes those two functions rather than the document.
 ## App.jsx key handlers (search these names)
 - Drawing: `startDraw`/`onDraw`/`stopDraw`. Each does the cross-cutting part — palm rejection
   (ignore `pointerType==='touch'`), the eyedropper, a path being recorded, a floating selection,
-  a text under the pointer — and then hands over to `TOOLS[etool]` in `tools/canvasTools.js`.
+  a text under the pointer — and then hands over to `TOOLS[etool]` in `tools/canvasTools.ts`.
   Gesture state is `gesture.*` from `useGesture`; path capture is `usePathCapture` (over `gesture.pathPts`).
   **`stopDraw` is deliberately not a tool table.** The end of a gesture is decided by which
   gesture is in flight, not by which tool is selected, and the tool can be changed while the pen
@@ -305,7 +306,7 @@ first anyone hears of it is an export that looks wrong.
 `startDraw` / `onDraw` / `stopDraw` are not part of this and never were. They are pointer
 handling and live-stroke state, and they have nothing to do with rendering a frame. What has
 changed since that was first written is that the per-tool half *has* moved out, to
-`tools/canvasTools.js`; what stays is the cross-cutting part, which is the part that has to
+`tools/canvasTools.ts`; what stays is the cross-cutting part, which is the part that has to
 decide between modes before any tool sees the event.
 
 ## Run and verify

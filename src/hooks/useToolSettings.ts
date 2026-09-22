@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useStored } from './useStored.ts';
 import { arrayCodec, onOffCodec } from '../core/persist.ts';
 import { clampBrush } from '../core/brushSize.ts';
-import { RECENT_SLOTS } from '../ui/ColorPanel';
+import { RECENT_SLOTS } from '../ui/ColorPanel.tsx';
 
 /**
  * What the pen is set to: which tool, what colour, how wide, how hard.
