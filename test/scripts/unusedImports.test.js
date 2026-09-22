@@ -68,3 +68,8 @@ test('a type-only import is read by its names, not by the word "type"', async ()
     const names = importedNames("import type { Point, Size } from './types.ts';\nconst p: Point = { x: 0, y: 0 };\n");
     assert.deepEqual(names.map(n => n.name), ['Point', 'Size']);
 });
+
+test('an inline `type` modifier is not part of the name', () => {
+    const names = importedNames("import { shearSlices, type ShearSlice } from './shearSlices.ts';\nconst s: ShearSlice[] = shearSlices(() => 0, 0, 1, 1);\n");
+    assert.deepEqual(names.map(n => n.name), ['shearSlices', 'ShearSlice']);
+});

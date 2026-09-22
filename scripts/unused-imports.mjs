@@ -62,7 +62,9 @@ export function importedNames(src) {
         if (star) out.push({ name: star[1], line, from: m[2] });
         if (braces) {
             for (const part of braces[1].split(',')) {
-                const name = part.trim().split(/\s+as\s+/).pop()?.trim();
+                // `{ a, type B }` - the inline form of the type-only import. Same rule: the
+                // word `type` is a modifier, and B is the name to look for.
+                const name = part.trim().replace(/^type\s+/, '').split(/\s+as\s+/).pop()?.trim();
                 if (name) out.push({ name, line, from: m[2] });
             }
         }
