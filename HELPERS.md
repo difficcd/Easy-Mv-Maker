@@ -305,7 +305,7 @@ Editing a part's keyframe list: sorted by position, one key per instant, null wh
 | `KEY_SNAP` | Two keys closer than this are the same instant. |
 | `sampleKeys` | This is tweening in the original animation sense of the word. |
 
-## `src/core/lassoOps.js`
+## `src/core/lassoOps.ts`
 
 Lasso selection: closing the path, bounding it, lifting the pixels.
 

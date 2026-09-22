@@ -4,7 +4,7 @@
 // Hit-testing and the drag were two blocks of App's pointer handlers that only made sense
 // together: the hit decides the kind, the drag applies it. Here they are one thing.
 
-import { applyResize, applyWarpDrag, applyRotateDrag } from '../core/lassoOps.js';
+import { applyResize, applyWarpDrag, applyRotateDrag } from '../core/lassoOps.ts';
 import { warpedOutline, warpedHandles, rotateKnob } from '../canvas/warpRender.js';
 import { HANDLE_GRAB_PX } from '../canvas/marquee.js';
 import { pointInPolygon } from '../core/geometry.ts';
