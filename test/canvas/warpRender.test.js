@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { bendOffsetAt, bendSlices, bendSliceCount, drawWarped, isWarped } from '../../src/canvas/warpRender.js';
+import { bendOffsetAt, bendSlices, bendSliceCount, drawWarped, isWarped } from '../../src/canvas/warpRender.ts';
 
 const near = (a, b, msg) => assert.ok(Math.abs(a - b) < 1e-9, `${msg}: ${a} vs ${b}`);
 const box = { x: 100, y: 50, w: 200, h: 80, bend: 0.5 };
@@ -128,7 +128,7 @@ test('the kink between neighbouring slices stays small on a large bend', () => {
     }
 });
 
-import { warpPoint, warpedOutline, warpedHandles } from '../../src/canvas/warpRender.js';
+import { warpPoint, warpedOutline, warpedHandles } from '../../src/canvas/warpRender.ts';
 
 test('warpPoint: with no warp a point stays put', () => {
     assert.deepEqual(warpPoint({ x: 10, y: 20, w: 40, h: 20 }, { x: 15, y: 25 }), { x: 15, y: 25 });

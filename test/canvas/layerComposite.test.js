@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { partMatrix, drawMaskedLayer } from '../../src/canvas/layerComposite.js';
+import { partMatrix, drawMaskedLayer } from '../../src/canvas/layerComposite.ts';
 
 /** Where a point lands under a matrix. Easier to reason about than the six numbers. */
 const at = (m, x, y) => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];

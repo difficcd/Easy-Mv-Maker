@@ -10,10 +10,10 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { dilateMask } from '../../src/canvas/fill.js';
-import { applyCutAnim } from '../../src/canvas/layerComposite.js';
+import { dilateMask } from '../../src/canvas/fill.ts';
+import { applyCutAnim } from '../../src/canvas/layerComposite.ts';
 import { sizeCanvas, scratchCanvas } from '../../src/canvas/scratch.ts';
-import { fitRect, seekTarget } from '../../src/canvas/videoFrames.js';
+import { fitRect, seekTarget } from '../../src/canvas/videoFrames.ts';
 import { targetCanvasFor } from '../../src/core/canvasSize.ts';
 import { hexToRgb } from '../../src/core/colour.ts';
 import { computeCutAnim } from '../../src/core/cutAnim.ts';

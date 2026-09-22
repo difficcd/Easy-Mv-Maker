@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronUp, Grid3x3, Pause, Play, Plus, Repeat, Square, Trash2, Eye, EyeOff, Settings, Volume2, VolumeX } from 'lucide-react';
-import { accentSoft } from '../canvas/editChrome.js';
+import { accentSoft } from '../canvas/editChrome.ts';
 import { safeArray } from '../core/geometry.ts';
 import { tr } from '../i18n';
 import { PLAYBACK_RATES, RATE_DEFAULT } from '../core/playbackRate.ts';

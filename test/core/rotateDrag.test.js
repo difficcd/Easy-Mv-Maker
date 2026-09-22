@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { applyRotateDrag } from '../../src/core/lassoOps.ts';
-import { rotateKnob, ROTATE_STEM_PX } from '../../src/canvas/warpRender.js';
+import { rotateKnob, ROTATE_STEM_PX } from '../../src/canvas/warpRender.ts';
 
 /** A 100x100 box at the origin, so its centre is (50, 50). */
 const box = { tx: 0, ty: 0, tw: 100, th: 100 };

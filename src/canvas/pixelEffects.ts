@@ -10,6 +10,14 @@
 // compositing, which is the whole reason to use a canvas for it - so it takes the canvases it
 // works on as arguments and touches nothing else.
 
+import type { Point } from '../core/types.ts';
+import type { Rect } from '../core/lassoOps.ts';
+
+/** A slot that keeps one scratch canvas between frames; scratchCanvas insists on this shape. */
+export interface CanvasSlot { current: HTMLCanvasElement | null }
+/** scratchCanvas, or a stand-in: a sized, cleared canvas in the slot, with its context. */
+export type ScratchFn = (ref: CanvasSlot, w: number, h: number) => { canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D };
+
 /**
  * The part of the canvas a set of points can affect, clipped to the canvas.
  *
@@ -22,7 +30,7 @@
  * @param {number} ch
  * @returns {{x: number, y: number, w: number, h: number} | null}
  */
-export function regionBounds(pts, pad, cw, ch) {
+export function regionBounds(pts: readonly Point[] | null | undefined, pad: number, cw: number, ch: number): Rect | null {
     if (!pts?.length) return null;
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (const p of pts) {
@@ -43,7 +51,7 @@ export function regionBounds(pts, pad, cw, ch) {
  * @param {number} ch
  * @returns {{x: number, y: number, w: number, h: number} | null}
  */
-export function rectBounds(rect, cw, ch) {
+export function rectBounds(rect: { x0: number, y0: number, x1: number, y1: number }, cw: number, ch: number): Rect | null {
     const x = Math.max(0, Math.floor(Math.min(rect.x0, rect.x1)));
     const y = Math.max(0, Math.floor(Math.min(rect.y0, rect.y1)));
     const w = Math.min(cw - x, Math.ceil(Math.abs(rect.x1 - rect.x0)));
@@ -61,7 +69,7 @@ export function rectBounds(rect, cw, ch) {
  * @param {number} block the block edge in pixels; anything under 2 would be a no-op
  * @returns {typeof img} the same object, changed in place
  */
-export function mosaic(img, block) {
+export function mosaic<I extends { data: Uint8ClampedArray, width: number, height: number }>(img: I, block: number): I {
     const { data: d, width: w, height: h } = img;
     const size = Math.max(2, Math.round(block));
     for (let by = 0; by < h; by += size) {
@@ -100,11 +108,11 @@ export function mosaic(img, block) {
  * @param {() => HTMLCanvasElement} makeCanvas
  * @returns {HTMLCanvasElement} a bounds-sized canvas, ready to read pixels out of
  */
-export function blurMaskedRegion(src, bounds, pts, rad, makeCanvas) {
+export function blurMaskedRegion(src: CanvasImageSource, bounds: Rect, pts: readonly Point[], rad: number, makeCanvas: () => HTMLCanvasElement): HTMLCanvasElement {
     const { x, y, w, h } = bounds;
 
     const blurred = makeCanvas(); blurred.width = w; blurred.height = h;
-    const bctx = blurred.getContext('2d');
+    const bctx = blurred.getContext('2d')!;
     bctx.drawImage(src, x, y, w, h, 0, 0, w, h);
     const step = Math.max(1, rad / 4);
     for (let i = 0; i < 3; i++) {
@@ -114,7 +122,7 @@ export function blurMaskedRegion(src, bounds, pts, rad, makeCanvas) {
     bctx.filter = 'none';
 
     const mask = makeCanvas(); mask.width = w; mask.height = h;
-    const mctx = mask.getContext('2d');
+    const mctx = mask.getContext('2d')!;
     mctx.filter = `blur(${Math.max(1, rad / 3)}px)`;
     mctx.strokeStyle = '#000'; mctx.fillStyle = '#000';
     mctx.lineCap = 'round'; mctx.lineJoin = 'round'; mctx.lineWidth = rad * 0.8;
@@ -174,17 +182,16 @@ const SNOW_SCALE = 3;
  * moves. A source with no signature (the mosaic's blown-up scratch) is rebuilt every frame,
  * as before. Weak, so a layer that is dropped takes its halves with it.
  *
- * @type {WeakMap<object, {sig: string, w: number, h: number, red: {current: any}, cyan: {current: any}, fr: {current: any}, fc: {current: any}}>}
  */
-const halvesOf = new WeakMap();
+const halvesOf = new WeakMap<object, { sig: string, w: number, h: number, red: CanvasSlot, cyan: CanvasSlot, fr: CanvasSlot, fc: CanvasSlot }>();
 
 /** A cheap integer hash, so every frame's tears are decided the same way on export as on screen. */
-const hash = (a, b = 0) => {
+const hash = (a: number, b = 0): number => {
     let h = Math.imul(a ^ 0x9E3779B1, 0x85EBCA6B) ^ Math.imul(b + 0x1b873593, 0xC2B2AE35);
     h ^= h >>> 15; h = Math.imul(h, 0x2C1B3C6D); h ^= h >>> 12;
     return h >>> 0;
 };
-const unit = (a, b) => hash(a, b) / 0x100000000;   // 0..1
+const unit = (a: number, b: number): number => hash(a, b) / 0x100000000;   // 0..1
 
 /**
  * A square of monochrome noise centred on mid grey, built once and reused for the snow.
@@ -192,10 +199,10 @@ const unit = (a, b) => hash(a, b) / 0x100000000;   // 0..1
  * @param {() => HTMLCanvasElement} makeCanvas
  * @returns {HTMLCanvasElement}
  */
-export function grainTile(makeCanvas) {
+export function grainTile(makeCanvas: () => HTMLCanvasElement): HTMLCanvasElement {
     const c = makeCanvas();
     c.width = TILE; c.height = TILE;
-    const ctx = c.getContext('2d');
+    const ctx = c.getContext('2d')!;
     const img = ctx.createImageData(TILE, TILE);
     const d = img.data;
     for (let i = 0; i < d.length; i += 4) {
@@ -209,7 +216,7 @@ export function grainTile(makeCanvas) {
     // it at draw time would blur the specks into a grey film. 1536px square: 9MB, built once.
     const big = makeCanvas();
     big.width = TILE * SNOW_SCALE; big.height = TILE * SNOW_SCALE;
-    const bctx = big.getContext('2d');
+    const bctx = big.getContext('2d')!;
     bctx.imageSmoothingEnabled = false;
     bctx.drawImage(c, 0, 0, big.width, big.height);
     return big;
@@ -237,7 +244,7 @@ export function grainTile(makeCanvas) {
  * @param {(ref: any, w: number, h: number) => {canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D}} scratch
  * @returns {HTMLCanvasElement | null} null when there is nothing to do
  */
-export function staticCanvas(src, tile, { cw, ch, amount, seconds, colour = 0 }, refs, scratch) {
+export function staticCanvas(src: HTMLCanvasElement | ImageBitmap, tile: HTMLCanvasElement, { cw, ch, amount, seconds, colour = 0 }: { cw: number, ch: number, amount: number, seconds: number, colour?: number }, refs: { copy: CanvasSlot, out: CanvasSlot }, scratch: ScratchFn): HTMLCanvasElement | null {
     if (!(amount > 0)) return null;
     const a = Math.min(1, amount);
     const v = Math.sqrt(a);
@@ -256,7 +263,7 @@ export function staticCanvas(src, tile, { cw, ch, amount, seconds, colour = 0 },
     cctx.drawImage(src, 0, 0);
 
     // The derived copies, from the cache when the source has not changed since last frame.
-    const sig = /** @type {any} */ (src).dataset?.strokes;
+    const sig = (src as any).dataset?.strokes;
     let cache = halvesOf.get(src);
     const stale = !cache || cache.w !== cw || cache.h !== ch || sig == null || cache.sig !== sig;
     if (!cache) {
@@ -266,7 +273,7 @@ export function staticCanvas(src, tile, { cw, ch, amount, seconds, colour = 0 },
     if (stale) { cache.sig = sig ?? ''; cache.w = cw; cache.h = ch; }
 
     /** One channel of the ink: multiply by a solid colour keeps it, then back to the ink's alpha. */
-    const half = (ref, fill) => {
+    const half = (ref: CanvasSlot, fill: string) => {
         const { canvas, ctx: hctx } = scratch(ref, cw, ch);
         hctx.globalCompositeOperation = 'source-over';
         hctx.clearRect(0, 0, cw, ch);
@@ -281,7 +288,7 @@ export function staticCanvas(src, tile, { cw, ch, amount, seconds, colour = 0 },
         return canvas;
     };
     /** The ink's alpha in one flat colour. */
-    const silhouette = (ref, fill) => {
+    const silhouette = (ref: CanvasSlot, fill: string) => {
         const { canvas, ctx: sctx } = scratch(ref, cw, ch);
         sctx.globalCompositeOperation = 'source-over';
         sctx.clearRect(0, 0, cw, ch);
@@ -292,7 +299,7 @@ export function staticCanvas(src, tile, { cw, ch, amount, seconds, colour = 0 },
         sctx.globalCompositeOperation = 'source-over';
         return canvas;
     };
-    const kept = (ref, build) => (stale || !ref.current ? build() : ref.current);
+    const kept = (ref: CanvasSlot, build: () => HTMLCanvasElement) => (stale || !ref.current ? build() : ref.current);
 
     const { canvas: out, ctx: octx } = scratch(refs.out, cw, ch);
     octx.globalCompositeOperation = 'source-over';
@@ -378,7 +385,7 @@ export function staticCanvas(src, tile, { cw, ch, amount, seconds, colour = 0 },
  * @param {number} w @param {number} h @param {number} block
  * @returns {{w: number, h: number} | null} null when the block is too small to change anything
  */
-export function pixelateSize(w, h, block) {
+export function pixelateSize(w: number, h: number, block: number): { w: number, h: number } | null {
     const b = Math.round(block);
     if (!(b >= 2) || !(w > 0) || !(h > 0)) return null;
     return { w: Math.max(1, Math.round(w / b)), h: Math.max(1, Math.round(h / b)) };
@@ -396,7 +403,7 @@ export function pixelateSize(w, h, block) {
  * @param {(ref: any, w: number, h: number) => {canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D}} scratch
  * @returns {HTMLCanvasElement | null} null when there is nothing to do
  */
-export function pixelateCanvas(src, block, scratchRef, scratch) {
+export function pixelateCanvas(src: HTMLCanvasElement | ImageBitmap, block: number, scratchRef: CanvasSlot, scratch: ScratchFn): HTMLCanvasElement | null {
     const size = pixelateSize(src.width, src.height, block);
     if (!size) return null;
     const { canvas, ctx } = scratch(scratchRef, size.w, size.h);
@@ -417,7 +424,7 @@ export function pixelateCanvas(src, block, scratchRef, scratch) {
  * @param {number} cw @param {number} ch
  * @returns {{x: number, y: number, w: number, h: number} | null}
  */
-export function clampRegion(rect, cw, ch) {
+export function clampRegion(rect: Rect | null | undefined, cw: number, ch: number): Rect | null {
     if (!rect) return null;
     const x0 = Math.max(0, Math.min(cw, Math.floor(Math.min(rect.x, rect.x + rect.w))));
     const y0 = Math.max(0, Math.min(ch, Math.floor(Math.min(rect.y, rect.y + rect.h))));
@@ -445,7 +452,7 @@ export function clampRegion(rect, cw, ch) {
  * @param {number} cw @param {number} ch
  * @returns {HTMLCanvasElement | null}
  */
-export function pixelateRegion(src, block, rect, refs, scratch, cw, ch) {
+export function pixelateRegion(src: HTMLCanvasElement | ImageBitmap, block: number, rect: Rect, refs: { full: CanvasSlot, small: CanvasSlot }, scratch: ScratchFn, cw: number, ch: number): HTMLCanvasElement | null {
     const size = pixelateSize(rect.w, rect.h, block);
     if (!size) return null;
 

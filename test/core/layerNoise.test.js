@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { computeLayerAnim, LAYER_ANIM_DEFAULT } from '../../src/core/layerAnim.ts';
-import { staticCanvas } from '../../src/canvas/pixelEffects.js';
+import { staticCanvas } from '../../src/canvas/pixelEffects.ts';
 
 const CUT = { startTime: 0, endTime: 10 };
 const anim = (o) => ({ ...LAYER_ANIM_DEFAULT, ...o });
@@ -43,7 +43,7 @@ test('colour static is an option on the static: it follows the same window and n
 });
 
 test('a text has the same gate as a layer: on inside its window at full strength, off outside', async () => {
-    const { textStaticGate } = await import('../../src/canvas/sceneRender.js');
+    const { textStaticGate } = await import('../../src/canvas/sceneRender.ts');
     const cut = { startTime: 2, endTime: 12 };
     const text = { noise: 0.7, noiseFrom: 0.2, noiseTo: 0.6, noiseColor: 0.5 };
     assert.equal(textStaticGate(text, cut, 3), null);            // 10% in

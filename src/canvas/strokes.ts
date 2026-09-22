@@ -3,16 +3,23 @@
 
 import { imageDataCanvas, resetCtx, sizeCanvas } from './scratch.ts';
 import { hexToRgb } from '../core/colour.ts';
-import { drawWarped, isWarped } from './warpRender.js';
+import { drawWarped, isWarped } from './warpRender.ts';
 import { catmullThrough } from '../core/catmullRom.ts';
 import { makeCanvas } from './canvasFactory.ts';
+import type { Point, PressurePoint } from '../core/types.ts';
+
+/** Where a stroke's stored pixels are looked up: the live bitmap store, or anything with its get. */
+export interface BitmapLookup { get(id: string): { imageBitmap?: any, imageData?: ImageData | null } | undefined }
+/** The layer-level boiling: displaces every stroke at render time, and advancing the phase makes it move. */
+export interface StrokeDrawOptions { roughen?: boolean | number; roughPhase?: number; roughWave?: number; roughMinSize?: number }
+
 
 // Remove hand/sampling jitter before drawing: weighted moving average over position and
 // pressure, keeping the endpoints fixed. Without this the curve wobbles unnaturally.
-const _lerpPt = (a, b, t) => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, pressure: (a.pressure ?? 0.5) + ((b.pressure ?? 0.5) - (a.pressure ?? 0.5)) * t });
+const _lerpPt = (a: PressurePoint, b: PressurePoint, t: number): PressurePoint => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, pressure: (a.pressure ?? 0.5) + ((b.pressure ?? 0.5) - (a.pressure ?? 0.5)) * t });
 
 // Resample a polyline to ~uniform arc-length spacing so clustered/sparse samples smooth evenly.
-function resamplePts(pts, spacing) {
+function resamplePts(pts: readonly PressurePoint[], spacing: number): PressurePoint[] {
     if (pts.length < 2) return pts.slice();
     const out = [pts[0]]; let acc = 0, a = pts[0];
     for (let i = 1; i < pts.length; i++) {
@@ -30,7 +37,7 @@ function resamplePts(pts, spacing) {
 
 // Chaikin corner-cutting: replaces each corner with two points at 1/4 and 3/4, rounding the
 // polyline. A couple of iterations turn a shaky hand path into a smooth curve.
-function chaikin(pts) {
+function chaikin(pts: PressurePoint[]): PressurePoint[] {
     if (pts.length < 3) return pts;
     const out = [pts[0]];
     for (let i = 0; i < pts.length - 1; i++) { const a = pts[i], b = pts[i + 1]; out.push(_lerpPt(a, b, 0.25), _lerpPt(a, b, 0.75)); }
@@ -59,9 +66,9 @@ const SPARSE_SPACING = 4;
  * @param {Array<{x: number, y: number, pressure?: number}>} pts
  * @param {number} [passes]
  */
-export function smoothPoints(pts, passes) {
-    if (!pts || pts.length < 3) return pts || [];
-    let raw = pts;
+export function smoothPoints(pts: readonly PressurePoint[] | null | undefined, passes?: number | null): PressurePoint[] {
+    if (!pts || pts.length < 3) return pts ? pts.slice() : [];
+    let raw: readonly PressurePoint[] = pts;
     const mean = strokeLength(pts) / (pts.length - 1);
     if (mean > SPARSE_SPACING) raw = catmullThrough(pts, Math.min(16, Math.ceil(mean / 2)));
     let cur = resamplePts(raw, 2);
@@ -72,7 +79,7 @@ export function smoothPoints(pts, passes) {
 }
 
 /** Length of a polyline. */
-function strokeLength(pts) {
+function strokeLength(pts: readonly PressurePoint[]): number {
     let len = 0;
     for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
     return len;
@@ -86,9 +93,9 @@ function strokeLength(pts) {
 //     has points less than 1px apart, so an index-based frequency becomes ultrasonic and jagged.
 //  2) No independent white noise per point. Value noise - coarsely spaced control values
 //     interpolated with smoothstep - ripples smoothly instead of turning into corners.
-function roughenPoints(pts, amp = 2.2, seed = 0, wave = 1) {
+function roughenPoints(pts: readonly PressurePoint[], amp = 2.2, seed = 0, wave = 1): PressurePoint[] {
     const n = pts && pts.length;
-    if (!n || n < 3) return pts || [];
+    if (!n || n < 3) return pts ? pts.slice() : [];
     let s = (seed * 2654435761) >>> 0;
     const rnd = () => { s ^= s << 13; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; };
 
@@ -98,11 +105,11 @@ function roughenPoints(pts, amp = 2.2, seed = 0, wave = 1) {
     const total = arc[n - 1] || 1;
 
     // One control value every wl pixels, interpolated with smoothstep, gives a soft ripple.
-    const makeOctave = (wl) => {
+    const makeOctave = (wl: number) => {
         const m = Math.max(2, Math.ceil(total / wl) + 2);
-        const ctrl = new Array(m);
+        const ctrl: number[] = new Array(m);
         for (let i = 0; i < m; i++) ctrl[i] = rnd() * 2 - 1;
-        return (d) => {
+        return (d: number) => {
             const u = d / wl, k = Math.floor(u), f = u - k;
             const t = f * f * (3 - 2 * f);
             const a = ctrl[Math.min(k, m - 1)], b = ctrl[Math.min(k + 1, m - 1)];
@@ -116,7 +123,7 @@ function roughenPoints(pts, amp = 2.2, seed = 0, wave = 1) {
     // The normal is estimated over a wide window; a narrow one makes its direction jitter and
     // the result look rough.
     const span = Math.max(1, Math.round(n / Math.max(8, total / 6)));
-    const out = new Array(n);
+    const out: PressurePoint[] = new Array(n);
     for (let i = 0; i < n; i++) {
         const a = pts[Math.max(0, i - span)], b = pts[Math.min(n - 1, i + span)];
         let nx = -(b.y - a.y), ny = b.x - a.x;
@@ -142,9 +149,9 @@ function roughenPoints(pts, amp = 2.2, seed = 0, wave = 1) {
 // back out, is both rounder-looking and more than twenty times cheaper.
 const JITTER_SPACING = 6;
 
-const _smoothCache = new WeakMap();
+const _smoothCache = new WeakMap<object, { n: number, pts: PressurePoint[] }>();
 
-function jitterBasePoints(stroke) {
+function jitterBasePoints(stroke: Stroke): PressurePoint[] {
     const hit = _smoothCache.get(stroke);
     if (hit && hit.n === stroke.points.length) return hit.pts;
     const pts = resamplePts(smoothPoints(stroke.points), JITTER_SPACING);
@@ -155,7 +162,7 @@ function jitterBasePoints(stroke) {
 // Catmull-Rom control points for the segment p1->p2 (converted to a cubic Bezier). The
 // curve passes exactly through every sample and stays smooth across segment joins, which
 // quadratic-through-midpoints does not (it flattens when samples are far apart).
-function crControls(p0, p1, p2, p3, tension = 1) {
+function crControls(p0: Point, p1: Point, p2: Point, p3: Point, tension = 1): [Point, Point] {
     const k = tension / 6;
     return [
         { x: p1.x + (p2.x - p0.x) * k, y: p1.y + (p2.y - p0.y) * k },
@@ -165,7 +172,7 @@ function crControls(p0, p1, p2, p3, tension = 1) {
 
 // Draw the stroke as a Catmull-Rom spline. Uniform width renders as one continuous path
 // (no seams); variable width renders per segment with already-smoothed widths.
-function smoothStroke(ctx, pts, widths, applyStyle) {
+function smoothStroke(ctx: CanvasRenderingContext2D, pts: readonly Point[], widths: readonly number[], applyStyle: (i: number) => void): void {
     const n = pts.length;
     if (!n) return;
     if (n === 1) {
@@ -179,7 +186,7 @@ function smoothStroke(ctx, pts, widths, applyStyle) {
         ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y); ctx.lineTo(pts[1].x, pts[1].y); ctx.stroke();
         return;
     }
-    const at = (i) => pts[Math.max(0, Math.min(n - 1, i))];
+    const at = (i: number) => pts[Math.max(0, Math.min(n - 1, i))];
     let uniform = true;
     for (let i = 2; i < n; i++) if (Math.abs(widths[i] - widths[1]) > 0.2) { uniform = false; break; }
     if (uniform) {
@@ -205,19 +212,19 @@ function smoothStroke(ctx, pts, widths, applyStyle) {
     }
 }
 
-const pressureAt = (pts, i) => ((pts[i - 1]?.pressure ?? 0.5) + (pts[i]?.pressure ?? 0.5)) / 2;
+const pressureAt = (pts: readonly PressurePoint[], i: number): number => ((pts[i - 1]?.pressure ?? 0.5) + (pts[i]?.pressure ?? 0.5)) / 2;
 
 // Thin the first/last few segments so strokes taper instead of ending bluntly.
-const taperAt = (i, n) => { const t = Math.min(6, Math.max(2, Math.floor(n / 4))); return Math.min(1, i / t, (n - i) / t) * 0.75 + 0.25; };
+const taperAt = (i: number, n: number): number => { const t = Math.min(6, Math.max(2, Math.floor(n / 4))); return Math.min(1, i / t, (n - i) / t) * 0.75 + 0.25; };
 
 // Deterministic alpha-noise tile — punched into a pencil stroke (destination-in) to fake the
 // grain of paper tooth. Deterministic so a redraw of the same stroke looks identical.
-let _grainTile = null;
+let _grainTile: HTMLCanvasElement | null = null;
 
-function grainTile() {
+function grainTile(): HTMLCanvasElement {
     if (_grainTile) return _grainTile;
     const N = 128, c = makeCanvas(); c.width = c.height = N;
-    const g = c.getContext('2d'), img = g.createImageData(N, N);
+    const g = c.getContext('2d')!, img = g.createImageData(N, N);
     let seed = 0x1a2b3c;
     const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
     for (let i = 0; i < img.data.length; i += 4) {
@@ -230,9 +237,9 @@ function grainTile() {
 }
 
 // Reusable soft radial stamp in a given rgb, for the airbrush spray.
-function softStamp(r, g, b, radius) {
+function softStamp(r: number, g: number, b: number, radius: number): HTMLCanvasElement {
     const s = Math.max(2, Math.ceil(radius * 2)), c = makeCanvas(); c.width = c.height = s;
-    const cx = c.getContext('2d'), grd = cx.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+    const cx = c.getContext('2d')!, grd = cx.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
     grd.addColorStop(0, `rgba(${r},${g},${b},0.16)`);
     grd.addColorStop(0.5, `rgba(${r},${g},${b},0.06)`);
     grd.addColorStop(1, `rgba(${r},${g},${b},0)`);
@@ -245,14 +252,14 @@ function softStamp(r, g, b, radius) {
 // repaint - with boiling redrawing ten times a second, that is gigabytes a second for a layer
 // with a handful of marker strokes. Every use here is strictly sequential (take it, draw, blend
 // it in, done) and never nested, so a single shared canvas is enough.
-let _scratch = null;
+let _scratch: HTMLCanvasElement | null = null;
 
 /** A cleared, full-size scratch canvas with a context in its default state. */
-function takeScratch(w, h) {
-    if (!_scratch) _scratch = makeCanvas();
-    const cx = sizeCanvas(_scratch, w, h)
-        ? _scratch.getContext('2d')                        // a resize already blanked it
-        : (() => { const c = _scratch.getContext('2d'); c.clearRect(0, 0, w, h); return c; })();
+function takeScratch(w: number, h: number): CanvasRenderingContext2D {
+    const scratch = _scratch || (_scratch = makeCanvas());
+    const cx = sizeCanvas(scratch, w, h)
+        ? scratch.getContext('2d')!                        // a resize already blanked it
+        : (() => { const c = scratch.getContext('2d')!; c.clearRect(0, 0, w, h); return c; })();
     return resetCtx(cx);
 }
 
@@ -265,14 +272,14 @@ function takeScratch(w, h) {
  * @param {Map<string, any> | undefined} bitmapStore
  * @returns {CanvasImageSource | null}
  */
-function strokePixels(s, bitmapStore) {
-    const entry = bitmapStore?.get(s.bitmapId);
+function strokePixels(s: { bitmapId?: string | null, imageData?: ImageData }, bitmapStore: BitmapLookup | null | undefined): CanvasImageSource | null {
+    const entry = s.bitmapId ? bitmapStore?.get(s.bitmapId) : undefined;
     if (entry?.imageBitmap) return entry.imageBitmap;
     const img = entry?.imageData || s.imageData;
     return img ? imageDataCanvas(img) : null;
 }
 
-export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null, opts = {}) {
+export function drawStrokesOnCtx(ctx: CanvasRenderingContext2D, strokes: readonly Stroke[], clear = true, bitmapStore: BitmapLookup | null = null, opts: StrokeDrawOptions = {}): void {
     if (clear) {
         ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
     }
@@ -310,7 +317,7 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null,
             return;
         }
         if (s.tool === 'paste') {
-            const entry = bitmapStore?.get(s.bitmapId);
+            const entry = s.bitmapId ? bitmapStore?.get(s.bitmapId) : undefined;
             const bmp = entry?.imageBitmap;
             const img = entry?.imageData;
             ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high'; // crisp video-frame scaling
@@ -357,7 +364,7 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null,
         const roughSeed = (s.id || 0) + roughPhase * 7919;
         // The cache is only used when boiling. A plain layer already caches its canvas and draws
         // once per change, so caching there buys nothing and only costs memory.
-        const smooth = (p) => {
+        const smooth = (p: readonly PressurePoint[]) => {
             if (!roughAmp) return smoothPoints(p);
             return roughenPoints(jitterBasePoints(s), roughAmp, roughSeed, roughWave);
         };
@@ -370,9 +377,9 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null,
             // The dot pen follows pressure too, through the stamp size. It used to be a fixed
             // size, so drawing with a tablet showed no pressure at all; the stamp itself stays
             // the same hard-edged pixel shape.
-            const dotHasPr = s.pen === true || s.points.some(p => p.pressure !== undefined && p.pressure !== 0.5);
-            const sizeAt = (pr) => Math.max(1, Math.round(base * (dotHasPr ? Math.min(2, Math.max(0.15, pr * 2)) : 1)));
-            const stamp = (x, y, size) => { const half = size / 2; ctx.fillRect(Math.round(x - half), Math.round(y - half), size, size); };
+            const dotHasPr = s.pen === true || s.points.some((p: PressurePoint) => p.pressure !== undefined && p.pressure !== 0.5);
+            const sizeAt = (pr: number) => Math.max(1, Math.round(base * (dotHasPr ? Math.min(2, Math.max(0.15, pr * 2)) : 1)));
+            const stamp = (x: number, y: number, size: number) => { const half = size / 2; ctx.fillRect(Math.round(x - half), Math.round(y - half), size, size); };
             const P = roughAmp ? roughenPoints(jitterBasePoints(s), roughAmp, roughSeed, roughWave) : s.points;
             if (P.length === 1) {
                 stamp(P[0].x, P[0].y, sizeAt(P[0].pressure ?? 0.5));
@@ -394,10 +401,10 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null,
         // Strokes drawn with a tablet or S Pen (s.pen) always trust the pressure values. If they
         // happen to hover near 0.5, the heuristic below reads that as "no pressure" and the whole
         // width variation disappears.
-        const hasPressure = s.pen === true || s.points.some(p => p.pressure !== undefined && p.pressure !== 0.5);
+        const hasPressure = s.pen === true || s.points.some((p: PressurePoint) => p.pressure !== undefined && p.pressure !== 0.5);
         // Pressure at a point of a smoothed path, or the neutral 0.5 when the stroke has none.
         // Every tool below asked this question in its own words.
-        const prAt = (pts, i) => hasPressure && pts.length > 1 ? pressureAt(pts, Math.max(1, i)) : 0.5;
+        const prAt = (pts: readonly PressurePoint[], i: number) => hasPressure && pts.length > 1 ? pressureAt(pts, Math.max(1, i)) : 0.5;
         const baseColor = s.color;
         const baseOpacity = s.opacity ?? 1;
         // Marker: draw the whole stroke opaque on a temp canvas, then composite once.
@@ -442,7 +449,7 @@ export function drawStrokesOnCtx(ctx, strokes, clear = true, bitmapStore = null,
             const stamp = softStamp(r, g, b, R), half = stamp.width / 2;
             ctx.save();
             ctx.globalAlpha = baseOpacity;
-            const put = (x, y) => ctx.drawImage(stamp, x - half, y - half);
+            const put = (x: number, y: number) => ctx.drawImage(stamp, x - half, y - half);
             const P = roughAmp ? roughenPoints(jitterBasePoints(s), roughAmp, roughSeed, roughWave) : s.points;
             if (P.length === 1) put(P[0].x, P[0].y);
             for (let i = 1; i < P.length; i++) {

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { effectAt } from '../../src/core/easing.ts';
 import { mosaicBlockAt, LAYER_ANIM_DEFAULT } from '../../src/core/layerAnim.ts';
-import { clampRegion } from '../../src/canvas/pixelEffects.js';
+import { clampRegion } from '../../src/canvas/pixelEffects.ts';
 
 const linear = { ease: 'linear', easePower: 1 };
 const at = (t, o) => effectAt(t, { max: 100, ...linear, ...o });

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { regionBounds, rectBounds, mosaic } from '../../src/canvas/pixelEffects.js';
+import { regionBounds, rectBounds, mosaic } from '../../src/canvas/pixelEffects.ts';
 
 /** Node has no ImageData; these take the shape as an argument for exactly this reason. */
 const img = (w, h, fill) => {

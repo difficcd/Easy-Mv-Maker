@@ -46,7 +46,7 @@ test('a handle is drawn at screen size, and is grabbed within a wider radius tha
 });
 
 // ── the two gesture previews, which use the same marquee ───────────────────
-import { drawMosaicMarquee, drawCurveAnchors } from '../../src/canvas/editChrome.js';
+import { drawMosaicMarquee, drawCurveAnchors } from '../../src/canvas/editChrome.ts';
 
 test('the mosaic marquee tints the rectangle and outlines it with a real colour', () => {
     // The border used to be set to the string 'var(--accent-soft)', which a canvas cannot parse -

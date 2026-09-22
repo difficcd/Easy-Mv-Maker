@@ -1,5 +1,8 @@
 // The bucket fill: flood a region of an ImageData and the mask around it.
 
+/** What a bucket fill produces: the painted pixels, where they sit, and whether they go over the ink or under it. */
+export interface FillResult { imageData: ImageData; x: number; y: number; overPaint: boolean }
+
 /**
  * Grow a bitmask outwards by r pixels (square structuring element, done separably so it stays
  * O(w*h) whatever r is).
@@ -10,13 +13,13 @@
  * ink-and-paint has the same problem and the same answer: spread the paint a little past the
  * line and let the line cover it.
  */
-export function dilateMask(mask, w, h, r) {
+export function dilateMask(mask: Uint8Array, w: number, h: number, r: number): Uint8Array {
     if (!(r > 0)) return mask;
     // One line of the mask, walked from one end. Set pixels reset the counter and every pixel
     // within r of one is marked, so walking both ways covers a set pixel's neighbours on both
     // sides. Written once and called twice rather than the loop appearing twice with only its
     // bounds changed.
-    const sweep = (src, dst, base, stride, from, to, step) => {
+    const sweep = (src: Uint8Array, dst: Uint8Array, base: number, stride: number, from: number, to: number, step: number) => {
         let since = -1;   // pixels travelled since the last set one; -1 = none seen yet
         for (let i = from; i !== to; i += step) {
             const idx = base + i * stride;
@@ -24,7 +27,7 @@ export function dilateMask(mask, w, h, r) {
             if (since >= 0 && since <= r) dst[idx] = 1;
         }
     };
-    const pass = (src, dst, stride, outer, inner) => {
+    const pass = (src: Uint8Array, dst: Uint8Array, stride: number, outer: number, inner: number) => {
         for (let o = 0; o < outer; o++) {
             const base = o * (stride === 1 ? w : 1);
             sweep(src, dst, base, stride, 0, inner, 1);
@@ -38,7 +41,7 @@ export function dilateMask(mask, w, h, r) {
     return out;
 }
 
-export function bucketFillTransparentRegion(baseImageData, startX, startY, fillRgb, fillAlpha, tolerance = 24, spread = 0) {
+export function bucketFillTransparentRegion(baseImageData: ImageData, startX: number, startY: number, fillRgb: { r: number, g: number, b: number }, fillAlpha: number, tolerance = 24, spread = 0): FillResult | null {
     const w = baseImageData.width;
     const h = baseImageData.height;
     const data = baseImageData.data;
@@ -53,7 +56,7 @@ export function bucketFillTransparentRegion(baseImageData, startX, startY, fillR
     const s0 = data[startOff], s1 = data[startOff + 1], s2 = data[startOff + 2], s3 = data[startOff + 3];
     const tol = Math.max(0, tolerance);
     // Between transparent pixels the colour channels are meaningless, so only alpha is compared.
-    const matches = (o) => {
+    const matches = (o: number) => {
         const a = data[o + 3];
         if (s3 < 8) return a < 8;
         if (a < 8) return false;
@@ -72,7 +75,7 @@ export function bucketFillTransparentRegion(baseImageData, startX, startY, fillR
     // pixel be queued by all four neighbours, the queue grows past w*h, and a typed array drops
     // out-of-range writes silently - the fill then stopped partway and painted only the diamond
     // shape the BFS had reached.
-    const push = (i) => { if (!mask[i]) { mask[i] = 1; q[qt++] = i; } };
+    const push = (i: number) => { if (!mask[i]) { mask[i] = 1; q[qt++] = i; } };
     push(sy * w + sx);
 
     let minX = w, minY = h, maxX = -1, maxY = -1;

@@ -2,7 +2,7 @@
 
 // --- Shape (distance-field) morphing for tweening ---
 // Felzenszwalb 1D squared Euclidean distance transform (f: 0 at seeds, INF elsewhere).
-function edt1d(f, n) {
+function edt1d(f: Float64Array, n: number): Float64Array {
     const INF = 1e20;
     const d = new Float64Array(n), v = new Int32Array(n), z = new Float64Array(n + 1);
     let k = 0; v[0] = 0; z[0] = -INF; z[1] = INF;
@@ -16,7 +16,7 @@ function edt1d(f, n) {
     return d;
 }
 
-function edt2d(seed, w, h) {
+function edt2d(seed: Uint8Array, w: number, h: number): Float64Array {
     const INF = 1e20;
     const grid = new Float64Array(w * h);
     for (let i = 0; i < w * h; i++) grid[i] = seed[i] ? 0 : INF;
@@ -27,7 +27,7 @@ function edt2d(seed, w, h) {
     return grid; // Euclidean distance to nearest seed
 }
 
-function signedDist(mask, w, h) {
+function signedDist(mask: Uint8Array, w: number, h: number): Float32Array {
     const inv = new Uint8Array(w * h);
     for (let i = 0; i < w * h; i++) inv[i] = mask[i] ? 0 : 1;
     const dOut = edt2d(mask, w, h);  // 0 inside, >0 outside
@@ -50,7 +50,7 @@ function signedDist(mask, w, h) {
 // and their own comment said calling them per frame would be N times slower than this. An unused
 // wrapper that is also the slow way to do the thing is worse than no wrapper: it reads like the
 // entry point.
-export function morphPrepare(aImg, bImg) {
+export function morphPrepare(aImg: ImageData, bImg: ImageData): (t: number) => ImageData {
     const w = aImg.width, h = aImg.height, N = w * h;
     const A = aImg.data, B = bImg.data;
     const mA = new Uint8Array(N), mBraw = new Uint8Array(N);
@@ -65,7 +65,7 @@ export function morphPrepare(aImg, bImg) {
     const dr = bn ? br / bn : cr, dg = bn ? bg / bn : cg, db = bn ? bb / bn : cb;
     // With one side empty there is no shape to morph, so fall back to an alpha crossfade.
     if (!an || !bn) {
-        return (t) => {
+        return (t: number) => {
             const out = new ImageData(w, h), O = out.data;
             for (let i = 0; i < N; i++) {
                 const o = i * 4;
@@ -92,7 +92,7 @@ export function morphPrepare(aImg, bImg) {
     const sA = signedDist(mA, w, h);
     const sB = signedDist(mB, w, h);
     const dxTot = cbx - cax, dyTot = cby - cay;
-    return (t) => {
+    return (t: number) => {
         const R = Math.round(cr + (dr - cr) * t), G = Math.round(cg + (dg - cg) * t), Bl = Math.round(cb + (db - cb) * t);
         const ox = dxTot * t, oy = dyTot * t;
         const out = new ImageData(w, h), O = out.data;

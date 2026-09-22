@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { drawScene } from '../../src/canvas/sceneRender.js';
+import { drawScene } from '../../src/canvas/sceneRender.ts';
 
 /** Records the draws in order, and the alpha in force at each. */
 function fakeCtx(log) {
@@ -52,7 +52,7 @@ test('a layer a gesture is drawing itself, or one still decoding, is skipped wit
     assert.equal(log.filter(l => l === 'save').length, log.filter(l => l === 'restore').length, 'every save is restored');
 });
 
-import { drawVideoOverlay, drawOnionCut, ONION_ALPHA } from '../../src/canvas/sceneRender.js';
+import { drawVideoOverlay, drawOnionCut, ONION_ALPHA } from '../../src/canvas/sceneRender.ts';
 
 test('the video overlay is fitted, faded by its opacity, and leaves the alpha as it found it', () => {
     const log = [];

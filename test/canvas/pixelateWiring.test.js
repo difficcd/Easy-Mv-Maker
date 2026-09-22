@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { pixelateCanvas, pixelateRegion } from '../../src/canvas/pixelEffects.js';
+import { pixelateCanvas, pixelateRegion } from '../../src/canvas/pixelEffects.ts';
 
 // The mosaic effect shipped broken and every unit test passed.
 //

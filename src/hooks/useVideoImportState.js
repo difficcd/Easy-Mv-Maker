@@ -9,7 +9,7 @@ import { parseClock } from '../core/timeCode.ts';
 import { importPlacement, buildImportedCuts, extractOptionsFor } from '../core/videoCuts.ts';
 import { replaceBatchCuts } from '../core/cutsReducer.ts';
 import { targetCanvasFor } from '../core/canvasSize.ts';
-import { extractVideoFrames, fitRect } from '../canvas/videoFrames.js';
+import { extractVideoFrames, fitRect } from '../canvas/videoFrames.ts';
 
 // The state of bringing a video into the project.
 //

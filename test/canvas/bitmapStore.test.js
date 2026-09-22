@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createBitmapStore } from '../../src/canvas/bitmapStore.js';
+import { createBitmapStore } from '../../src/canvas/bitmapStore.ts';
 import { DECODED_CAP } from '../../src/core/decodeBudget.ts';
 
 /** Node has no ImageData, ImageBitmap or Blob decoding; the store takes all three as arguments. */
