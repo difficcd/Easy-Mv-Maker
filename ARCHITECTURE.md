@@ -101,7 +101,8 @@ shapes the modules share are in `types.ts`, and the document's own are declared 
   `canvasSize.js` holds `CANVAS_W/H` and `targetCanvasFor`; `fonts.js` the text fonts;
   `geometry.js` and `colour.js` the small helpers.
 
-**engine/** — what a frame *is*, with no canvas anywhere near it.
+**engine/** — what a frame *is*, with no canvas anywhere near it. TypeScript; `Scene`,
+`EvaluatedCut` and `EvaluatedGroup` in `evaluateFrame.ts` are the renderer's whole input, named.
 
 - `evaluateFrame.js` — `evaluateFrame(cuts, t, opts)` returns the resolved scene at time `t`:
   which cuts, their animation, their layer groups, their texts, the camera. This is the entry

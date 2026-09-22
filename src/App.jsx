@@ -95,7 +95,7 @@ import { dragOnWindow } from './core/windowDrag.ts';
 // active at once, and startDraw checks this one first because a camera is a property of the cut
 // rather than of whichever layer happens to be selected.
 
-import { topCutAt } from './engine/selectCuts.js';
+import { topCutAt } from './engine/selectCuts.ts';
 import { unusedBitmapIds } from './core/bitmapRefs.ts';
 import { dragCut, resizeCut } from './core/cutOps.ts';
 import { accentSoft } from './canvas/editChrome.js';

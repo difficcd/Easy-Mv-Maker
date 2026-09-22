@@ -9,10 +9,10 @@
 // A predicate copied four times is four chances to disagree about what "decoded" means, and the
 // cost of disagreeing here is a blank layer cached under a signature that says it is complete.
 
-/**
- * @typedef {{ blob?: unknown, imageBitmap?: unknown, imageData?: unknown }} BitmapEntry
- * @typedef {{ get(id: string): BitmapEntry | undefined }} BitmapStore
- */
+/** What the bitmap store holds for one id, as far as "decoded yet?" needs. */
+export interface BitmapEntry { blob?: unknown; imageBitmap?: unknown; imageData?: unknown }
+/** Anything the ids can be looked up in: the live Map, or a stand-in. */
+export interface BitmapStore { get(id: string): BitmapEntry | undefined }
 
 /**
  * Whether this bitmap is known but not yet drawable.
@@ -23,7 +23,7 @@
  * @param {BitmapEntry | undefined | null} entry
  * @returns {boolean}
  */
-export function bitmapPending(entry) {
+export function bitmapPending(entry: BitmapEntry | undefined | null): boolean {
     return !!(entry && entry.blob && !entry.imageBitmap && !entry.imageData);
 }
 
@@ -37,11 +37,11 @@ export function bitmapPending(entry) {
  * @param {BitmapStore} store
  * @returns {{ pending: string[], decoded: string[] }}
  */
-export function scanLayerBitmaps(layer, store) {
-    const pending = [];
-    const decoded = [];
+export function scanLayerBitmaps(layer: { strokes?: Stroke[] | null } | null | undefined, store: BitmapStore | null | undefined): { pending: string[], decoded: string[] } {
+    const pending: string[] = [];
+    const decoded: string[] = [];
     if (!layer || !store) return { pending, decoded };
-    const seen = new Set();
+    const seen = new Set<string>();
     for (const stroke of (Array.isArray(layer.strokes) ? layer.strokes : [])) {
         if (stroke.tool !== 'paste' || !stroke.bitmapId || seen.has(stroke.bitmapId)) continue;
         seen.add(stroke.bitmapId);
@@ -57,10 +57,10 @@ export function scanLayerBitmaps(layer, store) {
  * @param {BitmapStore} store
  * @returns {string[]} ids to decode, without duplicates
  */
-export function pendingBitmapIds(cuts, store) {
+export function pendingBitmapIds(cuts: Array<{ layers?: Layer[] | null } | null | undefined> | null | undefined, store: BitmapStore | null | undefined): string[] {
     if (!cuts || !store) return [];
-    const out = [];
-    const seen = new Set();
+    const out: string[] = [];
+    const seen = new Set<string>();
     for (const cut of cuts) {
         for (const layer of (cut && Array.isArray(cut.layers) ? cut.layers : [])) {
             // Folders hold no pixels, and a hidden layer is not drawn, so neither can stall a frame.

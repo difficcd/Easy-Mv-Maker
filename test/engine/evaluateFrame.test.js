@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { evaluateFrame } from '../../src/engine/evaluateFrame.js';
+import { evaluateFrame } from '../../src/engine/evaluateFrame.ts';
 
 const W = 1920, H = 1080;
 const layer = (id, extra = {}) => ({ id, type: 'layer', parentId: null, visible: true, strokes: [], ...extra });

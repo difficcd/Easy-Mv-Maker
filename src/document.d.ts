@@ -48,6 +48,8 @@ interface Layer {
 interface CutText {
     id: any;
     visible?: boolean;
+    /** How the text moves and fades; the settings are TextAnimSettings in core/textAnim.ts. */
+    anim?: Record<string, any> | null;
     [extra: string]: any;
 }
 

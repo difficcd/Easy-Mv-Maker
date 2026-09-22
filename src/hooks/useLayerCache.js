@@ -3,8 +3,8 @@ import { sizeCanvas, scratchCanvas } from '../canvas/scratch.js';
 import { drawStrokesOnCtx } from '../canvas/strokes.js';
 import { safeArray } from '../core/geometry.ts';
 import { layerKey, layerSig } from '../core/layerTree.ts';
-import { scanLayerBitmaps } from '../engine/pendingBitmaps.js';
-import { cutsToCache } from '../engine/selectCuts.js';
+import { scanLayerBitmaps } from '../engine/pendingBitmaps.ts';
+import { cutsToCache } from '../engine/selectCuts.ts';
 import { layerKeysUsingBitmaps, keysWithPhases, prefetchWindow } from '../core/decodeBudget.ts';
 
 // How many distinct wobbles the boiling line cycles through. A hand-drawn boiling line is a

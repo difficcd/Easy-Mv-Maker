@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { pendingBitmapIds, scanLayerBitmaps, bitmapPending } from '../../src/engine/pendingBitmaps.js';
+import { pendingBitmapIds, scanLayerBitmaps, bitmapPending } from '../../src/engine/pendingBitmaps.ts';
 
 const store = (obj) => ({ get: (id) => obj[id] });
 const cut = (...layers) => ({ layers });

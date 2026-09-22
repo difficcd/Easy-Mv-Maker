@@ -11,9 +11,9 @@
 // texts - and the camera restored. Editing chrome (selection box, motion paths) is not here:
 // it is drawn by App after this, so it never reaches an export.
 
-import { evaluateFrame } from '../engine/evaluateFrame.js';
-import { pendingBitmapIds } from '../engine/pendingBitmaps.js';
-import { onionNeighbours } from '../engine/selectCuts.js';
+import { evaluateFrame } from '../engine/evaluateFrame.ts';
+import { pendingBitmapIds } from '../engine/pendingBitmaps.ts';
+import { onionNeighbours } from '../engine/selectCuts.ts';
 import { applyCamera } from '../core/camera.ts';
 import { flattenLayersInUiOrder } from '../core/layerTree.ts';
 import { drawScene, drawVideoOverlay, drawOnionCut, drawSceneTexts } from './sceneRender.js';
