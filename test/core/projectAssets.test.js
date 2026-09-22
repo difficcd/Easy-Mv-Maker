@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { frameStorage, frameLoad, imageExt, imageExtFromType, audioExt, videoExt, packMedia, unpackMedia } from '../../src/core/projectAssets.js';
+import { frameStorage, frameLoad, imageExt, imageExtFromType, audioExt, videoExt, packMedia, unpackMedia } from '../../src/core/projectAssets.ts';
 
 const blobEntry = () => ({ blob: new Blob(['x']), url: null });
 const urlEntry = () => ({ blob: null, url: 'data:image/webp;base64,AA' });

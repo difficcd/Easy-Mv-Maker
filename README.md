@@ -100,9 +100,9 @@ npm run smoke      # boots the built app in a headless browser and draws a strok
 `npm run check` is the gate: typecheck, the unit tests, then six static guards, then the build.
 The same steps run in CI on every push and pull request.
 
-The code is moving to TypeScript one module at a time (#268). A converted module is a `.ts` file
-under `src/`, held to `strict` by `tsconfig.strict.json`; the JavaScript around it is checked as
-before. Importers name a `.ts` module with its extension - that is what Node's own type
+The code is moving to TypeScript one module at a time (#268); `src/core/` is done, the rest
+follows. A converted module is a `.ts` file under `src/`, held to `strict` by
+`tsconfig.strict.json`; the JavaScript around it is checked as before. Importers name a `.ts` module with its extension - that is what Node's own type
 stripping needs in the tests (`--experimental-strip-types`, no extra dependency), and the
 bundler and `tsc` accept it. New modules are written in TypeScript.
 
@@ -172,7 +172,7 @@ npm run android:open     # open Android Studio -> run, or Build > Generate Signe
 src/
   App.jsx          the component: state and wiring (~2,100 lines)
   tools/           the drawing tools as a dispatch table: what each one does on pointer down and move
-  core/            pure logic - reducers, timeline geometry, lasso, shapes, persistence, export planning
+  core/            pure logic, in TypeScript - reducers, timeline geometry, lasso, shapes, persistence, export planning
   canvas/          anything that draws on a 2D context: strokes, text, sway slices, layer compositing
   engine/          evaluating one frame: which cuts are on, what each layer looks like at time t
   export/          byte writers for GIF and zip, video recording plumbing, download

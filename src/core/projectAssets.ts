@@ -23,6 +23,17 @@ export const STORE_BLOB = 'blob';
 /** Embedded as a base64 dataURL, so the JSON is self-contained. */
 export const STORE_DATAURL = 'dataurl';
 
+/** Where a frame's pixels go when a project is written. */
+export type StoreKind = typeof STORE_ASSET | typeof STORE_BLOB | typeof STORE_DATAURL;
+/** One bitmap in the live store: decoded pixels, or bytes still to decode, or a URL to fetch. */
+export interface StoreEntry { imageData?: ImageData | null; imageBitmap?: any; blob?: Blob | null; url?: string | null; ext?: string; w?: number; h?: number }
+/** A frame written as a server asset: what the document keeps of it. */
+export interface AssetRef { id: string; ext: string; w?: number; h?: number }
+/** A frame handed to the asset sink to be uploaded. */
+export interface AssetOut { id: string; blob?: Blob | null; url?: string | null; ext: string }
+/** collectBitmaps' answer: the bitmaps to embed, which of them are compressed, and the assets to upload. */
+export interface CollectedBitmaps { bitmaps: Record<string, string | Blob>; compressed: string[]; assets: AssetRef[] }
+
 /**
  * Where one whole-image frame bitmap goes.
  *
@@ -33,7 +44,7 @@ export const STORE_DATAURL = 'dataurl';
  * @param {{assetSink?: unknown, blobsOk?: boolean}} mode how this project is being written
  * @returns {'asset'|'blob'|'dataurl'}
  */
-export function frameStorage(entry, { assetSink = null, blobsOk = false } = {}) {
+export function frameStorage(entry: { blob?: Blob | null } | null | undefined, { assetSink = null, blobsOk = false }: { assetSink?: unknown[] | null, blobsOk?: boolean } = {}): StoreKind {
     if (assetSink) return STORE_ASSET;
     if (blobsOk && entry?.blob) return STORE_BLOB;
     return STORE_DATAURL;
@@ -51,7 +62,7 @@ export function frameStorage(entry, { assetSink = null, blobsOk = false } = {}) 
  * @param {string} id
  * @returns {'blob'|'compressed'|'decode'}
  */
-export function frameLoad(val, compressedSet, id) {
+export function frameLoad(val: unknown, compressedSet: Set<string> | null | undefined, id: string): 'blob' | 'compressed' | 'decode' {
     if (typeof Blob !== 'undefined' && val instanceof Blob) return 'blob';
     // The regex is not redundant with the manifest: files written before compressedBitmaps
     // existed have no manifest at all, and decoding their video frames would be the memory
@@ -65,7 +76,7 @@ export function frameLoad(val, compressedSet, id) {
  * @param {{ext?: string, url?: string|null}} entry
  * @returns {string}
  */
-export function imageExt(entry) {
+export function imageExt(entry: { ext?: string, url?: string | null } | null | undefined): string {
     return entry?.ext || entry?.url?.match(/^data:image\/(\w+)/)?.[1] || 'webp';
 }
 
@@ -74,21 +85,21 @@ export function imageExt(entry) {
  * @param {string|null|undefined} mime
  * @returns {string}
  */
-export function imageExtFromType(mime) {
+export function imageExtFromType(mime: unknown): string {
     return (typeof mime === 'string' && mime.match(/^image\/(\w+)/)?.[1]) || 'webp';
 }
 
 // Browsers report container formats under names nobody wants on the end of a filename, and the
 // two lists differ, so they are written out rather than guessed at.
-const AUDIO_EXT = { mpeg: 'mp3', 'x-m4a': 'm4a' };
-const VIDEO_EXT = { 'x-matroska': 'mkv', quicktime: 'mov' };
+const AUDIO_EXT: Record<string, string> = { mpeg: 'mp3', 'x-m4a': 'm4a' };
+const VIDEO_EXT: Record<string, string> = { 'x-matroska': 'mkv', quicktime: 'mov' };
 
 /**
  * The file extension for the audio track, from its dataURL.
  * @param {string|null|undefined} dataUrl
  * @returns {string}
  */
-export function audioExt(dataUrl) {
+export function audioExt(dataUrl: unknown): string {
     const raw = (typeof dataUrl === 'string' && dataUrl.match(/^data:audio\/([\w.-]+)/)?.[1]) || 'mp3';
     return AUDIO_EXT[raw] || raw;
 }
@@ -98,7 +109,7 @@ export function audioExt(dataUrl) {
  * @param {string|null|undefined} mime
  * @returns {string}
  */
-export function videoExt(mime) {
+export function videoExt(mime: unknown): string {
     const raw = (typeof mime === 'string' && mime.match(/^video\/([\w.-]+)/)?.[1]) || 'mp4';
     return VIDEO_EXT[raw] || raw;
 }
@@ -126,10 +137,10 @@ export function videoExt(mime) {
  * @param {(imageData: unknown) => string} io.imageDataToDataURL
  * @returns {Promise<{ bitmaps: Record<string, any>, compressed: string[], assets: any[] }>}
  */
-export async function collectBitmaps(cuts, {
+export async function collectBitmaps(cuts: Cut[] | null | undefined, {
     store, cache, assetSink = null, blobsOk = false, blobToDataURL, imageDataToDataURL,
-}) {
-    const usedIds = new Set();
+}: { store: Map<string, StoreEntry>, cache: Map<string, { imageData: ImageData, url: string }>, assetSink?: AssetOut[] | null, blobsOk?: boolean, blobToDataURL: (b: Blob) => Promise<string>, imageDataToDataURL: (img: ImageData) => string }): Promise<CollectedBitmaps> {
+    const usedIds = new Set<string>();
     for (const cut of (cuts || [])) {
         for (const layer of (cut?.layers || [])) {
             for (const stroke of (Array.isArray(layer?.strokes) ? layer.strokes : [])) {
@@ -138,11 +149,11 @@ export async function collectBitmaps(cuts, {
         }
     }
 
-    const bitmaps = {};
+    const bitmaps: Record<string, string | Blob> = {};
     /** Ids stored as a whole encoded image (video frames): they stay compressed on restore. */
-    const compressed = [];
+    const compressed: string[] = [];
     /** The manifest an asset save writes, naming what was uploaded beside the JSON. */
-    const assets = [];
+    const assets: AssetRef[] = [];
 
     for (const id of usedIds) {
         const entry = store.get(id);
@@ -155,12 +166,12 @@ export async function collectBitmaps(cuts, {
             const where = frameStorage(entry, { assetSink, blobsOk });
             if (where === STORE_ASSET) {
                 assets.push({ id, ext, w: entry.w || 0, h: entry.h || 0 });
-                assetSink.push({ id, blob: entry.blob, url: entry.url, ext });
+                assetSink!.push({ id, blob: entry.blob ?? null, url: entry.url ?? null, ext });
             } else if (where === STORE_BLOB) {
-                bitmaps[id] = entry.blob;
+                bitmaps[id] = entry.blob as Blob;
                 compressed.push(id);
             } else {
-                bitmaps[id] = entry.blob ? await blobToDataURL(entry.blob) : entry.url;
+                bitmaps[id] = entry.blob ? await blobToDataURL(entry.blob) : (entry.url as string);
                 compressed.push(id);
             }
             continue;
@@ -205,22 +216,22 @@ export async function collectBitmaps(cuts, {
  * @param {() => void} [deps.onEach] called once per entry, loaded or not, for progress
  * @returns {Promise<{store: Map<string, any>, failed: number}>}
  */
-export async function loadBitmapStore(data, { dataURLToImageData, createBitmap, urlToBlob, extFromType, onEach }) {
-    const store = new Map();
+export async function loadBitmapStore(data: { bitmaps?: Record<string, unknown> | null, compressedBitmaps?: string[] | null } | null | undefined, { dataURLToImageData, createBitmap, urlToBlob, extFromType, onEach }: { dataURLToImageData: (url: string) => Promise<ImageData>, createBitmap?: ((img: ImageData) => Promise<any>) | null, urlToBlob: (url: string) => Promise<Blob>, extFromType: (type: string) => string, onEach?: () => void }): Promise<{ store: Map<string, StoreEntry>, failed: number }> {
+    const store = new Map<string, StoreEntry>();
     if (!data?.bitmaps) return { store, failed: 0 };
     const compressedSet = new Set(data.compressedBitmaps || []);
-    const entries = await Promise.all(Object.entries(data.bitmaps).map(async ([id, val]) => {
+    const entries: Array<[string, StoreEntry] | null> = await Promise.all(Object.entries(data.bitmaps).map(async ([id, val]): Promise<[string, StoreEntry] | null> => {
         try {
             const how = frameLoad(val, compressedSet, id);
             if (how === 'blob') {
-                return [id, { imageData: null, imageBitmap: null, blob: val, ext: extFromType(val.type) }];
+                return [id, { imageData: null, imageBitmap: null, blob: val as Blob, ext: extFromType((val as Blob).type) }];
             }
             if (how === 'compressed') {
-                const blob = await urlToBlob(val);
+                const blob = await urlToBlob(val as string);
                 return [id, { imageData: null, imageBitmap: null, blob, ext: extFromType(blob.type) }];
             }
-            const imageData = await dataURLToImageData(val);
-            let imageBitmap = null;
+            const imageData = await dataURLToImageData(val as string);
+            let imageBitmap: any = null;
             try { imageBitmap = createBitmap ? await createBitmap(imageData) : null; } catch { }
             return [id, { imageData, imageBitmap }];
         } catch { return null; } finally { onEach?.(); }
@@ -250,7 +261,7 @@ export async function loadBitmapStore(data, { dataURLToImageData, createBitmap, 
  * @param {(img: ImageData) => Promise<any>} [deps.createBitmap]
  * @returns {Promise<number>} how many could not be loaded
  */
-export async function fillBitmapStore(store, data, { assetBase, fetchAsset, tick, dataURLToImageData, createBitmap }) {
+export async function fillBitmapStore(store: Map<string, StoreEntry>, data: { assets?: AssetRef[] | null, bitmaps?: Record<string, unknown> | null, compressedBitmaps?: string[] | null }, { assetBase, fetchAsset, tick, dataURLToImageData, createBitmap }: { assetBase: string | null, fetchAsset: (url: string) => Promise<Blob>, tick?: () => void, dataURLToImageData: (url: string) => Promise<ImageData>, createBitmap?: ((img: ImageData) => Promise<any>) | null }): Promise<number> {
     store.clear();
     let missing = 0;
     if (assetBase && Array.isArray(data.assets)) {
@@ -274,7 +285,7 @@ export async function fillBitmapStore(store, data, { assetBase, fetchAsset, tick
 }
 
 /** How many assets and bitmaps a document will load - for a progress bar before it starts. */
-export function bitmapLoadCount(data, assetBase) {
+export function bitmapLoadCount(data: { assets?: unknown[] | null, bitmaps?: Record<string, unknown> | null }, assetBase: string | null): number {
     const assets = (assetBase && Array.isArray(data.assets)) ? data.assets.length : 0;
     const bitmaps = data.bitmaps ? Object.keys(data.bitmaps).length : 0;
     return assets + bitmaps;
@@ -293,10 +304,10 @@ export function bitmapLoadCount(data, assetBase) {
  * @param {Blob} blob
  * @returns {Promise<string>}
  */
-export function blobToDataURL(blob) {
+export function blobToDataURL(blob: Blob): Promise<string> {
     return new Promise((res, rej) => {
         const fr = new FileReader();
-        fr.onload = () => res(/** @type {string} */(fr.result));
+        fr.onload = () => res(fr.result as string);
         fr.onerror = rej;
         fr.readAsDataURL(blob);
     });
@@ -327,7 +338,7 @@ export function blobToDataURL(blob) {
  * @param {(b: Blob) => Promise<string>} [args.toDataUrl] makes the dataURL when only the Blob is
  * @returns {Promise<object>} the field for the document
  */
-export async function packMedia(meta, { id, ext, assetSink = null, blobsOk = false, blob = null, dataUrl = null, toBlob, toDataUrl }) {
+export async function packMedia<M extends object>(meta: M, { id, ext, assetSink = null, blobsOk = false, blob = null, dataUrl = null, toBlob, toDataUrl }: { id: string, ext: string, assetSink?: AssetOut[] | null, blobsOk?: boolean, blob?: Blob | null, dataUrl?: string | null, toBlob?: () => Promise<Blob | null>, toDataUrl?: (b: Blob) => Promise<string> }): Promise<M & { asset?: boolean, ext?: string, blob?: Blob, dataUrl?: string | null }> {
     if (assetSink) {
         assetSink.push(blob ? { id, blob, ext } : { id, url: dataUrl, ext });
         return { ...meta, asset: true, ext };
@@ -353,7 +364,7 @@ export async function packMedia(meta, { id, ext, assetSink = null, blobsOk = fal
  * @param {{assetBase?: string | null, fetchAsset: (url: string) => Promise<Blob>}} args
  * @returns {Promise<{blob: Blob | null, dataUrl: string | null, missing: number}>}
  */
-export async function unpackMedia(field, id, { assetBase = null, fetchAsset }) {
+export async function unpackMedia(field: { blob?: unknown, asset?: boolean, dataUrl?: string | null } | null | undefined, id: string, { assetBase = null, fetchAsset }: { assetBase?: string | null, fetchAsset: (url: string) => Promise<Blob> }): Promise<{ blob: Blob | null, dataUrl: string | null, missing: number }> {
     if (!field) return { blob: null, dataUrl: null, missing: 0 };
     if (typeof Blob !== 'undefined' && field.blob instanceof Blob) return { blob: field.blob, dataUrl: null, missing: 0 };
     if (field.asset && assetBase) {

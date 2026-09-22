@@ -88,7 +88,7 @@ import {
     insertCutsShifting, deleteTrack, moveCutGroup, patchCut, patchCuts,
 } from './core/cutsReducer.ts';
 import { migrateCuts, projectSettings, makeLoadProgress } from './core/projectFormat.ts';
-import { audioExt, videoExt, collectBitmaps, blobToDataURL, packMedia, fillBitmapStore, bitmapLoadCount } from './core/projectAssets.js';
+import { audioExt, videoExt, collectBitmaps, blobToDataURL, packMedia, fillBitmapStore, bitmapLoadCount } from './core/projectAssets.ts';
 import { xAtTime } from './core/timelineZoom.ts';
 import { dragOnWindow } from './core/windowDrag.ts';
 // Recording a camera path reuses the pen the way a part's motion path does; the two cannot be
