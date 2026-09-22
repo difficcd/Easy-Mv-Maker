@@ -1,4 +1,5 @@
 import reactHooks from 'eslint-plugin-react-hooks';
+import babelParser from '@babel/eslint-parser';
 
 // Only the hook rules are enabled. The point is not style nagging but catching the silent
 // bugs that appear when logic moves into custom hooks:
@@ -12,6 +13,26 @@ export default [
             ecmaVersion: 2022,
             sourceType: 'module',
             parserOptions: { ecmaFeatures: { jsx: true } },
+        },
+        rules: {
+            'react-hooks/rules-of-hooks': 'error',
+            'react-hooks/exhaustive-deps': 'warn',
+        },
+    },
+    // The same two rules over the TypeScript files (#268). Only the parser differs: ESLint's own
+    // cannot read type annotations, and typescript-eslint's needs the JavaScript compiler API
+    // that TypeScript 7 no longer ships - so Babel's parser strips the types instead.
+    {
+        files: ['src/**/*.{ts,tsx}'],
+        plugins: { 'react-hooks': reactHooks },
+        languageOptions: {
+            parser: babelParser,
+            ecmaVersion: 2022,
+            sourceType: 'module',
+            parserOptions: {
+                requireConfigFile: false,
+                babelOptions: { presets: ['@babel/preset-typescript'] },
+            },
         },
         rules: {
             'react-hooks/rules-of-hooks': 'error',

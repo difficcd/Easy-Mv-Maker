@@ -5,7 +5,7 @@ import { saveAutosave } from './db';
 import ColorPanel from './ui/ColorPanel';
 import { TopBar } from './ui/TopBar';
 import { CutLayerPanel } from './ui/CutLayerPanel';
-import { useStored } from './hooks/useStored.js';
+import { useStored } from './hooks/useStored.ts';
 import { nextId } from './core/ids.ts';
 import { onOffCodec, oneZeroCodec } from './core/persist.ts';
 import { TextEditor } from './ui/TextEditor';
@@ -30,19 +30,19 @@ import { mkCut, firstCut } from './core/document.ts';
 import { selectionAfterClick, cutsToCopy } from './core/cutSelection.ts';
 import { closeLassoPath, lassoBounds, cutOutPolygon, cropImageData, selectionStrokes, paintedBounds } from './core/lassoOps.ts';
 import { TOOLS } from './tools/canvasTools.js';
-import { useTimelineGestures } from './hooks/useTimelineGestures.js';
-import { useTextDrag } from './hooks/useTextDrag.js';
-import { useLayerDnD } from './hooks/useLayerDnD.js';
-import { useCanvasView } from './hooks/useCanvasView.js';
+import { useTimelineGestures } from './hooks/useTimelineGestures.ts';
+import { useTextDrag } from './hooks/useTextDrag.ts';
+import { useLayerDnD } from './hooks/useLayerDnD.ts';
+import { useCanvasView } from './hooks/useCanvasView.ts';
 import { fmt, parseClock } from './core/timeCode.ts';
 import { textFromEdit, editFromText, blankTextEdit } from './core/textEdit.ts';
-import { useHistory } from './hooks/useHistory.js';
-import { usePlayback } from './hooks/usePlayback.js';
-import { useExport } from './hooks/useExport.js';
-import { useServerProbe } from './hooks/useServerProbe.js';
-import { useServerStorage } from './hooks/useServerStorage.js';
-import { usePanelLayout } from './hooks/usePanelLayout.js';
-import { useLocalDocuments } from './hooks/useLocalDocuments.js';
+import { useHistory } from './hooks/useHistory.ts';
+import { usePlayback } from './hooks/usePlayback.ts';
+import { useExport } from './hooks/useExport.ts';
+import { useServerProbe } from './hooks/useServerProbe.ts';
+import { useServerStorage } from './hooks/useServerStorage.ts';
+import { usePanelLayout } from './hooks/usePanelLayout.ts';
+import { useLocalDocuments } from './hooks/useLocalDocuments.ts';
 import { fetchAsset } from './core/api.ts';
 import { PLAYBACK_RATES, RATE_DEFAULT, playbackRateCodec } from './core/playbackRate.ts';
 import { scaleProjectTimes, bakePlan } from './core/timeScale.ts';
@@ -51,27 +51,27 @@ import { drawMarquee } from './canvas/marquee.ts';
 import { drawTextSelection, drawFloatingSelection, drawMotionPath, drawMosaicRegion } from './canvas/editChrome.ts';
 import { createBitmapStore } from './canvas/bitmapStore.ts';
 import { regionBounds, rectBounds, mosaic, blurMaskedRegion } from './canvas/pixelEffects.ts';
-import { useLayerCache } from './hooks/useLayerCache.js';
-import { useTimelineView } from './hooks/useTimelineView.js';
-import { useCutListUi } from './hooks/useCutListUi.js';
-import { useNotices } from './hooks/useNotices.js';
-import { useDialogs } from './hooks/useDialogs.js';
-import { useSelectionGesture } from './hooks/useSelectionGesture.js';
-import { useLayerDrag } from './hooks/useLayerDrag.js';
-import { usePathCapture } from './hooks/usePathCapture.js';
-import { useVideoImportState } from './hooks/useVideoImportState.js';
-import { useGesture } from './hooks/useGesture.js';
-import { useLiveOverlay } from './hooks/useLiveOverlay.js';
-import { useLiquifyTool } from './hooks/useLiquifyTool.js';
-import { useCurveTool } from './hooks/useCurveTool.js';
-import { useMosaicTool } from './hooks/useMosaicTool.js';
-import { useShortcuts } from './hooks/useShortcuts.js';
-import { usePanelVisibility } from './hooks/usePanelVisibility.js';
-import { useAppearance } from './hooks/useAppearance.js';
+import { useLayerCache } from './hooks/useLayerCache.ts';
+import { useTimelineView } from './hooks/useTimelineView.ts';
+import { useCutListUi } from './hooks/useCutListUi.ts';
+import { useNotices } from './hooks/useNotices.ts';
+import { useDialogs } from './hooks/useDialogs.ts';
+import { useSelectionGesture } from './hooks/useSelectionGesture.ts';
+import { useLayerDrag } from './hooks/useLayerDrag.ts';
+import { usePathCapture } from './hooks/usePathCapture.ts';
+import { useVideoImportState } from './hooks/useVideoImportState.ts';
+import { useGesture } from './hooks/useGesture.ts';
+import { useLiveOverlay } from './hooks/useLiveOverlay.ts';
+import { useLiquifyTool } from './hooks/useLiquifyTool.ts';
+import { useCurveTool } from './hooks/useCurveTool.ts';
+import { useMosaicTool } from './hooks/useMosaicTool.ts';
+import { useShortcuts } from './hooks/useShortcuts.ts';
+import { usePanelVisibility } from './hooks/usePanelVisibility.ts';
+import { useAppearance } from './hooks/useAppearance.ts';
 import { detachMedia } from './core/mediaEl.ts';
-import { useAutosave } from './hooks/useAutosave.js';
-import { useAudioTrack } from './hooks/useAudioTrack.js';
-import { useToolSettings } from './hooks/useToolSettings.js';
+import { useAutosave } from './hooks/useAutosave.ts';
+import { useAudioTrack } from './hooks/useAudioTrack.ts';
+import { useToolSettings } from './hooks/useToolSettings.ts';
 import {
     mediaReducer, EMPTY_MEDIA, setAudioClip, clearAudio,
     loadVideo, clearVideo, setVideoCuts, setVideoOpacity, clearVideoCuts, moveTrack, resizeAudio,
@@ -354,7 +354,7 @@ export default function App() {
     // The pixels strokes point at - fills, pastes, video frames - and the rules for decoding and
     // releasing them: canvas/bitmapStore. Made once; the canvas size is read when a frame is
     // decoded, since it can change after the store exists.
-    const canvasSizeRef = useRef([CANVAS_W, CANVAS_H]);
+    const canvasSizeRef = useRef(/** @type {[number, number]} */ ([CANVAS_W, CANVAS_H]));
     canvasSizeRef.current = [CANVAS_W, CANVAS_H];
     const bitmapStore = useRef(null);
     if (!bitmapStore.current) bitmapStore.current = createBitmapStore({ canvasSize: () => canvasSizeRef.current });
@@ -370,7 +370,7 @@ export default function App() {
     // painted-once flag. One object, made once; see canvas/framePaint.
     const frameScratch = useRef(createFrameScratch());
     const dataUrlCacheRef = useRef(new Map()); // id -> {imageData, url}; avoids re-encoding bitmaps each autosave
-    const liveRef = useRef({}); // latest {cuts, copiedCut, selection} for safe bitmap GC from effects
+    const liveRef = useRef(/** @type {any} */ ({})); // latest {cuts, copiedCut, selection} for safe bitmap GC from effects
     const textAreaRef = useRef(null);
     // Which document is loaded, as a number that changes whenever the whole thing is replaced.
     //

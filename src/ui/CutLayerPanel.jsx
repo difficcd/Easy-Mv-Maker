@@ -55,7 +55,7 @@ export function CutLayerPanel({
                     anything inside a button - the tabs are plain divs, so they get a stopPropagation
                     of their own rather than starting a panel drag. */}
                 <div className="panel-head" style={{ marginBottom: 8, gap: 2 }}
-                    onPointerDown={e => { if (e.target.closest('[data-tab]')) e.stopPropagation(); }}>
+                    onPointerDown={e => { if (/** @type {any} */ (e.target).closest('[data-tab]')) e.stopPropagation(); }}>
                     <div style={{ display: 'flex', alignItems: 'stretch', gap: 2, flex: 1, minWidth: 0, overflowX: 'auto' }} data-tab>
                         {tab('cut', 'CUT / LAYER', !showingText)}
                         {textEditorBody && tab('text', 'TEXT', showingText, cancelText)}
@@ -79,8 +79,8 @@ export function CutLayerPanel({
                                 {renamingCutId === cut.id
                                     ? <input className="time-input" style={{ flex: 1, minWidth: 0 }} autoFocus defaultValue={cut.name}
                                         onClick={e => e.stopPropagation()}
-                                        onBlur={e => { renameCut(cut.id, e.target.value.trim() || cut.name); setRenamingCutId(null); }}
-                                        onKeyDown={e => { if (e.key === 'Enter') { renameCut(cut.id, e.target.value.trim() || cut.name); setRenamingCutId(null); } if (e.key === 'Escape') setRenamingCutId(null); }} />
+                                        onBlur={e => { renameCut(cut.id, /** @type {any} */ (e.target).value.trim() || cut.name); setRenamingCutId(null); }}
+                                        onKeyDown={e => { if (e.key === 'Enter') { renameCut(cut.id, /** @type {any} */ (e.target).value.trim() || cut.name); setRenamingCutId(null); } if (e.key === 'Escape') setRenamingCutId(null); }} />
                                     : <span className="cut-name" onDoubleClick={e => { e.stopPropagation(); setRenamingCutId(cut.id); }} title={tr('더블클릭으로 이름 변경')}>{cut.name}</span>}
                                 <div style={{ display: 'flex', gap: 4 }}>
                                     <button className="icon-btn" onClick={e => { e.stopPropagation(); handleDuplicateCut(cut.id); }} title={tr('다음 프레임으로 복제 (Ctrl+D)')}><CopyPlus size={12} /></button>

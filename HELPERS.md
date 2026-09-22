@@ -456,7 +456,7 @@ The small preferences that live in localStorage: which panels are open, the them
 | `oneZeroCodec` | A flag that defaults to off: only the literal `1` turns it on. Kept separate from onOffCodec because migrating either spelling would silently reset the preference for everyone who had set it. |
 | `numberCodec` | A number, treating anything unparseable as absent. |
 
-## `src/hooks/useStored.js`
+## `src/hooks/useStored.ts`
 
 | | |
 |---|---|
@@ -925,7 +925,7 @@ Decoding a video file into frames, and finding its scene cuts.
 | `extractVideoFrames` | Pull frames out of a video file at a given rate, optionally over a range, scaled, encoded as WebP or PNG, with near-duplicate frames merged. Reports progress and can be stopped part way. |
 | `detectSceneCuts` | Find where a video changes scene, by stepping through it and comparing frames. Refines each hit to the exact boundary, reports progress, and can be stopped part way. |
 
-## `src/hooks/useCanvasView.js`
+## `src/hooks/useCanvasView.ts`
 
 How the canvas is looked at - zoom and offset - and every gesture that changes them.
 
@@ -933,7 +933,7 @@ How the canvas is looked at - zoom and offset - and every gesture that changes t
 |---|---|
 | `useCanvasView` | Owns the view, space-to-pan, middle-button pan, wheel zoom about the cursor, one-finger pan and two-finger pinch, and `lastInteractRef` (the paint loop holds the boiling preview still for a moment after a zoom or pan). The maths is `viewZoom`. |
 
-## `src/hooks/useDropdown.js`
+## `src/hooks/useDropdown.ts`
 
 A menu that opens from a button and closes on a press anywhere outside it.
 
@@ -941,7 +941,7 @@ A menu that opens from a button and closes on a press anywhere outside it.
 |---|---|
 | `useDropdown` | `[open, setOpen, ref]` — the ref marks what counts as inside; a document mousedown elsewhere closes it, only listened for while open. |
 
-## `src/hooks/useLayerCache.js`
+## `src/hooks/useLayerCache.ts`
 
 The layer canvases the frame is composited from, and everything that keeps them current.
 
@@ -950,7 +950,7 @@ The layer canvases the frame is composited from, and everything that keeps them 
 | `useLayerCache` | Owns the state cache (rebuilt for the cuts that can be on screen), the on-demand LRU `ensureLayerCanvas` fills during playback, clip-group flattening, lazy frame decoding ahead of the playhead, and invalidation when a frame lands. Returns the cache, `clearLayerCache`, `ensureLayerCanvas`, `flattenClipGroup`, `invalidateCutsUsing`, `requestFrameDecode`, `frameDecodeTick` and `requestRepaint`. |
 | `BOIL_PHASES` | How many distinct wobbles the boiling line cycles through — a few drawings alternating, each rasterised once. |
 
-## `src/hooks/useLayerDnD.js`
+## `src/hooks/useLayerDnD.ts`
 
 Dragging a layer row to reorder it, or into a folder.
 
@@ -958,7 +958,7 @@ Dragging a layer row to reorder it, or into a folder.
 |---|---|
 | `useLayerDnD` | Owns which row is in flight and where it would land; the moves are `moveLayer`/`moveLayerToEnd`. Returns the drag state and the row and list drop handlers. |
 
-## `src/hooks/useGesture.js`
+## `src/hooks/useGesture.ts`
 
 What is happening between the pen going down and coming back up.
 
@@ -966,7 +966,7 @@ What is happening between the pen going down and coming back up.
 |---|---|
 | `useGesture` | Owns the scratch state of one pointer gesture — the stroke, the lasso loop, the layers or selection being dragged, the path being recorded, the layer the stroke will commit to — plus `begin`/`end`, which take and give back pointer capture. All refs: a pointer move arrives far more often than a frame. The returned object is stable, so an effect can list it. |
 
-## `src/hooks/useHistory.js`
+## `src/hooks/useHistory.ts`
 
 Undo and redo: the wiring around `historyOps`, kept out of App.
 
@@ -974,7 +974,7 @@ Undo and redo: the wiring around `historyOps`, kept out of App.
 |---|---|
 | `useHistory` | Records the document when it changes, unless `shouldSkip()` says a gesture is in progress. Returns `undo`, `redo`, a stable `record` for callers that choose their own moment, and `entries()` for the bitmap GC - a snapshot keeps pixels reachable, and freeing those is an undo that comes back blank. |
 
-## `src/hooks/useCurveTool.js`
+## `src/hooks/useCurveTool.ts`
 
 The curve ruler: tap out anchors, and a smooth line is fitted through them.
 
@@ -982,7 +982,7 @@ The curve ruler: tap out anchors, and a smooth line is fitted through them.
 |---|---|
 | `useCurveTool` | Owns the anchors, whether one is being fine-tuned by dragging, and the count the mode bar shows. What it commits is an ordinary brush stroke, so nothing downstream has to learn that a curve exists. |
 
-## `src/hooks/useCutListUi.js`
+## `src/hooks/useCutListUi.ts`
 
 What is picked in the cut list, and how much of it is unfolded.
 
@@ -990,7 +990,7 @@ What is picked in the cut list, and how much of it is unfolded.
 |---|---|
 | `useCutListUi` | Picked: `selectedCutIds`, the `marquee` selecting them, and the `activePartId` that scopes playback. Unfolded: `expandedCuts`, `collapsedCutIds`, `renamingCutId`, with `toggleCutSettings`/`toggleCutCollapse`. None of it is saved with the document — it is where the user is looking, not what they made. |
 
-## `src/hooks/useDialogs.js`
+## `src/hooks/useDialogs.ts`
 
 Which dialog is open, and the state one of them owns.
 
@@ -998,7 +998,7 @@ Which dialog is open, and the state one of them owns.
 |---|---|
 | `useDialogs` | Settings, the tool-key list and help, plus the settings tab and the action waiting to be rebound. `openSettings(tab)` opens it on a tab; `closeSettings` and `closeToolKeys` also abandon a rebinding in progress — leaving one armed means the next key pressed anywhere is swallowed. That pair of lines was written out twice before. |
 
-## `src/hooks/useExport.js`
+## `src/hooks/useExport.ts`
 
 Getting the movie out: a recorded video, a GIF or PNG sequence, or several `.emv` files painted into one file.
 
@@ -1006,7 +1006,7 @@ Getting the movie out: a recorded video, a GIF or PNG sequence, or several `.emv
 |---|---|
 | `useExport` | Returns the three export handlers. All of them paint through the app's own paint path rather than a second renderer, so nothing can drift from what the user watched. The refs that say an export is running stay in App, because usePlayback reads them every frame. |
 
-## `src/hooks/useMosaicTool.js`
+## `src/hooks/useMosaicTool.ts`
 
 The mosaic's drag rectangle and its dashed outline.
 
@@ -1014,7 +1014,7 @@ The mosaic's drag rectangle and its dashed outline.
 |---|---|
 | `useMosaicTool` | Owns only the rectangle. What the mosaic is applied *to* stays with the caller, because it reads the composited canvas but writes to a resolved drawing layer — two different things. Takes its colour as a function, since a canvas cannot read a CSS variable and ignores an unparseable one without a word (#218). |
 
-## `src/hooks/usePanelVisibility.js`
+## `src/hooks/usePanelVisibility.ts`
 
 Which panels are on screen, and the Tab that folds them all away.
 
@@ -1022,7 +1022,7 @@ Which panels are on screen, and the Tab that folds them all away.
 |---|---|
 | `usePanelVisibility` | The three panel flags and the left dock's choice, plus `toggleAllPanels` — which remembers exactly what was open, and where the timeline was scrolled to, since its container is unmounted while folded and comes back at zero. Exposes `panelOpen` for the dock and a ref for the key handler, which subscribes once. |
 
-## `src/hooks/usePlayback.js`
+## `src/hooks/usePlayback.ts`
 
 The playback clock: one rAF loop driving canvas, playhead, audio, video and the prefetcher.
 
@@ -1061,7 +1061,7 @@ thumbnails and onion skin should all describe a frame the same way.
 | `cutsToCache` | The cuts whose layers are worth caching: under the playhead, the current cut, and its shown onion neighbours. Caching every cut stalled the app. |
 | `topCutAt` | The cut the playhead selects: topmost of those it is over, since the upper tracks are what a click would land on. |
 
-## `src/hooks/useAudioTrack.js`
+## `src/hooks/useAudioTrack.ts`
 
 The music track: the element that plays it, the copies of it a save needs, and the four ways one gets loaded or dropped.
 
@@ -1069,7 +1069,7 @@ The music track: the element that plays it, the copies of it a save needs, and t
 |---|---|
 | `useAudioTrack` | Owns `audioRef` and the AudioContext the export recorder taps, plus the two extra shapes of the same sound — a base64 dataURL so an `.emv` is self-contained, and a Blob (cached by the dataURL it came from) because IndexedDB can hold one and autosave cannot afford base64. Also `restoreAudio`, which puts a saved track back from any of its three stored shapes. |
 
-## `src/hooks/useAppearance.js`
+## `src/hooks/useAppearance.ts`
 
 What the app looks like: the accent colour, the chrome's saturation, and the colours picked recently.
 
@@ -1077,7 +1077,7 @@ What the app looks like: the accent colour, the chrome's saturation, and the col
 |---|---|
 | `useAppearance` | The three stored values and the two effects over them — applying the theme, and recording a colour as used only once the picker has settled, so a drag through the wheel does not fill the recent list. `applyTheme` is passed in, so the hook says nothing about the DOM. |
 
-## `src/hooks/useAutosave.js`
+## `src/hooks/useAutosave.ts`
 
 Debounced background saving, so a refresh or a crash never costs work.
 
@@ -1085,7 +1085,7 @@ Debounced background saving, so a refresh or a crash never costs work.
 |---|---|
 | `useAutosave` | Saves `doc` after a quiet period. Waits for `ready()` - crash recovery has to decide first, or a new empty document overwrites the autosave the user is about to be offered - and skips while `busy()`. Failures come back as `error` rather than being swallowed. |
 
-## `src/hooks/useServerStorage.js`
+## `src/hooks/useServerStorage.ts`
 
 Keeping projects on the local API server, and the rotating backups of them. Two hundred lines that
 never touch cuts, layers, strokes, the canvas or the timeline - which is what made this the first
@@ -1096,7 +1096,7 @@ the narrowest.
 |---|---|
 | `useServerStorage` | Save, open and delete server projects; snapshot every five minutes and rotate. Takes `buildData` and `restore` as functions rather than reaching for the document itself, because building one reads most of App's state and restoring one writes most of it - threading either in would make the seam wider than the thing it separates. |
 
-## `src/hooks/useSelectionGesture.js`
+## `src/hooks/useSelectionGesture.ts`
 
 Dragging a floating selection: what is under the pointer, and what a drag from there does.
 
@@ -1104,7 +1104,7 @@ Dragging a floating selection: what is under the pointer, and what a drag from t
 |---|---|
 | `useSelectionGesture` | `hitTest` (knob, handle, inside, nothing - also used for the cursor), `begin` (starts a move / resize / rotate drag, or a warp with Ctrl), `move`, `end`. |
 
-## `src/hooks/useLayerDrag.js`
+## `src/hooks/useLayerDrag.ts`
 
 The move tool on a layer: a shifted copy on the overlay while the original is hidden, the offset committed on lift.
 
@@ -1112,7 +1112,7 @@ The move tool on a layer: a shifted copy on the overlay while the original is hi
 |---|---|
 | `useLayerDrag` | `begin(e, pos, cutId, layerIds)`, `move`, `end` (dispatches moveLayers), `renderPreview`. |
 
-## `src/hooks/usePathCapture.js`
+## `src/hooks/usePathCapture.ts`
 
 Recording a path with the pen - a camera move, a part's path, its sway curve, or the mosaic rectangle - and turning the points into whichever it was.
 
@@ -1120,7 +1120,7 @@ Recording a path with the pen - a camera move, a part's path, its sway curve, or
 |---|---|
 | `usePathCapture` | Holds `cameraCapture` / `pathCapture`; `active`, `begin`, `move`, `end`. |
 
-## `src/hooks/useLiquifyTool.js`
+## `src/hooks/useLiquifyTool.ts`
 
 The liquify brush: the layer's pixels are pushed around in a copy and stamped back when the pen lifts.
 
@@ -1128,7 +1128,7 @@ The liquify brush: the layer's pixels are pushed around in a copy and stamped ba
 |---|---|
 | `useLiquifyTool` | Owns the buffer being pushed and the rectangle that has been touched. Commits an erase-hole plus a paste, not a plain paste — pixels that flowed away leave transparency, and painting over would let the original show through there. Calls `onHiddenChanged` so the composite can hide the real layer while the copy is on the overlay. |
 
-## `src/hooks/useLiveOverlay.js`
+## `src/hooks/useLiveOverlay.ts`
 
 The canvas the current gesture is drawn on, over the document canvas.
 
@@ -1136,7 +1136,7 @@ The canvas the current gesture is drawn on, over the document canvas.
 |---|---|
 | `useLiveOverlay` | Owns the overlay ref and the bookkeeping for drawing a stroke incrementally — only the new tail each frame, because redrawing a long stroke from the start on every move is what makes a pen feel heavy. Returns `clear` (stable, an effect depends on it), `renderStroke`, `schedule` (one draw per frame) and `restart` for a tool that rewrites what it has already drawn. |
 
-## `src/hooks/useLocalDocuments.js`
+## `src/hooks/useLocalDocuments.ts`
 
 The document on this machine: `.emv` files, IndexedDB projects, the autosave crash recovery offers,
 and the tabs that hold several documents at once. The mirror of `useServerStorage`, split along the
@@ -1147,7 +1147,7 @@ that lives here rather than on a server" and all three go through `buildData` an
 |---|---|
 | `useLocalDocuments` | Owns the local pickers, the tab list and their in-memory snapshots. Takes `buildData`, `restore` and `resetToEmpty` as functions: the first two because building a document reads most of App's state and restoring one writes most of it, the third for the same reason from the other end - emptying the document is App's business. |
 
-## `src/hooks/useNotices.js`
+## `src/hooks/useNotices.ts`
 
 What the app is telling the user: a running job, a passing message, a failure that stays.
 
@@ -1155,7 +1155,7 @@ What the app is telling the user: a running job, a passing message, a failure th
 |---|---|
 | `useNotices` | `progress`, `toast`, `error` and the YouTube `linkPrompt`, with the toast's three-second timer — re-armed when it is replaced, so a second toast gets its own three seconds. The error stays until dismissed because it used to be an alert, and a blocked alert looked exactly like nothing having happened. |
 
-## `src/hooks/usePanelLayout.js`
+## `src/hooks/usePanelLayout.ts`
 
 Where the panels are and how wide they are: three panels that each dock left, dock right or float,
 the drags that move and resize them, and the timeline's height. Pure geometry - it reads nothing
@@ -1165,7 +1165,7 @@ about the document, which is what made it separable whole.
 |---|---|
 | `usePanelLayout` | Owns the widths, the dock assignments, the floating positions and both drags. Returns the numbers to lay out with and three gesture starters. The panels themselves stay in App: a hook that returned them would need every prop each one takes, which is most of App. |
 
-## `src/hooks/useServerProbe.js`
+## `src/hooks/useServerProbe.ts`
 
 Whether the project-storage API is reachable, re-checked with a backoff.
 
@@ -1173,7 +1173,7 @@ Whether the project-storage API is reachable, re-checked with a backoff.
 |---|---|
 | `useServerProbe` | Polls with `nextProbeDelay` backoff and resets on window focus. Checking only once was the original bug: a server that was down at load stayed "down" all session, so the menus never rendered and clicking did nothing. |
 
-## `src/hooks/useVideoImportState.js`
+## `src/hooks/useVideoImportState.ts`
 
 What bringing a video into the project remembers.
 
@@ -1181,7 +1181,7 @@ What bringing a video into the project remembers.
 |---|---|
 | `useVideoImportState` | The hidden `<video>` and its bytes, the import dialog, extraction progress and whether it went to a background chip, the list of videos already fetched, the scene detector's progress and settings, and the two stop flags. The *logic* stays in App — it reads the document, the bitmap store and the paint path. The two stop flags are refs, because they are read inside loops that are already running. | Also `restore(field, deps)`: a stored video track back onto the element, the blob ref and the media state, like useAudioTrack's restoreAudio; and `run(deps)`: the import itself - extract as the dialog asked, store the frames, lay them out as cuts - taking the document at call time.
 
-## `src/hooks/useTimelineView.js`
+## `src/hooks/useTimelineView.ts`
 
 How the timeline is being looked at.
 
@@ -1189,7 +1189,7 @@ How the timeline is being looked at.
 |---|---|
 | `useTimelineView` | The zoom (`pps`, plus `ppsRef` for handlers that must not close over a stale one), the visible pixel `win` that drives virtualisation, and `scrubbing` / `snapLinePos`. The window is the load-bearing part: rendering every cut block and ruler tick of a long film is tens of thousands of DOM nodes and stalls the whole app, so only one screen either side is rendered, recomputed on a frame rather than per scroll event. |
 
-## `src/hooks/useToolSettings.js`
+## `src/hooks/useToolSettings.ts`
 
 What the pen is set to: which tool, what colour, how wide, how hard.
 
@@ -1197,7 +1197,7 @@ What the pen is set to: which tool, what colour, how wide, how hard.
 |---|---|
 | `useToolSettings` | Twenty-eight names that are read everywhere and written almost nowhere — the opposite shape from the drawing code that consumes them. Owns `etool` (Ruler and Air are each two tools behind one button) and `toolSize` (the eraser keeps its own width), so no caller has to work either out again. |
 
-## `src/hooks/useShortcuts.js`
+## `src/hooks/useShortcuts.ts`
 
 The document keydown listener, wired to what each shortcut does.
 
@@ -1205,7 +1205,7 @@ The document keydown listener, wired to what each shortcut does.
 |---|---|
 | `useShortcuts` | Reads the event, asks `shortcutFor`, calls the named action. Actions are read through a ref at event time, so the listener attaches once per keymap instead of on every render. |
 
-## `src/hooks/useTextDrag.js`
+## `src/hooks/useTextDrag.ts`
 
 Grabbing a text object on the canvas and dragging it, and the measuring that hit-testing needs.
 
@@ -1213,7 +1213,7 @@ Grabbing a text object on the canvas and dragging it, and the measuring that hit
 |---|---|
 | `useTextDrag` | Owns the drag (which text, where it started, one document write per frame — a pen reports over a hundred moves a second and each write is a render plus a repaint) and the scratch context text is measured with. Returns `measureTextBox`, `hitTestText`, `startTextDrag`, `moveTextDrag` (true if it consumed the move) and `endTextDrag` (flushes the queued move, returns what ended so App can open the editor on a press that never moved). |
 
-## `src/hooks/useTimelineGestures.js`
+## `src/hooks/useTimelineGestures.ts`
 
 Every way the timeline can be pointed at, in one place.
 

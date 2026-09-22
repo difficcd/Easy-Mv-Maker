@@ -21,14 +21,14 @@ import { nextId } from '../core/ids.ts';
  * what they are about. The body below reads the same names it always did.
  *
  * @param {object} p
- * @param {{cuts: any[], currentCutId: any, setCurrentCutId: Function, parts: any[], numTracks: number, maxTime: number}} p.doc
- * @param {{showBottom: boolean, setShowBottom: Function, timelineH: number, timelineRef: any, playheadRef: any, fmt: (s: number) => string}} p.view
- * @param {{hiddenTracks: any, toggleTrackHidden: Function, handleAddTrack: Function, handleDeleteTrack: Function}} p.tracks
- * @param {{makePartFromSelection: Function, selectPart: Function, renamePart: Function, ungroupPart: Function}} p.partOps
- * @param {{cutDragArmedRef: any, cutDragMovedRef: any, cutDragTimerRef: any, draggingCutData: any, setDraggingCutData: Function, setResizingData: Function}} p.drag
- * @param {{audioData: any, audioFile: any, videoOverlay: any, removeVideoOverlay: Function}} p.media
- * @param {{loopPlay: boolean, setLoopPlay: Function, playbackRate: number, setPlaybackRate: Function}} p.rate
- * @param {{transparentBg: boolean, setTransparentBg: Function, transparentFormat: string, setTransparentFormat: Function}} p.bg
+ * @param {{cuts: any[], currentCutId: any, setCurrentCutId: (...a: any[]) => void, parts: any[], numTracks: number, maxTime: number}} p.doc
+ * @param {{showBottom: boolean, setShowBottom: (...a: any[]) => void, timelineH: number, timelineRef: any, playheadRef: any, fmt: (s: number) => string}} p.view
+ * @param {{hiddenTracks: any, toggleTrackHidden: (...a: any[]) => void, handleAddTrack: (...a: any[]) => void, handleDeleteTrack: (...a: any[]) => void}} p.tracks
+ * @param {{makePartFromSelection: (...a: any[]) => void, selectPart: (...a: any[]) => void, renamePart: (...a: any[]) => void, ungroupPart: (...a: any[]) => void}} p.partOps
+ * @param {{cutDragArmedRef: any, cutDragMovedRef: any, cutDragTimerRef: any, draggingCutData: any, setDraggingCutData: (...a: any[]) => void, setResizingData: (...a: any[]) => void}} p.drag
+ * @param {{audioData: any, audioFile: any, videoOverlay: any, removeVideoOverlay: (...a: any[]) => void}} p.media
+ * @param {{loopPlay: boolean, setLoopPlay: (...a: any[]) => void, playbackRate: number, setPlaybackRate: (...a: any[]) => void}} p.rate
+ * @param {{transparentBg: boolean, setTransparentBg: (...a: any[]) => void, transparentFormat: string, setTransparentFormat: (...a: any[]) => void}} p.bg
  * @param {any} p.playback usePlayback's bundle
  * @param {any} p.gestures useTimelineGestures' bundle
  * @param {any} p.tl useTimelineView's bundle
@@ -37,7 +37,7 @@ import { nextId } from '../core/ids.ts';
  * @param {() => void} p.openPlaybackSettings
  * @param {() => void} p.openVideoSettings
  * @param {any} p.sceneDetect
- * @param {Function} p.setSceneCfg
+ * @param {(...a: any[]) => void} p.setSceneCfg
  * @param {(cs: any[]) => void} p.addCuts
  */
 export function Timeline({
@@ -215,9 +215,9 @@ export function Timeline({
                                             try { e.currentTarget.setPointerCapture(e.pointerId); } catch { }
                                             setDraggingCutData({ cutId: cut.id, startX: e.clientX, startY: e.clientY, initialStart: cut.startTime, initialTrack: cut.track, group });
                                         }}>
-                                        <div className="rh rh-left" style={{ touchAction: 'none' }} onPointerDown={e => { e.stopPropagation(); try { e.target.setPointerCapture(e.pointerId); } catch { } setResizingData({ cutId: cut.id, edge: 'left', startX: e.clientX, initialStart: cut.startTime, initialEnd: cut.endTime }); }} />
+                                        <div className="rh rh-left" style={{ touchAction: 'none' }} onPointerDown={e => { e.stopPropagation(); try { /** @type {any} */ (e.target).setPointerCapture(e.pointerId); } catch { } setResizingData({ cutId: cut.id, edge: 'left', startX: e.clientX, initialStart: cut.startTime, initialEnd: cut.endTime }); }} />
                                         {cut.name}
-                                        <div className="rh rh-right" style={{ touchAction: 'none' }} onPointerDown={e => { e.stopPropagation(); try { e.target.setPointerCapture(e.pointerId); } catch { } setResizingData({ cutId: cut.id, edge: 'right', startX: e.clientX, initialStart: cut.startTime, initialEnd: cut.endTime }); }} />
+                                        <div className="rh rh-right" style={{ touchAction: 'none' }} onPointerDown={e => { e.stopPropagation(); try { /** @type {any} */ (e.target).setPointerCapture(e.pointerId); } catch { } setResizingData({ cutId: cut.id, edge: 'right', startX: e.clientX, initialStart: cut.startTime, initialEnd: cut.endTime }); }} />
                                     </div>
                                 ))}
                             </div>
@@ -241,9 +241,9 @@ export function Timeline({
                                 <button className="icon-btn del-btn" onClick={e => { e.stopPropagation(); handleDeleteAudio(); }} title={tr('오디오 삭제')}><Trash2 size={9} /></button></div>
                             <div className="cut-block" style={{ left: `${xAtTime(audioData.startTime, pps)}px`, width: `${(audioData.endTime - audioData.startTime) * pps}px`, background: '#374151', borderColor: '#4b5563', cursor: draggingCutData?.cutId === 'audio' ? 'grabbing' : 'grab', touchAction: 'none' }}
                                 onPointerDown={e => { e.stopPropagation(); cutDragMovedRef.current = false; clearTimeout(cutDragTimerRef.current); cutDragArmedRef.current = e.pointerType !== 'touch'; if (e.pointerType === 'touch') cutDragTimerRef.current = setTimeout(() => { cutDragArmedRef.current = true; }, 350); try { e.currentTarget.setPointerCapture(e.pointerId); } catch { } setDraggingCutData({ cutId: 'audio', startX: e.clientX, startY: e.clientY, initialStart: audioData.startTime, initialTrack: 0 }); }}>
-                                <div className="rh rh-left" style={{ touchAction: 'none' }} onPointerDown={e => { e.stopPropagation(); try { e.target.setPointerCapture(e.pointerId); } catch { } setResizingData({ cutId: 'audio', edge: 'left', startX: e.clientX, initialStart: audioData.startTime, initialEnd: audioData.endTime, initialOffset: audioData.offset }); }} />
+                                <div className="rh rh-left" style={{ touchAction: 'none' }} onPointerDown={e => { e.stopPropagation(); try { /** @type {any} */ (e.target).setPointerCapture(e.pointerId); } catch { } setResizingData({ cutId: 'audio', edge: 'left', startX: e.clientX, initialStart: audioData.startTime, initialEnd: audioData.endTime, initialOffset: audioData.offset }); }} />
                                 <span>Audio</span>
-                                <div className="rh rh-right" style={{ touchAction: 'none' }} onPointerDown={e => { e.stopPropagation(); try { e.target.setPointerCapture(e.pointerId); } catch { } setResizingData({ cutId: 'audio', edge: 'right', startX: e.clientX, initialStart: audioData.startTime, initialEnd: audioData.endTime, initialOffset: audioData.offset }); }} />
+                                <div className="rh rh-right" style={{ touchAction: 'none' }} onPointerDown={e => { e.stopPropagation(); try { /** @type {any} */ (e.target).setPointerCapture(e.pointerId); } catch { } setResizingData({ cutId: 'audio', edge: 'right', startX: e.clientX, initialStart: audioData.startTime, initialEnd: audioData.endTime, initialOffset: audioData.offset }); }} />
                             </div>
                         </div>
                     )}
