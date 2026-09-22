@@ -1030,7 +1030,7 @@ The playback clock: one rAF loop driving canvas, playhead, audio, video and the 
 |---|---|
 | `usePlayback` | Owns `isPlaying`, `currentTime` and the four refs the loop reads instead of state. Returns those plus `playPause` and `stop`. Export runs through the same loop, at real time whatever speed is selected. |
 
-## `src/engine/evaluateFrame.js`
+## `src/engine/evaluateFrame.ts`
 
 What the frame looks like at time t, before anything is drawn.
 
@@ -1038,7 +1038,7 @@ What the frame looks like at time t, before anything is drawn.
 |---|---|
 | `evaluateFrame` | Resolves the document to a scene: which cuts, their animation, their layer groups, their texts, and the camera. Pure and canvas-free. The renderer walks the result instead of working it out mid-draw, which is what removed `computeCutAnim` being called twice per cut per frame. |
 
-## `src/engine/pendingBitmaps.js`
+## `src/engine/pendingBitmaps.ts`
 
 Which pasted bitmaps a frame needs but does not have decoded yet.
 
@@ -1048,7 +1048,7 @@ Which pasted bitmaps a frame needs but does not have decoded yet.
 | `scanLayerBitmaps` | One layer split into what it can and cannot draw yet. The decoded half is only the ImageBitmaps, because that is the form the LRU evicts and so the only one worth touching. |
 | `pendingBitmapIds` | Playback asks so it can hold the last frame instead of flashing a half-drawn one; the frame exporter asks so it can wait for the decode. Both used to be the same nested loop written twice. |
 
-## `src/engine/selectCuts.js`
+## `src/engine/selectCuts.ts`
 
 Which cuts a frame is made of. The first piece of the scene engine: playback, scrubbing, export,
 thumbnails and onion skin should all describe a frame the same way.

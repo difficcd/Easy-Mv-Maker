@@ -16,6 +16,8 @@
 //
 // Today only the selection half of that exists. Animation and compositing follow.
 
+import type { Id } from '../core/types.ts';
+
 /**
  * The cuts playing at a moment, bottom track first.
  *
@@ -29,7 +31,7 @@
  * @param {number} t
  * @returns {Cut[]}
  */
-export function cutsAt(cuts, t) {
+export function cutsAt(cuts: Cut[] | null | undefined, t: number): Cut[] {
     return (Array.isArray(cuts) ? cuts : [])
         .filter(c => t >= c.startTime && t < c.endTime)
         .sort((a, b) => a.track - b.track);
@@ -48,7 +50,7 @@ export function cutsAt(cuts, t) {
  * @param {boolean} playing
  * @returns {Cut[]}
  */
-export function visibleCutsAt(cuts, t, currentCutId, playing) {
+export function visibleCutsAt(cuts: Cut[] | null | undefined, t: number, currentCutId: Id, playing: boolean): Cut[] {
     const active = cutsAt(cuts, t);
     if (playing) return active;
     if (active.some(c => c.id === currentCutId)) return active;
@@ -69,7 +71,7 @@ export function visibleCutsAt(cuts, t, currentCutId, playing) {
  * @param {Cut | null | undefined} cut
  * @returns {{prev: Cut | null, next: Cut | null}}
  */
-export function onionNeighbours(cuts, cut) {
+export function onionNeighbours(cuts: Cut[] | null | undefined, cut: Cut | null | undefined): { prev: Cut | null, next: Cut | null } {
     if (!cut) return { prev: null, next: null };
     const sameTrack = (Array.isArray(cuts) ? cuts : []).filter(c => c.track === cut.track);
     const prev = sameTrack
@@ -90,7 +92,7 @@ export function onionNeighbours(cuts, cut) {
  * @param {number} t
  * @returns {Cut | null}
  */
-export function topCutAt(cuts, t) {
+export function topCutAt(cuts: Cut[] | null | undefined, t: number): Cut | null {
     const active = cutsAt(cuts, t);
     if (!active.length) return null;
     return active.reduce((p, c) => (p.track > c.track ? p : c));
@@ -109,8 +111,8 @@ export function topCutAt(cuts, t) {
  * @param {{prev?: boolean, next?: boolean}} onion which neighbours are shown
  * @returns {Set<any>}
  */
-export function cutsToCache(cuts, time, currentCut, onion) {
-    const visible = new Set();
+export function cutsToCache(cuts: Cut[], time: number, currentCut: Cut | null | undefined, onion: { prev?: boolean, next?: boolean }): Set<Id> {
+    const visible = new Set<Id>();
     for (const c of cuts) if (time >= c.startTime && time < c.endTime) visible.add(c.id);
     if (currentCut) {
         visible.add(currentCut.id);

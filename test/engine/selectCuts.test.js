@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cutsAt, visibleCutsAt, onionNeighbours, topCutAt, cutsToCache } from '../../src/engine/selectCuts.js';
+import { cutsAt, visibleCutsAt, onionNeighbours, topCutAt, cutsToCache } from '../../src/engine/selectCuts.ts';
 
 const cut = (id, start, end, track = 0) => ({ id, startTime: start, endTime: end, track });
 const ids = (cs) => cs.map(c => c.id);

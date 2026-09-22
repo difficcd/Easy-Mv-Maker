@@ -21,29 +21,46 @@ import { flattenLayersInUiOrder } from '../core/layerTree.ts';
 import { computeTextAnim } from '../core/textAnim.ts';
 import { computeCamera } from '../core/camera.ts';
 import { clipGroups } from '../core/clipping.ts';
-import { visibleCutsAt } from './selectCuts.js';
+import { visibleCutsAt } from './selectCuts.ts';
+import type { Id } from '../core/types.ts';
+import type { CutAnimAt } from '../core/cutAnim.ts';
+import type { LayerAnimAt } from '../core/layerAnim.ts';
+import type { TextAnimAt } from '../core/textAnim.ts';
+import type { CameraAt } from '../core/camera.ts';
 
-/**
- * @typedef {object} EvaluatedGroup
- * @property {Layer} base the layer the group composites onto
- * @property {Layer[]} clipped layers showing only where the base has paint, UI order
- * @property {any} anim the base layer's transform for this instant, or null
- */
 
-/**
- * @typedef {object} EvaluatedCut
- * @property {Cut} cut
- * @property {any} anim cut-level animation for this instant, or null when paused
- * @property {EvaluatedGroup[]} groups visible layers, grouped by clipping, UI order
- * @property {{text: CutText, anim: any}[]} texts visible texts with their animation
- */
+/** One clipping group of a cut, resolved for an instant. */
+export interface EvaluatedGroup {
+    /** the layer the group composites onto */
+    base: Layer;
+    /** layers showing only where the base has paint, UI order */
+    clipped: Layer[];
+    /** the base layer's transform for this instant, or null */
+    anim: LayerAnimAt | null;
+}
 
-/**
- * @typedef {object} Scene
- * @property {number} time the moment this scene is of, in seconds
- * @property {{cx: number, cy: number, zoom: number, rot: number} | null} camera
- * @property {EvaluatedCut[]} cuts bottom track first, which is drawing order
- */
+/** A visible text with its animation for an instant. */
+export interface EvaluatedText { text: CutText; anim: TextAnimAt | null }
+
+/** One cut of the frame, resolved for an instant. */
+export interface EvaluatedCut {
+    cut: Cut;
+    /** cut-level animation for this instant, or null when paused */
+    anim: CutAnimAt | null;
+    /** visible layers, grouped by clipping, UI order */
+    groups: EvaluatedGroup[];
+    /** visible texts with their animation */
+    texts: EvaluatedText[];
+}
+
+/** What the frame looks like at one moment: the renderer's whole input. */
+export interface Scene {
+    /** the moment this scene is of, in seconds */
+    time: number;
+    camera: CameraAt | null;
+    /** bottom track first, which is drawing order */
+    cuts: EvaluatedCut[];
+}
 
 /**
  * Resolve the document to a frame.
@@ -60,7 +77,7 @@ import { visibleCutsAt } from './selectCuts.js';
  * @param {number} opts.cw @param {number} opts.ch canvas size
  * @returns {Scene}
  */
-export function evaluateFrame(cuts, t, { playing, currentCutId, cw, ch }) {
+export function evaluateFrame(cuts: Cut[] | null | undefined, t: number, { playing, currentCutId, cw, ch }: { playing: boolean, currentCutId: Id, cw: number, ch: number }): Scene {
     const active = visibleCutsAt(cuts, t, currentCutId, playing);
 
     // A shot belongs to the cut on the lowest active track: that is the base scene, and the tracks
@@ -84,8 +101,7 @@ export function evaluateFrame(cuts, t, { playing, currentCutId, cw, ch }) {
     };
 }
 
-/** @returns {EvaluatedGroup[]} */
-function evaluateGroups(cut, t, playing, cw, ch) {
+function evaluateGroups(cut: Cut, t: number, playing: boolean, cw: number, ch: number): EvaluatedGroup[] {
     const visible = flattenLayersInUiOrder(cut.layers || [])
         .filter(l => l.type === 'layer' && l.visible !== false);
     return clipGroups(visible).map(g => ({
@@ -97,9 +113,8 @@ function evaluateGroups(cut, t, playing, cw, ch) {
     }));
 }
 
-/** @returns {{text: CutText, anim: any}[]} */
-function evaluateTexts(cut, t, playing) {
-    return safeArray(cut.texts)
+function evaluateTexts(cut: Cut, t: number, playing: boolean): EvaluatedText[] {
+    return safeArray<CutText>(cut.texts)
         .filter(x => x && x.visible !== false)
         .map(text => ({ text, anim: playing ? computeTextAnim(text, cut, t) : null }))
         // A text faded to nothing is dropped here rather than drawn transparent, so the renderer
