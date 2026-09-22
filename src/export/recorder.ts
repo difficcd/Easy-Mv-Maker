@@ -17,7 +17,7 @@ const CANDIDATES = ['video/mp4;codecs=h264', 'video/mp4', 'video/webm;codecs=vp9
  *   the choice can be checked without a browser
  * @returns {{mimeType: string, ext: 'mp4' | 'webm'}}
  */
-export function pickRecordingType(isTypeSupported) {
+export function pickRecordingType(isTypeSupported: (type: string) => boolean): { mimeType: string, ext: 'mp4' | 'webm' } {
     const mimeType = CANDIDATES.find(t => { try { return !!isTypeSupported(t); } catch { return false; } }) || '';
     return { mimeType, ext: mimeType.startsWith('video/mp4') ? 'mp4' : 'webm' };
 }
@@ -31,10 +31,10 @@ export function pickRecordingType(isTypeSupported) {
  * @param {number} fps the fallback rate
  * @returns {{stream: MediaStream, requestFrame: (() => void) | null}}
  */
-export function frameSource(canvas, fps) {
+export function frameSource(canvas: HTMLCanvasElement, fps: number): { stream: MediaStream, requestFrame: (() => void) | null } {
     let stream = canvas.captureStream(0);
-    const track = /** @type {any} */ (stream.getVideoTracks()[0]);
-    const s = /** @type {any} */ (stream);
+    const track = stream.getVideoTracks()[0] as any;
+    const s = stream as any;
     const requestFrame = typeof track?.requestFrame === 'function' ? () => track.requestFrame()
         : typeof s.requestFrame === 'function' ? () => s.requestFrame() : null;
     if (!requestFrame) stream = canvas.captureStream(fps);
@@ -57,11 +57,11 @@ export function frameSource(canvas, fps) {
  * @param {{videoBitsPerSecond?: number, audioBitsPerSecond?: number}} [rates] from core/recordBitrate
  * @returns {MediaRecorder}
  */
-export function startRecorder(tracks, mimeType, onDone, rates = {}) {
-    let mr;
+export function startRecorder(tracks: MediaStreamTrack[], mimeType: string, onDone: (blob: Blob) => void, rates: { videoBitsPerSecond?: number, audioBitsPerSecond?: number } = {}): MediaRecorder {
+    let mr: MediaRecorder;
     try { mr = new MediaRecorder(new MediaStream(tracks), { ...rates, ...(mimeType ? { mimeType } : {}) }); }
     catch { mr = new MediaRecorder(new MediaStream(tracks), rates); }
-    const chunks = [];
+    const chunks: Blob[] = [];
     mr.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
     mr.onstop = () => onDone(new Blob(chunks, { type: mimeType || 'video/webm' }));
     mr.start();

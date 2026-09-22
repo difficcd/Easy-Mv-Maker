@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { crc32, dosDateTime, makeZip, frameName, ZipWriter } from '../../src/export/zip.js';
+import { crc32, dosDateTime, makeZip, frameName, ZipWriter } from '../../src/export/zip.ts';
 
 const bytes = (s) => new TextEncoder().encode(s);
 

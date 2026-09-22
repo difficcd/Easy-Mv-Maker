@@ -14,7 +14,7 @@
 //     drawing. Line art and flat colour are comfortable inside that; a photographic frame is not.
 //   - delays are in hundredths of a second, so the frame rate is quantised.
 
-import { ByteWriter } from './byteWriter.js';
+import { ByteWriter } from './byteWriter.ts';
 
 const TRANSPARENT = 0;   // palette slot 0 is reserved for it, so every frame agrees where it is.
 
@@ -31,9 +31,8 @@ const TRANSPARENT = 0;   // palette slot 0 is reserved for it, so every frame ag
  * @param {number} [limit] palette entries available for colour, not counting transparent
  * @returns {{ palette: number[], indexOf: Map<number, number> }} palette as packed 0xRRGGBB
  */
-export function buildPalette(rgba, alphaCutoff = 128, limit = 255) {
-    /** @type {Map<number, number>} */
-    const counts = new Map();
+export function buildPalette(rgba: Uint8ClampedArray, alphaCutoff = 128, limit = 255): { palette: number[], indexOf: Map<number, number> } {
+    const counts = new Map<number, number>();
     for (let i = 0; i < rgba.length; i += 4) {
         if (rgba[i + 3] <= alphaCutoff) continue;
         const key = (rgba[i] << 16) | (rgba[i + 1] << 8) | rgba[i + 2];
@@ -42,7 +41,7 @@ export function buildPalette(rgba, alphaCutoff = 128, limit = 255) {
     // Most-used first, so what survives the cut is what the eye actually sees.
     const ordered = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(e => e[0]);
     const palette = ordered.slice(0, limit);
-    const indexOf = new Map();
+    const indexOf = new Map<number, number>();
     palette.forEach((rgb, i) => indexOf.set(rgb, i + 1));   // +1: slot 0 is transparent
 
     // Anything cut goes to its nearest survivor. Nearest in plain RGB distance - a perceptual
@@ -70,7 +69,7 @@ export function buildPalette(rgba, alphaCutoff = 128, limit = 255) {
  * @param {number} alphaCutoff
  * @returns {Uint8Array}
  */
-export function toIndices(rgba, indexOf, alphaCutoff = 128) {
+export function toIndices(rgba: Uint8ClampedArray, indexOf: Map<number, number>, alphaCutoff = 128): Uint8Array {
     const out = new Uint8Array(rgba.length / 4);
     for (let i = 0, p = 0; i < rgba.length; i += 4, p++) {
         if (rgba[i + 3] <= alphaCutoff) { out[p] = TRANSPARENT; continue; }
@@ -91,7 +90,7 @@ export function toIndices(rgba, indexOf, alphaCutoff = 128) {
  * @param {number} minCodeSize bits per pixel, at least 2
  * @returns {Uint8Array} the LZW byte stream, before sub-blocking
  */
-export function lzwEncode(indices, minCodeSize) {
+export function lzwEncode(indices: Uint8Array, minCodeSize: number): Uint8Array {
     const clearCode = 1 << minCodeSize;
     const endCode = clearCode + 1;
     let codeSize = minCodeSize + 1;
@@ -99,12 +98,11 @@ export function lzwEncode(indices, minCodeSize) {
     // Keyed by (prefix code, next pixel) packed into one integer. The first version built a
     // string key per pixel; at seven million pixels for a short animation that was twenty
     // seconds of making garbage, and the strings were the whole cost.
-    /** @type {Map<number, number>} */
-    let table = new Map();
+    let table = new Map<number, number>();
 
     const out = new ByteWriter(Math.max(1024, indices.length >> 1));
     let cur = 0, curBits = 0;
-    const emit = (code) => {
+    const emit = (code: number) => {
         cur |= code << curBits;
         curBits += codeSize;
         while (curBits >= 8) { out.u8(cur); cur >>= 8; curBits -= 8; }
@@ -142,7 +140,7 @@ export function lzwEncode(indices, minCodeSize) {
 }
 
 /** GIF carries data in sub-blocks of at most 255 bytes, each preceded by its length. */
-function writeSubBlocks(out, data) {
+function writeSubBlocks(out: ByteWriter, data: Uint8Array): void {
     for (let i = 0; i < data.length; i += 255) {
         const n = Math.min(255, data.length - i);
         out.u8(n);
@@ -152,17 +150,22 @@ function writeSubBlocks(out, data) {
 }
 
 /** The smallest power-of-two palette size that holds `n` entries, and its bit width. */
-export function paletteBits(n) {
+export function paletteBits(n: number): number {
     let bits = 1;
     while ((1 << bits) < n) bits++;
     return Math.max(2, Math.min(8, bits));
 }
 
-/**
- * @typedef {object} GifFrame
- * @property {Uint8ClampedArray} rgba the frame, width * height * 4
- * @property {number} [delayMs] how long to hold it; defaults to the encoder's
- */
+/** One frame handed to encodeGif. */
+export interface GifFrame {
+    /** the frame, width * height * 4 */
+    rgba: Uint8ClampedArray;
+    /** how long to hold it; defaults to the encoder's */
+    delayMs?: number;
+}
+
+/** How a GIF is written: its size, the default hold per frame, whether it repeats, and where alpha becomes transparent. */
+export interface GifOptions { width: number; height: number; delayMs?: number; loop?: boolean; alphaCutoff?: number }
 
 /**
  * A GIF being written, one frame at a time.
@@ -178,10 +181,14 @@ export function paletteBits(n) {
  * problem; writing frames into one file does not.)
  */
 export class GifWriter {
-    /**
-     * @param {{width: number, height: number, delayMs?: number, loop?: boolean, alphaCutoff?: number}} opts
-     */
-    constructor({ width, height, delayMs = 100, loop = true, alphaCutoff = 128 }) {
+    width: number;
+    height: number;
+    delayMs: number;
+    alphaCutoff: number;
+    frames: number;
+    finished: boolean;
+    out: ByteWriter;
+    constructor({ width, height, delayMs = 100, loop = true, alphaCutoff = 128 }: GifOptions) {
         this.width = width;
         this.height = height;
         this.delayMs = delayMs;
@@ -212,7 +219,7 @@ export class GifWriter {
      * @param {Uint8ClampedArray} rgba
      * @param {{delayMs?: number}} [opts]
      */
-    addFrame(rgba, { delayMs } = {}) {
+    addFrame(rgba: Uint8ClampedArray, { delayMs }: { delayMs?: number } = {}): void {
         if (this.finished) throw new Error('gif already finished');
         const out = this.out;
         const { palette, indexOf } = buildPalette(rgba, this.alphaCutoff);
@@ -247,9 +254,8 @@ export class GifWriter {
 
     /**
      * Write the trailer and hand back the file.
-     * @returns {Uint8Array<ArrayBuffer>}
      */
-    finish() {
+    finish(): Uint8Array<ArrayBuffer> {
         if (this.finished) throw new Error('gif already finished');
         // Guarded here rather than at the caller, so it covers a queue that turned out to have
         // nothing in it as well as an encodeGif handed an empty list. A GIF with no frames is a
@@ -278,7 +284,7 @@ export class GifWriter {
  * @param {number} [opts.alphaCutoff] alpha at or below which a pixel is transparent
  * @returns {Uint8Array<ArrayBuffer>}
  */
-export function encodeGif(frames, { width, height, delayMs = 100, loop = true, alphaCutoff = 128 }) {
+export function encodeGif(frames: GifFrame[], { width, height, delayMs = 100, loop = true, alphaCutoff = 128 }: GifOptions): Uint8Array<ArrayBuffer> {
     const gif = new GifWriter({ width, height, delayMs, loop, alphaCutoff });
     for (const frame of frames) gif.addFrame(frame.rgba, { delayMs: frame.delayMs });
     return gif.finish();

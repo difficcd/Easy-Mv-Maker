@@ -9,21 +9,21 @@
 // at that listing. Zip64 is not written, so this tops out at 4GB or 65535 files - far past any
 // frame sequence this app produces, but the limits are checked rather than silently exceeded.
 
-import { ByteWriter } from './byteWriter.js';
+import { ByteWriter } from './byteWriter.ts';
 
 const LOCAL_SIG = 0x04034b50;
 const CENTRAL_SIG = 0x02014b50;
 const END_SIG = 0x06054b50;
 
-/** @typedef {{ name: string, data: Uint8Array }} ZipEntry */
+/** One file to store: its name in the archive and its bytes. */
+export interface ZipEntry { name: string; data: Uint8Array }
 
 /**
  * CRC-32, the checksum ZIP uses. The table is built once on first use rather than at module
  * load, so importing this module for its types costs nothing.
- * @returns {Uint32Array}
  */
-let crcTable = null;
-function table() {
+let crcTable: Uint32Array | null = null;
+function table(): Uint32Array {
     if (crcTable) return crcTable;
     crcTable = new Uint32Array(256);
     for (let n = 0; n < 256; n++) {
@@ -38,7 +38,7 @@ function table() {
  * @param {Uint8Array} bytes
  * @returns {number} unsigned CRC-32
  */
-export function crc32(bytes) {
+export function crc32(bytes: Uint8Array): number {
     const t = table();
     let c = 0xffffffff;
     for (let i = 0; i < bytes.length; i++) c = t[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
@@ -51,7 +51,7 @@ export function crc32(bytes) {
  * @param {Date} d
  * @returns {{ time: number, date: number }}
  */
-export function dosDateTime(d) {
+export function dosDateTime(d: Date): { time: number, date: number } {
     const year = Math.max(1980, d.getFullYear());
     return {
         time: (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1),
@@ -74,14 +74,18 @@ export function dosDateTime(d) {
  * Store-only, like the whole-archive version, because PNGs are already deflated.
  */
 export class ZipWriter {
-    /** @param {{ date?: Date }} [opts] */
-    constructor({ date = new Date() } = {}) {
+    time: number;
+    dosDate: number;
+    w: ByteWriter;
+    enc: TextEncoder;
+    files: { name: Uint8Array, crc: number, size: number, offset: number }[];
+    finished: boolean;
+    constructor({ date = new Date() }: { date?: Date } = {}) {
         const { time, date: dosDate } = dosDateTime(date);
         this.time = time;
         this.dosDate = dosDate;
         this.w = new ByteWriter();
         this.enc = new TextEncoder();
-        /** @type {{name: Uint8Array, crc: number, size: number, offset: number}[]} */
         this.files = [];
         this.finished = false;
     }
@@ -92,7 +96,7 @@ export class ZipWriter {
      * @param {string} name
      * @param {Uint8Array} data
      */
-    add(name, data) {
+    add(name: string, data: Uint8Array): void {
         if (this.finished) throw new Error('zip already finished');
         if (this.files.length >= 0xffff) throw new Error('too many files for a non-zip64 archive');
         const encoded = this.enc.encode(name);
@@ -120,10 +124,8 @@ export class ZipWriter {
 
     /**
      * Write the central directory and hand back the archive.
-     *
-     * @returns {Uint8Array<ArrayBuffer>}
      */
-    finish() {
+    finish(): Uint8Array<ArrayBuffer> {
         if (this.finished) throw new Error('zip already finished');
         this.finished = true;
         const w = this.w;
@@ -167,7 +169,7 @@ export class ZipWriter {
  * @param {{ date?: Date }} [opts]
  * @returns {Uint8Array<ArrayBuffer>}
  */
-export function makeZip(entries, { date = new Date() } = {}) {
+export function makeZip(entries: ZipEntry[], { date = new Date() }: { date?: Date } = {}): Uint8Array<ArrayBuffer> {
     if (entries.length > 0xffff) throw new Error('too many files for a non-zip64 archive');
     const zip = new ZipWriter({ date });
     for (const e of entries) zip.add(e.name, e.data);
@@ -182,7 +184,7 @@ export function makeZip(entries, { date = new Date() } = {}) {
  * @param {number} count total frames, which sets the width
  * @returns {string}
  */
-export function frameName(index, count) {
+export function frameName(index: number, count: number): string {
     const width = Math.max(4, String(Math.max(1, count - 1)).length);
     return `frame_${String(index).padStart(width, '0')}.png`;
 }

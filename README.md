@@ -100,8 +100,8 @@ npm run smoke      # boots the built app in a headless browser and draws a strok
 `npm run check` is the gate: typecheck, the unit tests, then six static guards, then the build.
 The same steps run in CI on every push and pull request.
 
-The code is moving to TypeScript one module at a time (#268); `src/core/` and `src/engine/` are done,
-the rest follows. A converted module is a `.ts` file under `src/`, held to `strict` by
+The code is moving to TypeScript one module at a time (#268); `src/core/`, `src/engine/` and
+`src/export/` are done, the rest follows. A converted module is a `.ts` file under `src/`, held to `strict` by
 `tsconfig.strict.json`; the JavaScript around it is checked as before. Importers name a `.ts` module with its extension - that is what Node's own type
 stripping needs in the tests (`--experimental-strip-types`, no extra dependency), and the
 bundler and `tsc` accept it. New modules are written in TypeScript.
@@ -175,7 +175,7 @@ src/
   core/            pure logic, in TypeScript - reducers, timeline geometry, lasso, shapes, persistence, export planning
   canvas/          anything that draws on a 2D context: strokes, text, sway slices, layer compositing
   engine/          evaluating one frame, in TypeScript: which cuts are on, what each layer looks like at time t
-  export/          byte writers for GIF and zip, video recording plumbing, download
+  export/          byte writers for GIF and zip, video recording plumbing, download - TypeScript
   hooks/           App state that has been given its own home: the canvas view, the layer cache, playback,
                    audio, history, autosave, panels, tool settings, shortcuts, the drag gestures
   ui/              panels; ui/dialogs/ one file per dialog

@@ -19,8 +19,8 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { saveProject, loadProject, listProjects, deleteProject, loadAutosave, autosaveKey } from '../db.js';
-import { downloadBlob } from '../export/download.js';
-import { ZipWriter } from '../export/zip.js';
+import { downloadBlob } from '../export/download.ts';
+import { ZipWriter } from '../export/zip.ts';
 import { splitProject, pieceFileName, piecesAreSequential } from '../core/splitProject.ts';
 import { randomId, nextId } from '../core/ids.ts';
 import { safeArray } from '../core/geometry.ts';

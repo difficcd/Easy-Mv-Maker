@@ -21,10 +21,10 @@ import { EXPORT_FPS } from '../core/recordClock.ts';
 import { evaluateFrame } from '../engine/evaluateFrame.ts';
 import { pendingBitmapIds } from '../engine/pendingBitmaps.ts';
 import { scratchCanvas } from '../canvas/scratch.js';
-import { frameName, ZipWriter } from '../export/zip.js';
-import { GifWriter } from '../export/gif.js';
-import { downloadBlob } from '../export/download.js';
-import { pickRecordingType, frameSource, startRecorder } from '../export/recorder.js';
+import { frameName, ZipWriter } from '../export/zip.ts';
+import { GifWriter } from '../export/gif.ts';
+import { downloadBlob } from '../export/download.ts';
+import { pickRecordingType, frameSource, startRecorder } from '../export/recorder.ts';
 import { videoBitrate, AUDIO_BITRATE } from '../core/recordBitrate.ts';
 
 /**
