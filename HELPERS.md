@@ -618,7 +618,7 @@ Timeline pixels to time, and zooming without the content sliding.
 | `xAtTime` | Where a time sits, as a content x - what the playhead's `left` is set to. |
 | `zoomAnchored` | Zoom about a point. Returns null at the scale limits, so the caller leaves the scroll alone rather than recomputing from an unchanged scale. |
 
-## `src/canvas/bitmapStore.js`
+## `src/canvas/bitmapStore.ts`
 
 The pixels strokes point at - fills, pastes, video frames - and the rules for decoding and releasing them.
 
@@ -626,7 +626,7 @@ The pixels strokes point at - fills, pastes, video frames - and the rules for de
 |---|---|
 | `createBitmapStore` | The store: `store` (drawn pixels, bitmap follows), `storeBlob` (a frame kept compressed, decoded lazily), `decodeFrame` (no larger than the canvas), `touch`/`trim`/`setHot` (the LRU over decoded frames, via decodeBudget), `clone` (a copy under a fresh id, shared within one operation). Takes createImageBitmap and ImageData as arguments so it is tested in Node. |
 
-## `src/canvas/editChrome.js`
+## `src/canvas/editChrome.ts`
 
 What is drawn over the frame while editing and never while playing.
 
@@ -640,7 +640,7 @@ What is drawn over the frame while editing and never while playing.
 | `drawCurveAnchors` | The curve ruler's anchors, screen-sized, the first one marked as the end the curve is drawn from. |
 | `accentSoft` | That keeps on-canvas furniture such as selection outlines and paths on the theme colour. |
 
-## `src/canvas/layerComposite.js`
+## `src/canvas/layerComposite.ts`
 
 Putting one layer onto the frame: where it sits, and how a floating selection is cut out of it. Both came out of the composite loop, which runs for every layer of every visible cut, sixty times a second.
 
@@ -672,7 +672,7 @@ The selection chrome, drawn so it can be seen on anything and sized for the scre
 | `HANDLE_PX` | A handle's half-size on screen. |
 | `HANDLE_GRAB_PX` | The wider radius within which a press still takes a handle. |
 
-## `src/canvas/pixelEffects.js`
+## `src/canvas/pixelEffects.ts`
 
 The two tools that change pixels already on the canvas: the mosaic and the blur brush.
 
@@ -689,7 +689,7 @@ The two tools that change pixels already on the canvas: the mosaic and the blur 
 | `pixelateRegion` | A copy of a layer with one rectangle pixelated and the rest untouched. Composed to a full-size canvas because everything downstream — sway, mask, part transform — takes one image; handing them a patch would mean teaching each about the region. |
 | `clampRegion` | A hand-dragged rectangle clipped to the canvas and rounded, or `null` when it is too small. Dragged backwards or off the edge are both routine, and a negative width silently draws nothing. |
 
-## `src/canvas/framePaint.js`
+## `src/canvas/framePaint.ts`
 
 Painting one frame of the film onto the main canvas - the passes in the order things are seen - with the scratch it keeps between frames in one object.
 
@@ -699,7 +699,7 @@ Painting one frame of the film onto the main canvas - the passes in the order th
 | `paintFrameOnto` | Paint the film at time t onto a context: white or nothing, then under the camera the reference video, the onion skin, the artwork with its effects, the texts. Holds the last frame during playback when a bitmap is still decoding. Editing chrome is not here. |
 | `BOIL_FPS` | How many times a second the boiling-line motion advances; ten, like a traditional boil. |
 
-## `src/canvas/sceneRender.js`
+## `src/canvas/sceneRender.ts`
 
 Compositing the evaluated scene onto the frame - what was the middle of paintFrame.
 
@@ -720,7 +720,7 @@ One slice rule, shared by every warp that displaces pixels along an axis.
 |---|---|
 | `shearSlices` | Cut a span into slices, each with the shear that matches a displacement function exactly at both of its boundaries — so neighbours agree where they meet, at any slice count. Sway and the selection bend both call it. |
 
-## `src/canvas/warpRender.js`
+## `src/canvas/warpRender.ts`
 
 Skew and bend for a pasted bitmap — the two adjustments a lasso selection carries beyond where it sits and how big it is.
 
@@ -844,7 +844,7 @@ Text animation for subtitles: entrance, exit, typing, emphasis, per-character ef
 | `charAnimAt` | One character's share of a staggered entrance. The whole of that character's entrance, not something added on top of the block's - `computeTextAnim` leaves the block at rest when a stagger is set. |
 | `computeTextAnim` | A text animation resolved to one instant. Returns the entrance, exit and emphasis values, how much of the string is revealed, and — when the characters own the entrance — the progress they divide between them. |
 
-## `src/canvas/textRender.js`
+## `src/canvas/textRender.ts`
 
 Measuring and drawing text objects.
 
@@ -858,7 +858,7 @@ Measuring and drawing text objects.
 | `textLineHeight` | Baseline-to-baseline distance for stacked lines. |
 | `textNeedsBox` | Whether this text has to be measured before it can be drawn. Measuring costs a measureText per line, so it is skipped for plain text. |
 
-## `src/canvas/morph.js`
+## `src/canvas/morph.ts`
 
 Shape morphing for tweening: distance fields of two drawings, and an in-between frame at any t.
 
@@ -866,7 +866,7 @@ Shape morphing for tweening: distance fields of two drawings, and an in-between 
 |---|---|
 | `morphPrepare` | Morph the pixel distribution of one frame into another by interpolating signed distance fields, so the shape moves and grows rather than one crossfading into the other. Computes the fields once and returns a function that makes a single in-between frame, which is what lets the tweening dialog show progress and yield between frames. |
 
-## `src/canvas/fill.js`
+## `src/canvas/fill.ts`
 
 The bucket fill: flood a region of an ImageData, and the mask around it.
 
@@ -884,7 +884,7 @@ ImageData to and from a data URL, for persistence.
 | `imageDataToDataURL` | Encode pixels as a dataURL, through a reused canvas — allocating one per call is the trap sizeCanvas exists for. |
 | `dataURLToImageData` | Decode a dataURL back to pixels. The synchronous counterpart of imageDataToDataURL, for the stored bitmaps a project restores. |
 
-## `src/canvas/strokes.js`
+## `src/canvas/strokes.ts`
 
 Strokes become pixels here: smoothing a hand path, the boiling line, and every brush onto a context.
 
@@ -913,7 +913,7 @@ Scratch canvases: sizing, one-per-ref reuse, and drawing an ImageData through a 
 | `imageDataCanvas` | A canvas holding an ImageData, ready to draw. `putImageData` ignores the transform, composite mode and alpha, so anything that scales or blends ImageData needs this. Reused - valid until the next call. |
 | `resetCtx` | A shared canvas's context put back to its default state — a resize resets these, a reuse does not, and the last user leaves them dirty. |
 
-## `src/canvas/videoFrames.js`
+## `src/canvas/videoFrames.ts`
 
 Decoding a video file into frames, and finding its scene cuts.
 

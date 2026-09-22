@@ -6,12 +6,15 @@
 // was a one-pixel accent line that vanished on light artwork and shrank with the zoom.
 
 import { drawMarquee, drawHandle } from './marquee.ts';
-import { drawWarped, warpedOutline, warpedHandles, rotateKnob } from './warpRender.js';
+import { drawWarped, warpedOutline, warpedHandles, rotateKnob, type WarpBox } from './warpRender.ts';
+import type { Point } from '../core/types.ts';
+import type { Rect } from '../core/lassoOps.ts';
+
 
 import { withAlpha } from '../core/colour.ts';
 
 /** The rectangle around a selected text, as a marquee. */
-export function drawTextSelection(ctx, box, zoom) {
+export function drawTextSelection(ctx: CanvasRenderingContext2D, box: Rect, zoom: number): void {
     const { x, y, w, h } = box;
     drawMarquee(ctx, [{ x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h }], zoom, true);
 }
@@ -26,7 +29,7 @@ export function drawTextSelection(ctx, box, zoom) {
  * @param {{x: number, y: number, w: number, h: number, rot?: number, skew?: number, bend?: number}} box
  * @param {number} zoom
  */
-export function drawFloatingSelection(ctx, src, box, zoom) {
+export function drawFloatingSelection(ctx: CanvasRenderingContext2D, src: HTMLCanvasElement | ImageBitmap | null, box: WarpBox, zoom: number): void {
     if (src) drawWarped(ctx, src, src.width, src.height, box);
     drawMarquee(ctx, warpedOutline(box), zoom, true);
 
@@ -59,7 +62,7 @@ export function drawFloatingSelection(ctx, src, box, zoom) {
  * @param {Array<{x: number, y: number}>} path
  * @param {boolean} editing
  */
-export function drawMotionPath(ctx, path, editing) {
+export function drawMotionPath(ctx: CanvasRenderingContext2D, path: readonly Point[] | null | undefined, editing: boolean): void {
     if (!path || path.length < 2) return;
     ctx.save();
     ctx.strokeStyle = editing ? accentSoft() : accentSoft(0.4);
@@ -90,7 +93,7 @@ export function drawMotionPath(ctx, path, editing) {
  * @param {number} zoom
  * @param {string} tint
  */
-export function drawMosaicMarquee(ctx, r, zoom, tint) {
+export function drawMosaicMarquee(ctx: CanvasRenderingContext2D, r: { x0: number, y0: number, x1: number, y1: number }, zoom: number, tint: string): void {
     const x = Math.min(r.x0, r.x1), y = Math.min(r.y0, r.y1);
     const w = Math.abs(r.x1 - r.x0), h = Math.abs(r.y1 - r.y0);
     ctx.save();
@@ -108,7 +111,7 @@ export function drawMosaicMarquee(ctx, r, zoom, tint) {
  * @param {Array<{x: number, y: number}>} pts
  * @param {number} zoom
  */
-export function drawCurveAnchors(ctx, pts, zoom) {
+export function drawCurveAnchors(ctx: CanvasRenderingContext2D, pts: readonly Point[], zoom: number): void {
     const z = zoom || 1;
     ctx.save();
     ctx.lineWidth = 1.5 / z;
@@ -132,7 +135,7 @@ export function drawCurveAnchors(ctx, pts, zoom) {
  * @param {{x: number, y: number, w: number, h: number} | null | undefined} rect
  * @param {number} zoom
  */
-export function drawMosaicRegion(ctx, rect, zoom) {
+export function drawMosaicRegion(ctx: CanvasRenderingContext2D, rect: Rect | null | undefined, zoom: number): void {
     if (!rect) return;
     const { x, y, w, h } = rect;
     drawMarquee(ctx, [{ x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h }], zoom, true);
@@ -140,7 +143,7 @@ export function drawMosaicRegion(ctx, rect, zoom) {
 
 // A 2D canvas context cannot read CSS variables, so the computed value is read out instead.
 // That keeps on-canvas furniture such as selection outlines and paths on the theme colour.
-export const accentSoft = (alpha = 1) => {
+export const accentSoft = (alpha = 1): string => {
     const v = getComputedStyle(document.documentElement).getPropertyValue('--accent-soft').trim() || '#7c8cff';
     // The alpha is applied by core/colour, which knows the hex the stylesheet's default is
     // as well as the hsl the theme writes. This used to handle only hsl and drop the alpha

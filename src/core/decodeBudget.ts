@@ -112,9 +112,9 @@ export const PREFETCH_BEHIND = { playing: 2, paused: 4 };
  * @param {boolean} playing
  * @returns {string[]} bitmap ids, highest priority first
  */
-export function prefetchWindow(cuts: Cut[], time: number, currentCutId: Id | null | undefined, playing: boolean): Id[] {
+export function prefetchWindow(cuts: Cut[], time: number, currentCutId: Id | null | undefined, playing: boolean): string[] {
     const frameIds = (c: Cut | undefined) => {
-        const ids: Id[] = [];
+        const ids: string[] = [];
         for (const l of (Array.isArray(c?.layers) ? c.layers : [])) {
             for (const s of (Array.isArray(l.strokes) ? l.strokes : [])) if (s.tool === 'paste' && s.bitmapId) ids.push(s.bitmapId);
         }
@@ -127,7 +127,7 @@ export function prefetchWindow(cuts: Cut[], time: number, currentCutId: Id | nul
     if (idx < 0) idx = 0;
     const ahead = playing ? PREFETCH_AHEAD.playing : PREFETCH_AHEAD.paused;
     const behind = playing ? PREFETCH_BEHIND.playing : PREFETCH_BEHIND.paused;
-    const ids: Id[] = [];
+    const ids: string[] = [];
     const push = (c: Cut | undefined) => { if (c) ids.push(...frameIds(c)); };
     push(ordered[idx]);
     for (let d = 1; d <= ahead; d++) push(ordered[idx + d]);

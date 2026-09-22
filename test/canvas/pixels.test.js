@@ -13,9 +13,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createCanvas, ImageData, DOMMatrix } from '@napi-rs/canvas';
 import { setCanvasFactory, makeCanvas } from '../../src/canvas/canvasFactory.ts';
-import { drawStrokesOnCtx } from '../../src/canvas/strokes.js';
-import { pixelateCanvas, staticCanvas, grainTile, mosaic } from '../../src/canvas/pixelEffects.js';
-import { bucketFillTransparentRegion } from '../../src/canvas/fill.js';
+import { drawStrokesOnCtx } from '../../src/canvas/strokes.ts';
+import { pixelateCanvas, staticCanvas, grainTile, mosaic } from '../../src/canvas/pixelEffects.ts';
+import { bucketFillTransparentRegion } from '../../src/canvas/fill.ts';
 import { scratchCanvas } from '../../src/canvas/scratch.ts';
 
 setCanvasFactory(() => /** @type {any} */ (createCanvas(1, 1)));

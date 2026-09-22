@@ -97,8 +97,13 @@ npm run smoke      # 빌드된 앱을 헤드리스 브라우저에서 띄워 선
 
 `npm run check`가 관문입니다: 타입 검사, 단위 테스트, 정적 가드 여섯, 빌드. 같은 단계가 모든 푸시와 PR에서 CI로 돕니다.
 
-코드는 모듈 하나씩 TypeScript로 옮기는 중입니다(#268) — `src/core/`, `src/engine/`, `src/export/`는 끝났고 나머지가 뒤따릅니다. 옮긴 모듈은 `src/` 아래 `.ts` 파일이고
-`tsconfig.strict.json`이 strict로 검사하며, 주변 JS는 전처럼 검사합니다. `.ts` 모듈은 확장자까지
+코드는 폴더 하나씩 TypeScript로 옮기는 중입니다(#268) — `src/core/`, `src/engine/`, `src/export/`,
+`src/canvas/`는 끝났고 나머지가 뒤따릅니다. 목적은 주석을 타입으로 바꾸는 것이 아니라(JS도 이미
+JSDoc으로 타입이 있었음) JSDoc이 줄 수 없던 두 가지입니다. 하나는 `strict` — JS는 느슨하게(null
+검사 없음, 암묵적 `any` 허용) 검사되고, 옮긴 모듈은 `tsconfig.strict.json`이 strict로 잡습니다.
+실제로 빠진 null 가드와 잘못된 타입의 id를 돌려주던 함수를 잡아냈습니다. 다른 하나는 이름 붙은
+모양 — `Scene`, `CutsAction`, `StoreEntry` 같은 인터페이스는 다른 파일이 import할 수 있지만 JSDoc
+typedef는 그 파일 안에서만 쓰였습니다. 옮긴 모듈은 `src/` 아래 `.ts` 파일이고, 주변 JS는 전처럼 검사합니다. `.ts` 모듈은 확장자까지
 적어 import합니다 — 테스트에서 Node 자체 타입 스트립(`--experimental-strip-types`, 추가 의존성
 없음)이 그걸 필요로 하고, 번들러와 `tsc`도 받아들입니다. 새 모듈은 TypeScript로 씁니다.
 
@@ -168,7 +173,7 @@ src/
   App.jsx          컴포넌트: 상태와 배선 (~2,100줄)
   tools/           그리기 도구를 디스패치 테이블로: 포인터 다운·이동에 각 도구가 하는 일
   core/            순수 로직, TypeScript - 리듀서, 타임라인 기하, 올가미, 도형, 저장, 내보내기 계획
-  canvas/          2D 컨텍스트에 그리는 모든 것: 선, 텍스트, 흔들림 슬라이스, 레이어 합성
+  canvas/          2D 컨텍스트에 그리는 모든 것, TypeScript: 선, 텍스트, 흔들림 슬라이스, 레이어 합성
   engine/          한 프레임 평가, TypeScript: 어느 컷이 켜져 있고 시간 t에 각 레이어가 어떻게 보이는지
   export/          GIF·zip 바이트 라이터, 영상 녹화 배관, 다운로드 - TypeScript
   hooks/           제 자리를 얻은 App 상태: 캔버스 뷰, 레이어 캐시, 재생, 오디오, 히스토리,

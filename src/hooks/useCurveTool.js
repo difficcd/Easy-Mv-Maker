@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { catmullThrough } from '../core/catmullRom.ts';
-import { drawStrokesOnCtx } from '../canvas/strokes.js';
-import { drawCurveAnchors } from '../canvas/editChrome.js';
+import { drawStrokesOnCtx } from '../canvas/strokes.ts';
+import { drawCurveAnchors } from '../canvas/editChrome.ts';
 import { nextId } from '../core/ids.ts';
 
 // The curve ruler: tap out anchors, and a smooth line is fitted through them.

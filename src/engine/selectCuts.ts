@@ -50,7 +50,7 @@ export function cutsAt(cuts: Cut[] | null | undefined, t: number): Cut[] {
  * @param {boolean} playing
  * @returns {Cut[]}
  */
-export function visibleCutsAt(cuts: Cut[] | null | undefined, t: number, currentCutId: Id, playing: boolean): Cut[] {
+export function visibleCutsAt(cuts: Cut[] | null | undefined, t: number, currentCutId: Id | null | undefined, playing: boolean): Cut[] {
     const active = cutsAt(cuts, t);
     if (playing) return active;
     if (active.some(c => c.id === currentCutId)) return active;

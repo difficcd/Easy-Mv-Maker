@@ -14,8 +14,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createCanvas, ImageData, DOMMatrix } from '@napi-rs/canvas';
 import { setCanvasFactory, makeCanvas } from '../../src/canvas/canvasFactory.ts';
-import { pixelateCanvas, staticCanvas, grainTile } from '../../src/canvas/pixelEffects.js';
-import { drawStrokesOnCtx } from '../../src/canvas/strokes.js';
+import { pixelateCanvas, staticCanvas, grainTile } from '../../src/canvas/pixelEffects.ts';
+import { drawStrokesOnCtx } from '../../src/canvas/strokes.ts';
 import { scratchCanvas } from '../../src/canvas/scratch.ts';
 
 if (typeof globalThis.ImageData === 'undefined') globalThis.ImageData = /** @type {any} */ (ImageData);

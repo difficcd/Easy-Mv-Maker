@@ -1,3 +1,7 @@
+import { layoutLine } from '../core/textLayout.ts';
+import { charAnimAt } from '../core/textAnim.ts';
+import type { PerCharAnim } from '../core/textAnim.ts';
+
 /**
  * A text object as the document stores it.
  *
@@ -6,70 +10,98 @@
  * to learn what a text actually holds was to read all of paintFrame. These are the fields the
  * renderer reads; all of them are optional, because a text created before a feature existed
  * simply does not have that key and every read below already has a default.
- *
- * @typedef {object} TextObject
- * @property {any} [id] the document's identity for it; the renderer never reads this, but the
- *   type has to admit it or a text taken straight from a cut is not assignable to it
- * @property {boolean} [visible] likewise - hiding happens before anything gets here
- * @property {string} [text] the content, newline-separated for multiple lines
- * @property {number} [x] anchor, not the left edge - see measureTextBox
- * @property {number} [y] top of the first line
- * @property {'left'|'center'|'right'} [align] which edge x anchors
- * @property {number} [fontSize] clamped to 6..400 on read
- * @property {string} [fontFamily]
- * @property {boolean} [bold]
- * @property {boolean} [italic]
- * @property {number} [lineHeight] multiple of the font size
- * @property {number} [letterSpacing] px; skipped on engines without the property
- * @property {string} [color] the fill, and the top stop when gradient is on
- * @property {boolean} [gradient] fill vertically from color to color2 instead of flat
- * @property {string} [color2] the bottom stop; only read when gradient is on
- * @property {string} [bgColor] rounded highlight painted behind the text
- * @property {number} [outline] stroke width in px
- * @property {string} [outlineColor]
- * @property {boolean} [shadow]
- * @property {string} [shadowColor]
- * @property {number} [shadowBlur]
- * @property {number} [shadowDX]
- * @property {number} [shadowDY]
- * @property {number} [curve] degrees of arc the line bends through; 0 is straight
- * @property {boolean} [flipX] mirror left to right, about the centre of the box
- * @property {boolean} [flipY] mirror top to bottom
- * @property {number} [rotation] degrees, about the centre of the box
- * @property {number} [opacity] 0..1, multiplied with any animation alpha
- * @property {number} [noise] static on the glyphs, 0..1 - the layer effect, on a text
- * @property {number} [noiseFrom] where in the cut it turns on, 0..1
- * @property {number} [noiseTo] where it turns off, 0..1
- * @property {number} [noiseColor] the red/cyan fringe, 0..1
  */
+export interface TextObject {
+    /** the document's identity for it; the renderer never reads this, but the type has to admit it or a text taken straight from a cut is not assignable to it */
+    id?: any;
+    /** likewise - hiding happens before anything gets here */
+    visible?: boolean;
+    /** the content, newline-separated for multiple lines */
+    text?: string;
+    /** anchor, not the left edge - see measureTextBox */
+    x?: number;
+    /** top of the first line */
+    y?: number;
+    /** which edge x anchors */
+    align?: 'left'|'center'|'right';
+    /** clamped to 6..400 on read */
+    fontSize?: number;
+    fontFamily?: string;
+    bold?: boolean;
+    italic?: boolean;
+    /** multiple of the font size */
+    lineHeight?: number;
+    /** px; skipped on engines without the property */
+    letterSpacing?: number;
+    /** the fill, and the top stop when gradient is on */
+    color?: string;
+    /** fill vertically from color to color2 instead of flat */
+    gradient?: boolean;
+    /** the bottom stop; only read when gradient is on */
+    color2?: string;
+    /** rounded highlight painted behind the text */
+    bgColor?: string;
+    /** stroke width in px */
+    outline?: number;
+    outlineColor?: string;
+    shadow?: boolean;
+    shadowColor?: string;
+    shadowBlur?: number;
+    shadowDX?: number;
+    shadowDY?: number;
+    /** degrees of arc the line bends through; 0 is straight */
+    curve?: number;
+    /** mirror left to right, about the centre of the box */
+    flipX?: boolean;
+    /** mirror top to bottom */
+    flipY?: boolean;
+    /** degrees, about the centre of the box */
+    rotation?: number;
+    /** 0..1, multiplied with any animation alpha */
+    opacity?: number;
+    /** static on the glyphs, 0..1 - the layer effect, on a text */
+    noise?: number;
+    /** where in the cut it turns on, 0..1 */
+    noiseFrom?: number;
+    /** where it turns off, 0..1 */
+    noiseTo?: number;
+    /** the red/cyan fringe, 0..1 */
+    noiseColor?: number;
+}
 
 /**
  * The rectangle a text occupies, in canvas coordinates.
- * @typedef {object} TextBox
- * @property {number} x left edge
- * @property {number} y top edge
- * @property {number} w
- * @property {number} h
  */
+export interface TextBox {
+    /** left edge */
+    x: number;
+    /** top edge */
+    y: number;
+    w: number;
+    h: number;
+}
 
 /**
  * What computeTextAnim returns for one instant, or null when nothing is animating.
  * `perChar`, when present, means the entrance belongs to the characters rather than the block:
  * the block-level alpha and offsets have already been left at rest, so it is not added on top.
- * @typedef {object} TextAnim
- * @property {number} alpha
- * @property {number} dx
- * @property {number} dy
- * @property {number} scale
- * @property {number} blur px
- * @property {number} rot degrees
- * @property {number} chars how much of the string is revealed, for the typing effect
- * @property {import('../core/textAnim.ts').PerCharAnim | null} [perChar] set when the
- *   entrance belongs to the characters rather than the block
  */
+export interface TextAnim {
+    alpha: number;
+    dx: number;
+    dy: number;
+    scale: number;
+    /** px */
+    blur: number;
+    /** degrees */
+    rot: number;
+    /** how much of the string is revealed, for the typing effect */
+    chars: number;
+    /** set when the entrance belongs to the characters rather than the block */
+    perChar?: PerCharAnim | null;
+}
 
-import { layoutLine } from '../core/textLayout.ts';
-import { charAnimAt } from '../core/textAnim.ts';
+
 
 // Measuring and drawing text objects.
 //
@@ -84,7 +116,7 @@ import { charAnimAt } from '../core/textAnim.ts';
  * @param {TextObject | null | undefined} t
  * @returns {number}
  */
-export function clampFontSize(t) {
+export function clampFontSize(t: TextObject | null | undefined): number {
     return Math.max(6, Math.min(400, t?.fontSize ?? 32));
 }
 
@@ -93,7 +125,7 @@ export function clampFontSize(t) {
  * @param {TextObject | null | undefined} t
  * @returns {string}
  */
-export function textFontOf(t) {
+export function textFontOf(t: TextObject | null | undefined): string {
     return `${t?.italic ? 'italic ' : ''}${t?.bold ? 'bold ' : ''}${clampFontSize(t)}px ${t?.fontFamily ?? 'sans-serif'}`;
 }
 
@@ -102,7 +134,7 @@ export function textFontOf(t) {
  * @param {TextObject | null | undefined} t
  * @returns {number}
  */
-export function textLineHeight(t) {
+export function textLineHeight(t: TextObject | null | undefined): number {
     return Math.round(clampFontSize(t) * (t?.lineHeight ?? 1.25));
 }
 
@@ -117,7 +149,7 @@ export function textLineHeight(t) {
  * @param {CanvasRenderingContext2D} measureCtx any context; only its font and measureText are used
  * @returns {TextBox}
  */
-export function measureTextBox(t, measureCtx) {
+export function measureTextBox(t: TextObject | null | undefined, measureCtx: CanvasRenderingContext2D): TextBox {
     const fontSize = clampFontSize(t);
     measureCtx.font = textFontOf(t);
     const lineHeight = Math.round(fontSize * (t?.lineHeight ?? 1.25));
@@ -142,7 +174,7 @@ export function measureTextBox(t, measureCtx) {
  * @param {TextAnim | null} [anim]
  * @returns {boolean}
  */
-export function textNeedsBox(t, anim) {
+export function textNeedsBox(t: TextObject | null | undefined, anim?: TextAnim | null): boolean {
     // Flipping needs it for the same reason rotation does: both pivot on the centre of the box,
     // and without one the text would mirror about the canvas origin and leave the frame.
     return !!(t?.gradient || t?.bgColor || t?.rotation || t?.flipX || t?.flipY || anim);
@@ -157,7 +189,7 @@ export function textNeedsBox(t, anim) {
  * not stall for a tick at the end of each line. That is deliberate - it keeps the rhythm even -
  * and it is why the budget is decremented by the line's length rather than the length plus one.
  */
-export function revealLines(text, chars) {
+export function revealLines(text: unknown, chars: number | null | undefined): string[] {
     const lines = String(text ?? '').split('\n');
     if (chars == null) return lines;
     let left = chars;
@@ -184,7 +216,7 @@ export function revealLines(text, chars) {
  * @param {TextBox|null} [opts.box] the measured box; required whenever textNeedsBox says so
  * @param {number} [opts.alpha] extra opacity from the cut or layer animation
  */
-export function drawTextObject(ctx, t, { anim = null, box = null, alpha = 1 } = {}) {
+export function drawTextObject(ctx: CanvasRenderingContext2D, t: TextObject, { anim = null, box = null, alpha = 1 }: { anim?: TextAnim | null, box?: TextBox | null, alpha?: number } = {}): void {
     const fontSize = clampFontSize(t);
     const lineHeight = textLineHeight(t);
 
@@ -234,8 +266,7 @@ export function drawTextObject(ctx, t, { anim = null, box = null, alpha = 1 } = 
     const lines = revealLines(t.text, anim ? anim.chars : null);
 
     // Either a vertical two-colour gradient down the box, or a flat fill.
-    /** @type {string | CanvasGradient} */
-    let fillStyle = t.color ?? '#000';
+    let fillStyle: string | CanvasGradient = t.color ?? '#000';
     if (t.gradient && box) {
         const g = ctx.createLinearGradient(0, box.y, 0, box.y + box.h);
         g.addColorStop(0, t.color ?? '#000');
@@ -282,7 +313,7 @@ export function drawTextObject(ctx, t, { anim = null, box = null, alpha = 1 } = 
  * @param {number} fontSize
  * @returns {boolean}
  */
-function setOutline(ctx, t, fontSize) {
+function setOutline(ctx: CanvasRenderingContext2D, t: { outline?: any, outlineColor?: string }, fontSize: number): boolean {
     if (!t.outline) return false;
     ctx.lineJoin = 'round';
     ctx.lineWidth = Math.max(2, fontSize / 6);
@@ -298,7 +329,7 @@ function setOutline(ctx, t, fontSize) {
  * @param {CanvasRenderingContext2D} ctx
  * @param {{shadow?: any}} t
  */
-function shadowCastOnce(ctx, t) {
+function shadowCastOnce(ctx: CanvasRenderingContext2D, t: { shadow?: any }): void {
     if (!t.shadow) return;
     ctx.shadowColor = 'transparent';
     ctx.shadowBlur = 0;
@@ -318,7 +349,7 @@ function shadowCastOnce(ctx, t) {
  * A character's own motion is applied about the position it settles at, not about the origin, so
  * a stagger drops each glyph into its place in the line rather than sliding the line apart.
  */
-function drawPerChar(ctx, t, lines, { x, y, lineHeight, fontSize, fillStyle, perChar = null }) {
+function drawPerChar(ctx: CanvasRenderingContext2D, t: TextObject, lines: string[], { x, y, lineHeight, fontSize, fillStyle, perChar = null }: { x: number, y: number, lineHeight: number, fontSize: number, fillStyle: string | CanvasGradient, perChar?: PerCharAnim | null }): void {
     const spacing = t.letterSpacing || 0;
     try { ctx.letterSpacing = '0px'; } catch { }
     // Each character is drawn centred on its own point, so the arc reads as one turning line

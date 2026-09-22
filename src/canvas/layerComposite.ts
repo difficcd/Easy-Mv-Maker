@@ -1,4 +1,11 @@
 import { CANVAS_H, CANVAS_W } from '../core/canvasSize.ts';
+import type { Point } from '../core/types.ts';
+
+/** A 2x3 affine, in the order canvas uses: [a, b, c, d, e, f]. */
+export type Matrix = [number, number, number, number, number, number];
+/** The part of a layer animation that places it: where the pivot is, and the move, turn, scale and shear about it. */
+export interface PartTransform { tx: number; ty: number; px: number; py: number; rot?: number; sc?: number; shear?: number; alpha?: number }
+
 // Putting one layer onto the frame: where it sits, and how a floating selection is cut out of it.
 //
 // Both of these lived inside the composite loop in paintFrame, which is the hottest code in the
@@ -7,10 +14,10 @@ import { CANVAS_H, CANVAS_W } from '../core/canvasSize.ts';
 // only subtlety is which canvas is which.
 
 /** A 2x3 affine, in the order canvas uses: [a, b, c, d, e, f]. */
-const I = [1, 0, 0, 1, 0, 0];
+const I: Matrix = [1, 0, 0, 1, 0, 0];
 
 /** m then n, as canvas applies them - n is the later transform and nests inside m. */
-function mul(m, n) {
+function mul(m: Matrix, n: Matrix): Matrix {
     return [
         m[0] * n[0] + m[2] * n[1],
         m[1] * n[0] + m[3] * n[1],
@@ -38,8 +45,8 @@ function mul(m, n) {
  * @param {any} la a layer animation, or null
  * @returns {number[]} [a, b, c, d, e, f]
  */
-export function partMatrix(la) {
-    if (!la) return I.slice();
+export function partMatrix(la: PartTransform | null | undefined): Matrix {
+    if (!la) return I.slice() as Matrix;
     let m = mul(I, [1, 0, 0, 1, la.px + la.tx, la.py + la.ty]);
     const cos = Math.cos(la.rot || 0), sin = Math.sin(la.rot || 0);
     m = mul(m, [cos, sin, -sin, cos, 0, 0]);
@@ -61,7 +68,7 @@ export function partMatrix(la) {
  * @param {CanvasRenderingContext2D} ctx
  * @param {any} la
  */
-export function applyPartTransform(ctx, la) {
+export function applyPartTransform(ctx: CanvasRenderingContext2D, la: PartTransform | null | undefined): void {
     if (!la) return;
     if (la.alpha != null && la.alpha < 1) ctx.globalAlpha *= la.alpha;
     const [a, b, c, d, e, f] = partMatrix(la);
@@ -85,7 +92,7 @@ export function applyPartTransform(ctx, la) {
  * @param {{x: number, y: number}} at where the mask sits
  * @param {{canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D}} scratch a sized scratch pair
  */
-export function drawMaskedLayer(ctx, layerCanvas, mask, at, scratch) {
+export function drawMaskedLayer(ctx: CanvasRenderingContext2D, layerCanvas: CanvasImageSource, mask: CanvasImageSource, at: Point, scratch: { canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D }): void {
     const { canvas: tmp, ctx: tctx } = scratch;
     // Reset in full: the scratch is shared, so whatever the last user left on it is still set.
     tctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -111,7 +118,7 @@ export function drawMaskedLayer(ctx, layerCanvas, mask, at, scratch) {
  * @param {number} [cw]
  * @param {number} [ch]
  */
-export function applyCutAnim(ctx, anim, cw = CANVAS_W, ch = CANVAS_H) {
+export function applyCutAnim(ctx: CanvasRenderingContext2D, anim: { tx: number, ty: number, sx: number, sy: number } | null | undefined, cw = CANVAS_W, ch = CANVAS_H): void {
     if (!anim) return;
     ctx.translate(cw / 2 + anim.tx, ch / 2 + anim.ty);
     ctx.scale(anim.sx, anim.sy);

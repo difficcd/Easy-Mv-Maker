@@ -5,7 +5,7 @@
 // together: the hit decides the kind, the drag applies it. Here they are one thing.
 
 import { applyResize, applyWarpDrag, applyRotateDrag } from '../core/lassoOps.ts';
-import { warpedOutline, warpedHandles, rotateKnob } from '../canvas/warpRender.js';
+import { warpedOutline, warpedHandles, rotateKnob } from '../canvas/warpRender.ts';
 import { HANDLE_GRAB_PX } from '../canvas/marquee.ts';
 import { pointInPolygon } from '../core/geometry.ts';
 

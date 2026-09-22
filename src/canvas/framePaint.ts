@@ -16,11 +16,58 @@ import { pendingBitmapIds } from '../engine/pendingBitmaps.ts';
 import { onionNeighbours } from '../engine/selectCuts.ts';
 import { applyCamera } from '../core/camera.ts';
 import { flattenLayersInUiOrder } from '../core/layerTree.ts';
-import { drawScene, drawVideoOverlay, drawOnionCut, drawSceneTexts } from './sceneRender.js';
-import { drawTextObject, textNeedsBox } from './textRender.js';
-import { grainTile } from './pixelEffects.js';
-import { fitRect } from './videoFrames.js';
+import { drawScene, drawVideoOverlay, drawOnionCut, drawSceneTexts } from './sceneRender.ts';
+import { drawTextObject, textNeedsBox, type TextBox } from './textRender.ts';
+import { grainTile, type CanvasSlot } from './pixelEffects.ts';
+import { fitRect } from './videoFrames.ts';
 import { makeCanvas } from './canvasFactory.ts';
+import type { Id } from '../core/types.ts';
+import type { StoreEntry } from '../core/projectAssets.ts';
+import type { SceneDeps } from './sceneRender.ts';
+
+/** The scratch a frame painter keeps between frames - createFrameScratch's answer. */
+export interface FrameScratch {
+    mask: CanvasSlot;
+    mosaicFull: CanvasSlot;
+    mosaicSmall: CanvasSlot;
+    staticCopy: CanvasSlot;
+    staticOut: CanvasSlot;
+    tile: HTMLCanvasElement | null;
+    textStatic: Map<Id, CanvasSlot>;
+    paintedOnce: boolean;
+}
+/** Everything one frame is made of: the time, the document, the reference video, the caches, and the scratch. */
+export interface FrameInputs {
+    t: number;
+    /** playback (animations on, decode holds) or editing (still) */
+    playing: boolean;
+    cw: number;
+    ch: number;
+    cuts: Cut[];
+    currentCutId: Id | null | undefined;
+    currentCut: Cut | null | undefined;
+    /** no white fill under the frame */
+    transparentBg: boolean;
+    /** the floating selection, for the hole it leaves in its layer */
+    selection: SceneDeps['selection'];
+    onionPrev: boolean;
+    onionNext: boolean;
+    /** the reference video track, or null */
+    videoOverlay: { startTime: number, endTime: number, w?: number, h?: number, opacity?: number } | null;
+    /** its element, kept at time t by the caller */
+    videoEl: HTMLVideoElement | null;
+    bitmapStore: Map<string, StoreEntry>;
+    requestFrameDecode: (ids: string[]) => void;
+    ensureLayerCanvas: (cutId: Id, layer: Layer) => HTMLCanvasElement | null;
+    flattenClipGroup: SceneDeps['flattenClipGroup'];
+    hiddenByGesture: SceneDeps['hiddenByGesture'];
+    /** the boiling phase, read by the layer cache */
+    boilPhaseRef: { current: number };
+    boilTick: number;
+    measureTextBox: (text: any) => TextBox;
+    scratch: FrameScratch;
+}
+
 
 /** How many times a second the boiling-line motion advances. */
 export const BOIL_FPS = 10;
@@ -33,7 +80,7 @@ export const BOIL_FPS = 10;
  * two because composing a region reads the small copy while writing the full one; the static
  * has two because its halves are read while its output is written.
  */
-export function createFrameScratch() {
+export function createFrameScratch(): FrameScratch {
     return {
         /** the mask path in drawScene */
         mask: { current: null },
@@ -42,9 +89,9 @@ export function createFrameScratch() {
         staticCopy: { current: null },
         staticOut: { current: null },
         /** the snow tile, built on first use: most projects never turn the static on */
-        tile: /** @type {HTMLCanvasElement | null} */ (null),
+        tile: null,
         /** one canvas per noisy text, by text id, so the static's per-canvas cache holds */
-        textStatic: /** @type {Map<any, {current: any}>} */ (new Map()),
+        textStatic: new Map(),
         /** once a real frame has been painted, hold it rather than flash white */
         paintedOnce: false,
     };
@@ -78,7 +125,7 @@ export function createFrameScratch() {
  * @param {(text: any) => any} f.measureTextBox
  * @param {ReturnType<typeof createFrameScratch>} f.scratch
  */
-export function paintFrameOnto(ctx, { t, playing, cw, ch, cuts, currentCutId, currentCut, transparentBg, selection, onionPrev, onionNext, videoOverlay, videoEl, bitmapStore, requestFrameDecode, ensureLayerCanvas, flattenClipGroup, hiddenByGesture, boilPhaseRef, boilTick, measureTextBox, scratch }) {
+export function paintFrameOnto(ctx: CanvasRenderingContext2D, { t, playing, cw, ch, cuts, currentCutId, currentCut, transparentBg, selection, onionPrev, onionNext, videoOverlay, videoEl, bitmapStore, requestFrameDecode, ensureLayerCanvas, flattenClipGroup, hiddenByGesture, boilPhaseRef, boilTick, measureTextBox, scratch }: FrameInputs): void {
     // Boiling phase, quantised to about ten changes a second like a traditional boiling line.
     // Changing it every frame just reads as noise; this rate is what makes the drawing feel
     // alive.
@@ -134,7 +181,7 @@ export function paintFrameOnto(ctx, { t, playing, cw, ch, cuts, currentCutId, cu
     // floating selection's hole cut out of the layer it was lifted from: canvas/sceneRender.
     drawScene(ctx, scene, {
         cw, ch, flattenClipGroup, hiddenByGesture, selection,
-        bitmapEntry: (id) => bitmapStore.get(id), maskScratchRef: scratch.mask,
+        bitmapEntry: (id: string) => bitmapStore.get(id), maskScratchRef: scratch.mask,
         mosaicScratch: { full: scratch.mosaicFull, small: scratch.mosaicSmall },
         staticScratch: { copy: scratch.staticCopy, out: scratch.staticOut },
         // Built on first use, not at mount: most projects never turn the static on.
@@ -147,7 +194,7 @@ export function paintFrameOnto(ctx, { t, playing, cw, ch, cuts, currentCutId, cu
         textNoise: {
             scratch: { copy: scratch.staticCopy, out: scratch.staticOut },
             tile: (scratch.tile ||= grainTile(makeCanvas)),
-            scratchFor: (id) => { const m = scratch.textStatic; if (!m.has(id)) m.set(id, { current: null }); return m.get(id); },
+            scratchFor: (id: Id) => { const m = scratch.textStatic; if (!m.has(id)) m.set(id, { current: null }); return m.get(id)!; },
         },
     });
     if (camAt) ctx.restore();

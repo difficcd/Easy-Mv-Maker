@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { smoothPoints } from '../../src/canvas/strokes.js';
+import { smoothPoints } from '../../src/canvas/strokes.ts';
 
 /** The sharpest turn between consecutive segments, in degrees. A smooth curve has small ones. */
 const sharpestTurn = (pts) => {

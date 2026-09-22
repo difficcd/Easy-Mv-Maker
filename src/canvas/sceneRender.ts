@@ -6,11 +6,44 @@
 // canvas for a clip group (the cache's), which layers a gesture is drawing itself, and the
 // selection whose mask applies. Nothing here reads state.
 
-import { applyCutAnim } from './layerComposite.js';
+import { applyCutAnim } from './layerComposite.ts';
 import { imageDataCanvas, scratchCanvas } from './scratch.ts';
-import { applyPartTransform, drawMaskedLayer } from './layerComposite.js';
+import { applyPartTransform, drawMaskedLayer } from './layerComposite.ts';
 import { drawSwayed } from './swayRender.ts';
-import { pixelateCanvas, pixelateRegion, clampRegion, staticCanvas } from './pixelEffects.js';
+import { pixelateCanvas, pixelateRegion, clampRegion, staticCanvas, type CanvasSlot } from './pixelEffects.ts';
+import type { Id, TimeSpan } from '../core/types.ts';
+import type { Rect } from '../core/lassoOps.ts';
+import type { TextAnimAt } from '../core/textAnim.ts';
+import type { Scene } from '../engine/evaluateFrame.ts';
+import type { TextBox, TextObject } from './textRender.ts';
+
+/** What drawScene needs from the app beyond the scene: the layer canvases, the gesture state, the selection, and scratch. */
+export interface SceneDeps {
+    cw: number;
+    ch: number;
+    flattenClipGroup: (cutId: Id, group: any) => HTMLCanvasElement | ImageBitmap | null;
+    /** true for a layer the drag overlay is drawing instead */
+    hiddenByGesture: (cutId: Id, layerId: Id) => boolean;
+    selection: { cutId: Id, sourceLayerId: Id, maskBitmapId: string | null, x: number, y: number } | null;
+    bitmapEntry: (id: string) => { imageBitmap?: any, imageData?: ImageData | null } | undefined;
+    /** a scratch canvas slot for the mask */
+    maskScratchRef: CanvasSlot;
+    /** scratch slots for the mosaic: the full-size result and the small copy it reads */
+    mosaicScratch: { full: CanvasSlot, small: CanvasSlot };
+    staticScratch: { copy: CanvasSlot, out: CanvasSlot };
+    /** the noise tile, built once by the caller */
+    staticTile: HTMLCanvasElement | null;
+}
+/** What drawSceneTexts needs: the text renderer's three functions, and the static's scratch when texts can be noisy. */
+export interface TextDeps {
+    cw: number;
+    ch: number;
+    drawTextObject: (ctx: CanvasRenderingContext2D, text: any, opts: { anim: any, box: TextBox | null, alpha: number }) => void;
+    textNeedsBox: (text: any, anim: any) => boolean;
+    measureTextBox: (text: any) => TextBox;
+    textNoise?: { scratch: { copy: CanvasSlot, out: CanvasSlot }, tile: HTMLCanvasElement, scratchFor: (id: Id) => CanvasSlot } | null;
+}
+
 
 /**
  * @param {CanvasRenderingContext2D} ctx
@@ -30,7 +63,7 @@ import { pixelateCanvas, pixelateRegion, clampRegion, staticCanvas } from './pix
  *   two slots for the static: the copy of the source and the output
  * @param {HTMLCanvasElement | null} deps.staticTile the noise tile, built once by the caller
  */
-export function drawScene(ctx, scene, { cw, ch, flattenClipGroup, hiddenByGesture, selection, bitmapEntry, maskScratchRef, mosaicScratch, staticScratch, staticTile }) {
+export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene, { cw, ch, flattenClipGroup, hiddenByGesture, selection, bitmapEntry, maskScratchRef, mosaicScratch, staticScratch, staticTile }: SceneDeps): void {
     for (const { cut: ac, anim, groups } of scene.cuts) {
         ctx.save();
         if (anim) {
@@ -55,7 +88,7 @@ export function drawScene(ctx, scene, { cw, ch, flattenClipGroup, hiddenByGestur
             applyPartTransform(ctx, la);
 
             const shouldMask = !!selection?.maskBitmapId && selection.cutId === ac.id && selection.sourceLayerId === l.id;
-            const maskEntry = shouldMask ? bitmapEntry(selection.maskBitmapId) : null;
+            const maskEntry = shouldMask ? bitmapEntry(selection!.maskBitmapId!) : null;
             const mask = maskEntry?.imageBitmap || (maskEntry?.imageData && imageDataCanvas(maskEntry.imageData)) || null;
 
             // A mosaic effect replaces the layer's own pixels with a pixelated copy, so it is
@@ -65,8 +98,8 @@ export function drawScene(ctx, scene, { cw, ch, flattenClipGroup, hiddenByGestur
             // over the shot.
             // A region pixelates only part of the layer and keeps the rest; without one the
             // whole layer goes through the cheaper two-blit path.
-            const region = la?.mosaic >= 2 ? clampRegion(la.mosaicRect, cw, ch) : null;
-            let src = la?.mosaic >= 2
+            const region = la && la.mosaic >= 2 ? clampRegion(la.mosaicRect, cw, ch) : null;
+            let src: HTMLCanvasElement | ImageBitmap = la && la.mosaic >= 2
                 ? (region
                     ? (pixelateRegion(layerCanvas, la.mosaic, region, mosaicScratch, scratchCanvas, cw, ch) || layerCanvas)
                     : (pixelateCanvas(layerCanvas, la.mosaic, mosaicScratch.small, scratchCanvas) || layerCanvas))
@@ -81,7 +114,7 @@ export function drawScene(ctx, scene, { cw, ch, flattenClipGroup, hiddenByGestur
             // Static after the mosaic, so the blocks tear too. It wants a full-size source, so a
             // shrunken mosaic is blown back up first - which is what the shrunk flag was for.
             let staticSrc = src;
-            if (la?.noise > 0 && staticTile) {
+            if (la && la.noise > 0 && staticTile) {
                 if (shrunk) {
                     const { canvas: up, ctx: uctx } = scratchCanvas(staticScratch.copy, cw, ch);
                     uctx.imageSmoothingEnabled = false;
@@ -104,7 +137,7 @@ export function drawScene(ctx, scene, { cw, ch, flattenClipGroup, hiddenByGestur
             } else {
                 // imageDataCanvas is a different shared canvas from the mask scratch, so nesting
                 // them is safe - which is why they are separate helpers rather than two slots.
-                drawMaskedLayer(ctx, src, mask, selection, scratchCanvas(maskScratchRef, cw, ch));
+                drawMaskedLayer(ctx, src, mask, selection!, scratchCanvas(maskScratchRef, cw, ch));
             }
             if (shrunk) ctx.imageSmoothingEnabled = true;
             ctx.restore();
@@ -127,7 +160,7 @@ export const ONION_ALPHA = 0.35;
  * @param {number} ch
  * @param {(sw: number, sh: number, dw: number, dh: number) => {x: number, y: number, w: number, h: number}} fit
  */
-export function drawVideoOverlay(ctx, v, overlay, cw, ch, fit) {
+export function drawVideoOverlay(ctx: CanvasRenderingContext2D, v: HTMLVideoElement | null, overlay: { w?: number, h?: number, opacity?: number }, cw: number, ch: number, fit: (sw: number, sh: number, dw: number, dh: number) => Rect): void {
     if (!v || v.readyState < 2) return;
     const r = fit(overlay.w || v.videoWidth || cw, overlay.h || v.videoHeight || ch, cw, ch);
     // Restored rather than left set: everything drawn after this - the artwork, the text -
@@ -147,7 +180,7 @@ export function drawVideoOverlay(ctx, v, overlay, cw, ch, fit) {
  * @param {(cutId: any, layer: any) => CanvasImageSource | null} layerCanvas
  * @param {(layers: any[]) => any[]} inUiOrder
  */
-export function drawOnionCut(ctx, cut, layerCanvas, inUiOrder) {
+export function drawOnionCut(ctx: CanvasRenderingContext2D, cut: Cut, layerCanvas: (cutId: Id, layer: Layer) => CanvasImageSource | null, inUiOrder: (layers: Layer[]) => Layer[]): void {
     const order = inUiOrder(cut.layers || []).filter(l => l.type === 'layer' && l.visible !== false);
     for (let i = order.length - 1; i >= 0; i--) {
         const lc = layerCanvas(cut.id, order[i]);
@@ -171,7 +204,7 @@ export function drawOnionCut(ctx, cut, layerCanvas, inUiOrder) {
  * @param {{scratch: {copy: {current: any}, out: {current: any}}, tile: HTMLCanvasElement | null, scratchFor: (id: any) => {current: any}} | null} [deps.textNoise]
  *   what the static needs: the two shared slots, the snow tile, and a canvas of each text's own
  */
-export function drawSceneTexts(ctx, scene, { cw, ch, drawTextObject, textNeedsBox, measureTextBox, textNoise = null }) {
+export function drawSceneTexts(ctx: CanvasRenderingContext2D, scene: Scene, { cw, ch, drawTextObject, textNeedsBox, measureTextBox, textNoise = null }: TextDeps): void {
     for (const { cut, anim, texts } of scene.cuts) {
         ctx.save();
         applyCutAnim(ctx, anim, cw, ch);
@@ -209,7 +242,7 @@ export function drawSceneTexts(ctx, scene, { cw, ch, drawTextObject, textNeedsBo
  * @param {number} time
  * @returns {{amount: number, colour: number} | null}
  */
-export function textStaticGate(text, cut, time) {
+export function textStaticGate(text: CutText | Pick<TextObject, 'noise' | 'noiseFrom' | 'noiseTo' | 'noiseColor'>, cut: TimeSpan, time: number): { amount: number, colour: number } | null {
     const amount = Math.min(1, text.noise || 0);
     if (!(amount > 0)) return null;
     const len = cut.endTime - cut.startTime;
@@ -220,7 +253,7 @@ export function textStaticGate(text, cut, time) {
 }
 
 /** A signature of everything that changes how a text renders, for the static's per-canvas cache. */
-const textStaticSig = (text, ta) => {
+const textStaticSig = (text: CutText, ta: TextAnimAt | null): string => {
     let sig = '';
     for (const k in text) if (k !== 'noise' && k !== 'noiseFrom' && k !== 'noiseTo' && k !== 'noiseColor') sig += `${k}=${text[k]};`;
     if (ta) sig += `|${ta.chars ?? ''},${ta.dx},${ta.dy},${ta.scale},${ta.rot},${ta.blur},${ta.perChar ? 'pc' : ''}`;

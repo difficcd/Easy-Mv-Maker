@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { moveText } from '../core/cutsReducer.ts';
-import { measureTextBox as measureTextBoxPure } from '../canvas/textRender.js';
+import { measureTextBox as measureTextBoxPure } from '../canvas/textRender.ts';
 import { safeArray } from '../core/geometry.ts';
 
 /**

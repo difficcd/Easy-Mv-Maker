@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { sizeCanvas, scratchCanvas } from '../canvas/scratch.ts';
-import { drawStrokesOnCtx } from '../canvas/strokes.js';
+import { drawStrokesOnCtx } from '../canvas/strokes.ts';
 import { safeArray } from '../core/geometry.ts';
 import { layerKey, layerSig } from '../core/layerTree.ts';
 import { scanLayerBitmaps } from '../engine/pendingBitmaps.ts';
@@ -26,7 +26,7 @@ const LAYER_CANVAS_LRU = 24;
  * cache entries that used a frame are dropped when it lands so they redraw with it.
  *
  * @param {object} deps
- * @param {ReturnType<typeof import('../canvas/bitmapStore.js').createBitmapStore>} deps.store
+ * @param {ReturnType<typeof import('../canvas/bitmapStore.ts').createBitmapStore>} deps.store
  * @param {any[]} deps.cuts
  * @param {any} deps.currentCutId
  * @param {any} deps.currentCut

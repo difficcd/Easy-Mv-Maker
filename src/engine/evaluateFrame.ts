@@ -77,7 +77,7 @@ export interface Scene {
  * @param {number} opts.cw @param {number} opts.ch canvas size
  * @returns {Scene}
  */
-export function evaluateFrame(cuts: Cut[] | null | undefined, t: number, { playing, currentCutId, cw, ch }: { playing: boolean, currentCutId: Id, cw: number, ch: number }): Scene {
+export function evaluateFrame(cuts: Cut[] | null | undefined, t: number, { playing, currentCutId, cw, ch }: { playing: boolean, currentCutId: Id | null | undefined, cw: number, ch: number }): Scene {
     const active = visibleCutsAt(cuts, t, currentCutId, playing);
 
     // A shot belongs to the cut on the lowest active track: that is the base scene, and the tracks

@@ -57,85 +57,86 @@ know storage exists at all, because reading it is `useStored`'s decoder.
 shapes the modules share are in `types.ts`, and the document's own are declared in
 `src/document.d.ts`).
 
-- `cutsReducer.js` — **every change to the document goes through here.** `cuts` is a `useReducer`
+- `cutsReducer.ts` — **every change to the document goes through here.** `cuts` is a `useReducer`
   and the actions are built by exported creator functions (`updateCut`, `upsertText`,
   `moveLayers`, …) rather than object literals, so a mistyped action is a type error rather than
   a silent no-op. Adding a mutation means adding an action, not a lambda — `patchCut`/`patchCuts`
   exist only as "this has not been given a name yet". Invariants live here too: `moveLayers`
   bumps `rev` so the canvas cache cannot go stale.
-- `layerOps.js` — layer tree and stroke placement: `moveLayer` (drag/drop, refuses cycles),
+- `layerOps.ts` — layer tree and stroke placement: `moveLayer` (drag/drop, refuses cycles),
   `resolveDrawLayer` + `commitStroke` (**the rules behind "the line I drew disappeared"**),
   `insertFill` (paint goes under the ink), `offsetLayers` (move-everything commit, bumps `rev`).
-- `cutOps.js` — `dragCut`, `resizeCut` on the timeline, with snapping.
-- `partOps.js` — parts (scenes): `derivePartsFrom`, `deriveVideoBatches`, and the group/rename/
+- `cutOps.ts` — `dragCut`, `resizeCut` on the timeline, with snapping.
+- `partOps.ts` — parts (scenes): `derivePartsFrom`, `deriveVideoBatches`, and the group/rename/
   ungroup operations. A part's time range is recomputed, never stored, or it drifts when a cut moves.
-- `lassoOps.js` — `closeLassoPath`, `lassoBounds`, `applyResize` (selection handles).
-- `cutClone.js` — copying a cut: renumbers layer ids and copies stroke pixels, or the duplicate
+- `lassoOps.ts` — `closeLassoPath`, `lassoBounds`, `applyResize` (selection handles).
+- `cutClone.ts` — copying a cut: renumbers layer ids and copies stroke pixels, or the duplicate
   aliases the original.
-- `projectFormat.js` — opening a saved file: `migrateCuts` (**format history lives here**),
+- `projectFormat.ts` — opening a saved file: `migrateCuts` (**format history lives here**),
   `projectSettings`, `makeLoadProgress`.
-- `historyOps.js` — undo/redo. `pushSnapshot` sizes how far back it reaches by memory rather than
+- `historyOps.ts` — undo/redo. `pushSnapshot` sizes how far back it reaches by memory rather than
   a step count, since a snapshot copies the whole document.
-- `shortcuts.js` — `DEFAULT_KEYS`, `KEY_LABELS`, `keyOf`, `matchShortcut`, `keymapFrom`, `findConflicts`.
+- `shortcuts.ts` — `DEFAULT_KEYS`, `KEY_LABELS`, `keyOf`, `matchShortcut`, `keymapFrom`, `findConflicts`.
 - `timeCode.ts` — `fmt` / `parseClock` for the timeline clock. The first module in TypeScript (#268).
   The leaf modules followed; the shapes they share (`Point`, `PressurePoint`, `Size`, `TimeSpan`)
   live in `types.ts`, grown only as a module needs them.
-- `numInput.js` — the rules behind a number field that can be typed into.
-- `bitmapRefs.js` — `collectUsedBitmapIds` / `unusedBitmapIds`. Every reference source is named in
+- `numInput.ts` — the rules behind a number field that can be typed into.
+- `bitmapRefs.ts` — `collectUsedBitmapIds` / `unusedBitmapIds`. Every reference source is named in
   one place; miss one and the collector frees pixels undo or paste still needs.
-- `playRange.js` — where the content starts and ends. Playback, the dimming and both exports use
+- `playRange.ts` — where the content starts and ends. Playback, the dimming and both exports use
   this one answer, so what you watch is what comes out.
-- `frameExport.js` / `exportQueue.js` — the size, rate and frame count a frame export comes out
+- `frameExport.ts` / `exportQueue.ts` — the size, rate and frame count a frame export comes out
   at, and the per-piece range for the multi-file queue.
-- `recordClock.js` — the fixed frame grid a video recording is painted on (#156).
-- `catmullRom.js` — the spline behind the curve ruler; passes through every anchor.
-- `colour.js` — `withAlpha`, which replaces an existing alpha rather than appending a second one.
-- `liquify.js` — `pushAlong`, the forward warp the liquify brush applies.
-- `document.js` / `cutSelection.js` / `keyframes.js` — making a cut, which cuts a click selects,
+- `recordClock.ts` — the fixed frame grid a video recording is painted on (#156).
+- `catmullRom.ts` — the spline behind the curve ruler; passes through every anchor.
+- `colour.ts` — `withAlpha`, which replaces an existing alpha rather than appending a second one.
+- `liquify.ts` — `pushAlong`, the forward warp the liquify brush applies.
+- `document.ts` / `cutSelection.ts` / `keyframes.ts` — making a cut, which cuts a click selects,
   and animation keys.
-- Animation, in one place per kind (they used to share `canvas/canvasUtils.js`): `cutTime.js`
-  (`cutDuration`, `cutProgress`), `easing.js` (`applyEase`, `SWING`/`swing`, `effectAt`,
-  `samplePath`), `cutAnim.js` (`computeCutAnim`), `layerAnim.js` (`computeLayerAnim`,
-  `LAYER_ANIM_DEFAULT`), `sway.js`, `textAnim.js` (`computeTextAnim`), `keyframes.js`
-  (`sampleKeys`). `layerTree.js` reads a cut's layers: order, cache keys, signatures.
-  `canvasSize.js` holds `CANVAS_W/H` and `targetCanvasFor`; `fonts.js` the text fonts;
-  `geometry.js` and `colour.js` the small helpers.
+- Animation, in one place per kind (they used to share `canvas/canvasUtils.js`): `cutTime.ts`
+  (`cutDuration`, `cutProgress`), `easing.ts` (`applyEase`, `SWING`/`swing`, `effectAt`,
+  `samplePath`), `cutAnim.ts` (`computeCutAnim`), `layerAnim.ts` (`computeLayerAnim`,
+  `LAYER_ANIM_DEFAULT`), `sway.ts`, `textAnim.ts` (`computeTextAnim`), `keyframes.ts`
+  (`sampleKeys`). `layerTree.ts` reads a cut's layers: order, cache keys, signatures.
+  `canvasSize.ts` holds `CANVAS_W/H` and `targetCanvasFor`; `fonts.ts` the text fonts;
+  `geometry.ts` and `colour.ts` the small helpers.
 
 **engine/** — what a frame *is*, with no canvas anywhere near it. TypeScript; `Scene`,
 `EvaluatedCut` and `EvaluatedGroup` in `evaluateFrame.ts` are the renderer's whole input, named.
 
-- `evaluateFrame.js` — `evaluateFrame(cuts, t, opts)` returns the resolved scene at time `t`:
+- `evaluateFrame.ts` — `evaluateFrame(cuts, t, opts)` returns the resolved scene at time `t`:
   which cuts, their animation, their layer groups, their texts, the camera. This is the entry
   point the render path was aiming at; `paintFrame` and the frame export both call it.
-- `selectCuts.js` — which cuts a frame is made of, and the onion-skin neighbours.
-- `pendingBitmaps.js` — which bitmaps a frame needs that are not decoded yet.
+- `selectCuts.ts` — which cuts a frame is made of, and the onion-skin neighbours.
+- `pendingBitmaps.ts` — which bitmaps a frame needs that are not decoded yet.
 
-**canvas/**
+**canvas/** — TypeScript. `Scene` in, pixels out: `FrameInputs` in `framePaint.ts` is everything a
+frame is made of, and `SceneDeps` what the renderer needs from the app.
 
-- `strokes.js` — strokes become pixels: `smoothPoints` (resample → Chaikin → Catmull-Rom, with a
+- `strokes.ts` — strokes become pixels: `smoothPoints` (resample → Chaikin → Catmull-Rom, with a
   spline pass first for sparse input), the boiling line, and `drawStrokesOnCtx` for every brush.
-- `scratch.js` — `sizeCanvas`, `scratchCanvas` (one canvas per plain `{current}` ref),
+- `scratch.ts` — `sizeCanvas`, `scratchCanvas` (one canvas per plain `{current}` ref),
   `imageDataCanvas`, `resetCtx`.
-- `fill.js` — `bucketFillTransparentRegion`, `dilateMask`. `imageCodec.js` — ImageData ⇄ data URL.
-- `videoFrames.js` — `extractVideoFrames`, `detectSceneCuts`, `fitRect`. `morph.js` — the
+- `fill.ts` — `bucketFillTransparentRegion`, `dilateMask`. `imageCodec.ts` — ImageData ⇄ data URL.
+- `videoFrames.ts` — `extractVideoFrames`, `detectSceneCuts`, `fitRect`. `morph.ts` — the
   distance-field morph behind tweening.
-- `textRender.js` — measuring and drawing text: `measureTextBox`, `textNeedsBox`, `revealLines`
-  (typing), `drawTextObject`. Line breaking is `textLayout.js`.
-- `framePaint.js` — `paintFrameOnto`: one frame of the film onto the main canvas, every pass in
+- `textRender.ts` — measuring and drawing text: `measureTextBox`, `textNeedsBox`, `revealLines`
+  (typing), `drawTextObject`. Line breaking is `textLayout.ts`.
+- `framePaint.ts` — `paintFrameOnto`: one frame of the film onto the main canvas, every pass in
   order, with the scratch it keeps between frames (`createFrameScratch`). App's `paintFrame` is a
   thin callback over it.
-- `sceneRender.js` — `drawScene`, the other half of `engine/evaluateFrame`: it draws the answer
+- `sceneRender.ts` — `drawScene`, the other half of `engine/evaluateFrame`: it draws the answer
   and decides nothing. Also the video reference, the onion skin and the scene's texts.
-- `layerComposite.js` — one layer onto the frame, with its clip group and opacity.
-- `bitmapStore.js` — the pixels behind fill / lasso / paste strokes: store, decode, clone, trim.
+- `layerComposite.ts` — one layer onto the frame, with its clip group and opacity.
+- `bitmapStore.ts` — the pixels behind fill / lasso / paste strokes: store, decode, clone, trim.
   The Map is `bitmapStoreRef`; this owns it.
-- `pixelEffects.js` — the mosaic and the blur brush: `regionBounds`, `rectBounds`, `mosaic`,
+- `pixelEffects.ts` — the mosaic and the blur brush: `regionBounds`, `rectBounds`, `mosaic`,
   `blurMaskedRegion`. The first three are pure and tested.
-- `marquee.js` / `editChrome.js` — the lasso loop while it is drawn, and everything drawn *over*
+- `marquee.ts` / `editChrome.ts` — the lasso loop while it is drawn, and everything drawn *over*
   a frame to show what is selected: the selection box, the handles, the motion path, the curve
   anchors, the mosaic rectangle. All sized in screen pixels (divide by `view.zoom`), or they
   shrink until they cannot be grabbed.
-- `warpRender.js` / `shearSlices.js` / `swayRender.js` — a selection's rotate/skew/bend outline,
+- `warpRender.ts` / `shearSlices.ts` / `swayRender.ts` — a selection's rotate/skew/bend outline,
   the slice stack that draws a sheared bitmap, and the sway deformation.
 
 **styles/** — the stylesheets, one per area (top bar, toolbar, canvas, the cut/layer panel, the

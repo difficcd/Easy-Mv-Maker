@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { drawMosaicMarquee } from '../canvas/editChrome.js';
+import { drawMosaicMarquee } from '../canvas/editChrome.ts';
 
 // The mosaic: drag a rectangle, and what is inside it is pixelated when the pen lifts.
 //

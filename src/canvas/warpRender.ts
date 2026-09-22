@@ -6,7 +6,17 @@
 // exactly at their shared edge. shearSlices is where that rule lives; this file only supplies the
 // curve.
 
-import { shearSlices } from './shearSlices.ts';
+import type { Point } from '../core/types.ts';
+import type { Rect } from '../core/lassoOps.ts';
+import { shearSlices, type ShearSlice } from './shearSlices.ts';
+
+/** A floating selection's box as the warp takes it: where, how big, and how turned, skewed and bent. */
+export interface WarpBox extends Rect { rot?: number; skew?: number; bend?: number }
+/** What the bend alone needs: the span across, the height the bend is a fraction of, and the bend. */
+export interface BendBox { x: number; w: number; h: number; bend: number }
+/** A resize handle on the warped box, named by compass point. */
+export interface Handle extends Point { id: string }
+
 
 /**
  * The largest change of slope allowed where two slices meet, in radians.
@@ -28,7 +38,7 @@ const MAX_KINK = 0.006;
  *
  * @param {{w: number, h: number, bend: number}} box
  */
-export function bendSliceCount({ w, h, bend }) {
+export function bendSliceCount({ w, h, bend }: { w: number, h: number, bend: number }): number {
     if (!(w > 0) || !bend) return 8;
     const n = Math.ceil((4 * Math.abs(bend) * h) / (w * MAX_KINK));
     return Math.max(8, Math.min(512, n));
@@ -46,7 +56,7 @@ export function bendSliceCount({ w, h, bend }) {
  * @param {{x: number, w: number, h: number, bend: number}} box
  * @returns {number}
  */
-export function bendOffsetAt(x, { x: bx, w, h, bend }) {
+export function bendOffsetAt(x: number, { x: bx, w, h, bend }: BendBox): number {
     if (!bend || !(w > 0)) return 0;
     const u = ((x - bx) / w) * 2 - 1;           // -1 at the left edge, +1 at the right
     return bend * (h / 2) * (u * u - 1);        // 0 at both ends, -bend*h/2 in the middle
@@ -58,8 +68,8 @@ export function bendOffsetAt(x, { x: bx, w, h, bend }) {
  * @param {{x: number, w: number, h: number, bend: number}} box
  * @param {number} [slices]
  */
-export function bendSlices(box, slices = bendSliceCount(box)) {
-    return shearSlices((x) => bendOffsetAt(x, box), box.x, box.w, slices);
+export function bendSlices(box: BendBox, slices = bendSliceCount(box)): ShearSlice[] {
+    return shearSlices((x: number) => bendOffsetAt(x, box), box.x, box.w, slices);
 }
 
 /**
@@ -68,7 +78,7 @@ export function bendSlices(box, slices = bendSliceCount(box)) {
  *
  * @param {{rot?: number, skew?: number, bend?: number}} s
  */
-export const isWarped = (s) => !!(s && (s.rot || s.skew || s.bend));
+export const isWarped = (s: { rot?: number, skew?: number, bend?: number } | Stroke | null | undefined): boolean => !!(s && (s.rot || s.skew || s.bend));
 
 /**
  * Draw `src` into the box, rotated, skewed and bent.
@@ -84,7 +94,7 @@ export const isWarped = (s) => !!(s && (s.rot || s.skew || s.bend));
  * @param {number} sh source height
  * @param {{x: number, y: number, w: number, h: number, rot?: number, skew?: number, bend?: number}} box rot in radians
  */
-export function drawWarped(ctx, src, sw, sh, box) {
+export function drawWarped(ctx: CanvasRenderingContext2D, src: CanvasImageSource, sw: number, sh: number, box: WarpBox): void {
     const { x, y, w, h } = box;
     const rot = box.rot || 0, skew = box.skew || 0, bend = box.bend || 0;
     ctx.save();
@@ -121,7 +131,7 @@ export function drawWarped(ctx, src, sw, sh, box) {
  * @param {{x: number, y: number}} p
  * @returns {{x: number, y: number}}
  */
-export function warpPoint(box, p) {
+export function warpPoint(box: WarpBox, p: Point): Point {
     const midY = box.y + box.h / 2;
     let x = p.x, y = p.y + bendOffsetAt(p.x, { x: box.x, w: box.w, h: box.h, bend: box.bend || 0 });
     if (box.skew) x += box.skew * (y - midY);
@@ -143,8 +153,8 @@ export function warpPoint(box, p) {
  * @param {number} [samples] points along each of the top and bottom edges
  * @returns {Array<{x: number, y: number}>}
  */
-export function warpedOutline(box, samples = 24) {
-    const pts = [];
+export function warpedOutline(box: WarpBox, samples = 24): Point[] {
+    const pts: Point[] = [];
     for (let i = 0; i <= samples; i++) pts.push({ x: box.x + (box.w * i) / samples, y: box.y });
     for (let i = samples; i >= 0; i--) pts.push({ x: box.x + (box.w * i) / samples, y: box.y + box.h });
     return pts.map(p => warpPoint(box, p));
@@ -170,12 +180,12 @@ export const ROTATE_STEM_PX = 26;
  * @param {number} zoom
  * @returns {{x: number, y: number}}
  */
-export function rotateKnob(box, zoom) {
+export function rotateKnob(box: WarpBox, zoom: number): Point {
     return warpPoint(box, { x: box.x + box.w / 2, y: box.y - ROTATE_STEM_PX / (zoom || 1) });
 }
 
 /** The eight resize handles, on the warped box, named by compass point. */
-export function warpedHandles(box) {
+export function warpedHandles(box: WarpBox): Handle[] {
     const { x, y, w, h } = box;
     return [
         { id: 'nw', x, y }, { id: 'n', x: x + w / 2, y }, { id: 'ne', x: x + w, y },
