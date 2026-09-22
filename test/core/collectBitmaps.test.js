@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { collectBitmaps } from '../../src/core/projectAssets.js';
+import { collectBitmaps } from '../../src/core/projectAssets.ts';
 
 const cuts = (...ids) => [{
     layers: [{ strokes: ids.map(id => (id ? { bitmapId: id } : { tool: 'pen' })) }],

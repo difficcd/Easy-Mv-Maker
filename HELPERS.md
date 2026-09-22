@@ -505,7 +505,7 @@ How often to re-check whether the API server is up.
 | `PROBE_MAX_MS` | The ceiling the doubling stops at, so a long outage does not become a probe an hour. |
 | `PROBE_QUICK_TRIES` | How many probes go out at the base delay before doubling begins — a server restarting should be noticed quickly. |
 
-## `src/core/projectAssets.js`
+## `src/core/projectAssets.ts`
 
 How each piece of a project is stored, and how it comes back.
 

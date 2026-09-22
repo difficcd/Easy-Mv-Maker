@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { loadBitmapStore } from '../../src/core/projectAssets.js';
+import { loadBitmapStore } from '../../src/core/projectAssets.ts';
 
 // The browser calls are injected, which is the convention collectBitmaps already set in this file
 // and the reason this can be tested at all. The stubs record what they were asked for, so the
@@ -86,7 +86,7 @@ test('the store it returns is its own, so a caller can merge it where it likes',
     assert.equal(store.size, 1);
 });
 
-import { fillBitmapStore, bitmapLoadCount } from '../../src/core/projectAssets.js';
+import { fillBitmapStore, bitmapLoadCount } from '../../src/core/projectAssets.ts';
 
 test('fillBitmapStore: server assets first as undecoded Blobs, then the embedded bitmaps, missing counted once', async () => {
     const store = new Map([['stale', {}]]);

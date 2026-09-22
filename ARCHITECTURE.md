@@ -53,7 +53,9 @@ know storage exists at all, because reading it is `useStored`'s decoder.
   a local variable in dozens of places.
 - `src/db.js` — IndexedDB autosave (`saveAutosave`, `loadAutosave`, plus project CRUD).
 
-**core/** — pure logic, all of it tested.
+**core/** — pure logic, all of it tested, all of it TypeScript (the first folder converted; the
+shapes the modules share are in `types.ts`, and the document's own are declared in
+`src/document.d.ts`).
 
 - `cutsReducer.js` — **every change to the document goes through here.** `cuts` is a `useReducer`
   and the actions are built by exported creator functions (`updateCut`, `upsertText`,
