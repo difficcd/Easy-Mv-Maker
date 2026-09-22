@@ -161,60 +161,60 @@ prompt, tool keys, project picker, progress overlay), all over `Modal.jsx`. And 
   them stops the work underneath; that is the rule they share.
 - `NumField.jsx` — **use NumField for any new numeric field.**
 
-**hooks/** — state that belongs together, lifted out of App so its wiring is somewhere with a
-name. Each takes what it cannot own as arguments, and the rule for what it cannot own is the same
+**hooks/** — TypeScript. State that belongs together, lifted out of App so its wiring is somewhere
+with a name; each hook's dependency bag is an interface (`PlaybackDeps`, `ExportDeps`, `LayerCacheDeps`, …). Each takes what it cannot own as arguments, and the rule for what it cannot own is the same
 every time: `buildData` reads most of App's state and `restore` writes most of it, so a hook that
 needs a document takes those two functions rather than the document.
 
-- `useTimelineGestures.js` — every way the timeline can be pointed at (ruler scrub, marquee,
+- `useTimelineGestures.ts` — every way the timeline can be pointed at (ruler scrub, marquee,
   middle-click pan, one-finger pan/tap, two-finger pinch) in one place.
-- `usePlayback.js` — the playback clock: the rAF loop, and the audio and video it drags along.
-- `useHistory.js` — undo and redo. Snapshots the document on change; the arithmetic is in
+- `usePlayback.ts` — the playback clock: the rAF loop, and the audio and video it drags along.
+- `useHistory.ts` — undo and redo. Snapshots the document on change; the arithmetic is in
   `core/historyOps`.
-- `useAutosave.js` — saving to IndexedDB in the background, debounced, skipped mid-gesture.
-- `useLocalDocuments.js` — the document on this machine: `.emv` files, IndexedDB projects, crash
+- `useAutosave.ts` — saving to IndexedDB in the background, debounced, skipped mid-gesture.
+- `useLocalDocuments.ts` — the document on this machine: `.emv` files, IndexedDB projects, crash
   recovery, and the tabs that hold several at once.
-- `useServerStorage.js` — projects on the local API server, and the rotating backups of them.
-- `useServerProbe.js` — is that API there? Backs off rather than retrying forever.
-- `usePanelLayout.js` — where the panels are docked and how wide they are. Pure geometry: it reads
+- `useServerStorage.ts` — projects on the local API server, and the rotating backups of them.
+- `useServerProbe.ts` — is that API there? Backs off rather than retrying forever.
+- `usePanelLayout.ts` — where the panels are docked and how wide they are. Pure geometry: it reads
   nothing about the document, which is why it could leave whole.
-- `useStored.js` — state that remembers itself in localStorage, through `core/persist`.
-- `useToolSettings.js` — which tool, colour, width, pressure; `etool` resolves the two-in-one tools.
-- `useAudioTrack.js` — the audio element, its base64 copy, and putting a saved track back.
-- `useCanvasView.js` — zoom and offset of the canvas: space/middle-button pan, wheel zoom about
+- `useStored.ts` — state that remembers itself in localStorage, through `core/persist`.
+- `useToolSettings.ts` — which tool, colour, width, pressure; `etool` resolves the two-in-one tools.
+- `useAudioTrack.ts` — the audio element, its base64 copy, and putting a saved track back.
+- `useCanvasView.ts` — zoom and offset of the canvas: space/middle-button pan, wheel zoom about
   the cursor, one-finger pan, two-finger pinch. Maths in `core/viewZoom`.
-- `useLayerCache.js` — the layer canvases the frame is composited from: the state cache rebuilt for
+- `useLayerCache.ts` — the layer canvases the frame is composited from: the state cache rebuilt for
   the cuts on screen (`engine/selectCuts.cutsToCache`), the on-demand LRU `ensureLayerCanvas`
   fills during playback, clip-group flattening, lazy frame decoding ahead of the playhead
   (`core/decodeBudget.prefetchWindow`) and invalidation when a frame lands. Sits over
   `canvas/bitmapStore`, which owns the pixels themselves.
-- `useLayerDnD.js` — dragging a layer row to reorder it or into a folder; moves in `core/layerOps`.
-- `useTextDrag.js` — grabbing a text on the canvas and dragging it, one document write per frame.
-- `useShortcuts.js` — the keydown listener; which key means what is `core/shortcuts.shortcutFor`.
-- `useDropdown.js` — a menu that closes on a press outside it (the File and Media menus).
-- `usePanelVisibility.js` — which panels are on screen, and the Tab that folds them away. Folding
+- `useLayerDnD.ts` — dragging a layer row to reorder it or into a folder; moves in `core/layerOps`.
+- `useTextDrag.ts` — grabbing a text on the canvas and dragging it, one document write per frame.
+- `useShortcuts.ts` — the keydown listener; which key means what is `core/shortcuts.shortcutFor`.
+- `useDropdown.ts` — a menu that closes on a press outside it (the File and Media menus).
+- `usePanelVisibility.ts` — which panels are on screen, and the Tab that folds them away. Folding
   is not "close everything": the second press puts back exactly what was open, and it restores
   the timeline's scroll, because that container is unmounted while folded and comes back at zero.
-- `useAppearance.js` — the accent colour, the chrome's saturation, and the recent-colour list.
-- `useGesture.js` — **what is happening between the pen going down and coming back up:** the
+- `useAppearance.ts` — the accent colour, the chrome's saturation, and the recent-colour list.
+- `useGesture.ts` — **what is happening between the pen going down and coming back up:** the
   stroke, the lasso loop, the layers or selection being dragged, the path being recorded, the
   layer the stroke commits to, plus `begin`/`end` for pointer capture. Only one is ever live.
-- `useSelectionGesture.js` / `useLayerDrag.js` / `usePathCapture.js` — the three drags that own
+- `useSelectionGesture.ts` / `useLayerDrag.ts` / `usePathCapture.ts` — the three drags that own
   themselves: the floating selection (hit test, move, resize, rotate, warp), a whole layer with
   the move tool (overlay preview, commit on lift), and recording a path (camera, part path, sway
   curve, mosaic rectangle). App's pointer handlers say which is happening; these say how.
-- `useLiveOverlay.js` — the overlay canvas and the incremental drawing of a stroke on it. Only
+- `useLiveOverlay.ts` — the overlay canvas and the incremental drawing of a stroke on it. Only
   the new tail each frame; the count that tracks it must be exactly right or the tail is drawn
   from the wrong place.
-- `useLiquifyTool.js` / `useCurveTool.js` / `useMosaicTool.js` — three tools that keep their own
+- `useLiquifyTool.ts` / `useCurveTool.ts` / `useMosaicTool.ts` — three tools that keep their own
   in-progress state, each `begin / to / end`.
-- `useExport.js` — the three exports: a recorded video, a GIF or PNG sequence, and several `.emv`
+- `useExport.ts` — the three exports: a recorded video, a GIF or PNG sequence, and several `.emv`
   files painted into one. All paint through the app's own paint path.
-- `useVideoImportState.js` — what bringing a video in remembers, and the two things done with it:
+- `useVideoImportState.ts` — what bringing a video in remembers, and the two things done with it:
   `run` (the import: extract, store, lay out as cuts) and `restore` (a stored track back). Both
   take the document at call time, so the hook stays free of App state.
-- `useNotices.js` — progress, toast, error banner, and the YouTube link prompt.
-- `useDialogs.js` — which dialog is open, and the rebinding two of them share.
+- `useNotices.ts` — progress, toast, error banner, and the YouTube link prompt.
+- `useDialogs.ts` — which dialog is open, and the rebinding two of them share.
 
 - `server/` — the Express file-backed project DB on :8787, files under `server/data/`. `index.js`
   is the wiring (body limit, rate-limit tiers, mount, listen); `projects.js`, `backups.js` and
@@ -270,7 +270,7 @@ needs a document takes those two functions rather than the document.
   in `useServerStorage`, the debounced write in `useAutosave`.
 - History: `useHistory`. It owns the stack and the refs; App passes the snapshot and a predicate
   for "not now, a gesture is in progress".
-- Export: all three are `hooks/useExport.js`. `renderFrameRange` paints a range and hands each
+- Export: all three are `hooks/useExport.ts`. `renderFrameRange` paints a range and hands each
   frame to a capture function, so the multi-piece export can run it once per piece into one
   writer; `captureFrame` decides what a format wants from a painted canvas. Video recording
   paints on a fixed frame grid (`core/recordClock`) into a stream that takes frames on request

@@ -98,7 +98,7 @@ npm run smoke      # 빌드된 앱을 헤드리스 브라우저에서 띄워 선
 `npm run check`가 관문입니다: 타입 검사, 단위 테스트, 정적 가드 여섯, 빌드. 같은 단계가 모든 푸시와 PR에서 CI로 돕니다.
 
 코드는 폴더 하나씩 TypeScript로 옮기는 중입니다(#268) — `src/core/`, `src/engine/`, `src/export/`,
-`src/canvas/`는 끝났고 나머지가 뒤따릅니다. 목적은 주석을 타입으로 바꾸는 것이 아니라(JS도 이미
+`src/canvas/`, `src/hooks/`는 끝났고 `ui/`와 `App`이 뒤따릅니다. 목적은 주석을 타입으로 바꾸는 것이 아니라(JS도 이미
 JSDoc으로 타입이 있었음) JSDoc이 줄 수 없던 두 가지입니다. 하나는 `strict` — JS는 느슨하게(null
 검사 없음, 암묵적 `any` 허용) 검사되고, 옮긴 모듈은 `tsconfig.strict.json`이 strict로 잡습니다.
 실제로 빠진 null 가드와 잘못된 타입의 id를 돌려주던 함수를 잡아냈습니다. 다른 하나는 이름 붙은
@@ -176,7 +176,7 @@ src/
   canvas/          2D 컨텍스트에 그리는 모든 것, TypeScript: 선, 텍스트, 흔들림 슬라이스, 레이어 합성
   engine/          한 프레임 평가, TypeScript: 어느 컷이 켜져 있고 시간 t에 각 레이어가 어떻게 보이는지
   export/          GIF·zip 바이트 라이터, 영상 녹화 배관, 다운로드 - TypeScript
-  hooks/           제 자리를 얻은 App 상태: 캔버스 뷰, 레이어 캐시, 재생, 오디오, 히스토리,
+  hooks/           제 자리를 얻은 App 상태, TypeScript: 캔버스 뷰, 레이어 캐시, 재생, 오디오, 히스토리,
                    자동저장, 패널, 도구 설정, 단축키, 드래그 제스처
   ui/              패널; ui/dialogs/ 는 대화상자 하나당 파일 하나
   styles/          영역별 스타일시트, styles/index.css가 캐스케이드 순서대로 import

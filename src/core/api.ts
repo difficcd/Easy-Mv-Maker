@@ -49,7 +49,7 @@ export async function fetchAsset(url: string): Promise<Blob> {
  * @param {string} failMessage thrown as-is, so the caller can localise and number it
  * @returns {Promise<void>}
  */
-export async function putAsset(base: string, asset: { id: string, ext: string, blob?: Blob | null, url?: string }, failMessage: string): Promise<void> {
+export async function putAsset(base: string, asset: { id: string, ext: string, blob?: Blob | null, url?: string | null }, failMessage: string): Promise<void> {
     const blob = asset.blob || await (await fetch(asset.url as string)).blob();
     const res = await fetch(`${base}/asset/${asset.id}?ext=${encodeURIComponent(asset.ext)}`, {
         method: 'PUT',

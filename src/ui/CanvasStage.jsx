@@ -20,11 +20,11 @@ import { SwaySpine } from './SwaySpine';
  * @param {boolean} p.transparentBg draws the checkerboard behind the stage
  * @param {{zoom: number, x: number, y: number}} p.view the pan and zoom over the stage
  * @param {() => void} p.resetView
- * @param {{spaceDown: boolean, onAreaPointerDown: Function, onAreaPointerMove: Function,
- *   onAreaPointerUp: Function}} p.gesture
+ * @param {{spaceDown: boolean, onAreaPointerDown: (e: any) => void, onAreaPointerMove: (e: any) => void,
+ *   onAreaPointerUp: (e: any) => void}} p.gesture
  *   the area's pointer handlers, and whether space is held for panning
- * @param {{startDraw: Function, onDraw: Function, stopDraw: Function,
- *   onPointerLeaveCanvas: Function}} p.draw the canvas's own pointer handlers
+ * @param {{startDraw: (e: any) => void, onDraw: (e: any) => void, stopDraw: (e: any) => void,
+ *   onPointerLeaveCanvas: (e: any) => void}} p.draw the canvas's own pointer handlers
  * @param {string} p.cursor from canvasCursor, below
  * @param {{layer: any, onChange: (profile: {p: number, w: number}[]) => void,
  *   onClose: () => void}} p.spine

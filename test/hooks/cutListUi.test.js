@@ -12,7 +12,7 @@ import { readFileSync } from 'node:fs';
 // *everything the hook holds* - because the way this comes back is someone adding a seventh
 // piece of state and updating only the places they happened to be looking at.
 
-const src = readFileSync('src/hooks/useCutListUi.js', 'utf8');
+const src = readFileSync('src/hooks/useCutListUi.ts', 'utf8');
 
 /** The setter of every piece of state the hook declares. */
 const setters = [...src.matchAll(/const \[\s*\w+\s*,\s*(set\w+)\s*\]\s*=\s*useState/g)].map(m => m[1]);
