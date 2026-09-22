@@ -101,7 +101,8 @@ npm run smoke      # boots the built app in a headless browser and draws a strok
 The same steps run in CI on every push and pull request.
 
 The code is moving to TypeScript one folder at a time (#268); `src/core/`, `src/engine/`,
-`src/export/`, `src/canvas/` and `src/hooks/` are done; `ui/` and `App` follow. The point is not the annotations -
+`src/export/`, `src/canvas/`, `src/hooks/`, `src/ui/` and `src/tools/` are done; `App` and the
+few top-level files follow. The point is not the annotations -
 the JavaScript was already typed through JSDoc - but two things the JSDoc could not give.
 `strict`: the JavaScript is checked leniently (no null checks, implicit `any` allowed), and a
 converted module is held to `strict` by `tsconfig.strict.json`, which has found missing null
@@ -176,14 +177,14 @@ npm run android:open     # open Android Studio -> run, or Build > Generate Signe
 ```
 src/
   App.jsx          the component: state and wiring (~2,100 lines)
-  tools/           the drawing tools as a dispatch table: what each one does on pointer down and move
+  tools/           the drawing tools as a dispatch table, in TypeScript: what each one does on pointer down and move
   core/            pure logic, in TypeScript - reducers, timeline geometry, lasso, shapes, persistence, export planning
   canvas/          anything that draws on a 2D context, in TypeScript: strokes, text, sway slices, layer compositing
   engine/          evaluating one frame, in TypeScript: which cuts are on, what each layer looks like at time t
   export/          byte writers for GIF and zip, video recording plumbing, download - TypeScript
   hooks/           App state that has been given its own home, in TypeScript: the canvas view, the layer cache, playback,
                    audio, history, autosave, panels, tool settings, shortcuts, the drag gestures
-  ui/              panels; ui/dialogs/ one file per dialog
+  ui/              panels, in TypeScript (.tsx); ui/dialogs/ one file per dialog
   styles/          one stylesheet per area, imported in cascade order by styles/index.css
   i18n.js          the English dictionary (~710 entries) and the tr() lookup; i18n.ja.js the Japanese one
   globals.d.ts     ambient declarations (EyeDropper, Capacitor, File System Access…)

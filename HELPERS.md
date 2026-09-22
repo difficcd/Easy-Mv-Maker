@@ -1283,7 +1283,7 @@ Which addresses the importer will hand to yt-dlp.
 | `isYouTubeUrl` | Parses rather than pattern-matches, because both obvious string checks are wrong in opposite directions. |
 | `YOUTUBE_HOSTS` | Hosts yt-dlp is allowed to be pointed at. |
 
-## `src/tools/canvasTools.js`
+## `src/tools/canvasTools.ts`
 
 What each tool does when the pen goes down, and when it moves.
 

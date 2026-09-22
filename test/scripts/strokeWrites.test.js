@@ -39,7 +39,7 @@ test('every allowance names a file and the text that identifies the site', () =>
     // An allowance that matched everything would quietly switch the gate off.
     assert.ok(ALLOWED.length > 0);
     for (const a of ALLOWED) {
-        assert.match(a.file, /^src\/.+\.jsx?$/);
+        assert.match(a.file, /^src\/.+\.[jt]sx?$/);
         assert.ok(a.match.length >= 8, `"${a.match}" is too loose to identify one site`);
     }
 });

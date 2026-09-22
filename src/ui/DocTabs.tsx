@@ -1,5 +1,23 @@
 import { Plus } from 'lucide-react';
 import { tr } from '../i18n';
+import type { Tab } from '../hooks/useLocalDocuments.ts';
+import type { PathCapture } from '../hooks/usePathCapture.ts';
+
+/** The tab strip: the open documents and what a click, a double-click and the ✕ do. */
+interface TabProps { tabs: Tab[]; activeTabId: string; switchTab: (id: string) => void; renameTab: (id: string, name: string) => void; closeTab: (id: string) => void; newTab: () => void }
+/** The floating selection's mode bar: its sliders and the four ways out. */
+interface SelectionProps { selection: any; setSelection: (f: (s: any) => any) => void; extractSelectionToPart: () => void; copyLassoSelection: () => void; commitSelection: () => void; cancelSelection: () => void }
+/** The curve ruler's mode bar: how many anchors so far, and finish or cancel. */
+interface CurveProps { curvePts: number; commitCurve: () => void; cancelCurve: () => void }
+/** The tab strip plus whichever mode bar is up: a selection, the curve ruler, or a path capture. */
+export interface DocTabsProps extends TabProps, SelectionProps, CurveProps {
+    etool: string;
+    cameraCapture: { cutId: any } | null;
+    setCameraCapture: (c: null) => void;
+    pathCapture: PathCapture | null;
+    setPathCapture: (c: null) => void;
+}
+
 
 // The row under the top bar: the open projects, and the bar for whichever mode is running.
 //
@@ -8,7 +26,7 @@ import { tr } from '../i18n';
 // zoom control.
 
 /** One project per tab. Click switches, double-click renames, the ✕ closes. */
-function TabRow({ tabs, activeTabId, switchTab, renameTab, closeTab, newTab }) {
+function TabRow({ tabs, activeTabId, switchTab, renameTab, closeTab, newTab }: TabProps) {
     return (
         <div className="doc-tabs" style={{ display: 'flex', alignItems: 'stretch', gap: 2, background: 'hsl(var(--ui-h) var(--ui-s) 11%)', borderBottom: '1px solid hsl(var(--ui-h) var(--ui-s) 20%)', padding: '3px 6px 0', overflowX: 'auto', flexShrink: 0 }}>
             {tabs.map(t => (
@@ -25,14 +43,14 @@ function TabRow({ tabs, activeTabId, switchTab, renameTab, closeTab, newTab }) {
     );
 }
 
-function SelectionGroup({ selection, setSelection, extractSelectionToPart, copyLassoSelection, commitSelection, cancelSelection }) {
+function SelectionGroup({ selection, setSelection, extractSelectionToPart, copyLassoSelection, commitSelection, cancelSelection }: SelectionProps) {
     return (
         <div className="mode-group">
             <span className="mode-label">{tr('선택 영역')}</span>
             {/* Rotation in degrees, skew and bend in -100..100%. Sliders rather than number
                 fields: the value means nothing in itself and the eye is on the canvas. Rotation
                 is stored in radians, as layer animation does. */}
-            {[['rot', tr('회전'), 180, 180 / Math.PI], ['skew', tr('기울기'), 100, 100], ['bend', tr('곡률'), 100, 100]].map(([key, label, range, scale]) => (
+            {([['rot', tr('회전'), 180, 180 / Math.PI], ['skew', tr('기울기'), 100, 100], ['bend', tr('곡률'), 100, 100]] as Array<[string, string, number, number]>).map(([key, label, range, scale]) => (
                 <label key={key} className="mode-slider" title={tr('드래그해 조정, 두 번 눌러 0으로. 기울기·곡률은 Ctrl 누르고 선택 영역을 끌어도 됩니다')}>
                     <span>{label}</span>
                     <input type="range" min={-range} max={range} value={Math.round((selection[key] || 0) * scale)}
@@ -48,7 +66,7 @@ function SelectionGroup({ selection, setSelection, extractSelectionToPart, copyL
     );
 }
 
-function CurveGroup({ curvePts, commitCurve, cancelCurve }) {
+function CurveGroup({ curvePts, commitCurve, cancelCurve }: CurveProps) {
     return (
         <div className="mode-group">
             <span className="mode-label">{tr('곡선 자')}</span>
@@ -65,7 +83,7 @@ function CurveGroup({ curvePts, commitCurve, cancelCurve }) {
 }
 
 /** A mode whose only control is "stop doing this": the two path captures. */
-function CaptureGroup({ label, hint, onCancel }) {
+function CaptureGroup({ label, hint, onCancel }: { label: string, hint: string, onCancel: () => void }) {
     return (
         <div className="mode-group">
             <span className="mode-label">{label}</span>
@@ -80,7 +98,7 @@ export function DocTabs({
     selection, setSelection, extractSelectionToPart, copyLassoSelection, commitSelection, cancelSelection,
     etool, curvePts, commitCurve, cancelCurve,
     cameraCapture, setCameraCapture, pathCapture, setPathCapture,
-}) {
+}: DocTabsProps) {
     const anyMode = selection || cameraCapture || pathCapture || etool === 'curve';
     return (
         <div className="doc-tabs-wrap">

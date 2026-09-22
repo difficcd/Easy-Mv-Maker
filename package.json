@@ -31,7 +31,6 @@
   "devDependencies": {
     "@babel/core": "^8.0.6",
     "@babel/eslint-parser": "^8.0.6",
-    "@babel/preset-typescript": "^8.0.1",
     "@capacitor/cli": "^8.5.2",
     "@napi-rs/canvas": "^1.0.9",
     "@types/react": "^19.3.0",

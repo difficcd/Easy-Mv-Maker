@@ -1,5 +1,26 @@
 import React from 'react';
 import { X } from 'lucide-react';
+/** A dialog's frame: what it is called, how big, where it stacks, and whether it can be dismissed. */
+export interface ModalProps {
+    /** header text; omit for a dialog with no header */
+    title?: React.ReactNode;
+    onClose: () => void;
+    /** panel width in px */
+    width: number;
+    /** set when the content can outgrow the screen */
+    maxHeight?: string;
+    /** stacking order, for a dialog opened from another one */
+    z?: number;
+    className?: string;
+    /** false while something is running that must not be interrupted */
+    closable?: boolean;
+    /** false when the dialog uses Escape for its own purpose */
+    closeOnEscape?: boolean;
+    /** extra panel styling */
+    panelStyle?: React.CSSProperties;
+    children?: React.ReactNode;
+}
+
 
 // The shell every dialog in the app sits in.
 //
@@ -27,10 +48,10 @@ import { X } from 'lucide-react';
 export function Modal({
     title, onClose, width, maxHeight, z = 1000, className,
     closable = true, closeOnEscape = true, panelStyle, children,
-}) {
+}: ModalProps) {
     React.useEffect(() => {
         if (!closable || !closeOnEscape) return;
-        const h = (e) => {
+        const h = (e: KeyboardEvent) => {
             if (e.key !== 'Escape') return;
             // Stop here rather than letting it reach the canvas, where Escape clears the
             // selection - closing a dialog should not also undo what was selected behind it.

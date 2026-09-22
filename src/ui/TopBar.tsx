@@ -1,13 +1,39 @@
 import { ChevronDown, Download, Upload, Film, Settings, AlertTriangle, DatabaseBackup } from 'lucide-react';
 import { tr } from '../i18n';
-import { Logo } from './Logo.jsx';
+import { Logo } from './Logo.tsx';
 import { clampCanvasSize } from '../core/canvasSize.ts';
 import { useDropdown } from '../hooks/useDropdown.ts';
+import type React from 'react';
+import type { View } from '../core/viewZoom.ts';
+import type { Keymap } from '../core/shortcuts.ts';
+
+/** The top bar's props, grouped by what they are about. */
+export interface TopBarProps {
+    /** the File menu: new, save, open, the local and server stores, the split and the exports */
+    project: {
+        doNew: () => void; doSave: (asNew?: boolean) => void; doOpen: () => void;
+        doLocalSave: (forceNew?: boolean) => void; openLocalList: () => void;
+        doServerSave: (forceNew?: boolean) => void; openServerList: () => void; doServerBackup: (silent?: boolean) => void; openBackupList: () => void; backupBusy: boolean;
+        doSplitSave: () => void; handleExportPieces: () => void; handleExport: () => void;
+    };
+    /** the save state shown on the bar */
+    status: { autoSavedAt: number | null; autosaveErr: string | null; backupAt: number | null; storageInfo: { usage: number, quota: number, pct: number } | null; serverAvailable: boolean; setToast: (s: string) => void };
+    /** the Media menu: audio in and out, video in */
+    media: {
+        handleAudioUpload: (e: React.ChangeEvent<HTMLInputElement>) => void; loadYoutubeAudio: () => void; handleDeleteAudio: () => void; audioFile: { name: string } | null;
+        openVideoImport: (file: File) => void; loadYoutubeVideo: () => void; videoFileRef: React.RefObject<HTMLInputElement | null>;
+        recentVideos: Array<{ id: any, name: string }>; reimportRecent: (v: any) => void;
+    };
+    /** the resolution and the zoom */
+    canvas: { canvasW: number; canvasH: number; setCanvasSize: (size: { w: number, h: number }) => void; view: View; zoomCanvas: (factor: number) => void; resetView: () => void };
+    dialogs: { setShowHelp: (on: boolean) => void; setShowSettings: (on: boolean) => void; keymap: Keymap };
+}
+
 
 // Top menu bar: the File and Media menus, resolution, canvas zoom, save state, Export.
 export function TopBar({
     project, status, media, canvas, dialogs,
-}) {
+}: TopBarProps) {
     const { doNew, doSave, doOpen, doLocalSave, openLocalList, doServerSave, openServerList, doServerBackup, openBackupList, backupBusy, doSplitSave, handleExportPieces, handleExport } = project;
     const { autoSavedAt, autosaveErr, backupAt, storageInfo, serverAvailable, setToast } = status;
     const { handleAudioUpload, loadYoutubeAudio, handleDeleteAudio, audioFile, openVideoImport, loadYoutubeVideo, videoFileRef, recentVideos, reimportRecent } = media;
@@ -83,7 +109,7 @@ export function TopBar({
                         <label className="file-menu-item" style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }} title={tr('영상을 프레임별 컷으로 가져오기')}>
                             <Film size={14} /> {tr('영상 프레임 가져오기...')}
                             <input type="file" accept="video/*" ref={videoFileRef} style={{ display: 'none' }}
-                                onChange={e => { const f = e.target.files[0]; e.target.value = ''; if (f) { openVideoImport(f); setShowMediaMenu(false); } }} />
+                                onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) { openVideoImport(f); setShowMediaMenu(false); } }} />
                         </label>
                         {serverAvailable && <button className="file-menu-item" onClick={() => { loadYoutubeVideo(); setShowMediaMenu(false); }}>{tr('유튜브 영상 프레임 추출')}</button>}
                         {recentVideos.length > 0 && <>

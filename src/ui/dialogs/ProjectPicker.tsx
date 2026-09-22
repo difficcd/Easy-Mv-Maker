@@ -1,9 +1,12 @@
 import { Trash2 } from 'lucide-react';
 import { tr } from '../../i18n';
-import { Modal } from '../Modal.jsx';
+import { Modal } from '../Modal.tsx';
+/** One saved project or backup in the list: what a listing returns. */
+export interface ProjectRow { id: string; name: string; savedAt?: number | string | null; [k: string]: any }
+
 
 // Picker for the saved project and backup lists.
-export function ProjectPicker({ title, items, onOpen, onDelete, onClose }) {
+export function ProjectPicker({ title, items, onOpen, onDelete, onClose }: { title: string, items: ProjectRow[], onOpen: (id: string, name: string) => void, onDelete: (id: string) => void, onClose: () => void }) {
     return (
         <Modal title={title} onClose={onClose} width={420} maxHeight="70vh" panelStyle={{ padding: 16 }}>
             {items.length === 0 && <div style={{ fontSize: 12, color: '#888', padding: '12px 2px' }}>{tr('저장된 프로젝트가 없습니다.')}</div>}

@@ -4,8 +4,17 @@ import { cutProgress } from '../core/cutTime.ts';
 import { flattenLayersInUiOrder, layerKey } from '../core/layerTree.ts';
 import { canClip } from '../core/clipping.ts';
 import { setLayerClipped, mergeLayerDown } from '../core/cutsReducer.ts';
-import { JitterPanel, LayerAnimPanel } from './AnimPanels';
+import { JitterPanel, LayerAnimPanel } from './AnimPanels.tsx';
 import { tr } from '../i18n';
+import type { Id } from '../core/types.ts';
+
+/**
+ * Everything a layer row needs, handed down as one bag because the rows recurse into folders.
+ * Typed loosely on purpose: this is App's state and handlers as App holds them, and the row
+ * reads a dozen of them; the row's own contract is the props above it.
+ */
+export interface LayerRowDeps { [k: string]: any }
+
 
 // One cut's layer tree, in the CUT/LAYER panel.
 //
@@ -17,15 +26,15 @@ import { tr } from '../i18n';
 // named in one place.
 
 /** A layer's contents at thumbnail size. */
-function LayerThumbnail({ layer, cutId, layerCanvasCache }) {
-    const ref = useRef(/** @type {HTMLCanvasElement|null} */(null));
+function LayerThumbnail({ layer, cutId, layerCanvasCache }: { layer: Layer, cutId: Id, layerCanvasCache: Record<string, HTMLCanvasElement> }) {
+    const ref = useRef<HTMLCanvasElement | null>(null);
     const key = layerKey(cutId, layer.id);
     // Read outside the effect so the dependency is a value the linter can check, rather than an
     // expression it has to give up on - which is what hid 'key' and the cache itself from it.
     const layerCanvas = layerCanvasCache[key];
     useEffect(() => {
         const c = ref.current; if (!c) return;
-        const ctx = c.getContext('2d');
+        const ctx = c.getContext('2d')!;
         ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, 56, 31);
         if (layerCanvas) {
             ctx.drawImage(layerCanvas, 0, 0, 56, 31);
@@ -44,7 +53,7 @@ function LayerThumbnail({ layer, cutId, layerCanvasCache }) {
  * @param {any} props.rows everything a row needs - see the destructure below
  * @param {boolean} [props.wide] the panel has room to name the buttons, not only draw them
  */
-export function LayerRows({ cut, parentId = null, depth = 0, rows, wide = false }) {
+export function LayerRows({ cut, parentId = null, depth = 0, rows, wide = false }: { cut: Cut, parentId?: Id | null, depth?: number, rows: LayerRowDeps, wide?: boolean }) {
     const {
         animLayer, currentTime, dispatchCuts, dragLayerInfo, dropInfo, handleDeleteLayer,
         handleSetActive, handleToggleFolder, handleToggleVisible, jitterLayer, layerCanvasCache,
@@ -114,7 +123,7 @@ export function LayerRows({ cut, parentId = null, depth = 0, rows, wide = false 
                     {!isFolder && (
                         <button className="icon-btn" title={tr('파츠 애니메이션 — 이동 · 회전 · 흔들림 · 모자이크')}
                             style={{ ...(layer.anim ? { color: 'var(--accent-soft)' } : null), ...(wide ? { width: 'auto', padding: '0 5px', gap: 3 } : null) }}
-                            onClick={e => { e.stopPropagation(); setAnimLayer(a => (a && a.cutId === cut.id && a.layerId === layer.id) ? null : { cutId: cut.id, layerId: layer.id }); }}>
+                            onClick={e => { e.stopPropagation(); setAnimLayer((a: { cutId: Id, layerId: Id } | null) => (a && a.cutId === cut.id && a.layerId === layer.id) ? null : { cutId: cut.id, layerId: layer.id }); }}>
                             <Film size={11} />
                             {wide && <span style={{ fontSize: 9.5 }}>{tr('애니')}</span>}
                         </button>

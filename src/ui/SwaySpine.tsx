@@ -1,6 +1,21 @@
 import React from 'react';
 import { swayWeightAt, swayPointAt, sortSwayProfile } from '../core/sway.ts';
 import { tr } from '../i18n';
+import type { SwayPoint, SwayProfile } from '../core/sway.ts';
+
+/** The spine editor's props: the profile and its axis, how far it swings, the canvas size, and where edits go. */
+export interface SwaySpineProps {
+    profile: SwayProfile;
+    /** which way the points run */
+    axis: 'x' | 'y';
+    /** `swayAmount`, a percentage of the span at full swing */
+    amount: number;
+    cw: number;
+    ch: number;
+    onChange: (profile: SwayPoint[]) => void;
+    onClose: () => void;
+}
+
 
 // Placing the points a sway bends around, on the drawing.
 //
@@ -47,10 +62,10 @@ const TOO_CLOSE = 0.02;
  * @param {(profile: Array<{p: number, w: number}>) => void} props.onChange
  * @param {() => void} props.onClose
  */
-export function SwaySpine({ profile, axis, amount, cw, ch, onChange, onClose }) {
-    const [dragging, setDragging] = React.useState(/** @type {number|null} */(null));
+export function SwaySpine({ profile, axis, amount, cw, ch, onChange, onClose }: SwaySpineProps) {
+    const [dragging, setDragging] = React.useState<number | null>(null);
     const [wouldDrop, setWouldDrop] = React.useState(false);
-    const svgRef = React.useRef(/** @type {SVGSVGElement|null} */(null));
+    const svgRef = React.useRef<SVGSVGElement | null>(null);
 
     const vertical = axis !== 'x';
     // The span the points run along, and the one they are displaced across. For a vertical axis
@@ -66,14 +81,14 @@ export function SwaySpine({ profile, axis, amount, cw, ch, onChange, onClose }) 
     const points = profile.map((_, i) => at(i));
 
     /** Canvas coordinates for a point. */
-    const xy = (pt) => {
+    const xy = (pt: SwayPoint) => {
         const a = pt.p * along;
         const b = across / 2 + pt.w * reach;
         return vertical ? { x: b, y: a } : { x: a, y: b };
     };
 
-    const toCanvas = (e) => {
-        const r = svgRef.current.getBoundingClientRect();
+    const toCanvas = (e: { clientX: number, clientY: number }) => {
+        const r = svgRef.current!.getBoundingClientRect();
         return {
             x: ((e.clientX - r.left) / r.width) * cw,
             y: ((e.clientY - r.top) / r.height) * ch,
@@ -81,7 +96,7 @@ export function SwaySpine({ profile, axis, amount, cw, ch, onChange, onClose }) 
     };
 
     /** A canvas position as {p, w}: how far along the axis, and how far across it. */
-    const fromCanvas = (c) => {
+    const fromCanvas = (c: { x: number, y: number }) => {
         const a = vertical ? c.y : c.x;
         const b = vertical ? c.x : c.y;
         return {
@@ -91,27 +106,27 @@ export function SwaySpine({ profile, axis, amount, cw, ch, onChange, onClose }) 
         };
     };
 
-    const commit = (next) => onChange(sortSwayProfile(next));
+    const commit = (next: SwayPoint[]) => onChange(sortSwayProfile(next));
 
     /** Keep a press inside the toolbar from reaching the canvas handler behind it. */
-    const swallow = (e) => e.stopPropagation();
+    const swallow = (e: React.SyntheticEvent) => e.stopPropagation();
 
     // Escape leaves. A second way out matters more here than usual: every tap on the canvas does
     // something, so an editor that will not close is an editor that keeps changing the drawing.
     React.useEffect(() => {
-        const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } };
+        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } };
         window.addEventListener('keydown', onKey, true);
         return () => window.removeEventListener('keydown', onKey, true);
     }, [onClose]);
 
-    const grab = (i) => (e) => {
+    const grab = (i: number) => (e: React.PointerEvent) => {
         e.stopPropagation();
         e.preventDefault();
         try { e.currentTarget.setPointerCapture(e.pointerId); } catch { }
         setDragging(i);
     };
 
-    const move = (e) => {
+    const move = (e: React.PointerEvent) => {
         if (dragging == null) return;
         e.preventDefault();
         const { p, w, off } = fromCanvas(toCanvas(e));
@@ -138,7 +153,7 @@ export function SwaySpine({ profile, axis, amount, cw, ch, onChange, onClose }) 
     // renderer cannot tell apart from the first.
     const full = points.length >= MAX_POINTS;
 
-    const addAt = (e) => {
+    const addAt = (e: React.MouseEvent) => {
         if (full) return;   // the toolbar says why; silently ignoring a tap reads as a dead app
         const { p, w } = fromCanvas(toCanvas(e));
         if (points.some(pt => Math.abs(pt.p - p) < TOO_CLOSE)) return;
@@ -147,14 +162,14 @@ export function SwaySpine({ profile, axis, amount, cw, ch, onChange, onClose }) 
 
     // The curve the renderer will follow, sampled through the same function rather than drawn as
     // straight lines between the points - a straight preview of a curved result lies about corners.
-    const curve = [];
+    const curve: string[] = [];
     for (let s = 0; s <= CURVE_STEPS; s++) {
         const p = s / CURVE_STEPS;
         const { x, y } = xy({ p, w: swayWeightAt(profile, p) });
         curve.push(`${s ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`);
     }
     /** A line parallel to the axis, `offset` px across from the resting one. */
-    const line = (offset) => (vertical
+    const line = (offset: number) => (vertical
         ? `M${across / 2 + offset} 0 L${across / 2 + offset} ${along}`
         : `M0 ${across / 2 + offset} L${along} ${across / 2 + offset}`);
 

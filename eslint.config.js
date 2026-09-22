@@ -21,7 +21,8 @@ export default [
     },
     // The same two rules over the TypeScript files (#268). Only the parser differs: ESLint's own
     // cannot read type annotations, and typescript-eslint's needs the JavaScript compiler API
-    // that TypeScript 7 no longer ships - so Babel's parser strips the types instead.
+    // that TypeScript 7 no longer ships - so Babel's parser reads them, with its TypeScript and
+    // JSX syntax plugins and no preset: nothing is transformed, only parsed.
     {
         files: ['src/**/*.{ts,tsx}'],
         plugins: { 'react-hooks': reactHooks },
@@ -31,7 +32,7 @@ export default [
             sourceType: 'module',
             parserOptions: {
                 requireConfigFile: false,
-                babelOptions: { presets: ['@babel/preset-typescript'] },
+                babelOptions: { parserOpts: { plugins: ['typescript', 'jsx'] } },
             },
         },
         rules: {

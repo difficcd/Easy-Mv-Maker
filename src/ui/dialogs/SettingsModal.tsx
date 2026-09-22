@@ -1,12 +1,39 @@
-import { KeyConflicts, KeyRows } from './ToolKeysModal.jsx';
+import { KeyConflicts, KeyRows } from './ToolKeysModal.tsx';
 import { tr } from '../../i18n';
 import { TOOL_PREFIX } from '../../core/shortcuts.ts';
-import { Modal } from '../Modal.jsx';
+import { Modal } from '../Modal.tsx';
 import { fmt } from '../../core/timeCode.ts';
-import { NumField, clampNum } from '../NumField.jsx';
+import { NumField, clampNum } from '../NumField.tsx';
+import type { BakePlan } from '../../core/timeScale.ts';
+import type { KeymapEditorProps } from './ToolKeysModal.tsx';
+
+/** The settings dialog: its tab, the theme, the keymap editor, the language, and the playback speed with its bake. */
+export interface SettingsProps extends KeymapEditorProps {
+    tab: string;
+    setTab: (tab: string) => void;
+    onClose: () => void;
+    themeColor: string;
+    setThemeColor: (c: string) => void;
+    themeRecent: string[];
+    defaultTheme: string;
+    uiSat: number;
+    setUiSat: (v: number) => void;
+    conflicts: Record<string, string[]>;
+    lang: string;
+    changeLang: (lang: string) => void;
+    videoOpacity: number | undefined;
+    setVideoOpacity: (v: number) => void;
+    setShowToolKeys: (on: boolean) => void;
+    playbackRate: number;
+    setPlaybackRate: (r: number) => void;
+    playbackRates: readonly number[];
+    bakeInfo: BakePlan;
+    bakePlaybackSpeed: () => void;
+}
+
 
 /** A factor as short text: 4 rather than 4.00, 1.5 rather than 1.50. */
-const trim = (n) => String(Math.round(n * 100) / 100);
+const trim = (n: number) => String(Math.round(n * 100) / 100);
 
 // Settings (theme and shortcuts). To rebind, click an entry then press the key you want.
 export function SettingsModal({
@@ -16,7 +43,7 @@ export function SettingsModal({
     keymap, setKeymap, defaultKeys, keyLabels, conflicts, rebinding, setRebinding,
     lang, changeLang, videoOpacity, setVideoOpacity, setShowToolKeys,
     playbackRate, setPlaybackRate, playbackRates, bakeInfo, bakePlaybackSpeed,
-}) {
+}: SettingsProps) {
     return (
         <Modal title={tr('설정')} onClose={onClose} width={520} maxHeight="80vh" className="settings-modal"
             closeOnEscape={!rebinding} panelStyle={{ borderRadius: 10, padding: 20 }}>

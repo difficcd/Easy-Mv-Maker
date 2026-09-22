@@ -1,8 +1,26 @@
 import { tr } from '../../i18n';
-import { Modal } from '../Modal.jsx';
+import { Modal } from '../Modal.tsx';
+/** The scene-detect dialog's settings: how sensitive, and over which part of the video. */
+export interface SceneCfg { threshold: number; rangeOn?: boolean; startText?: string; endText?: string; [k: string]: any }
+/** What the scene-detect dialog reads and drives. */
+export interface SceneDetectProps {
+    sceneCfg: SceneCfg;
+    setSceneCfg: (f: SceneCfg | null | ((v: SceneCfg) => SceneCfg)) => void;
+    /** progress while a detection runs, or null */
+    sceneDetect: { done: number, total: number } | null;
+    runSceneDetect: (cfg: SceneCfg) => void;
+    videoOpacity: number | undefined;
+    setVideoOpacity: (v: number) => void;
+    cancelSceneDetect: () => void;
+    autoSceneDetect: boolean;
+    setAutoSceneDetect: (on: boolean) => void;
+    clearVideoCuts: () => void;
+    hasCuts: boolean;
+}
+
 
 // Scene-change detection settings. Only opens when there is a video overlay.
-export function SceneDetectModal({ sceneCfg, setSceneCfg, sceneDetect, runSceneDetect, videoOpacity, setVideoOpacity, cancelSceneDetect, autoSceneDetect, setAutoSceneDetect, clearVideoCuts, hasCuts }) {
+export function SceneDetectModal({ sceneCfg, setSceneCfg, sceneDetect, runSceneDetect, videoOpacity, setVideoOpacity, cancelSceneDetect, autoSceneDetect, setAutoSceneDetect, clearVideoCuts, hasCuts }: SceneDetectProps) {
     return (
         <Modal title={tr('영상 설정')} onClose={() => setSceneCfg(null)} width={360}
             panelStyle={{ color: '#ccc', fontSize: 12.5 }}>

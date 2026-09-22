@@ -1,7 +1,31 @@
 import { Layers, Undo, Redo, Trash, Repeat, ClipboardPaste, Pipette } from 'lucide-react';
-import { NumField } from './NumField';
+import { NumField } from './NumField.tsx';
 import { tr } from '../i18n';
 import { BRUSH_MIN, BRUSH_MAX } from '../core/brushSize.ts';
+import type React from 'react';
+
+/** The per-tool settings block. All of the brush settings arrive; each block reads only its own tool's. */
+interface ToolSettingsProps {
+    tool: string;
+    isSelectionTool: boolean;
+    softMode: string; setSoftMode: (m: string) => void;
+    rulerMode: string; setRulerMode: (m: string) => void;
+    mosaicBlock: number; setMosaicBlock: (n: number) => void;
+    toolSize: number; setToolSize: (n: number) => void;
+    pressureOn?: boolean; setPressureOn: (on: boolean) => void;
+}
+/** One entry of the tool grid: its id, its label, and the icon that draws it. */
+export interface ToolType { id: string; label: string; Icon: React.ComponentType<{ size?: number }> }
+/** The tools panel's props, grouped by what they are about. */
+export interface ToolsPanelProps {
+    panel: { width: number; onClose: () => void; TOOL_TYPES: readonly ToolType[] };
+    tools: { tool: string; handleSetTool: (tool: string) => void; isSelectionTool: boolean; pickingColor: boolean; pickColor: () => void; hasLassoClip: boolean; pasteLassoSelection: () => void };
+    /** the brush settings; pressureOn defaults on, and the per-tool rest goes to ToolSettings as it is */
+    brush: { color: string; applyColor: (c: string) => void; opacity: number; setOpacity: (v: number) => void } & Omit<ToolSettingsProps, 'tool' | 'isSelectionTool'>;
+    edit: { globalUndo: () => void; globalRedo: () => void; handleClearCut: () => void; doTween: () => void };
+    onion: { onionPrev: boolean; setOnionPrev: (f: (v: boolean) => boolean) => void; onionNext: boolean; setOnionNext: (f: (v: boolean) => boolean) => void };
+}
+
 
 // TOOLS panel: the tool grid, the colour swatch, and whatever settings the current tool has.
 //
@@ -14,7 +38,7 @@ const SIZE_PRESETS = [1, 2, 3, 5, 8, 12, 16, 24, 32, 48, 64, 90, 120, 160];
 // Tools that have no width. They used to fall through to the brush block, which showed a size
 // grid that did nothing under the lasso - a panel that looks like the pen's while the pen is
 // not what is selected reads as the wrong tool being active.
-const NO_SIZE_HINT = {
+const NO_SIZE_HINT: Record<string, () => string> = {
     lasso: () => tr('영역을 둘러 그리세요. 선택되면 위 바에서 이동·크기·회전·기울기·곡률'),
     move: () => tr('선택한 것만 옮깁니다: 텍스트를 찍으면 그 텍스트, 아니면 활성 레이어. Alt로 전체'),
     text: () => tr('탭해서 글을 놓습니다. 있는 글을 탭하면 편집'),
@@ -24,13 +48,13 @@ const NO_SIZE_HINT = {
 /** The settings block under the divider, which is per-tool. */
 function ToolSettings({
     tool, isSelectionTool,
-    // Each block below reads only the settings of its own tool, so the rest are absent by design.
-    softMode = undefined, setSoftMode = undefined,
-    rulerMode = undefined, setRulerMode = undefined,
-    mosaicBlock = undefined, setMosaicBlock = undefined,
-    toolSize = undefined, setToolSize = undefined,
-    pressureOn = true, setPressureOn = undefined,
-}) {
+    // Each block below reads only the settings of its own tool and leaves the rest alone.
+    softMode, setSoftMode,
+    rulerMode, setRulerMode,
+    mosaicBlock, setMosaicBlock,
+    toolSize, setToolSize,
+    pressureOn = true, setPressureOn,
+}: ToolSettingsProps) {
     if (tool === 'soft') {
         return (<>
             <span className="slider-label">{tr('에어 모드')}</span>
@@ -118,7 +142,7 @@ function ToolSettings({
 
 export function ToolsPanel({
     panel, tools, brush, edit, onion,
-}) {
+}: ToolsPanelProps) {
     const { width, onClose, TOOL_TYPES } = panel;
     const { tool, handleSetTool, isSelectionTool, pickingColor, pickColor, hasLassoClip, pasteLassoSelection } = tools;
     // pressureOn defaults on; the rest of the brush settings go to the child as they always did.
