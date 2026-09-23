@@ -10,6 +10,7 @@ import {
     clampFontSize, textFontOf, textLineHeight, measureTextBox,
     textNeedsBox, revealLines, drawTextObject,
 } from '../../src/canvas/textRender.ts';
+import { setCanvasFactory } from '../../src/canvas/canvasFactory.ts';
 
 // A context that writes down what it was asked to do. Width is faked as 10px per character,
 // which is enough for the geometry to be checkable without a font engine.
@@ -23,6 +24,10 @@ const recorder = () => {
         translate: rec('translate'), scale: rec('scale'), rotate: rec('rotate'),
         beginPath: rec('beginPath'), fill: rec('fill'), rect: rec('rect'), roundRect: rec('roundRect'),
         fillText: rec('fillText'), strokeText: rec('strokeText'),
+        // A shadowed text draws its glyphs on a scratch canvas and composites it once, so the
+        // recorder has to own a canvas and be able to take an image back from one.
+        setTransform: rec('setTransform'), clearRect: rec('clearRect'), drawImage: rec('drawImage'),
+        canvas: { width: 1920, height: 1080 },
         measureText: (s) => ({ width: s.length * 10 }),
         createLinearGradient: (...a) => { calls.push(['createLinearGradient', ...a]); return { addColorStop: rec('addColorStop'), __gradient: true }; },
     };
@@ -38,6 +43,24 @@ const recorder = () => {
     }
     return ctx;
 };
+
+// The scratch a shadowed text is drawn on. Node has no document, which is what setCanvasFactory
+// is for: hand back a canvas whose context is another recorder, and the glyphs that went onto the
+// scratch can be read as easily as the ones that went onto the target.
+let scratchCtx = null;
+let scratchGets = 0;
+setCanvasFactory(() => {
+    let cx = null;
+    return {
+        width: 0, height: 0,
+        // textRender keeps one scratch for the life of the module, so this is asked for a context
+        // again on every shadowed text and allocated only on the first. Counting the asks is how
+        // a test tells "no scratch was needed" from "the same one was reused".
+        getContext: () => { cx ||= recorder(); scratchCtx = cx; scratchGets++; return cx; },
+    };
+});
+/** Forget what the reused scratch recorded, so one test does not read another's calls. */
+const resetScratch = () => { if (scratchCtx) scratchCtx.calls.length = 0; };
 const names = (ctx) => ctx.calls.map(c => c[0]);
 const only = (ctx, name) => ctx.calls.filter(c => c[0] === name);
 
@@ -164,15 +187,46 @@ test('drawTextObject: no outline means nothing is stroked at all', () => {
     assert.equal(only(ctx, 'strokeText').length, 0);
 });
 
-test('drawTextObject: the shadow is cast once, not once per line', () => {
-    // Left on, every line would drop a shadow on the one below and the stack would darken.
+test('drawTextObject: the block casts one shadow, and every line is inside it (#340)', () => {
+    // The bug this replaces: the shadow was switched off after the first line, so line two
+    // onwards had none at all. The fix draws the whole block unshadowed on a scratch canvas and
+    // shadows that, so no line casts onto the one below and none is left out.
+    resetScratch();
     const ctx = recorder();
     drawTextObject(ctx, { text: 'a\nb\nc', shadow: true }, {});
+    const scratch = scratchCtx;
+
+    // Every line was drawn, and on the scratch rather than on the target.
+    assert.equal(only(scratch, 'fillText').length, 3);
+    assert.equal(only(ctx, 'fillText').length, 0);
+    // Nothing on the scratch had a visible shadow - that is what stops the lines shadowing each
+    // other. Blanking it counts as no shadow; the scratch is handed over reset.
+    const lit = scratch.calls.filter(c => c[0] === 'set:shadowColor' && c[1] !== 'transparent');
+    assert.deepEqual(lit, [], 'the scratch never sets a shadow of its own');
+    // The target set the shadow and composited the block once, after setting it.
     const n = names(ctx);
-    const firstFill = n.indexOf('fillText');
-    const cleared = ctx.calls.findIndex(c => c[0] === 'set:shadowColor' && c[1] === 'transparent');
-    assert.ok(cleared > firstFill, 'cleared after the first line is drawn');
-    assert.ok(cleared < n.lastIndexOf('fillText'), 'and before the last one');
+    const set = ctx.calls.findIndex(c => c[0] === 'set:shadowColor');
+    assert.ok(set >= 0, 'the target sets a shadow');
+    assert.ok(n.indexOf('drawImage') > set, 'and draws the block through it');
+    assert.equal(only(ctx, 'drawImage').length, 1, 'once');
+});
+
+test('drawTextObject: with no shadow nothing is composited and the glyphs go straight on', () => {
+    const before = scratchGets;
+    const ctx = recorder();
+    drawTextObject(ctx, { text: 'a\nb' }, {});
+    assert.equal(only(ctx, 'fillText').length, 2);
+    assert.equal(only(ctx, 'drawImage').length, 0);
+    assert.equal(scratchGets, before, 'no scratch is even asked for');
+});
+
+test('drawTextObject: a shadowed multi-line text with an outline strokes every line too', () => {
+    // The outline had the same shape of bug waiting in it: it is set per draw, and the lines are
+    // drawn in one pass, so it has to survive onto the scratch with the fills.
+    resetScratch();
+    const ctx = recorder();
+    drawTextObject(ctx, { text: 'a\nb\nc', shadow: true, outline: true }, {});
+    assert.equal(only(scratchCtx, 'strokeText').length, 3);
 });
 
 test('drawTextObject: alpha multiplies the text, the layer and the animation together', () => {
