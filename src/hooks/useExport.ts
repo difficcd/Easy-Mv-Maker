@@ -20,7 +20,8 @@ import { frameExportPlan, exportFileInfo, LONG_EXPORT_FRAMES } from '../core/fra
 import { EXPORT_FPS } from '../core/recordClock.ts';
 import { evaluateFrame } from '../engine/evaluateFrame.ts';
 import { pendingBitmapIds } from '../engine/pendingBitmaps.ts';
-import { scratchCanvas } from '../canvas/scratch.ts';
+import { scratchCanvas, sizeCanvas } from '../canvas/scratch.ts';
+import { makeCanvas } from '../canvas/canvasFactory.ts';
 import { frameName, ZipWriter } from '../export/zip.ts';
 import { GifWriter } from '../export/gif.ts';
 import { downloadBlob } from '../export/download.ts';
@@ -42,9 +43,9 @@ export interface ExportDeps {
     /** the audio element and the graph the recorder taps */
     audio: { audioRef: { current: HTMLAudioElement | null }, audioCtxRef: { current: AudioContext | null }, audioSourceRef: { current: MediaElementAudioSourceNode | null }, audioDestRef: { current: MediaStreamAudioDestinationNode | null }, audioUrl: string | null, audioData: AudioClip | null };
     /** what to export and how big it comes out */
-    range: { playStart: number, playEnd: number, cw: number, ch: number, transparentBg: boolean, transparentFormat: string };
+    range: { playStart: number, playEnd: number, cw: number, ch: number, fw: number, fh: number, transparentBg: boolean, transparentFormat: string };
     /** opening and closing a document, for the multi-piece queue */
-    doc: { buildData: (includeAudio?: boolean, assetSink?: any[] | null, blobsOk?: boolean) => Promise<any>, restore: (data: any, assetBase?: string | null, label?: string) => Promise<boolean>, invalidateCutsUsing: (ids: Iterable<string>) => void, decodeFrameBitmap: (e: StoreEntry) => Promise<ImageBitmap>, paintFrame: (t: number, playing: boolean) => void };
+    doc: { buildData: (includeAudio?: boolean, assetSink?: any[] | null, blobsOk?: boolean) => Promise<any>, restore: (data: any, assetBase?: string | null, label?: string) => Promise<boolean>, invalidateCutsUsing: (ids: Iterable<string>) => void, decodeFrameBitmap: (e: StoreEntry) => Promise<ImageBitmap>, paintFrame: (t: number, playing: boolean) => void, paintOnto: (ctx: CanvasRenderingContext2D, t: number, playing: boolean, fw: number, fh: number) => void };
     /** where progress, failure and the playhead go */
     report: { setLoadProgress: (p: { label: string, done: number, total: number } | null) => void, setAppError: (m: string) => void, setToast: (m: string) => void, setCurrentTime: (t: number) => void, setIsPlaying: (on: boolean) => void };
     /** the same objects usePlayback is given, so the loop and the recorder agree */
@@ -79,7 +80,7 @@ export interface ExportDeps {
 export function useExport({ paint, audio, range, doc, report, recording, ask }: ExportDeps) {
     const { canvasRef, paintFrameRef, currentTimeRef, renderStateRef, bitmapStoreRef, videoStopRef } = paint;
     const { audioRef, audioCtxRef, audioSourceRef, audioDestRef, audioUrl, audioData } = audio;
-    const { playStart, playEnd, cw: CANVAS_W, ch: CANVAS_H, transparentBg, transparentFormat } = range;
+    const { playStart, playEnd, cw: CANVAS_W, ch: CANVAS_H, fw: FRAME_W, fh: FRAME_H, transparentBg, transparentFormat } = range;
     /**
      * The span to export: the one asked for, else the whole range. The dialog asks for one -
      * "let me set the start and the end" - and the defaults it shows are these same two numbers.
@@ -89,7 +90,7 @@ export function useExport({ paint, audio, range, doc, report, recording, ask }: 
         from: r && Number.isFinite(r.from) ? Math.max(0, r.from as number) : playStart,
         to: r && Number.isFinite(r.to) ? (r.to as number) : playEnd,
     });
-    const { buildData, restore, invalidateCutsUsing, decodeFrameBitmap, paintFrame } = doc;
+    const { buildData, restore, invalidateCutsUsing, decodeFrameBitmap, paintFrame, paintOnto } = doc;
     const { setLoadProgress, setAppError, setToast, setCurrentTime, setIsPlaying } = report;
     const { isExporting, exportEndRef, exportStartRef, requestFrameRef, mediaRecorderRef } = recording;
 
@@ -148,8 +149,32 @@ export function useExport({ paint, audio, range, doc, report, recording, ask }: 
      * exporting. A parallel renderer is a thing that agrees with the real one until it quietly
      * does not, and the first anyone hears of it is an export that looks wrong.
      */
+    /**
+     * The surface a frame is captured from, and how to paint it.
+     *
+     * When the frame is the canvas - every project that has not set one - this is the main canvas
+     * painted by the same function the editor uses, and the export path is exactly what it was.
+     *
+     * When they differ the picture has to be produced at the frame's size, and the editing canvas
+     * is not that size: it is the artwork's, deliberately, so the parts the camera travels onto
+     * can be seen and drawn on (#327). So a second canvas is kept, the frame's size, and painted
+     * through the camera. One canvas for the whole export, not one a frame.
+     */
+    const exportCanvas: CanvasSlot = { current: null };
+    const framedExport = () => FRAME_W !== CANVAS_W || FRAME_H !== CANVAS_H;
+    const exportSurface = (): { canvas: HTMLCanvasElement, paint: (t: number) => void } => {
+        if (!framedExport()) {
+            return { canvas: canvasRef.current!, paint: (t: number) => paintFrameRef.current?.(t, true) };
+        }
+        const c = exportCanvas.current || (exportCanvas.current = makeCanvas());
+        sizeCanvas(c, FRAME_W, FRAME_H);
+        const ctx = c.getContext('2d')!;
+        return { canvas: c, paint: (t: number) => paintOnto(ctx, t, true, FRAME_W, FRAME_H) };
+    };
+
     const renderFrameRange = async ({ from, to, fps, capture, onProgress, indexBase = 0 }: { from: number, to: number, fps: number, capture: (src: HTMLCanvasElement, i: number) => Promise<void>, onProgress?: (done: number) => void, indexBase?: number }): Promise<number> => {
-        const canvas = canvasRef.current; if (!canvas) return 0;
+        if (!canvasRef.current) return 0;
+        const surface = exportSurface();
         const count = Math.max(1, Math.round((to - from) * fps));
         for (let i = 0; i < count; i++) {
             const t = from + i / fps;
@@ -166,8 +191,8 @@ export function useExport({ paint, audio, range, doc, report, recording, ask }: 
                 }
                 invalidateCutsUsing(missing);
             }
-            paintFrameRef.current?.(t, true);
-            await capture(canvas, indexBase + i);
+            surface.paint(t);
+            await capture(surface.canvas, indexBase + i);
             // Yield often enough that the progress bar moves and the tab stays answerable.
             if (i % 5 === 0 || i === count - 1) {
                 onProgress?.(indexBase + i + 1);
@@ -227,7 +252,7 @@ export function useExport({ paint, audio, range, doc, report, recording, ask }: 
         // Planned once, from the document that is open: a file has one frame size and each
         // piece has its own canvas. Planning per piece would give a 16:9 piece the same answer
         // and a square one a different one, which is a file no decoder opens.
-        const { gif, fps, gw, gh, delayMs } = frameExportPlan({ format: transparentFormat, cw: CANVAS_W, ch: CANVAS_H });
+        const { gif, fps, gw, gh, delayMs } = frameExportPlan({ format: transparentFormat, cw: FRAME_W, ch: FRAME_H });
         const scratch: CanvasSlot = { current: null };
         // Frame names are padded to a fixed width rather than to the real total, because the total
         // is not known until every piece has been opened - and opening them twice, once to measure
@@ -303,7 +328,7 @@ export function useExport({ paint, audio, range, doc, report, recording, ask }: 
         const { from, to } = span(r);
         // The rates, the scale and the frame count are all in core/frameExport, with the
         // reasoning behind each. The queue above plans through the same function.
-        const { gif, fps, gw, gh, delayMs, total, empty } = frameExportPlan({ format: transparentFormat, cw: CANVAS_W, ch: CANVAS_H, from, to });
+        const { gif, fps, gw, gh, delayMs, total, empty } = frameExportPlan({ format: transparentFormat, cw: FRAME_W, ch: FRAME_H, from, to });
         if (empty) { setToast(tr('내보낼 콘텐츠가 없습니다.')); return; }
         // One scratch canvas for the whole export rather than one a frame.
         const gifScratch: CanvasSlot = { current: null };
@@ -360,8 +385,28 @@ export function useExport({ paint, audio, range, doc, report, recording, ask }: 
         // Frames on request rather than sampled at 30Hz off a 60Hz paint loop - that sampling
         // put two paints in one frame and three in the next, which is the judder in #156. The
         // loop paints on the frame grid and asks for each frame itself (usePlayback).
-        const { stream, requestFrame } = frameSource(canvas, EXPORT_FPS);
-        requestFrameRef.current = requestFrame;
+        // Recorded from the surface the file is made of, which is the main canvas unless a frame
+        // has been set. When one has, the loop still paints the main canvas - that is what the
+        // user watches - and the framed picture is painted into the recording surface at the
+        // moment a frame is asked for, so the two cannot drift apart. The extra paint is only
+        // paid by a project that set a frame.
+        const surface = exportSurface();
+        const { stream, requestFrame } = frameSource(surface.canvas!, EXPORT_FPS);
+        // Where the framed picture gets painted. With requestFrame the recorder asks for each
+        // frame and the surface is painted at that moment, so the two cannot drift apart. Without
+        // it the browser samples the canvas continuously, and there is no callback to hang this
+        // on - so the surface is painted on its own rAF instead, which is the same rate the
+        // sampling runs at. Either way a project with no frame pays nothing: the surface is then
+        // the main canvas, already being painted by the loop.
+        let surfaceTick = 0;
+        const stopSurface = () => { if (surfaceTick) { cancelAnimationFrame(surfaceTick); surfaceTick = 0; } };
+        if (framedExport() && !requestFrame) {
+            const tick = () => { surface.paint(currentTimeRef.current); surfaceTick = requestAnimationFrame(tick); };
+            surfaceTick = requestAnimationFrame(tick);
+        }
+        requestFrameRef.current = framedExport() && requestFrame
+            ? () => { surface.paint(currentTimeRef.current); requestFrame(); }
+            : requestFrame;
         exportStartRef.current = playStart;
         const tracks: MediaStreamTrack[] = [...stream.getVideoTracks()];
         if (audioRef.current && audioUrl && !audioSourceRef.current) { try { audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext!)(); audioDestRef.current = audioCtxRef.current.createMediaStreamDestination(); audioSourceRef.current = audioCtxRef.current.createMediaElementSource(audioRef.current); audioSourceRef.current.connect(audioDestRef.current); audioSourceRef.current.connect(audioCtxRef.current.destination); } catch { } }
@@ -372,6 +417,8 @@ export function useExport({ paint, audio, range, doc, report, recording, ask }: 
         const wasMuted = !!audioRef.current?.muted;
         if (wasMuted) audioRef.current!.muted = false;
         const unmute = () => { if (wasMuted && audioRef.current) audioRef.current.muted = true; };
+        /** Everything that has to stop whether the recording finished or never started. */
+        const cleanUp = () => { stopSurface(); unmute(); };
 
         let mr: MediaRecorder;
         try {
@@ -379,14 +426,14 @@ export function useExport({ paint, audio, range, doc, report, recording, ask }: 
                 downloadBlob(blob, `mv_export.${ext}`);
                 setToast(tr('완료!'));
                 isExporting.current = false; requestFrameRef.current = null;
-                unmute();
+                cleanUp();
             }, {
                 // Asked for explicitly: the browser's own choice is about 2.5 Mbps whatever the
                 // canvas size, which starves a 1080p drawing (#229).
-                videoBitsPerSecond: videoBitrate({ width: canvas.width, height: canvas.height, fps: EXPORT_FPS, mimeType }),
+                videoBitsPerSecond: videoBitrate({ width: surface.canvas!.width, height: surface.canvas!.height, fps: EXPORT_FPS, mimeType }),
                 audioBitsPerSecond: AUDIO_BITRATE,
             });
-        } catch (e: any) { unmute(); setAppError(tr('녹화를 시작할 수 없습니다: ') + e.message); return; }
+        } catch (e: any) { cleanUp(); setAppError(tr('녹화를 시작할 수 없습니다: ') + e.message); return; }
         exportEndRef.current = playEnd; isExporting.current = true; mediaRecorderRef.current = mr; setIsPlaying(true);
     };
 

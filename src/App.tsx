@@ -1646,15 +1646,29 @@ export default function App() {
     };
 
 
-    const paintFrame = useCallback((t: number, playing: boolean) => {
-        const canvas = canvasRef.current; if (!canvas) return;
-        paintFrameOnto(canvas.getContext('2d')!, {
-            t, playing, cw: CANVAS_W, ch: CANVAS_H, cuts, currentCutId, currentCut, transparentBg, selection,
+    /**
+     * Paint the film onto any surface, at any frame size.
+     *
+     * Split out from paintFrame because the export needs the same picture at a different size:
+     * the editing canvas is the artwork's size on purpose - you have to see the parts the camera
+     * travels onto - and the file has to be the frame's. The scratch is shared, which is safe
+     * because nothing paints two surfaces at once.
+     */
+    const paintOnto = useCallback((ctx: CanvasRenderingContext2D, t: number, playing: boolean, fw: number, fh: number) => {
+        paintFrameOnto(ctx, {
+            t, playing, cw: CANVAS_W, ch: CANVAS_H, fw, fh, cuts, currentCutId, currentCut, transparentBg, selection,
             onionPrev, onionNext, videoOverlay, videoEl: vid.elRef.current,
             bitmapStore: bitmapStoreRef.current, requestFrameDecode, ensureLayerCanvas, flattenClipGroup, hiddenByGesture,
             boilPhaseRef, boilTick, measureTextBox, scratch: frameScratch.current,
         });
-    }, [cuts, currentCutId, currentCut, onionPrev, onionNext, selection, layerCanvasCache, frameDecodeTick, videoOverlay, boilTick, dragTick, transparentBg]);
+    }, [cuts, currentCutId, currentCut, onionPrev, onionNext, selection, layerCanvasCache, frameDecodeTick, videoOverlay, boilTick, dragTick, transparentBg, CANVAS_W, CANVAS_H]);
+
+    // The editor paints the whole artwork, so the frame here is the canvas. The frame guide drawn
+    // afterwards is what says which part of it is in shot.
+    const paintFrame = useCallback((t: number, playing: boolean) => {
+        const canvas = canvasRef.current; if (!canvas) return;
+        paintOnto(canvas.getContext('2d')!, t, playing, CANVAS_W, CANVAS_H);
+    }, [paintOnto, CANVAS_W, CANVAS_H]);
 
     paintFrameRef.current = paintFrame;
 
@@ -1894,8 +1908,8 @@ export default function App() {
     const { handleExport, handleExportFrames, handleExportPieces } = useExport({
         paint: { canvasRef, paintFrameRef, currentTimeRef, renderStateRef, bitmapStoreRef, videoStopRef: vid.stopRef },
         audio: { audioRef, audioCtxRef, audioSourceRef, audioDestRef, audioUrl, audioData },
-        range: { playStart: exportStart, playEnd, cw: CANVAS_W, ch: CANVAS_H, transparentBg, transparentFormat },
-        doc: { buildData, restore, invalidateCutsUsing, decodeFrameBitmap, paintFrame },
+        range: { playStart: exportStart, playEnd, cw: CANVAS_W, ch: CANVAS_H, fw: FRAME_W, fh: FRAME_H, transparentBg, transparentFormat },
+        doc: { buildData, restore, invalidateCutsUsing, decodeFrameBitmap, paintFrame, paintOnto },
         report: { setLoadProgress: notices.setProgress, setAppError: notices.setError, setToast: notices.setToast, setCurrentTime, setIsPlaying },
         recording: { isExporting, exportEndRef, exportStartRef, requestFrameRef, mediaRecorderRef },
         ask,
