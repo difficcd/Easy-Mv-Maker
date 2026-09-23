@@ -119,6 +119,12 @@ dependency), and the bundler and `tsc` accept it.
 | `scripts/unused-imports.mjs` | an import nothing in the file uses |
 | `scripts/stroke-writes.mjs` | a write that adds a stroke to a layer without going through `commitStroke` |
 | `scripts/native-dialogs.mjs` | an `alert`, `confirm` or `prompt` in `src/` — a browser that blocks dialogs makes all three fail silently |
+
+Two measuring tools, neither in the gate — they print numbers rather than pass or fail:
+`npm run bench` times the pure hot paths, and `node scripts/profile-frame.mjs` drives a real
+browser against a running dev server and reports frame time, 2d calls per frame attributed to the
+canvas they landed on, and image readbacks. The first cannot see the canvas; the second cannot see
+raster and compositing. Both say so in their own headers.
 | `scripts/i18n-check.mjs` | a `tr()` literal with no English entry, or a dictionary row whose key no longer appears in the source |
 
 Around 1,150 unit tests cover the pure modules under `src/core`, `src/canvas`, `src/engine` and
