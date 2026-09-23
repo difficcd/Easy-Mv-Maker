@@ -1,3 +1,5 @@
+import { makeCanvas } from './canvasFactory.ts';
+import { sizeCanvas, resetCtx } from './scratch.ts';
 import { layoutLine } from '../core/textLayout.ts';
 import { charAnimAt } from '../core/textAnim.ts';
 import type { PerCharAnim } from '../core/textAnim.ts';
@@ -265,42 +267,97 @@ export function drawTextObject(ctx: CanvasRenderingContext2D, t: TextObject, { a
 
     const lines = revealLines(t.text, anim ? anim.chars : null);
 
-    // Either a vertical two-colour gradient down the box, or a flat fill.
-    let fillStyle: string | CanvasGradient = t.color ?? '#000';
-    if (t.gradient && box) {
-        const g = ctx.createLinearGradient(0, box.y, 0, box.y + box.h);
+    // Either a vertical two-colour gradient down the box, or a flat fill. Built against the
+    // context that will draw it - a gradient belongs to the canvas it was created on - so a
+    // shadowed text builds it on the scratch and an unshadowed one on ctx itself.
+    const fillFor = (target: CanvasRenderingContext2D): string | CanvasGradient => {
+        if (!t.gradient || !box) return t.color ?? '#000';
+        const g = target.createLinearGradient(0, box.y, 0, box.y + box.h);
         g.addColorStop(0, t.color ?? '#000');
         g.addColorStop(1, t.color2 || '#ffffff');
-        fillStyle = g;
-    }
+        return g;
+    };
+
+    const x = t.x ?? 0, y = t.y ?? 0;
+    const paint = (target: CanvasRenderingContext2D) => {
+        const fillStyle = fillFor(target);
+        // A curve and a staggered entrance both need the characters placed one at a time, and
+        // they compose: text can arc and drop in at once.
+        if (t.curve || anim?.perChar) {
+            drawPerChar(target, t, lines, { x, y, lineHeight, fontSize, fillStyle, perChar: anim?.perChar ?? null });
+            return;
+        }
+        // The outline is stroked under every line before any line is filled, or a descender from
+        // the line above would be overdrawn by the next line's outline.
+        if (setOutline(target, t, fontSize)) {
+            for (let i = 0; i < lines.length; i++) target.strokeText(lines[i], x, y + i * lineHeight);
+        }
+        target.fillStyle = fillStyle;
+        for (let i = 0; i < lines.length; i++) target.fillText(lines[i], x, y + i * lineHeight);
+    };
 
     if (t.shadow) {
+        // The block casts one shadow, not one per line.
+        //
+        // This used to be done by drawing the first line and then switching the shadow off, which
+        // did stop each line dropping a shadow onto the line beneath it - and also left every
+        // line after the first with no shadow at all (#340). On the per-character path it was
+        // worse: the first line's glyphs still shadowed each other, and the rest had none.
+        //
+        // Drawing the finished block and shadowing *that* is what the original comment was
+        // reaching for. The glyphs go onto a scratch canvas with no shadow, and the scratch is
+        // composited once with the shadow set, so there is nothing for the lines to cast onto
+        // each other and every line is covered.
+        const sctx = textScratch(ctx.canvas.width, ctx.canvas.height);
+        copyTextState(ctx, sctx, t);
+        paint(sctx);
         ctx.shadowColor = t.shadowColor || 'rgba(0,0,0,0.5)';
         ctx.shadowBlur = t.shadowBlur ?? 6;
         ctx.shadowOffsetX = t.shadowDX ?? 2;
         ctx.shadowOffsetY = t.shadowDY ?? 2;
-    }
-    const x = t.x ?? 0, y = t.y ?? 0;
-
-    // A curve and a staggered entrance both need the characters placed one at a time, and they
-    // compose: text can arc and drop in at once.
-    if (t.curve || anim?.perChar) {
-        drawPerChar(ctx, t, lines, { x, y, lineHeight, fontSize, fillStyle, perChar: anim?.perChar ?? null });
-        try { ctx.letterSpacing = '0px'; } catch { }
-        ctx.restore();
-        return;
-    }
-
-    if (setOutline(ctx, t, fontSize)) {
-        for (let i = 0; i < lines.length; i++) ctx.strokeText(lines[i], x, y + i * lineHeight);
-    }
-    ctx.fillStyle = fillStyle;
-    for (let i = 0; i < lines.length; i++) {
-        ctx.fillText(lines[i], x, y + i * lineHeight);
-        if (i === 0) shadowCastOnce(ctx, t);
+        // Drawn through the transform already on ctx, so the offset stays in the same units it
+        // always was - a shadow under a zoomed camera scales with the camera, as before.
+        ctx.drawImage(sctx.canvas, 0, 0);
+    } else {
+        paint(ctx);
     }
     try { ctx.letterSpacing = '0px'; } catch { }
     ctx.restore();
+}
+
+/**
+ * The scratch a shadowed text is drawn on: the size of the target canvas, blank, untransformed.
+ *
+ * Its own, rather than the one strokes.ts keeps: the two are never in use at the same moment
+ * today - layers are drawn, then texts - but sharing one would make that ordering load-bearing
+ * and silent if it ever changed.
+ *
+ * Canvas-sized rather than text-sized on purpose. A tight box would have to allow for the
+ * outline width, the shadow's blur and offset, a curve, and per-character displacement, and
+ * getting any of those wrong clips the text. Worth revisiting only if it measures.
+ */
+let _textScratch: HTMLCanvasElement | null = null;
+function textScratch(w: number, h: number): CanvasRenderingContext2D {
+    const scratch = _textScratch || (_textScratch = makeCanvas());
+    const cx = sizeCanvas(scratch, w, h)
+        ? scratch.getContext('2d')!                        // a resize already blanked it
+        : (() => { const c = scratch.getContext('2d')!; c.clearRect(0, 0, w, h); return c; })();
+    return resetCtx(cx);
+}
+
+/**
+ * Carry the text state onto the scratch, so what is drawn there is what would have been drawn.
+ *
+ * Deliberately not the transform: the scratch holds the block in plain canvas coordinates and
+ * the composite goes through ctx's transform, which is what keeps the shadow in the same units
+ * as before. Nor the alpha - the scratch draws at full strength and ctx's alpha applies to the
+ * finished block, which is also what stops a per-character fade being applied twice.
+ */
+function copyTextState(from: CanvasRenderingContext2D, to: CanvasRenderingContext2D, t: TextObject): void {
+    to.font = from.font;
+    to.textAlign = from.textAlign;
+    to.textBaseline = from.textBaseline;
+    try { to.letterSpacing = `${t.letterSpacing || 0}px`; } catch { }
 }
 
 
@@ -321,21 +378,6 @@ function setOutline(ctx: CanvasRenderingContext2D, t: { outline?: any, outlineCo
     return true;
 }
 
-/**
- * Turn the shadow off after the first thing drawn, so the block casts one shadow rather than
- * one per line or per character - left on, each line drops a shadow onto the line beneath it
- * and the stack darkens as it goes down.
- *
- * @param {CanvasRenderingContext2D} ctx
- * @param {{shadow?: any}} t
- */
-function shadowCastOnce(ctx: CanvasRenderingContext2D, t: { shadow?: any }): void {
-    if (!t.shadow) return;
-    ctx.shadowColor = 'transparent';
-    ctx.shadowBlur = 0;
-    ctx.shadowOffsetX = 0;
-    ctx.shadowOffsetY = 0;
-}
 
 /**
  * Draw the lines one character at a time: along an arc, with a staggered entrance, or both.
@@ -399,8 +441,6 @@ function drawPerChar(ctx: CanvasRenderingContext2D, t: TextObject, lines: string
         }
 
         seen += chars.length;
-
-        if (i === 0) shadowCastOnce(ctx, t);
     }
     ctx.textAlign = align;
 }
