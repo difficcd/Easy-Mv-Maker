@@ -100,3 +100,46 @@ test('putAsset: an extension is escaped rather than trusted into the query', asy
     await putAsset(`${base}/api/projects/p_1`, { id: 'f', ext: 'we bp&x=1', blob }, 'nope');
     assert.equal(lastPut.query, 'ext=we%20bp%26x%3D1');
 });
+
+// --- waiting out a rate limit (#the 120-frame save) --------------------------------------------
+//
+// Saving externalises every frame as its own upload, so a save costs `frames + 2` writes. Any
+// ceiling the server picks can be reached by a big enough project, and failing there is the worst
+// outcome available: the manifest is written last, so every frame uploads and then nothing is
+// committed. These pin the arithmetic that turns that into "slower" instead.
+
+import { retryDelayMs } from '../../src/core/api.ts';
+
+test('retryDelayMs: the server is believed when it says how long to wait', () => {
+    assert.equal(retryDelayMs('1', 0), 1000);
+    assert.equal(retryDelayMs('3', 0), 3000);
+});
+
+test('retryDelayMs: no header means back off, doubling', () => {
+    // A server that rate limits without saying for how long still has to be backed off.
+    assert.equal(retryDelayMs(null, 0), 250);
+    assert.equal(retryDelayMs(null, 1), 500);
+    assert.equal(retryDelayMs(null, 2), 1000);
+    assert.ok(retryDelayMs(null, 3) > retryDelayMs(null, 2));
+});
+
+test('retryDelayMs: junk is treated as no header rather than as zero', () => {
+    // Zero would busy-loop against the thing that just asked to be left alone.
+    for (const h of ['', 'soon', '-5', '0', undefined, NaN]) {
+        assert.ok(retryDelayMs(h, 0) >= 200, `${h} gave ${retryDelayMs(h, 0)}`);
+    }
+});
+
+test('retryDelayMs: a wild Retry-After cannot stall a save for an hour', () => {
+    assert.ok(retryDelayMs('3600', 0) <= 5000);
+    assert.ok(retryDelayMs('99999', 5) <= 5000);
+});
+
+test('retryDelayMs: never busy-loops, never stalls, whatever it is given', () => {
+    for (const h of [null, '0', '1', '600', 'x']) {
+        for (let a = 0; a < 10; a++) {
+            const ms = retryDelayMs(h, a);
+            assert.ok(ms >= 200 && ms <= 5000, `${h}/${a} gave ${ms}`);
+        }
+    }
+});

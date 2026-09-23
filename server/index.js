@@ -31,8 +31,18 @@ app.use(express.json({ limit: '256mb' })); // projects embed base64 bitmaps, so 
 // The importer gets its own, much tighter, tier: each call starts a yt-dlp process that downloads
 // from someone else's servers. Hammering that costs the host bandwidth and gets the address
 // blocked by YouTube, which breaks the feature for everybody using that machine.
-const readLimit = createRateLimiter({ capacity: 240, perSecond: 8 });    // listing and fetching
-const writeLimit = createRateLimiter({ capacity: 120, perSecond: 2 });   // saves, uploads, deletes
+//
+// The write tier is sized by what one save costs, which is not one request. Saving a project
+// externalises every frame as its own upload, so a save is `frames + 2` writes - the record and
+// the manifest. At a capacity of 120 a 120-frame project uploaded every frame and then failed on
+// the manifest: all of the work, none of the result, and a retry started from an emptier bucket.
+// A frame-per-cut animation reaching a thousand frames is ordinary, so the ceiling is set past
+// that, and the refill is quick enough that consecutive saves do not accumulate.
+//
+// This is still a brake: a runaway loop is held to 40 writes a second rather than allowed to
+// spin. It was never access control, which remains open and is tracked on #41.
+const readLimit = createRateLimiter({ capacity: 2400, perSecond: 80 });   // listing and fetching
+const writeLimit = createRateLimiter({ capacity: 1200, perSecond: 40 });  // saves, uploads, deletes
 const importLimit = createRateLimiter({ capacity: 4, perSecond: 0.05 }); // ~3 a minute, sustained
 
 app.get('/api/*splat', rateLimit(readLimit, 'requests'));
