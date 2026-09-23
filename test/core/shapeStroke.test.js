@@ -97,3 +97,53 @@ test('shapePoints dispatches on the tool, and passes anything else through', () 
     assert.equal(shapePoints('line', p(0, 0), p(1, 1)), null, 'the line ruler is not a shape');
     assert.equal(shapePoints('brush', p(0, 0), p(1, 1)), null);
 });
+
+// --- why a ruler shape must not be smoothed (#342) --------------------------------------------
+//
+// A shape is committed as an ordinary brush stroke, which is a good design - it then takes the
+// brush, boils, erases, saves and loads with no new branch anywhere. But the renderer smooths a
+// brush stroke, and smoothing is the wrong thing to do to points that are already exact.
+//
+// These pin the damage rather than the fix, because the damage is the reason the fix exists. If
+// smoothPoints ever stops mangling a rectangle these can go; until then they say what would come
+// back if the exemption in canvas/strokes.ts were dropped.
+
+import { smoothPoints } from '../../src/canvas/strokes.ts';
+
+/** The tightest box containing every point. */
+const span = (pts) => ({
+    x0: Math.min(...pts.map(p => p.x)), x1: Math.max(...pts.map(p => p.x)),
+    y0: Math.min(...pts.map(p => p.y)), y1: Math.max(...pts.map(p => p.y)),
+});
+
+test('smoothing a rectangle bows it well outside the box that was dragged', () => {
+    const asked = { x0: 100, x1: 500, y0: 100, y1: 400 };
+    const got = span(smoothPoints(rectPoints(p(100, 100), p(500, 400))));
+    // Thirty to fifty pixels out on every side, which is what "the rectangle is wonky" was.
+    assert.ok(got.x0 < asked.x0 - 20, `left edge should overshoot, got ${got.x0}`);
+    assert.ok(got.x1 > asked.x1 + 20, `right edge should overshoot, got ${got.x1}`);
+    assert.ok(got.y0 < asked.y0 - 10, `top edge should overshoot, got ${got.y0}`);
+    assert.ok(got.y1 > asked.y1 + 10, `bottom edge should overshoot, got ${got.y1}`);
+});
+
+test('the rectangle as given is exactly the box that was dragged', () => {
+    // What the renderer now draws, because the stroke is marked straight.
+    assert.deepEqual(span(rectPoints(p(100, 100), p(500, 400))), { x0: 100, x1: 500, y0: 100, y1: 400 });
+});
+
+test('an ellipse keeps its bounds either way, which is why only the rectangle was noticed', () => {
+    const raw = ellipsePoints(p(100, 100), p(500, 400));
+    const a = span(raw), b = span(smoothPoints(raw));
+    for (const k of ['x0', 'x1', 'y0', 'y1']) assert.ok(Math.abs(a[k] - b[k]) < 1, `${k}: ${a[k]} vs ${b[k]}`);
+});
+
+test('not smoothing a shape is also far less work', () => {
+    // Five points became 5,824, and an already-tessellated ellipse 4,432. Every one of those is
+    // a segment the brush then draws, on every repaint of the layer.
+    const rect = rectPoints(p(100, 100), p(500, 400));
+    assert.equal(rect.length, 5);
+    assert.ok(smoothPoints(rect).length > 1000, 'the smoothed rectangle is enormous');
+
+    const ell = ellipsePoints(p(100, 100), p(500, 400));
+    assert.ok(smoothPoints(ell).length > 10 * ell.length, 'and so is the smoothed ellipse');
+});

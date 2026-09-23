@@ -142,3 +142,46 @@ test('the bucket fill stays inside the closed region', () => {
     // And the box itself is the inside of the ring, not the sheet.
     assert.ok(x >= 60 && x + filled.width <= 141 && y >= 20 && y + filled.height <= 101, `box ${x},${y} ${filled.width}x${filled.height}`);
 });
+
+// --- a ruler shape is drawn where it was dragged (#342) ---------------------------------------
+//
+// The unit tests in core/shapeStroke show what smoothing does to a rectangle's points. These
+// check the thing that matters: that the renderer honours `straight` and the ink lands on the
+// box. Without the exemption the same drag paints thirty to fifty pixels outside it on every
+// side, which is what "the rectangle is wonky" looked like.
+
+const RECT = [
+    { x: 40, y: 30 }, { x: 160, y: 30 }, { x: 160, y: 90 }, { x: 40, y: 90 }, { x: 40, y: 30 },
+];
+
+test('a straight shape paints inside the box it was dragged, with the corners sharp', () => {
+    const { c, ctx } = fresh();
+    drawStrokesOnCtx(ctx, [stroke({ points: RECT, straight: true, size: 4 })], false, new Map());
+    const { n, box } = ink(c);
+    assert.ok(n > 200, `only ${n} ink pixels`);
+    // The box, plus half the brush and a pixel for anti-aliasing. Nothing beyond it.
+    const slack = 4;
+    assert.ok(box.x0 >= 40 - slack && box.x1 <= 160 + slack, `x ${box.x0}..${box.x1}`);
+    assert.ok(box.y0 >= 30 - slack && box.y1 <= 90 + slack, `y ${box.y0}..${box.y1}`);
+});
+
+test('the same shape without the flag spills outside it - the bug the flag exists for', () => {
+    const { c, ctx } = fresh();
+    drawStrokesOnCtx(ctx, [stroke({ points: RECT, size: 4 })], false, new Map());
+    const { box } = ink(c);
+    const slack = 4;
+    const spilled = box.x0 < 40 - slack || box.x1 > 160 + slack || box.y0 < 30 - slack || box.y1 > 90 + slack;
+    assert.ok(spilled, `smoothing should push the ink outside the box, got x ${box.x0}..${box.x1} y ${box.y0}..${box.y1}`);
+});
+
+test('a straight shape still boils with the layer, rather than being left stiff', () => {
+    // The exemption is from smoothing, not from the boiling line. A shape on a boiling layer
+    // has to wobble with everything around it or it reads as pasted on.
+    const still = fresh(), boiling = fresh();
+    const s = stroke({ points: RECT, straight: true, size: 4 });
+    drawStrokesOnCtx(still.ctx, [s], false, new Map());
+    drawStrokesOnCtx(boiling.ctx, [s], false, new Map(), { roughen: 3 });
+    // The bounding box barely moves for a three-pixel wobble, so count the ink instead: a
+    // displaced outline covers a different set of pixels even when it spans the same box.
+    assert.notEqual(ink(boiling.c).n, ink(still.c).n, 'the boiling shape is identical to the still one');
+});
