@@ -20,6 +20,8 @@ import { clampCanvasSize } from './canvasSize.ts';
 /** The settings a stored project restores, each clamped to what the app accepts. */
 export interface ProjectSettings {
     canvas: { w: number, h: number } | null;
+    /** the picture that comes out, when it is not simply the canvas */
+    frame: { w: number, h: number } | null;
     numTracks: number;
     currentCutId: any;
     onionPrev: boolean;
@@ -59,6 +61,11 @@ export function projectSettings(data: any): ProjectSettings {
     return {
         // Half a size is treated as none at all: a width with no height gives a canvas of NaN.
         canvas: clampCanvasSize(data?.canvas?.w, data?.canvas?.h),
+        // The frame is what the camera sees and what the file is; the canvas is the artwork,
+        // which may be bigger (#327). Null means the project never set one, and the frame is
+        // then the canvas - which is every project written before this existed. Clamped the same
+        // way, for the same reason: a file is the easiest place to get a wrong number in.
+        frame: clampCanvasSize(data?.frame?.w, data?.frame?.h),
         // Absent and wrong are different, and `||` cannot tell them apart - which is what the
         // onion-skin flags below are tested for. So absence is `??`, and a value that is present
         // but unusable is clamped rather than replaced: a stored zoom of 0 becomes the smallest

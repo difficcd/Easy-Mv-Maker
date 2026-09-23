@@ -28,7 +28,7 @@ comments - and anywhere someone is representing the project.
 
 ## Reporting
 
-Email the maintainer at owlee1214@gmail.com, or open an issue if it is something that can be
+Email the maintainer at leeow1214@gmail.com, or open an issue if it is something that can be
 discussed in public. Reports are read by one person, the maintainer, and are not shared.
 
 There is no committee and no appeals process, because there is one maintainer. What happens in

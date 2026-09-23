@@ -26,7 +26,9 @@ export interface TopBarProps {
         recentVideos: Array<{ id: any, name: string }>; reimportRecent: (v: any) => void;
     };
     /** the resolution and the zoom */
-    canvas: { canvasW: number; canvasH: number; setCanvasSize: (size: { w: number, h: number }) => void; view: View; zoomCanvas: (factor: number) => void; resetView: () => void };
+    canvas: { canvasW: number; canvasH: number; setCanvasSize: (size: { w: number, h: number }) => void; view: View; zoomCanvas: (factor: number) => void; resetView: () => void;
+        /** the output size, or null when it is simply the canvas */
+        frameSize: { w: number, h: number } | null; setFrameSize: (s: { w: number, h: number } | null) => void };
     dialogs: { setShowHelp: (on: boolean) => void; setShowSettings: (on: boolean) => void; keymap: Keymap };
     /** how to ask for a custom canvas size */
     ask: Ask;
@@ -40,7 +42,7 @@ export function TopBar({
     const { doNew, doSave, doOpen, doLocalSave, openLocalList, doServerSave, openServerList, doServerBackup, openBackupList, backupBusy, doSplitSave, handleExportPieces, handleExport } = project;
     const { autoSavedAt, autosaveErr, backupAt, storageInfo, serverAvailable, setToast } = status;
     const { handleAudioUpload, loadYoutubeAudio, handleDeleteAudio, audioFile, openVideoImport, loadYoutubeVideo, videoFileRef, recentVideos, reimportRecent } = media;
-    const { canvasW, canvasH, setCanvasSize, view, zoomCanvas, resetView } = canvas;
+    const { canvasW, canvasH, setCanvasSize, view, zoomCanvas, resetView, frameSize, setFrameSize } = canvas;
     const { setShowHelp, setShowSettings, keymap } = dialogs;
     // The two menus are this bar's own: which is open, and where its edge is for the
     // outside-press that closes it. App used to hold both for no reason of its own.
@@ -141,6 +143,31 @@ export function TopBar({
                 }}>
                 {['1280x720', '1920x1080', '2560x1440', '3840x2160', '1080x1080', '2048x2048', '1080x1920', '2160x3840'].map(v => <option key={v} value={v}>{v}{v === '3840x2160' ? ' (4K)' : ''}</option>)}
                 {!['1280x720', '1920x1080', '2560x1440', '3840x2160', '1080x1080', '2048x2048', '1080x1920', '2160x3840'].includes(`${canvasW}x${canvasH}`) && <option value={`${canvasW}x${canvasH}`}>{canvasW}x{canvasH}</option>}
+                <option value="custom">{tr('직접 입력…')}</option>
+            </select>
+            {/* The frame: what the camera sees and what the exported file is, when that is not
+                simply the canvas. Beside the canvas size because the two are read together - the
+                whole point is that the canvas can be the larger of them (#327). */}
+            <select className="time-input" style={{ height: 30, width: 128 }} title={tr('출력 화면 크기 — 캔버스보다 작게 하면 그 밖에도 그릴 수 있고, 카메라가 그 위를 움직입니다')}
+                value={frameSize ? `${frameSize.w}x${frameSize.h}` : 'canvas'}
+                onChange={async e => {
+                    if (e.target.value === 'canvas') { setFrameSize(null); return; }
+                    if (e.target.value === 'custom') {
+                        const v = await ask.prompt(tr('출력 크기 (가로x세로)'), { value: `${frameSize?.w ?? canvasW}x${frameSize?.h ?? canvasH}`, okLabel: tr('적용') });
+                        if (!v) return;
+                        const m = v.match(/(\d+)\s*[xX*,\s]\s*(\d+)/);
+                        if (!m) { setToast(tr('예: 1920x1080')); return; }
+                        const size = clampCanvasSize(m[1], m[2]);
+                        if (size) setFrameSize(size);
+                        return;
+                    }
+                    const [w, h] = e.target.value.split('x').map(Number);
+                    setFrameSize({ w, h });
+                }}>
+                <option value="canvas">{tr('출력: 캔버스 전체')}</option>
+                {['1280x720', '1920x1080', '1080x1080', '1080x1920'].map(v => <option key={v} value={v}>{tr('출력')}: {v}</option>)}
+                {frameSize && !['1280x720', '1920x1080', '1080x1080', '1080x1920'].includes(`${frameSize.w}x${frameSize.h}`)
+                    && <option value={`${frameSize.w}x${frameSize.h}`}>{tr('출력')}: {frameSize.w}x{frameSize.h}</option>}
                 <option value="custom">{tr('직접 입력…')}</option>
             </select>
             <button className="icon-btn" onClick={() => setShowHelp(true)} title={tr('단축키 · 도움말')} style={{ fontSize: 13, fontWeight: 700, width: 24, height: 24 }}>?</button>

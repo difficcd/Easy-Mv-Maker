@@ -575,6 +575,10 @@ const EN: Record<string, string> = {
 
     // -- Shared --------------------------------------------
     '취소': 'Cancel',
+    '출력 화면 크기 — 캔버스보다 작게 하면 그 밖에도 그릴 수 있고, 카메라가 그 위를 움직입니다': 'Output size - set it smaller than the canvas and you can draw outside it, with the camera travelling across',
+    '출력 크기 (가로x세로)': 'Output size (width x height)',
+    '출력: 캔버스 전체': 'Output: the whole canvas',
+    '출력': 'Out',
     '확인': 'OK',
     '저장': 'Save',
     '만들기': 'Create',

@@ -16,7 +16,8 @@ test('projectSettings: takes what the file says', () => {
         onionPrev: true, onionNext: true, cuts: [{ id: 42 }],
     });
     assert.deepEqual(s, {
-        canvas: { w: 1080, h: 1920 }, numTracks: 4, currentCutId: 42,
+        // No frame in the file, so none in the settings: the app reads that as frame == canvas.
+        canvas: { w: 1080, h: 1920 }, frame: null, numTracks: 4, currentCutId: 42,
         onionPrev: true, onionNext: true, pps: 80,
     });
 });
@@ -186,4 +187,33 @@ test('makeLoadProgress: nothing to load is not a division by zero', () => {
     const { heavy, tick } = makeLoadProgress(0, () => { throw new Error('should not report'); });
     assert.equal(heavy, false);
     tick();
+});
+
+// --- the frame: the picture that comes out, when it is not the canvas (#327) -------------------
+
+test('projectSettings: a project with no frame gets null, not the canvas', () => {
+    // Null means "never set one", which is every project written before the frame existed. The
+    // app reads that as frame == canvas; recording it as the canvas here would make an absent
+    // frame indistinguishable from one deliberately set to the canvas size.
+    assert.equal(projectSettings({ canvas: { w: 1920, h: 1080 } }).frame, null);
+    assert.equal(projectSettings({}).frame, null);
+});
+
+test('projectSettings: a frame smaller than the canvas is kept as written', () => {
+    const s = projectSettings({ canvas: { w: 5760, h: 1080 }, frame: { w: 1920, h: 1080 } });
+    assert.deepEqual(s.canvas, { w: 5760, h: 1080 });
+    assert.deepEqual(s.frame, { w: 1920, h: 1080 });
+});
+
+test('projectSettings: a junk frame is refused the same way a junk canvas is', () => {
+    // A file is the easiest place to get a wrong number into, and a frame of NaN would make every
+    // downstream division NaN rather than failing here.
+    for (const frame of [{ w: 0, h: 1080 }, { w: 1920 }, { w: 'x', h: 'y' }, null]) {
+        assert.equal(projectSettings({ canvas: { w: 1920, h: 1080 }, frame }).frame, null, JSON.stringify(frame));
+    }
+});
+
+test('projectSettings: an absurd frame is clamped rather than taken', () => {
+    const s = projectSettings({ canvas: { w: 1920, h: 1080 }, frame: { w: 100000, h: 100000 } });
+    assert.ok(s.frame.w <= 8192 && s.frame.h <= 8192, JSON.stringify(s.frame));
 });

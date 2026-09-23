@@ -107,8 +107,12 @@ index signature, so a misspelt one is an error. Ids there are `DocId` - a number
   nothing outside the canvas to pan onto. #327 wants a long background the camera travels across,
   so the **canvas** becomes the artwork and the **frame** what the file is. A document with no
   frame gets frame == canvas — every project today — and every function here is then the identity.
-  `framePaint` places the artwork through it; the UI to set a frame, and presets that use the
-  room instead of zooming for it, are still to come.
+  `framePaint` places the artwork through it, the top bar sets it, and `drawFrameGuide` outlines
+  it over the artwork while editing. The editor deliberately paints the whole canvas rather than
+  the frame - you have to see and draw the parts the camera will travel onto - so the frame is a
+  guide there, exactly as the camera is playback-only for the same reason. **The export still
+  renders the canvas, not the frame**; that, and presets that use the room instead of zooming to
+  make some, are still to come.
 
 **engine/** — what a frame *is*, with no canvas anywhere near it. TypeScript; `Scene`,
 `EvaluatedCut` and `EvaluatedGroup` in `evaluateFrame.ts` are the renderer's whole input, named.
