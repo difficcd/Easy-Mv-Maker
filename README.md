@@ -16,7 +16,7 @@
   <img src="https://img.shields.io/badge/HTML5%20Canvas-2D-E34F26?logo=html5&logoColor=fff" alt="HTML5 Canvas 2D">
   <img src="https://img.shields.io/badge/Express-API-000000?logo=express&logoColor=fff" alt="Express API">
   <img src="https://img.shields.io/badge/Capacitor-Android-119EFF?logo=capacitor&logoColor=fff" alt="Capacitor Android">
-  <img src="https://img.shields.io/badge/License-Apache%202.0-D22128?logo=apache&logoColor=fff" alt="License Apache 2.0">
+  <img src="https://img.shields.io/badge/License-AGPL%20v3-A42E2B?logo=gnu&logoColor=fff" alt="License AGPL v3">
 </p>
 
 <p align="center">
@@ -223,11 +223,20 @@ Video import is intended for local, personal use. Respect the source service's t
 
 ## License
 
-[Apache-2.0](LICENSE). Use it, fork it, ship it, commercially or not - keep the licence and the
-copyright notice, and say what you changed. Apache rather than MIT for the patent grant in
-section 3: it is what makes contributing safe for anyone whose employer has a legal department.
+[AGPL-3.0](LICENSE). Use it, change it, share it, for nothing. The condition is the one that
+keeps that true: if you give out a changed version - as a download **or** by running it for
+other people over a network - the source of your version has to be available under this same
+licence.
+
+That is the point rather than a formality. A permissive licence lets someone take this, close
+it, and sell it; AGPL does not. It does not forbid charging money, and nothing stops a company
+using it - but whoever they hand it to gets the source too, and may pass it on for free, so
+there is nothing to be gained by putting a price on someone else's work.
+
+**What you make with it is yours.** The licence covers this program, not the videos you draw in
+it. Music videos, client work, a monetised channel - none of that is affected.
 
 Contributions are welcome and are accepted selectively - the core is not redesigned by pull
 request, and anything larger than a small fix starts with an issue. See
-[CONTRIBUTING.md](CONTRIBUTING.md). Opening a pull request licenses it under Apache-2.0
-(section 5), so there is nothing else to sign and you keep your copyright.
+[CONTRIBUTING.md](CONTRIBUTING.md). A pull request is offered under AGPL-3.0, the same licence
+as the project; you keep the copyright in what you wrote.

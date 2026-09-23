@@ -22,9 +22,14 @@ works up front, so nobody writes a week of work into a wall:
 - **The maintainer decides.** A pull request can be declined for not fitting the direction, not
   only for being wrong. That is not a judgement of the work.
 
-By opening a pull request you agree that your contribution is licensed under Apache-2.0, the
-project's own licence. That is section 5 of the licence text, so there is no separate agreement
-to sign and no copyright to hand over - you keep yours.
+By opening a pull request you offer your contribution under [AGPL-3.0](LICENSE), the same
+licence as the project. There is no separate agreement to sign and no copyright to hand over -
+you keep yours; the project simply distributes it under the licence it already uses.
+
+One consequence worth knowing, because it is easier to say now than to discover later: since
+every contributor keeps their copyright, the project cannot be relicensed - to ship in an app
+store, say, whose terms AGPL does not fit - without asking each of them. That is the trade for
+having no CLA, and it is deliberate: the licence staying put is the point.
 
 
 **Before writing a helper, look in [HELPERS.md](HELPERS.md).** It indexes every shared export,

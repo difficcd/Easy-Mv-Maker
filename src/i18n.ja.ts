@@ -394,6 +394,7 @@ export const JA: Record<string, string> = {
     '단축키 · 제스처': 'ショートカットとジェスチャー',
     '키보드': 'キーボード',
     '펜 / 손가락': 'ペンと指',
+    '소스 코드': 'ソースコード',
     '팁': 'ヒント',
     'Ctrl+Z 실행취소 · Ctrl+Shift+Z / Ctrl+Y 다시실행': 'Ctrl+Zで元に戻す・Ctrl+Shift+Z / Ctrl+Yでやり直す',
     'Ctrl+C 컷 복사 · Ctrl+V 붙여넣기 · Ctrl+D 다음 프레임 복제': 'Ctrl+Cでカットをコピー・Ctrl+Vで貼り付け・Ctrl+Dで次のフレームに複製',

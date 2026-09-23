@@ -425,6 +425,7 @@ const EN: Record<string, string> = {
     '단축키 · 제스처': 'Shortcuts and gestures',
     '키보드': 'Keyboard',
     '펜 / 손가락': 'Pen and finger',
+    '소스 코드': 'Source code',
     '팁': 'Tip',
     'Ctrl+Z 실행취소 · Ctrl+Shift+Z / Ctrl+Y 다시실행': 'Ctrl+Z undo · Ctrl+Shift+Z / Ctrl+Y redo',
     'Ctrl+C 컷 복사 · Ctrl+V 붙여넣기 · Ctrl+D 다음 프레임 복제': 'Ctrl+C copy cut · Ctrl+V paste · Ctrl+D duplicate to next frame',

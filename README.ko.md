@@ -16,7 +16,7 @@
   <img src="https://img.shields.io/badge/HTML5%20Canvas-2D-E34F26?logo=html5&logoColor=fff" alt="HTML5 Canvas 2D">
   <img src="https://img.shields.io/badge/Express-API-000000?logo=express&logoColor=fff" alt="Express API">
   <img src="https://img.shields.io/badge/Capacitor-Android-119EFF?logo=capacitor&logoColor=fff" alt="Capacitor Android">
-  <img src="https://img.shields.io/badge/License-Apache%202.0-D22128?logo=apache&logoColor=fff" alt="License Apache 2.0">
+  <img src="https://img.shields.io/badge/License-AGPL%20v3-A42E2B?logo=gnu&logoColor=fff" alt="License AGPL v3">
 </p>
 
 <p align="center">
@@ -217,10 +217,18 @@ test/              단위 테스트 (node --test), src/ 구조를 그대로 — 
 
 ## 라이선스
 
-[Apache-2.0](LICENSE). 상업적이든 아니든 쓰고, 포크하고, 배포해도 됩니다 — 라이선스와 저작권
-표시를 남기고, 무엇을 바꿨는지 밝히면 됩니다. MIT가 아니라 Apache인 이유는 3조의 특허 허여
-때문입니다: 법무팀이 있는 곳에 다니는 사람도 안심하고 기여할 수 있게 하는 조항입니다.
+[AGPL-3.0](LICENSE). 누구나 공짜로 쓰고, 고치고, 나눠도 됩니다. 조건은 그게 계속 사실이도록
+하는 것 하나입니다: 고친 버전을 남에게 주면 — 파일로 주든, **서버에 올려서 남이 쓰게 하든** —
+그 버전의 소스도 같은 라이선스로 공개해야 합니다.
+
+형식이 아니라 이게 핵심입니다. 허용적인 라이선스는 누가 이걸 가져다 닫아버리고 팔 수 있지만,
+AGPL은 못 합니다. 돈을 받는 것 자체를 금지하지는 않고 회사가 쓰는 것도 막지 않습니다 — 다만
+받은 사람이 소스까지 같이 받고 그걸 무료로 다시 나눌 수 있으니, 남의 작업에 값을 붙여봐야
+남는 게 없습니다.
+
+**만든 결과물은 만든 사람 것입니다.** 라이선스가 걸리는 건 이 프로그램이지, 이걸로 그린 영상이
+아닙니다. 외주 뮤비든, 광고 붙은 채널이든 아무 상관 없습니다.
 
 기여는 환영하며, 선별해서 받습니다 — 코어는 PR로 재설계하지 않고, 작은 수정을 넘어서는 것은
-이슈부터 시작합니다. [CONTRIBUTING.md](CONTRIBUTING.md)를 보세요. PR을 여는 것으로 그 기여는
-Apache-2.0(5조)으로 라이선스되므로, 따로 서명할 것은 없고 저작권도 그대로 기여자에게 남습니다.
+이슈부터 시작합니다. [CONTRIBUTING.md](CONTRIBUTING.md)를 보세요. PR은 프로젝트와 같은
+AGPL-3.0으로 제공되며, 쓴 코드의 저작권은 기여자에게 남습니다.
