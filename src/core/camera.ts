@@ -11,9 +11,13 @@
 // a straight line by hand would only make it crooked.
 //
 // The one thing worth knowing before reading the presets: a pan at zoom 1 shows the edge of the
-// artwork. There is nothing outside the canvas, so moving the window sideways slides blank paper
-// into frame. Every preset that moves the centre therefore zooms in first, and the amount is
-// chosen so the travel stays inside what the zoom buys.
+// artwork *when the artwork is the size of the picture*. There is then nothing outside the canvas,
+// so moving the window sideways slides blank paper into frame, and every preset that moves the
+// centre has to zoom in first by an amount that keeps the travel inside what the zoom buys.
+//
+// core/canvasFrame is where that stops being a law of nature: once a document's canvas can be
+// bigger than its frame, the room is already there and the zoom is not needed. The presets do not
+// use it yet - they still assume the square case, which is every project that exists.
 
 import { applyEase, samplePath } from './easing.ts';
 import type { Point } from './types.ts';
@@ -257,12 +261,16 @@ export function computeCamera(cam: Partial<CameraSettings> | null | undefined, t
  * Reads as: move the origin to the middle of the frame, scale and tilt about it, then shift so
  * the camera's centre is the thing sitting there.
  *
+ * The two sizes are the FRAME's - the picture being produced - and not the canvas's. They were
+ * the same number when this was written, so the old names were never wrong, only ambiguous; the
+ * middle of the picture is what the camera centres on, whatever size the artwork is.
+ *
  * @param {CanvasRenderingContext2D} ctx
- * @param {{cx:number, cy:number, zoom:number, rot:number}} cam
- * @param {number} cw @param {number} ch
+ * @param {{cx:number, cy:number, zoom:number, rot:number}} cam with cx/cy in canvas coordinates
+ * @param {number} fw @param {number} fh the frame
  */
-export function applyCamera(ctx: CanvasRenderingContext2D, cam: CameraAt, cw: number, ch: number): void {
-    ctx.translate(cw / 2, ch / 2);
+export function applyCamera(ctx: CanvasRenderingContext2D, cam: CameraAt, fw: number, fh: number): void {
+    ctx.translate(fw / 2, fh / 2);
     ctx.scale(cam.zoom, cam.zoom);
     if (cam.rot) ctx.rotate(cam.rot);
     ctx.translate(-cam.cx, -cam.cy);

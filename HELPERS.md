@@ -80,6 +80,23 @@ Camera moves: presets, drawn paths, and the transform they resolve to.
 | `resolveCamera` | Resolve a camera setting into the path and zoom range actually used. A drawn path wins over the preset's own, so somebody can pick "ken burns" for its zoom and then replace the movement without losing the zoom. |
 | `zoomForDrift` | The smallest zoom at which a camera may sit that far off centre without the frame running off the artwork. |
 
+## `src/core/canvasFrame.ts`
+
+The artwork and the picture that comes out of it, as two sizes rather than one. A document that
+never sets a frame has frame == canvas, which is every project today, and every function here is
+the identity in that case.
+
+| | |
+|---|---|
+| `frameGeometry` | A document's `{cw, ch, fw, fh}`, with the frame defaulting to the canvas and junk sizes falling back rather than propagating NaN. Read geometry through this rather than off the document — that is what makes the default free for old projects. |
+| `hasRoom` | Whether there is anywhere to go: artwork outside the frame on at least one axis. The question to ask before offering a camera move. |
+| `fitZoom` | The zoom at which the whole canvas is visible inside the frame. Below 1 when the canvas is bigger. |
+| `windowSize` | How much canvas the frame covers at a zoom. Guards a zero or nonsense zoom, because it divides and the zoom comes from a saved document. |
+| `cameraBounds` | Where the camera's centre may sit without the frame running off the artwork. On an axis where the window is wider than the artwork the interval collapses to the middle, so callers need no special case. Agrees with `zoomForDrift` by construction, and a test holds the two together. |
+| `clampCameraCentre` | The nearest centre that shows only artwork — a move that overshoots slides along the edge instead of showing blank paper. Not yet applied to drawn paths, which are still followed literally. |
+| `restingCentre` | The middle of the artwork: where a camera that has not been told otherwise looks. |
+| `frameRect` | Where the frame sits in canvas coordinates, for a camera at a centre and zoom. What a renderer needs to place the window and a UI needs to draw the frame guide. |
+
 ## `src/core/clipping.ts`
 
 Clipping: a layer that only shows where the layer beneath it has paint.
