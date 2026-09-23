@@ -29,7 +29,7 @@ export interface ImportRunDeps {
     setCurrentTime: (t: number) => void;
     loadAudioUrl: (url: string, name: string, startTime: number, offset: number, duration: number | null) => void;
     gcBitmaps: () => void;
-    notices: { setError: (s: string) => void };
+    notices: { setError: (s: string) => void; setToast: (s: string) => void };
 }
 
 
@@ -123,7 +123,7 @@ export function useVideoImportState() {
                 onProgress: (done, total, skipped) => setBusy({ done, total, skipped }),
                 shouldStop: () => stopRef.current,
             });
-            if (!frames.length) { alert(tr('추출된 프레임이 없습니다.')); return; }
+            if (!frames.length) { notices.setToast(tr('추출된 프레임이 없습니다.')); return; }
             // Extraction can take minutes and can be left running in the background, so the
             // project may have been swapped underneath it. Dropping the frames is the only safe
             // answer: putting them in the project that happens to be open now would be writing

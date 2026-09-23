@@ -21,6 +21,18 @@ export default defineConfig({
     strictPort: false,
     proxy: API_PROXY,
   },
+  build: {
+    // Vite warns past 500 kB, counting the file on disk. Measured 2026-09-23: the bundle is
+    // 648 kB on disk and **209 kB gzipped**, which is what actually travels, and that is a
+    // reasonable first load for an app that is a canvas editor rather than a page. The fonts
+    // are the heavy assets here (6 MB across eight CJK woff2) and they are not on this path -
+    // each is an @font-face the browser fetches only if a text object uses that family.
+    //
+    // Raised rather than silenced, so a real regression still warns: this trips again at
+    // roughly a third more code, and a warning that fires on every single build is one that
+    // stops being read.
+    chunkSizeWarningLimit: 900,
+  },
   // `vite preview` does not inherit the dev server's proxy. Without this, the built app served
   // by preview has no backend at all: it probes /api/projects on load, gets an error from the
   // static server, and shows itself as offline. That is also what the boot smoke test saw.

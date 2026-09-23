@@ -122,7 +122,7 @@ export function useLocalDocuments({ buildData, restore, resetToEmpty, setAppErro
             return await restore(data, null, openingLabel(name));
         } catch (err: any) {
             setLoadProgress(null);
-            alert(tr('파일 오류: ') + err.message);
+            setAppError(tr('파일 오류: ') + err.message);
             return false;
         }
     };
@@ -201,36 +201,36 @@ export function useLocalDocuments({ buildData, restore, resetToEmpty, setAppErro
     const doLocalSave = async (forceNew = false) => {
         try {
             const data = await buildData(true, null, true); // IndexedDB stores frame Blobs directly
-            if (!forceNew && localIdRef.current) { await saveProject(localIdRef.current, data, localNameRef.current || 'Untitled'); alert(tr('로컬에 저장했습니다.')); return; }
+            if (!forceNew && localIdRef.current) { await saveProject(localIdRef.current, data, localNameRef.current || 'Untitled'); setToast(tr('로컬에 저장했습니다.')); return; }
             const name = window.prompt(tr('로컬 저장 이름:'), localNameRef.current || 'MV Project');
             if (!name) return;
             const id = randomId('l_');
             await saveProject(id, data, name);
             localIdRef.current = id; localNameRef.current = name;
-            alert(tr('로컬에 저장했습니다.'));
-        } catch (e: any) { alert(tr('로컬 저장 실패: ') + e.message); }
+            setToast(tr('로컬에 저장했습니다.'));
+        } catch (e: any) { setAppError(tr('로컬 저장 실패: ') + e.message); }
     };
 
     const openLocalList = async () => {
         try { setLocalProjects((await listProjects()).filter((p: any) => p.id !== autosaveKey)); }
-        catch (e: any) { alert(tr('로컬 목록 실패: ') + e.message); }
+        catch (e: any) { setAppError(tr('로컬 목록 실패: ') + e.message); }
     };
 
     const doLocalOpen = async (id: string, name?: string) => {
         try {
             const data = await loadProject(id);
-            if (!data) { alert(tr('데이터가 없습니다.')); return; }
+            if (!data) { setAppError(tr('데이터가 없습니다.')); return; }
             // As in doServerOpen: the identity is only ours once the document is actually in.
             if (!await restore(data, null, openingLabel(name))) return;
             localIdRef.current = id; localNameRef.current = name || ''; setLocalProjects(null);
         }
-        catch (e: any) { alert(tr('로컬 열기 실패: ') + e.message); }
+        catch (e: any) { setAppError(tr('로컬 열기 실패: ') + e.message); }
     };
 
     const doLocalDelete = async (id: string) => {
         if (!window.confirm(tr('이 로컬 프로젝트를 삭제할까요?'))) return;
         try { await deleteProject(id); if (localIdRef.current === id) { localIdRef.current = null; localNameRef.current = ''; } openLocalList(); }
-        catch (e: any) { alert(tr('삭제 실패: ') + e.message); }
+        catch (e: any) { setAppError(tr('삭제 실패: ') + e.message); }
     };
 
     // --- Tabs (multiple projects open at once, Clip Studio / SAI style) -----------------------

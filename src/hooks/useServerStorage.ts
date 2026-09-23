@@ -113,7 +113,7 @@ export function useServerStorage({
                 method: 'PUT', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name, data }),
             });
-            alert(tr('서버에 저장했습니다.'));
+            setToast(tr('서버에 저장했습니다.'));
         } catch (e: any) {
             console.error('[import]', e);
             setAppError(tr('서버 저장 실패: ') + e.message + '\n' + tr('(API 서버가 실행 중인지 확인하세요. 큰 프로젝트는 저장에 시간이 걸립니다.)'));
@@ -122,7 +122,7 @@ export function useServerStorage({
 
     const openServerList = async () => {
         try { setServerProjects(await apiFetch('/api/projects')); }
-        catch (e: any) { alert(tr('서버 목록을 불러오지 못했습니다: ') + e.message + '\n' + tr('(API 서버 실행 확인: npm run dev)')); }
+        catch (e: any) { setAppError(tr('서버 목록을 불러오지 못했습니다: ') + e.message + '\n' + tr('(API 서버 실행 확인: npm run dev)')); }
     };
 
     const doServerOpen = async (id: string, name?: string) => {
@@ -134,7 +134,7 @@ export function useServerStorage({
             if (!await restore(data, `/api/projects/${id}`, name ? `${tr('프로젝트 여는 중')} — ${name}` : undefined)) return;
             serverIdRef.current = id; serverNameRef.current = name || '';
             setServerProjects(null);
-        } catch (e: any) { alert(tr('서버에서 열기 실패: ') + e.message); }
+        } catch (e: any) { setAppError(tr('서버에서 열기 실패: ') + e.message); }
     };
 
     const doServerDelete = async (id: string) => {
@@ -143,7 +143,7 @@ export function useServerStorage({
             await apiFetch(`/api/projects/${id}`, { method: 'DELETE' });
             if (serverIdRef.current === id) forgetProject();
             openServerList();
-        } catch (e: any) { alert(tr('삭제 실패: ') + e.message); }
+        } catch (e: any) { setAppError(tr('삭제 실패: ') + e.message); }
     };
 
     // --- Rotating server backups of the autosave (a safety net separate from Save) ---------
@@ -200,7 +200,7 @@ export function useServerStorage({
 
     const openBackupList = async () => {
         try { setBackupList(await apiFetch(`/api/backups/${getBackupKey()}`)); }
-        catch (e: any) { alert(tr('백업 목록을 불러오지 못했습니다: ') + e.message); }
+        catch (e: any) { setAppError(tr('백업 목록을 불러오지 못했습니다: ') + e.message); }
     };
 
     const doBackupRestore = async (stamp: string) => {
@@ -210,13 +210,13 @@ export function useServerStorage({
             const data = await apiFetch(`/api/backups/${key}/${stamp}`);
             if (!await restore(data, `/api/projects/${key}`, tr('백업에서 되돌리는 중'))) return; // assets come from the same key
             setBackupList(null);
-        } catch (e: any) { alert(tr('백업 복구 실패: ') + e.message); }
+        } catch (e: any) { setAppError(tr('백업 복구 실패: ') + e.message); }
     };
 
     const doBackupDelete = async (stamp: string) => {
         if (!window.confirm(tr('이 백업을 삭제할까요?'))) return;
         try { await apiFetch(`/api/backups/${getBackupKey()}/${stamp}`, { method: 'DELETE' }); openBackupList(); }
-        catch (e: any) { alert(tr('삭제 실패: ') + e.message); }
+        catch (e: any) { setAppError(tr('삭제 실패: ') + e.message); }
     };
 
     // Periodic backup. Reads the newest state through a ref: putting `cuts` in the deps would
