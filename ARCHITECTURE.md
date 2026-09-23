@@ -102,6 +102,13 @@ index signature, so a misspelt one is an error. Ids there are `DocId` - a number
   (`sampleKeys`). `layerTree.ts` reads a cut's layers: order, cache keys, signatures.
   `canvasSize.ts` holds `CANVAS_W/H` and `targetCanvasFor`; `fonts.ts` the text fonts;
   `geometry.ts` and `colour.ts` the small helpers.
+- `canvasFrame.ts` — the artwork and the picture that comes out of it, as two sizes rather than
+  one. Everywhere else `cw`/`ch` means both, which is why a pan has to zoom in first: there is
+  nothing outside the canvas to pan onto. #327 wants a long background the camera travels across,
+  so the **canvas** becomes the artwork and the **frame** what the file is. A document with no
+  frame gets frame == canvas — every project today — and every function here is then the identity.
+  `framePaint` places the artwork through it; the UI to set a frame, and presets that use the
+  room instead of zooming for it, are still to come.
 
 **engine/** — what a frame *is*, with no canvas anywhere near it. TypeScript; `Scene`,
 `EvaluatedCut` and `EvaluatedGroup` in `evaluateFrame.ts` are the renderer's whole input, named.

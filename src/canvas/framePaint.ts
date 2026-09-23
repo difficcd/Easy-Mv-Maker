@@ -15,6 +15,7 @@ import { evaluateFrame } from '../engine/evaluateFrame.ts';
 import { pendingBitmapIds } from '../engine/pendingBitmaps.ts';
 import { onionNeighbours } from '../engine/selectCuts.ts';
 import { applyCamera } from '../core/camera.ts';
+import { frameGeometry, restingCentre } from '../core/canvasFrame.ts';
 import { flattenLayersInUiOrder } from '../core/layerTree.ts';
 import { drawScene, drawVideoOverlay, drawOnionCut, drawSceneTexts } from './sceneRender.ts';
 import { drawTextObject, textNeedsBox, type TextBox } from './textRender.ts';
@@ -41,8 +42,12 @@ export interface FrameInputs {
     t: number;
     /** playback (animations on, decode holds) or editing (still) */
     playing: boolean;
+    /** the artwork */
     cw: number;
     ch: number;
+    /** the picture being produced; defaults to the artwork, which is every document today */
+    fw?: number;
+    fh?: number;
     cuts: Cut[];
     currentCutId: Id | null | undefined;
     currentCut: Cut | null | undefined;
@@ -100,12 +105,14 @@ export function createFrameScratch(): FrameScratch {
 /**
  * Paint the film at time `t` onto `ctx`.
  *
- * @param {CanvasRenderingContext2D} ctx the main canvas, `cw` by `ch`
+ * @param {CanvasRenderingContext2D} ctx the surface being painted, `fw` by `fh`
  * @param {object} f everything the frame is made of
  * @param {number} f.t
  * @param {boolean} f.playing playback (animations on, decode holds) or editing (still)
- * @param {number} f.cw
+ * @param {number} f.cw the artwork
  * @param {number} f.ch
+ * @param {number} [f.fw] the picture being produced; defaults to the artwork
+ * @param {number} [f.fh]
  * @param {any[]} f.cuts
  * @param {any} f.currentCutId
  * @param {any} f.currentCut
@@ -125,7 +132,7 @@ export function createFrameScratch(): FrameScratch {
  * @param {(text: any) => any} f.measureTextBox
  * @param {ReturnType<typeof createFrameScratch>} f.scratch
  */
-export function paintFrameOnto(ctx: CanvasRenderingContext2D, { t, playing, cw, ch, cuts, currentCutId, currentCut, transparentBg, selection, onionPrev, onionNext, videoOverlay, videoEl, bitmapStore, requestFrameDecode, ensureLayerCanvas, flattenClipGroup, hiddenByGesture, boilPhaseRef, boilTick, measureTextBox, scratch }: FrameInputs): void {
+export function paintFrameOnto(ctx: CanvasRenderingContext2D, { t, playing, cw, ch, fw, fh, cuts, currentCutId, currentCut, transparentBg, selection, onionPrev, onionNext, videoOverlay, videoEl, bitmapStore, requestFrameDecode, ensureLayerCanvas, flattenClipGroup, hiddenByGesture, boilPhaseRef, boilTick, measureTextBox, scratch }: FrameInputs): void {
     // Boiling phase, quantised to about ten changes a second like a traditional boiling line.
     // Changing it every frame just reads as noise; this rate is what makes the drawing feel
     // alive.
@@ -146,8 +153,10 @@ export function paintFrameOnto(ctx: CanvasRenderingContext2D, { t, playing, cw, 
     }
     // Clear either way - the canvas holds the previous frame otherwise. The difference is
     // whether white is then painted over it, which is what makes an export opaque.
-    ctx.clearRect(0, 0, cw, ch);
-    if (!transparentBg) { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cw, ch); }
+    // The surface is the frame's size. With no frame set it is the canvas's, as it always was.
+    const geom = frameGeometry(cw, ch, { w: fw, h: fh });
+    ctx.clearRect(0, 0, geom.fw, geom.fh);
+    if (!transparentBg) { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, geom.fw, geom.fh); }
     scratch.paintedOnce = true;
     // The camera is a window onto the frame, so it wraps everything drawn into it - the video
     // reference, the artwork and the text move together, which is the whole point of it being
@@ -160,8 +169,20 @@ export function paintFrameOnto(ctx: CanvasRenderingContext2D, { t, playing, cw, 
     //
     // A shot belongs to the cut on the lowest active track: that is the base scene, and the
     // tracks above it are parts of the same shot rather than shots of their own.
+    //
+    // A camera is not the only reason to need the transform now: a canvas bigger than the frame
+    // has to be placed even when nothing is moving, or it would be painted from its top-left
+    // corner and the frame would show the corner rather than the middle. Where the two sizes
+    // agree there is still nothing to do, and the identity matrix is still skipped.
     const camAt = scene.camera;
-    if (camAt) { ctx.save(); applyCamera(ctx, camAt, cw, ch); }
+    const placed = camAt || geom.cw !== geom.fw || geom.ch !== geom.fh;
+    if (placed) {
+        // Nothing is allocated on the ordinary path: a still frame at frame == canvas never
+        // reaches here, which is the whole reason the identity was worth skipping.
+        const rest = restingCentre(geom);
+        ctx.save();
+        applyCamera(ctx, camAt || { cx: rest.x, cy: rest.y, zoom: 1, rot: 0 }, geom.fw, geom.fh);
+    }
     // Video overlay track: drawn underneath everything. The <video> element is kept at time t by
     // the playback loop (playing) or a paused-seek effect.
     if (videoOverlay && t >= videoOverlay.startTime && t < videoOverlay.endTime) {
@@ -197,5 +218,5 @@ export function paintFrameOnto(ctx: CanvasRenderingContext2D, { t, playing, cw, 
             scratchFor: (id: Id) => { const m = scratch.textStatic; if (!m.has(id)) m.set(id, { current: null }); return m.get(id)!; },
         },
     });
-    if (camAt) ctx.restore();
+    if (placed) ctx.restore();
 }
