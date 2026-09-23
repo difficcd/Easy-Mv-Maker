@@ -33,6 +33,10 @@ import { chromium } from 'playwright-core';
 
 const url = process.env.PROFILE_URL || 'http://localhost:5175/';
 const SECONDS = Number(process.env.PROFILE_SECONDS || 4);
+const STROKES = Number(process.env.PROFILE_STROKES || 40);
+/** The pencil button's title, which is its label run through tr(). */
+/** The pencil button's title - its label through tr(), so it depends on the UI language. */
+const PENCIL = process.env.PROFILE_PENCIL || '연필|Pencil';
 
 const channels = process.env.SMOKE_CHANNEL ? [process.env.SMOKE_CHANNEL] : ['chrome', 'msedge', 'chromium'];
 let browser = null;
@@ -75,6 +79,10 @@ const instrument = () => {
         const c = ctx.canvas;
         return `${c.width}x${c.height}${c.id ? '#' + c.id : ''}${c.className ? '.' + String(c.className).split(' ')[0] : ''}`;
     };
+    // Timed as well as counted. Not everything happens inside a rAF callback - committing a
+    // stroke repaints the layer cache straight through, so a frame timer reports 0ms for work
+    // that is plainly there. Twenty-five thousand draw calls do not take no time.
+    p.drawMs = 0; p.msByCanvas = {}; p.msByCall = {};
     for (const m of counted) {
         const orig = proto[m];
         if (typeof orig !== 'function') continue;
@@ -82,7 +90,14 @@ const instrument = () => {
             p.calls[m] = (p.calls[m] || 0) + 1;
             const k = who(this);
             (p.byCanvas[k] ||= {})[m] = ((p.byCanvas[k] || {})[m] || 0) + 1;
-            return orig.apply(this, a);
+            const t0 = performance.now();
+            try { return orig.apply(this, a); }
+            finally {
+                const dt = performance.now() - t0;
+                p.drawMs += dt;
+                p.msByCanvas[k] = (p.msByCanvas[k] || 0) + dt;
+                p.msByCall[m] = (p.msByCall[m] || 0) + dt;
+            }
         };
     }
     // The two that are worth timing rather than counting: they force a pipeline flush.
@@ -106,7 +121,7 @@ const instrument = () => {
 /** Zero the counters without re-wrapping anything, so each phase is measured on its own. */
 const rearm = () => {
     const p = window.__prof;
-    p.frames = []; p.calls = {}; p.readback = 0; p.readbackMs = 0; p.canvases = 0; p.byCanvas = {};
+    p.frames = []; p.calls = {}; p.readback = 0; p.readbackMs = 0; p.canvases = 0; p.byCanvas = {}; p.drawMs = 0; p.msByCanvas = {}; p.msByCall = {};
 };
 
 const stats = (xs) => {
@@ -230,6 +245,80 @@ try {
         report(`PLAYBACK - ${SECONDS}s`, await page.evaluate(() => window.__prof));
         await page.evaluate(`(${playButton})().click()`);
     }
+
+    // --- 5. does it get slower the more you have drawn? ---------------------------------------
+    // The question worth asking, and the one the phases above cannot answer: they draw twice.
+    // Committing a stroke invalidates the layer and the cache repaints it, and a repaint that
+    // redraws every stroke costs more each time - which is what "it gets heavy after a while"
+    // means. Measured per stroke, drag and commit separately, because they fail differently:
+    // a slow drag lags the pen, a slow commit hitches once when you lift it.
+    const pickTool = (pattern) => {
+        const re = new RegExp(`^(${pattern})$`, 'i');
+        const b = [...document.querySelectorAll('button')].find(x => re.test((x.title || '').trim()));
+        if (b) b.click();
+        return !!b;
+    };
+    const gotPencil = await page.evaluate(`(${pickTool})(${JSON.stringify(PENCIL)})`).catch(() => false);
+    console.log(`
+STROKE SCALING - ${STROKES} pencil strokes, one at a time` +
+        (gotPencil ? '' : `  (could not find the "${PENCIL}" button; using whatever tool was active)`));
+    console.log('  stroke   drag p95    commit draw    commit frames   2d calls on commit');
+
+    const rows = [];
+    for (let i = 1; i <= STROKES; i++) {
+        const y = box.y + 40 + ((i * 17) % Math.max(40, box.h - 80));
+        const x0 = box.x + 40;
+        await page.evaluate(rearm);
+        await page.mouse.move(x0, y);
+        await page.mouse.down();
+        for (let k = 1; k <= 10; k++) await page.mouse.move(x0 + k * (box.w * 0.06), y + Math.sin(k) * 6);
+        const drag = await page.evaluate(() => window.__prof.frames.slice());
+
+        // Re-armed between the drag and the lift, so the commit repaint is measured on its own.
+        await page.evaluate(rearm);
+        await page.mouse.up();
+        await page.waitForTimeout(220);
+        const commit = await page.evaluate(() => {
+            const p = window.__prof;
+            return { frames: p.frames.slice(), calls: { ...p.calls }, canvases: p.canvases, readbackMs: p.readbackMs, drawMs: p.drawMs, msByCanvas: { ...p.msByCanvas }, msByCall: { ...p.msByCall } };
+        });
+        rows.push({ i, drag, commit });
+
+        if ([1, 5, 10, 20, 30, 40, 50].includes(i) || i === STROKES) {
+            const d = stats(drag), total = commit.drawMs;
+            const calls = Object.values(commit.calls).reduce((a, b) => a + b, 0);
+            console.log(
+                `  ${String(i).padStart(6)}   ${(d ? d.p95.toFixed(2) : '-').padStart(8)}ms   ` +
+                `${total.toFixed(2).padStart(9)}ms   ${String(commit.frames.length).padStart(13)}   ${String(calls).padStart(18)}`);
+        }
+    }
+
+    const last = rows[rows.length - 1];
+    const top = (o) => Object.entries(o).sort((a, b) => b[1] - a[1]).slice(0, 5)
+        .map(([k, v]) => `${k} ${v.toFixed(1)}ms`).join('  ');
+    console.log(`
+  where the last commit's time went`);
+    console.log(`    by canvas   ${top(last.commit.msByCanvas)}`);
+    console.log(`    by call     ${top(last.commit.msByCall)}`);
+
+    // The trend is the answer, so say it rather than leaving it to be eyeballed.
+    const commitTotal = (r) => r.commit.drawMs;
+    const early = rows.slice(0, 5), late = rows.slice(-5);
+    const mean = (xs, f) => xs.reduce((a, b) => a + f(b), 0) / Math.max(1, xs.length);
+    const e = mean(early, commitTotal), l = mean(late, commitTotal);
+    const eCalls = mean(early, r => Object.values(r.commit.calls).reduce((a, b) => a + b, 0));
+    const lCalls = mean(late, r => Object.values(r.commit.calls).reduce((a, b) => a + b, 0));
+    console.log(`
+  first 5 strokes   commit ${e.toFixed(2)}ms, ${eCalls.toFixed(0)} 2d calls`);
+    console.log(`  last 5 strokes    commit ${l.toFixed(2)}ms, ${lCalls.toFixed(0)} 2d calls`);
+    console.log(`  growth            ${(e > 0 ? (l / e).toFixed(2) : 'n/a')}x time, ${(eCalls > 0 ? (lCalls / eCalls).toFixed(2) : 'n/a')}x calls`);
+    // Say which of the two it is rather than printing a maxim that may not apply. They mean
+    // different things: more calls is the layer being redrawn from every stroke it holds, the
+    // same calls costing more is the same drawing getting dearer to raster.
+    const callGrowth = eCalls > 0 ? lCalls / eCalls : 1;
+    console.log(callGrowth > 1.8
+        ? '  Calls grow with the stroke count: the whole layer is redrawn on every commit.'
+        : '  Calls are flat, so only the new stroke is drawn - any growth is in what each call costs.');
 
     if (errors.length) console.log('\npage errors:' + errors.map(e => '\n  ' + e).join(''));
 } catch (e) {
