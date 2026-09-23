@@ -2,6 +2,12 @@
   "name": "easy-mv-maker",
   "private": false,
   "version": "1.0.0",
+  "license": "Apache-2.0",
+  "author": "difficcd",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/difficcd/Easy-Mv-Maker.git"
+  },
   "type": "module",
   "scripts": {
     "dev": "concurrently -k -n api,web -c green,cyan \"npm:server\" \"npm:web\"",

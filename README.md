@@ -16,6 +16,7 @@
   <img src="https://img.shields.io/badge/HTML5%20Canvas-2D-E34F26?logo=html5&logoColor=fff" alt="HTML5 Canvas 2D">
   <img src="https://img.shields.io/badge/Express-API-000000?logo=express&logoColor=fff" alt="Express API">
   <img src="https://img.shields.io/badge/Capacitor-Android-119EFF?logo=capacitor&logoColor=fff" alt="Capacitor Android">
+  <img src="https://img.shields.io/badge/License-Apache%202.0-D22128?logo=apache&logoColor=fff" alt="License Apache 2.0">
 </p>
 
 <p align="center">
@@ -222,6 +223,11 @@ Video import is intended for local, personal use. Respect the source service's t
 
 ## License
 
-Not decided yet — all rights reserved for the moment. This is a personal project that
-may end up as a paid app, so I'm keeping the options open rather than picking a licence
-I'd regret. Open an issue if you'd like to use or build on it and I'll sort it out.
+[Apache-2.0](LICENSE). Use it, fork it, ship it, commercially or not - keep the licence and the
+copyright notice, and say what you changed. Apache rather than MIT for the patent grant in
+section 3: it is what makes contributing safe for anyone whose employer has a legal department.
+
+Contributions are welcome and are accepted selectively - the core is not redesigned by pull
+request, and anything larger than a small fix starts with an issue. See
+[CONTRIBUTING.md](CONTRIBUTING.md). Opening a pull request licenses it under Apache-2.0
+(section 5), so there is nothing else to sign and you keep your copyright.

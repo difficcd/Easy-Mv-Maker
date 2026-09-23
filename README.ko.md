@@ -16,6 +16,7 @@
   <img src="https://img.shields.io/badge/HTML5%20Canvas-2D-E34F26?logo=html5&logoColor=fff" alt="HTML5 Canvas 2D">
   <img src="https://img.shields.io/badge/Express-API-000000?logo=express&logoColor=fff" alt="Express API">
   <img src="https://img.shields.io/badge/Capacitor-Android-119EFF?logo=capacitor&logoColor=fff" alt="Capacitor Android">
+  <img src="https://img.shields.io/badge/License-Apache%202.0-D22128?logo=apache&logoColor=fff" alt="License Apache 2.0">
 </p>
 
 <p align="center">
@@ -216,6 +217,10 @@ test/              단위 테스트 (node --test), src/ 구조를 그대로 — 
 
 ## 라이선스
 
-아직 정하지 않았습니다 — 당분간 모든 권리 보유. 유료 앱이 될 수도 있는 개인 프로젝트라, 후회할
-라이선스를 고르기보다 선택지를 열어 둡니다. 쓰거나 이어서 만들고 싶으면 이슈를 열어 주세요;
-정리해 드리겠습니다.
+[Apache-2.0](LICENSE). 상업적이든 아니든 쓰고, 포크하고, 배포해도 됩니다 — 라이선스와 저작권
+표시를 남기고, 무엇을 바꿨는지 밝히면 됩니다. MIT가 아니라 Apache인 이유는 3조의 특허 허여
+때문입니다: 법무팀이 있는 곳에 다니는 사람도 안심하고 기여할 수 있게 하는 조항입니다.
+
+기여는 환영하며, 선별해서 받습니다 — 코어는 PR로 재설계하지 않고, 작은 수정을 넘어서는 것은
+이슈부터 시작합니다. [CONTRIBUTING.md](CONTRIBUTING.md)를 보세요. PR을 여는 것으로 그 기여는
+Apache-2.0(5조)으로 라이선스되므로, 따로 서명할 것은 없고 저작권도 그대로 기여자에게 남습니다.
