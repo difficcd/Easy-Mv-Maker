@@ -1155,6 +1155,14 @@ What the app is telling the user: a running job, a passing message, a failure th
 |---|---|
 | `useNotices` | `progress`, `toast`, `error` and the YouTube `linkPrompt`, with the toast's three-second timer — re-armed when it is replaced, so a second toast gets its own three seconds. The error stays until dismissed because it used to be an alert, and a blocked alert looked exactly like nothing having happened. |
 
+## `src/hooks/useAsk.ts`
+
+What the app is asking the user, as against telling them - the other half of useNotices.
+
+| | |
+|---|---|
+| `useAsk` | `ask.confirm(question, {okLabel})` and `ask.prompt(question, {value, okLabel})`, each returning a promise that settles when the user answers, so a question can be raised from a hook that renders nothing. `request` and `answer` go to `AskModal`, which draws it. Replaces `window.confirm`/`window.prompt`, which return false and null for ever once a browser is told to prevent additional dialogs - see `scripts/native-dialogs.mjs`. A prompt returns null rather than an empty string, and a second question declines the first rather than leaving it unsettled. |
+
 ## `src/hooks/usePanelLayout.ts`
 
 Where the panels are and how wide they are: three panels that each dock left, dock right or float,

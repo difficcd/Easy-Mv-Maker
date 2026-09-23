@@ -217,6 +217,9 @@ needs a document takes those two functions rather than the document.
   `run` (the import: extract, store, lay out as cuts) and `restore` (a stored track back). Both
   take the document at call time, so the hook stays free of App state.
 - `useNotices.ts` — progress, toast, error banner, and the YouTube link prompt.
+- `useAsk.ts` — the other half of that: what the app *asks*. `ask.confirm` and `ask.prompt`
+  return promises, so a hook that renders nothing can still put a question on screen, and the
+  call sites keep the shape `window.confirm` gave them. `AskModal` draws it.
 - `useDialogs.ts` — which dialog is open, and the rebinding two of them share.
 
 - `server/` — the Express file-backed project DB on :8787, files under `server/data/`. `index.js`
@@ -328,6 +331,10 @@ decide between modes before any tool sees the event.
     which refuses an id naming no layer and reveals the layer it writes to. Both failures are
     silent and both shipped, four times: the lasso paste and the mosaic evaporated, the bucket
     fill and the eraser landed invisibly. Its test drives it with all four bugs as they shipped.
+  - `native-dialogs` — no `alert`, `confirm` or `prompt` in `src/`. A browser told to prevent
+    additional dialogs drops `alert` and makes the other two return false and null for ever,
+    with no error: every guarded action then does nothing and reports nothing. Fifty-two sites
+    went through `useNotices` and `useAsk` instead, and this is what stops the next one.
   - `i18n-check` — every `tr()` string is translated, or the English UI shows Korean.
 - `npm test` alone runs the suite (Node's built-in runner, no test framework dependency).
 - Build: `npm run build`. Android: `npm run android:sync` then `android:open`.

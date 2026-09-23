@@ -118,6 +118,7 @@ dependency), and the bundler and `tsc` accept it.
 | `scripts/unreachable.mjs` | an App-level name nothing can reach |
 | `scripts/unused-imports.mjs` | an import nothing in the file uses |
 | `scripts/stroke-writes.mjs` | a write that adds a stroke to a layer without going through `commitStroke` |
+| `scripts/native-dialogs.mjs` | an `alert`, `confirm` or `prompt` in `src/` — a browser that blocks dialogs makes all three fail silently |
 | `scripts/i18n-check.mjs` | a `tr()` literal with no English entry, or a dictionary row whose key no longer appears in the source |
 
 Around 1,150 unit tests cover the pure modules under `src/core`, `src/canvas`, `src/engine` and

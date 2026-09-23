@@ -575,6 +575,14 @@ const EN: Record<string, string> = {
 
     // -- Shared --------------------------------------------
     '취소': 'Cancel',
+    '확인': 'OK',
+    '저장': 'Save',
+    '만들기': 'Create',
+    '이름 변경': 'Rename',
+    '적용': 'Apply',
+    '나누기': 'Split',
+    '복구': 'Recover',
+    '녹화 시작': 'Start recording',
     '완료': 'Done',
     '완료!': 'Done!',
     '끄기': 'Off',

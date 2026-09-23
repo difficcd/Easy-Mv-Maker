@@ -6,6 +6,7 @@ import { useDropdown } from '../hooks/useDropdown.ts';
 import type React from 'react';
 import type { View } from '../core/viewZoom.ts';
 import type { Keymap } from '../core/shortcuts.ts';
+import type { Ask } from '../hooks/useAsk.ts';
 
 /** The top bar's props, grouped by what they are about. */
 export interface TopBarProps {
@@ -27,12 +28,14 @@ export interface TopBarProps {
     /** the resolution and the zoom */
     canvas: { canvasW: number; canvasH: number; setCanvasSize: (size: { w: number, h: number }) => void; view: View; zoomCanvas: (factor: number) => void; resetView: () => void };
     dialogs: { setShowHelp: (on: boolean) => void; setShowSettings: (on: boolean) => void; keymap: Keymap };
+    /** how to ask for a custom canvas size */
+    ask: Ask;
 }
 
 
 // Top menu bar: the File and Media menus, resolution, canvas zoom, save state, Export.
 export function TopBar({
-    project, status, media, canvas, dialogs,
+    project, status, media, canvas, dialogs, ask,
 }: TopBarProps) {
     const { doNew, doSave, doOpen, doLocalSave, openLocalList, doServerSave, openServerList, doServerBackup, openBackupList, backupBusy, doSplitSave, handleExportPieces, handleExport } = project;
     const { autoSavedAt, autosaveErr, backupAt, storageInfo, serverAvailable, setToast } = status;
@@ -124,9 +127,9 @@ export function TopBar({
             {/* Resolution. */}
             <select className="time-input" style={{ height: 30, width: 116 }} title={tr('캔버스 해상도')}
                 value={`${canvasW}x${canvasH}`}
-                onChange={e => {
+                onChange={async e => {
                     if (e.target.value === 'custom') {
-                        const s = window.prompt(tr('캔버스 크기 (가로x세로)'), `${canvasW}x${canvasH}`);
+                        const s = await ask.prompt(tr('캔버스 크기 (가로x세로)'), { value: `${canvasW}x${canvasH}`, okLabel: tr('적용') });
                         if (!s) return;
                         const m = s.match(/(\d+)\s*[xX*,\s]\s*(\d+)/);
                         if (!m) { setToast(tr('예: 1920x1080')); return; }

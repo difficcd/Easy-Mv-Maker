@@ -59,7 +59,7 @@ export function LayerRows({ cut, parentId = null, depth = 0, rows, wide = false 
         handleSetActive, handleToggleFolder, handleToggleVisible, jitterLayer, layerCanvasCache,
         onLayerDragEnd, onLayerDragOver, onLayerDragStart, onLayerDrop, pathCapture,
         setAnimLayer, setPathCapture, toggleJitterPanel, updLayerAnim, updLayerProps, updLayers,
-        spineEdit, setSpineEdit, selectedText,
+        spineEdit, setSpineEdit, selectedText, ask,
     } = rows;
     const textSelected = selectedText?.cutId === cut.id;
     return cut.layers.filter(l => (l.parentId ?? null) === parentId).map(layer => {
@@ -135,7 +135,7 @@ export function LayerRows({ cut, parentId = null, depth = 0, rows, wide = false 
                 )}
                 {!isFolder && animLayer && animLayer.cutId === cut.id && animLayer.layerId === layer.id && (
                     <LayerAnimPanel cut={cut} layer={layer} updLayerAnim={updLayerAnim} updLayers={updLayers} pathCapture={pathCapture} setPathCapture={setPathCapture}
-                        spineEdit={spineEdit} setSpineEdit={setSpineEdit}
+                        spineEdit={spineEdit} setSpineEdit={setSpineEdit} ask={ask}
                         cutProgress={cutProgress(cut, currentTime)} />
                 )}
                 {dt === 'after' && <div className="drop-line" />}

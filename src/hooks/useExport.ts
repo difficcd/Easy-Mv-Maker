@@ -31,6 +31,7 @@ import type { AudioClip } from '../core/mediaReducer.ts';
 import type { StoreEntry } from '../core/projectAssets.ts';
 import type { CanvasSlot } from '../canvas/pixelEffects.ts';
 import type { PlaybackDeps } from './usePlayback.ts';
+import type { Ask } from './useAsk.ts';
 
 /** What the frame renderer reads while exporting: the document as it is now, not as it was when the export began. */
 export interface RenderState { cuts: Cut[]; currentCutId: Id | null | undefined; cw: number; ch: number }
@@ -48,6 +49,8 @@ export interface ExportDeps {
     report: { setLoadProgress: (p: { label: string, done: number, total: number } | null) => void, setAppError: (m: string) => void, setToast: (m: string) => void, setCurrentTime: (t: number) => void, setIsPlaying: (on: boolean) => void };
     /** the same objects usePlayback is given, so the loop and the recorder agree */
     recording: PlaybackDeps['recording'];
+    /** how to ask, since a hook has no dialog of its own */
+    ask: Ask;
 }
 
 
@@ -73,7 +76,7 @@ export interface ExportDeps {
  *   mediaRecorderRef: {current: MediaRecorder|null}}} opts.recording
  *   the same objects usePlayback is given, so the loop and the recorder agree
  */
-export function useExport({ paint, audio, range, doc, report, recording }: ExportDeps) {
+export function useExport({ paint, audio, range, doc, report, recording, ask }: ExportDeps) {
     const { canvasRef, paintFrameRef, currentTimeRef, renderStateRef, bitmapStoreRef, videoStopRef } = paint;
     const { audioRef, audioCtxRef, audioSourceRef, audioDestRef, audioUrl, audioData } = audio;
     const { playStart, playEnd, cw: CANVAS_W, ch: CANVAS_H, transparentBg, transparentFormat } = range;
@@ -304,7 +307,8 @@ export function useExport({ paint, audio, range, doc, report, recording }: Expor
         if (empty) { setToast(tr('내보낼 콘텐츠가 없습니다.')); return; }
         // One scratch canvas for the whole export rather than one a frame.
         const gifScratch: CanvasSlot = { current: null };
-        if (total > LONG_EXPORT_FRAMES && !confirm(tr('{0}프레임을 내보냅니다. 오래 걸립니다. 계속할까요?').replace('{0}', String(total)))) return;
+        if (total > LONG_EXPORT_FRAMES
+            && !await ask.confirm(tr('{0}프레임을 내보냅니다. 오래 걸립니다. 계속할까요?').replace('{0}', String(total)), { okLabel: tr('내보내기') })) return;
 
         const label = tr('프레임 내보내는 중');
         setLoadProgress({ label, done: 0, total });
@@ -330,7 +334,7 @@ export function useExport({ paint, audio, range, doc, report, recording }: Expor
     };
 
     /** @param {{from?: number, to?: number}} [r] the span, or the whole range when omitted */
-    const handleExport = (r?: { from?: number, to?: number } | null) => {
+    const handleExport = async (r?: { from?: number, to?: number } | null) => {
         if (transparentBg) { handleExportFrames(r); return; }
         const { from: playStart, to: playEnd } = span(r);
         const canvas = canvasRef.current;
@@ -343,10 +347,10 @@ export function useExport({ paint, audio, range, doc, report, recording }: Expor
         // on the canvas being recorded.
         if (playEnd <= playStart) { setToast(tr('내보낼 콘텐츠가 없습니다.')); return; }
         const { mimeType, ext } = pickRecordingType((t: string) => MediaRecorder.isTypeSupported(t));
-        // Deliberately still a blocking dialog: dismissing it is what starts the recording, so
-        // the user gets a moment to be ready. A toast would begin recording with nobody looking.
-        // It becomes a real confirm dialog with the other blocking ones.
-        alert(tr('녹화가 시작됩니다.'));
+        // Still blocking, and deliberately so: closing it is what starts the recording, so the
+        // user gets a moment to be ready. A toast would begin recording with nobody looking.
+        // Now a real question rather than an alert, which also gives the moment a way out.
+        if (!await ask.confirm(tr('녹화가 시작됩니다.'), { okLabel: tr('녹화 시작') })) return;
         // The loop reads its clock from the ref, and the ref only follows state while paused -
         // and isPlaying goes true in the same render. Left to state alone the loop started at
         // wherever the playhead was, the recorder ran from that moment, and the frames only
