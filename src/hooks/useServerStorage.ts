@@ -27,6 +27,7 @@ import { randomId } from '../core/ids.ts';
 import { safeArray } from '../core/geometry.ts';
 import { tr } from '../i18n.ts';
 import type { AssetOut } from '../core/projectAssets.ts';
+import type { Ask } from './useAsk.ts';
 
 /** What the server side needs from the app: whether the API is there, how to build and restore a document, and where to report. */
 export interface ServerStorageDeps {
@@ -38,6 +39,8 @@ export interface ServerStorageDeps {
     setLoadProgress: (p: { label: string, done: number, total: number } | null) => void;
     setAppError: (m: string) => void;
     setToast: (m: string) => void;
+    /** how to ask, since a hook has no dialog of its own */
+    ask: Ask;
     /** the newest document, read without re-running the timer */
     liveRef: { current: any };
     /** a name to fall back on for an unnamed backup */
@@ -57,12 +60,13 @@ const BACKUP_EVERY_MS = 5 * 60 * 1000;
  * @param {(p: any) => void} opts.setLoadProgress
  * @param {(m: string) => void} opts.setAppError
  * @param {(m: string) => void} opts.setToast
+ * @param {Ask} opts.ask how to ask, since a hook has no dialog of its own
  * @param {{current: any}} opts.liveRef the newest document, read without re-running the timer
  * @param {{current: string}} opts.localNameRef a name to fall back on for an unnamed backup
  */
 export function useServerStorage({
     serverAvailable, buildData, restore,
-    setLoadProgress, setAppError, setToast,
+    setLoadProgress, setAppError, setToast, ask,
     liveRef, localNameRef,
 }: ServerStorageDeps) {
     const [serverProjects, setServerProjects] = useState<any[] | null>(null); // null = picker closed
@@ -97,7 +101,7 @@ export function useServerStorage({
             let id: string | null = (!forceNew && serverIdRef.current) ? serverIdRef.current : null;
             let name: string | null = serverNameRef.current || 'Untitled';
             if (!id) {
-                name = window.prompt(tr('서버에 저장할 프로젝트 이름:'), serverNameRef.current || 'MV Project');
+                name = await ask.prompt(tr('서버에 저장할 프로젝트 이름:'), { value: serverNameRef.current || 'MV Project', okLabel: tr('저장') });
                 if (!name) return;
                 // Create the record first (just to get an id); the real data is committed LAST.
                 const r = await apiFetch('/api/projects', {
@@ -138,7 +142,7 @@ export function useServerStorage({
     };
 
     const doServerDelete = async (id: string) => {
-        if (!window.confirm(tr('이 프로젝트를 서버에서 삭제할까요?'))) return;
+        if (!await ask.confirm(tr('이 프로젝트를 서버에서 삭제할까요?'), { okLabel: tr('삭제') })) return;
         try {
             await apiFetch(`/api/projects/${id}`, { method: 'DELETE' });
             if (serverIdRef.current === id) forgetProject();
@@ -204,7 +208,7 @@ export function useServerStorage({
     };
 
     const doBackupRestore = async (stamp: string) => {
-        if (!window.confirm(tr('이 백업으로 되돌릴까요? 현재 작업 내용은 사라집니다.'))) return;
+        if (!await ask.confirm(tr('이 백업으로 되돌릴까요? 현재 작업 내용은 사라집니다.'), { okLabel: tr('복구') })) return;
         try {
             const key = getBackupKey();
             const data = await apiFetch(`/api/backups/${key}/${stamp}`);
@@ -214,7 +218,7 @@ export function useServerStorage({
     };
 
     const doBackupDelete = async (stamp: string) => {
-        if (!window.confirm(tr('이 백업을 삭제할까요?'))) return;
+        if (!await ask.confirm(tr('이 백업을 삭제할까요?'), { okLabel: tr('삭제') })) return;
         try { await apiFetch(`/api/backups/${getBackupKey()}/${stamp}`, { method: 'DELETE' }); openBackupList(); }
         catch (e: any) { setAppError(tr('삭제 실패: ') + e.message); }
     };

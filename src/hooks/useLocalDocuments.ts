@@ -25,6 +25,7 @@ import { splitProject, pieceFileName, piecesAreSequential } from '../core/splitP
 import { randomId, nextId } from '../core/ids.ts';
 import { safeArray } from '../core/geometry.ts';
 import { tr } from '../i18n.ts';
+import type { Ask } from './useAsk.ts';
 /** What the local side needs from the app: how to build and restore a document, how to empty it, and where to report. */
 export interface LocalDocumentDeps {
     buildData: (includeAudio?: boolean, assetSink?: any[] | null, blobsOk?: boolean) => Promise<any>;
@@ -32,6 +33,8 @@ export interface LocalDocumentDeps {
     resetToEmpty: () => void;
     setAppError: (m: string) => void;
     setToast: (m: string) => void;
+    /** how to ask, since a hook has no dialog of its own */
+    ask: Ask;
     setLoadProgress: (p: { label: string, done: number, total: number } | null) => void;
     /** owned by App, because resetToEmpty clears it */
     fileHandleRef: { current: any };
@@ -52,12 +55,13 @@ const QUOTA_POLL_MS = 60000;
  * @param {() => void} opts.resetToEmpty
  * @param {(m: string) => void} opts.setAppError
  * @param {(m: string) => void} opts.setToast
+ * @param {Ask} opts.ask how to ask, since a hook has no dialog of its own
  * @param {(p: any) => void} opts.setLoadProgress
  * @param {{current: any}} opts.fileHandleRef owned by App, because resetToEmpty clears it
  * @param {{current: string}} opts.localNameRef owned by App, because the server backup falls back
  *   to it for a name and that hook is created first
  */
-export function useLocalDocuments({ buildData, restore, resetToEmpty, setAppError, setToast, setLoadProgress, fileHandleRef, localNameRef }: LocalDocumentDeps) {
+export function useLocalDocuments({ buildData, restore, resetToEmpty, setAppError, setToast, ask, setLoadProgress, fileHandleRef, localNameRef }: LocalDocumentDeps) {
     const [localProjects, setLocalProjects] = useState<any[] | null>(null); // null = picker closed
     const localIdRef = useRef<string | null>(null);
     const [storageInfo, setStorageInfo] = useState<{ usage: number, quota: number, pct: number } | null>(null);
@@ -175,7 +179,7 @@ export function useLocalDocuments({ buildData, restore, resetToEmpty, setAppErro
             // consequence of grouping non-adjacent cuts, and not what "split my timeline into
             // chunks" leads anyone to expect. Better asked here than discovered in the export.
             if (!piecesAreSequential(pieces)
-                && !window.confirm(tr('파트들이 시간 순서로 나뉘어 있지 않습니다. 이대로 나누면 조각끼리 시간이 겹쳐서, 나중에 이어 붙일 때 빈 구간이 생깁니다. 계속할까요?'))) {
+                && !await ask.confirm(tr('파트들이 시간 순서로 나뉘어 있지 않습니다. 이대로 나누면 조각끼리 시간이 겹쳐서, 나중에 이어 붙일 때 빈 구간이 생깁니다. 계속할까요?'), { okLabel: tr('나누기') })) {
                 return;
             }
             const zip = new ZipWriter();
@@ -192,8 +196,8 @@ export function useLocalDocuments({ buildData, restore, resetToEmpty, setAppErro
         }
     };
 
-    const doNew = () => {
-        if (!window.confirm(tr('새 프로젝트? 저장되지 않은 내용은 사라집니다.'))) return;
+    const doNew = async () => {
+        if (!await ask.confirm(tr('새 프로젝트? 저장되지 않은 내용은 사라집니다.'), { okLabel: tr('새 프로젝트') })) return;
         resetToEmpty();
     };
 
@@ -202,7 +206,7 @@ export function useLocalDocuments({ buildData, restore, resetToEmpty, setAppErro
         try {
             const data = await buildData(true, null, true); // IndexedDB stores frame Blobs directly
             if (!forceNew && localIdRef.current) { await saveProject(localIdRef.current, data, localNameRef.current || 'Untitled'); setToast(tr('로컬에 저장했습니다.')); return; }
-            const name = window.prompt(tr('로컬 저장 이름:'), localNameRef.current || 'MV Project');
+            const name = await ask.prompt(tr('로컬 저장 이름:'), { value: localNameRef.current || 'MV Project', okLabel: tr('저장') });
             if (!name) return;
             const id = randomId('l_');
             await saveProject(id, data, name);
@@ -228,7 +232,7 @@ export function useLocalDocuments({ buildData, restore, resetToEmpty, setAppErro
     };
 
     const doLocalDelete = async (id: string) => {
-        if (!window.confirm(tr('이 로컬 프로젝트를 삭제할까요?'))) return;
+        if (!await ask.confirm(tr('이 로컬 프로젝트를 삭제할까요?'), { okLabel: tr('삭제') })) return;
         try { await deleteProject(id); if (localIdRef.current === id) { localIdRef.current = null; localNameRef.current = ''; } openLocalList(); }
         catch (e: any) { setAppError(tr('삭제 실패: ') + e.message); }
     };
@@ -273,8 +277,8 @@ export function useLocalDocuments({ buildData, restore, resetToEmpty, setAppErro
     const renameTab = (id: string, name: string) => setTabs(p => p.map(t => (t.id === id ? { ...t, name: name || t.name } : t)));
 
     const closeTab = async (id: string) => {
-        if (tabs.length <= 1) { if (window.confirm(tr('마지막 탭입니다. 내용을 비울까요?'))) { resetToEmpty(); tabDocsRef.current[id] = null; } return; }
-        if (!window.confirm(tr('이 탭을 닫을까요? 저장하지 않은 내용은 사라집니다.'))) return;
+        if (tabs.length <= 1) { if (await ask.confirm(tr('마지막 탭입니다. 내용을 비울까요?'), { okLabel: tr('비우기') })) { resetToEmpty(); tabDocsRef.current[id] = null; } return; }
+        if (!await ask.confirm(tr('이 탭을 닫을까요? 저장하지 않은 내용은 사라집니다.'), { okLabel: tr('닫기') })) return;
         delete tabDocsRef.current[id];
         const rest = tabs.filter(t => t.id !== id);
         setTabs(rest);
@@ -291,13 +295,13 @@ export function useLocalDocuments({ buildData, restore, resetToEmpty, setAppErro
     // autosave may be older than what the user meant to open.
     useEffect(() => {
         let cancelled = false;
-        loadAutosave().then(data => {
+        loadAutosave().then(async data => {
             if (cancelled || !data || !Array.isArray(data.cuts)) return;
             const meaningful = data.cuts.length > 1 || data.cuts.some((c: Cut) =>
                 safeArray<Layer>(c.layers).some(l => safeArray(l.strokes).length) || safeArray(c.texts).length);
             if (!meaningful) return;
             const when = data.savedAt ? new Date(data.savedAt).toLocaleString() : '';
-            if (window.confirm(tr('이전에 자동저장된 작업이 있습니다{0}.\n복구할까요?', when ? ` (${when})` : ''))) {
+            if (await ask.confirm(tr('이전에 자동저장된 작업이 있습니다{0}.\n복구할까요?', when ? ` (${when})` : ''), { okLabel: tr('복구') })) {
                 restore(data, null, tr('자동저장 복구 중'));
             }
         }).catch(() => { }).finally(() => { didRecoverRef.current = true; });

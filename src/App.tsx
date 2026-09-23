@@ -18,6 +18,7 @@ import { HelpModal } from './ui/dialogs/HelpModal.tsx';
 import { VideoImportModal } from './ui/dialogs/VideoImportModal.tsx';
 import { SceneDetectModal } from './ui/dialogs/SceneDetectModal.tsx';
 import { LinkPromptModal } from './ui/dialogs/LinkPromptModal.tsx';
+import { AskModal } from './ui/dialogs/AskModal.tsx';
 import { ToolKeysModal } from './ui/dialogs/ToolKeysModal.tsx';
 import { ExportRangeModal } from './ui/dialogs/ExportRangeModal.tsx';
 import { Notices } from './ui/Notices.tsx';
@@ -56,6 +57,7 @@ import { useTimelineView } from './hooks/useTimelineView.ts';
 import { useCutListUi } from './hooks/useCutListUi.ts';
 import { useNotices } from './hooks/useNotices.ts';
 import { useDialogs } from './hooks/useDialogs.ts';
+import { useAsk } from './hooks/useAsk.ts';
 import { useSelectionGesture } from './hooks/useSelectionGesture.ts';
 import { useLayerDrag } from './hooks/useLayerDrag.ts';
 import { usePathCapture } from './hooks/usePathCapture.ts';
@@ -238,6 +240,9 @@ export default function App() {
     const notices = useNotices();
     // Which dialog is open, and the dialogs.rebinding two of them share.
     const dialogs = useDialogs();
+    // What the app is asking the user, as against telling them. One dialog, awaited wherever the
+    // question is raised - including from hooks, which have no JSX to put a question in.
+    const ask = useAsk();
     const [numTracks, setNumTracks] = useState(2);
     const [onionPrev, setOnionPrev] = useState(false);
     const [onionNext, setOnionNext] = useState(false);
@@ -922,7 +927,7 @@ export default function App() {
         doServerBackup, openBackupList, doBackupRestore, doBackupDelete,
     } = useServerStorage({
         serverAvailable, buildData, restore,
-        setLoadProgress: notices.setProgress, setAppError: notices.setError, setToast: notices.setToast,
+        setLoadProgress: notices.setProgress, setAppError: notices.setError, setToast: notices.setToast, ask,
         liveRef, localNameRef,
     });
 
@@ -951,7 +956,7 @@ export default function App() {
         storageInfo, didRecoverRef,
     } = useLocalDocuments({
         buildData, restore, resetToEmpty,
-        setAppError: notices.setError, setToast: notices.setToast, setLoadProgress: notices.setProgress, fileHandleRef, localNameRef,
+        setAppError: notices.setError, setToast: notices.setToast, setLoadProgress: notices.setProgress, ask, fileHandleRef, localNameRef,
     });
 
     // Debounced autosave to IndexedDB, so a refresh or a crash never costs work. It waits for
@@ -991,9 +996,9 @@ export default function App() {
         cutList.setSelectedCutIds(new Set());
     };
     // Clear all drawing + text in the current cut (every layer's strokes), keeping the layers.
-    const handleClearCut = () => {
+    const handleClearCut = async () => {
         if (!currentCutId) return;
-        if (!window.confirm(tr('현재 컷의 모든 그림과 텍스트를 지울까요?'))) return;
+        if (!await ask.confirm(tr('현재 컷의 모든 그림과 텍스트를 지울까요?'), { okLabel: tr('지우기') })) return;
         dispatchCuts(clearCut(currentCutId));
         cancelSelection();
         setSelectedText(null);
@@ -1004,7 +1009,7 @@ export default function App() {
     const updCutCamera = (id: DocId | null, patch: Partial<CameraSettings> | null) => dispatchCuts(setCutCamera(id, patch));
     const updLayerAnim = (cutId: DocId, layerId: DocId, patch: Partial<LayerAnimSettings>) => dispatchCuts(setLayerAnim(cutId, layerId, patch));
     const handleAddTrack = () => setNumTracks(p => p + 1);
-    const handleDeleteTrack = (i: number) => { if (numTracks <= 1) return; if (!window.confirm(tr('Track {0} 삭제?', i))) return; dispatchCuts(deleteTrack(i)); setNumTracks(p => p - 1); };
+    const handleDeleteTrack = async (i: number) => { if (numTracks <= 1) return; if (!await ask.confirm(tr('Track {0} 삭제?', i), { okLabel: tr('삭제') })) return; dispatchCuts(deleteTrack(i)); setNumTracks(p => p - 1); };
     // Click a cut in the list: plain = select one, Ctrl/Cmd = toggle, Shift = range (timeline order).
     // Plain, Ctrl and Shift clicks are three selection rules; core/cutSelection has them.
     const handleCutClick = (e: React.MouseEvent, id: DocId) => {
@@ -1056,7 +1061,7 @@ export default function App() {
         if (!A) return;
         const B = cuts.filter(c => c.track === A.track && c.startTime > A.startTime).sort((a, b) => a.startTime - b.startTime)[0];
         if (!B) { notices.setToast(tr('다음 컷이 없습니다. 트위닝은 현재 컷과 다음 컷 사이를 채웁니다.')); return; }
-        const s = window.prompt(tr('"{0}" → "{1}" 사이에 넣을 중간 프레임 개수 (1~12)', A.name, B.name), '3');
+        const s = await ask.prompt(tr('"{0}" → "{1}" 사이에 넣을 중간 프레임 개수 (1~12)', A.name, B.name), { value: '3', okLabel: tr('만들기') });
         if (!s) return;
         const n = Math.max(1, Math.min(12, Math.round(+s) || 3));
         notices.setProgress({ label: tr('중간 프레임 만드는 중'), done: 0, total: n });
@@ -1808,9 +1813,9 @@ export default function App() {
 
     // Imported frame sets, derived from the cuts themselves (so they survive save/load).
     const videoBatches = deriveVideoBatches(cuts, tr('영상'));
-    const deleteVideoBatch = (batchId: PartId) => {
+    const deleteVideoBatch = async (batchId: PartId) => {
         const b = videoBatches.find(x => x.id === batchId);
-        if (!b || !window.confirm(tr('"{0}" 프레임 {1}컷을 삭제할까요?', b.label, b.count))) return;
+        if (!b || !await ask.confirm(tr('"{0}" 프레임 {1}컷을 삭제할까요?', b.label, b.count), { okLabel: tr('삭제') })) return;
         const left = cuts.filter(c => c.videoBatch !== batchId);
         dispatchCuts(removeBatch(batchId));
         if (!left.some(c => c.id === currentCutId)) setCurrentCutId(left[0]?.id ?? null);
@@ -1830,18 +1835,18 @@ export default function App() {
         }
     };
     // Group the currently-selected cuts into a new part.
-    const makePartFromSelection = () => {
+    const makePartFromSelection = async () => {
         if (!cutList.selectedCutIds.size) { notices.setToast(tr('먼저 컷을 선택하세요 (타임라인에서 드래그 또는 Ctrl+클릭).')); return; }
-        const name = window.prompt(tr('새 파트 이름:'), tr('파트 {0}', parts.length + 1));
-        if (name == null) return;
+        const name = await ask.prompt(tr('새 파트 이름:'), { value: tr('파트 {0}', parts.length + 1), okLabel: tr('만들기') });
+        if (!name) return;
         const pid = 'part_' + nextId().toString(36);
         dispatchCuts(assignPartTo(cutList.selectedCutIds, pid, name));
         cutList.setActivePartId(pid);
     };
-    const renamePart = (partId: PartId) => {
+    const renamePart = async (partId: PartId) => {
         const p = parts.find(x => x.id === partId); if (!p) return;
-        const name = window.prompt(tr('파트 이름 변경:'), p.name);
-        if (name == null) return;
+        const name = await ask.prompt(tr('파트 이름 변경:'), { value: p.name, okLabel: tr('이름 변경') });
+        if (!name) return;
         dispatchCuts(renamePartAction(partId, name));
     };
     // Ungroup a part (cuts stay, just lose their part membership).
@@ -1875,6 +1880,7 @@ export default function App() {
         doc: { buildData, restore, invalidateCutsUsing, decodeFrameBitmap, paintFrame },
         report: { setLoadProgress: notices.setProgress, setAppError: notices.setError, setToast: notices.setToast, setCurrentTime, setIsPlaying },
         recording: { isExporting, exportEndRef, exportStartRef, requestFrameRef, mediaRecorderRef },
+        ask,
     });
 
 
@@ -1894,6 +1900,8 @@ export default function App() {
         // One thing is selected at a time: while a text of this cut is selected, no layer row
         // shows as active, or two things look selected and the move tool's scope is a guess.
         selectedText,
+        // Saving a motion preset asks for its name.
+        ask,
     };
 
 
@@ -2002,6 +2010,7 @@ export default function App() {
                         if (kind === 'audio') loadYoutubeAudio(url); else loadYoutubeVideo(url);
                     }} />
             )}
+            <AskModal request={ask.request} onDone={ask.answer} />
             {vid.cfg && !(vid.busyBg && vid.busy) && (
                 <VideoImportModal
                     videoImport={vid.cfg} setVideoImport={vid.setCfg}
@@ -2038,9 +2047,10 @@ export default function App() {
                     media={{ handleAudioUpload, loadYoutubeAudio, handleDeleteAudio, audioFile, openVideoImport, loadYoutubeVideo, videoFileRef, recentVideos: vid.recent, reimportRecent }}
                     canvas={{ canvasW: CANVAS_W, canvasH: CANVAS_H, setCanvasSize, view, zoomCanvas, resetView }}
                     dialogs={{ setShowHelp: dialogs.setHelp, setShowSettings: dialogs.setSettings, keymap }}
+                    ask={ask}
                     />
             <DocTabs
-                tabs={tabs} activeTabId={activeTabId} switchTab={switchTab} renameTab={renameTab} closeTab={closeTab} newTab={newTab}
+                tabs={tabs} activeTabId={activeTabId} switchTab={switchTab} renameTab={renameTab} closeTab={closeTab} newTab={newTab} ask={ask}
                 selection={selection} setSelection={setSelection} extractSelectionToPart={extractSelectionToPart}
                 copyLassoSelection={copyLassoSelection} commitSelection={commitSelection} cancelSelection={cancelSelection}
                 etool={etool} curvePts={curve.count} commitCurve={curve.commit} cancelCurve={curve.cancel}

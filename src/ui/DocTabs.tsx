@@ -2,9 +2,10 @@ import { Plus } from 'lucide-react';
 import { tr } from '../i18n.ts';
 import type { Tab } from '../hooks/useLocalDocuments.ts';
 import type { PathCapture } from '../hooks/usePathCapture.ts';
+import type { Ask } from '../hooks/useAsk.ts';
 
 /** The tab strip: the open documents and what a click, a double-click and the ✕ do. */
-interface TabProps { tabs: Tab[]; activeTabId: string; switchTab: (id: string) => void; renameTab: (id: string, name: string) => void; closeTab: (id: string) => void; newTab: () => void }
+interface TabProps { tabs: Tab[]; activeTabId: string; switchTab: (id: string) => void; renameTab: (id: string, name: string) => void; closeTab: (id: string) => void; newTab: () => void; ask: Ask }
 /** The floating selection's mode bar: its sliders and the four ways out. */
 interface SelectionProps { selection: any; setSelection: (f: (s: any) => any) => void; extractSelectionToPart: () => void; copyLassoSelection: () => void; commitSelection: () => void; cancelSelection: () => void }
 /** The curve ruler's mode bar: how many anchors so far, and finish or cancel. */
@@ -26,12 +27,12 @@ export interface DocTabsProps extends TabProps, SelectionProps, CurveProps {
 // zoom control.
 
 /** One project per tab. Click switches, double-click renames, the ✕ closes. */
-function TabRow({ tabs, activeTabId, switchTab, renameTab, closeTab, newTab }: TabProps) {
+function TabRow({ tabs, activeTabId, switchTab, renameTab, closeTab, newTab, ask }: TabProps) {
     return (
         <div className="doc-tabs" style={{ display: 'flex', alignItems: 'stretch', gap: 2, background: 'hsl(var(--ui-h) var(--ui-s) 11%)', borderBottom: '1px solid hsl(var(--ui-h) var(--ui-s) 20%)', padding: '3px 6px 0', overflowX: 'auto', flexShrink: 0 }}>
             {tabs.map(t => (
                 <div key={t.id} onClick={() => switchTab(t.id)}
-                    onDoubleClick={() => { const n = window.prompt(tr('탭 이름'), t.name); if (n != null) renameTab(t.id, n); }}
+                    onDoubleClick={async () => { const n = await ask.prompt(tr('탭 이름'), { value: t.name, okLabel: tr('이름 변경') }); if (n) renameTab(t.id, n); }}
                     title={tr('클릭: 전환 · 더블클릭: 이름변경')}
                     style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: '6px 6px 0 0', cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap', maxWidth: 180, background: t.id === activeTabId ? 'hsl(var(--ui-h) var(--ui-s) 15%)' : 'transparent', color: t.id === activeTabId ? '#fff' : '#9a9ab0', borderBottom: t.id === activeTabId ? '2px solid var(--accent-soft)' : '2px solid transparent' }}>
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.name}</span>
@@ -97,12 +98,12 @@ export function DocTabs({
     tabs, activeTabId, switchTab, renameTab, closeTab, newTab,
     selection, setSelection, extractSelectionToPart, copyLassoSelection, commitSelection, cancelSelection,
     etool, curvePts, commitCurve, cancelCurve,
-    cameraCapture, setCameraCapture, pathCapture, setPathCapture,
+    cameraCapture, setCameraCapture, pathCapture, setPathCapture, ask,
 }: DocTabsProps) {
     const anyMode = selection || cameraCapture || pathCapture || etool === 'curve';
     return (
         <div className="doc-tabs-wrap">
-            <TabRow tabs={tabs} activeTabId={activeTabId} switchTab={switchTab} renameTab={renameTab} closeTab={closeTab} newTab={newTab} />
+            <TabRow tabs={tabs} activeTabId={activeTabId} switchTab={switchTab} renameTab={renameTab} closeTab={closeTab} newTab={newTab} ask={ask} />
             {anyMode && (
                 <div className="mode-bar">
                     {selection && (

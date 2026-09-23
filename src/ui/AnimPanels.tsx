@@ -15,6 +15,7 @@ import { readStored, writeStored, arrayCodec } from '../core/persist.ts';
 import { NumField } from './NumField.tsx';
 import { tr } from '../i18n.ts';
 import { swayPointAt, swayWeightAt } from '../core/sway.ts';
+import type { Ask } from '../hooks/useAsk.ts';
 
 /** A named motion, built in or saved by the user: the layer-animation fields it sets. */
 interface MovePreset { id: string; label: string; v: Partial<LayerAnimSettings> }
@@ -30,6 +31,8 @@ export interface LayerAnimPanelProps {
     setSpineEdit: (s: { cutId: DocId, layerId: DocId } | null) => void;
     /** where the playhead is in this cut, 0..1, for placing a keyframe */
     cutProgress?: number;
+    /** how to ask for the preset's name */
+    ask: Ask;
 }
 
 // Animation control panels, split out of App.jsx so editing the (frequently-tweaked)
@@ -201,7 +204,7 @@ const MOVE_PRESETS: MovePreset[] = [
 const loadCustomPresets = (): MovePreset[] => readStored<MovePreset[]>('mv_move_presets', [], arrayCodec.decode);
 const saveCustomPresets = (list: MovePreset[]) => writeStored('mv_move_presets', list, arrayCodec.encode);
 
-export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCapture, setPathCapture, spineEdit, setSpineEdit, cutProgress = 0 }: LayerAnimPanelProps) {
+export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCapture, setPathCapture, spineEdit, setSpineEdit, ask, cutProgress = 0 }: LayerAnimPanelProps) {
     const a: LayerAnimSettings = { ...LAYER_ANIM_DEFAULT, ...layer.anim };
     const [custom, setCustom] = React.useState(loadCustomPresets);
     const keys: Keyframe[] = Array.isArray(a.keys) ? a.keys : [];
@@ -237,8 +240,8 @@ export function LayerAnimPanel({ cut, layer, updLayerAnim, updLayers, pathCaptur
                 ))}
                 <button className="small-btn" style={{ fontSize: 9, padding: '2px 6px', color: '#8bd' }}
                     title={tr('지금 설정을 내 프리셋으로 저장 (다른 파츠에서도 사용)')}
-                    onClick={() => {
-                        const label = window.prompt(tr('프리셋 이름'), tr('내 모션'));
+                    onClick={async () => {
+                        const label = await ask.prompt(tr('프리셋 이름'), { value: tr('내 모션'), okLabel: tr('저장') });
                         if (!label) return;
                         const v = { mode: a.mode, tx: a.tx, ty: a.ty, rot: a.rot, scale: a.scale, speed: a.speed, count: a.count, ease: a.ease, easePower: a.easePower };
                         const next = [...custom, { id: 'c' + Date.now(), label, v }];
