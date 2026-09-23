@@ -29,7 +29,7 @@ import type { MediaAction } from '../core/mediaReducer.ts';
  * @param {(action: any) => void} deps.dispatchMedia
  * @param {(p: any) => void} deps.setLinkPrompt asks for a YouTube URL when none was given
  */
-export function useAudioTrack({ audioUrl, dispatchMedia, setLinkPrompt }: { audioUrl: string | null, dispatchMedia: (action: MediaAction) => void, setLinkPrompt: (p: { kind: 'audio' }) => void }) {
+export function useAudioTrack({ audioUrl, dispatchMedia, setLinkPrompt, setAppError }: { audioUrl: string | null, dispatchMedia: (action: MediaAction) => void, setLinkPrompt: (p: { kind: 'audio' }) => void, setAppError: (m: string) => void }) {
 
     const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -157,7 +157,7 @@ export function useAudioTrack({ audioUrl, dispatchMedia, setLinkPrompt }: { audi
             if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || ('HTTP ' + res.status)); }
             const blob = await res.blob();
             loadAudioUrl(URL.createObjectURL(blob), tr('유튜브 음원'));
-        } catch (e: any) { alert(tr('음원 추출 실패: ') + e.message); }
+        } catch (e: any) { setAppError(tr('음원 추출 실패: ') + e.message); }
     };
 
     return {

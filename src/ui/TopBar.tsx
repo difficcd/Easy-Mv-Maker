@@ -129,7 +129,7 @@ export function TopBar({
                         const s = window.prompt(tr('캔버스 크기 (가로x세로)'), `${canvasW}x${canvasH}`);
                         if (!s) return;
                         const m = s.match(/(\d+)\s*[xX*,\s]\s*(\d+)/);
-                        if (!m) { alert(tr('예: 1920x1080')); return; }
+                        if (!m) { setToast(tr('예: 1920x1080')); return; }
                         setCanvasSize(clampCanvasSize(m[1], m[2]) || { w: 1920, h: 1080 });
                     } else {
                         const [w, h] = e.target.value.split('x').map(Number);

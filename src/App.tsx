@@ -298,7 +298,7 @@ export default function App() {
     const [autoSceneDetect, setAutoSceneDetect] = useStored('mv_auto_scene', true, onOffCodec);
     // YouTube link input. A native prompt fails silently once blocked, so this asks in-app.
 
-    const audio = useAudioTrack({ audioUrl, dispatchMedia, setLinkPrompt: notices.setLinkPrompt });
+    const audio = useAudioTrack({ audioUrl, dispatchMedia, setLinkPrompt: notices.setLinkPrompt, setAppError: notices.setError });
     const {
         audioRef, audioB64Ref, audioCtxRef, audioSourceRef, audioDestRef,
         audioAsBlob, restoreAudio, loadAudioUrl, handleAudioUpload, handleDeleteAudio, loadYoutubeAudio,
@@ -869,7 +869,7 @@ export default function App() {
      * another open was already running - so a caller must not record the project's identity.
      */
     const restore = async (data: any, assetBase: string | null = null, label = tr('프로젝트 여는 중')): Promise<boolean> => {
-        if (data.appName !== 'EasyMVMaker') { alert(tr('올바른 .emv 파일이 아닙니다.')); return false; }
+        if (data.appName !== 'EasyMVMaker') { notices.setError(tr('올바른 .emv 파일이 아닙니다.')); return false; }
         if (restoreBusyRef.current) return false;
         // Set inside the try, so that nothing between here and the finally can leave the flag up.
         // A flag that never comes down means no project can be opened again for the rest of the
@@ -1055,7 +1055,7 @@ export default function App() {
         const A = currentCut;
         if (!A) return;
         const B = cuts.filter(c => c.track === A.track && c.startTime > A.startTime).sort((a, b) => a.startTime - b.startTime)[0];
-        if (!B) { alert(tr('다음 컷이 없습니다. 트위닝은 현재 컷과 다음 컷 사이를 채웁니다.')); return; }
+        if (!B) { notices.setToast(tr('다음 컷이 없습니다. 트위닝은 현재 컷과 다음 컷 사이를 채웁니다.')); return; }
         const s = window.prompt(tr('"{0}" → "{1}" 사이에 넣을 중간 프레임 개수 (1~12)', A.name, B.name), '3');
         if (!s) return;
         const n = Math.max(1, Math.min(12, Math.round(+s) || 3));
@@ -1076,7 +1076,7 @@ export default function App() {
                 await new Promise(r => setTimeout(r, 0)); // yield to the UI between frames so it does not look frozen
             }
             dispatchCuts(insertCutsShifting(A.track, A.endTime, n * dur, newCuts));
-        } catch (e: any) { alert(tr('트위닝 실패: ') + e.message); }
+        } catch (e: any) { notices.setError(tr('트위닝 실패: ') + e.message); }
         finally { notices.setProgress(null); }
     };
 
@@ -1831,7 +1831,7 @@ export default function App() {
     };
     // Group the currently-selected cuts into a new part.
     const makePartFromSelection = () => {
-        if (!cutList.selectedCutIds.size) { alert(tr('먼저 컷을 선택하세요 (타임라인에서 드래그 또는 Ctrl+클릭).')); return; }
+        if (!cutList.selectedCutIds.size) { notices.setToast(tr('먼저 컷을 선택하세요 (타임라인에서 드래그 또는 Ctrl+클릭).')); return; }
         const name = window.prompt(tr('새 파트 이름:'), tr('파트 {0}', parts.length + 1));
         if (name == null) return;
         const pid = 'part_' + nextId().toString(36);
@@ -1873,7 +1873,7 @@ export default function App() {
         audio: { audioRef, audioCtxRef, audioSourceRef, audioDestRef, audioUrl, audioData },
         range: { playStart: exportStart, playEnd, cw: CANVAS_W, ch: CANVAS_H, transparentBg, transparentFormat },
         doc: { buildData, restore, invalidateCutsUsing, decodeFrameBitmap, paintFrame },
-        report: { setLoadProgress: notices.setProgress, setAppError: notices.setError, setCurrentTime, setIsPlaying },
+        report: { setLoadProgress: notices.setProgress, setAppError: notices.setError, setToast: notices.setToast, setCurrentTime, setIsPlaying },
         recording: { isExporting, exportEndRef, exportStartRef, requestFrameRef, mediaRecorderRef },
     });
 

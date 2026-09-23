@@ -93,7 +93,7 @@ export function usePathCapture({ gesture, dispatchCuts, updLayerAnim, notices, c
                 // actually swung becomes the default strength.
                 const w = curveToWave(pts);
                 if (w) updLayerAnim(pathCapture.cutId, pathCapture.layerId, { swayCurve: w.wave, swayAmount: Math.max(1, Math.round(w.amp / 4)) });
-                else alert(tr('거의 직선이라 흔들림을 만들 수 없습니다. 물결치듯 그려보세요.'));
+                else notices.setToast(tr('거의 직선이라 흔들림을 만들 수 없습니다. 물결치듯 그려보세요.'));
             } else {
                 // Evened out before it is stored, not while it is played. The renderer walks
                 // the path by index, so equal spacing is what makes the motion a constant speed

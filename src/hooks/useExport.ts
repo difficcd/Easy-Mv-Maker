@@ -45,7 +45,7 @@ export interface ExportDeps {
     /** opening and closing a document, for the multi-piece queue */
     doc: { buildData: (includeAudio?: boolean, assetSink?: any[] | null, blobsOk?: boolean) => Promise<any>, restore: (data: any, assetBase?: string | null, label?: string) => Promise<boolean>, invalidateCutsUsing: (ids: Iterable<string>) => void, decodeFrameBitmap: (e: StoreEntry) => Promise<ImageBitmap>, paintFrame: (t: number, playing: boolean) => void };
     /** where progress, failure and the playhead go */
-    report: { setLoadProgress: (p: { label: string, done: number, total: number } | null) => void, setAppError: (m: string) => void, setCurrentTime: (t: number) => void, setIsPlaying: (on: boolean) => void };
+    report: { setLoadProgress: (p: { label: string, done: number, total: number } | null) => void, setAppError: (m: string) => void, setToast: (m: string) => void, setCurrentTime: (t: number) => void, setIsPlaying: (on: boolean) => void };
     /** the same objects usePlayback is given, so the loop and the recorder agree */
     recording: PlaybackDeps['recording'];
 }
@@ -65,7 +65,7 @@ export interface ExportDeps {
  * @param {{buildData: Function, restore: Function, invalidateCutsUsing: Function,
  *   decodeFrameBitmap: Function, paintFrame: Function}} opts.doc
  *   opening and closing a document, for the multi-piece queue
- * @param {{setLoadProgress: Function, setAppError: Function, setCurrentTime: Function,
+ * @param {{setLoadProgress: Function, setAppError: Function, setToast: Function, setCurrentTime: Function,
  *   setIsPlaying: Function}} opts.report
  *   where progress, failure and the playhead go
  * @param {{isExporting: {current: boolean}, exportEndRef: {current: number},
@@ -87,7 +87,7 @@ export function useExport({ paint, audio, range, doc, report, recording }: Expor
         to: r && Number.isFinite(r.to) ? (r.to as number) : playEnd,
     });
     const { buildData, restore, invalidateCutsUsing, decodeFrameBitmap, paintFrame } = doc;
-    const { setLoadProgress, setAppError, setCurrentTime, setIsPlaying } = report;
+    const { setLoadProgress, setAppError, setToast, setCurrentTime, setIsPlaying } = report;
     const { isExporting, exportEndRef, exportStartRef, requestFrameRef, mediaRecorderRef } = recording;
 
     // Transparency cannot survive the recorder. Chrome hands VP9 to the hardware encoder above
@@ -273,7 +273,7 @@ export function useExport({ paint, audio, range, doc, report, recording }: Expor
             const bytes = writer.finish();
             const { type, name } = exportFileInfo(gif, { gif: 'mv_pieces', zip: 'mv_pieces' });
             downloadBlob(new Blob([bytes], { type }), name);
-            alert(tr('완료!'));
+            setToast(tr('완료!'));
         } catch (e: any) {
             setAppError(tr('내보내기 실패: ') + (e && e.message ? e.message : String(e)));
         } finally {
@@ -301,7 +301,7 @@ export function useExport({ paint, audio, range, doc, report, recording }: Expor
         // The rates, the scale and the frame count are all in core/frameExport, with the
         // reasoning behind each. The queue above plans through the same function.
         const { gif, fps, gw, gh, delayMs, total, empty } = frameExportPlan({ format: transparentFormat, cw: CANVAS_W, ch: CANVAS_H, from, to });
-        if (empty) { alert(tr('내보낼 콘텐츠가 없습니다.')); return; }
+        if (empty) { setToast(tr('내보낼 콘텐츠가 없습니다.')); return; }
         // One scratch canvas for the whole export rather than one a frame.
         const gifScratch: CanvasSlot = { current: null };
         if (total > LONG_EXPORT_FRAMES && !confirm(tr('{0}프레임을 내보냅니다. 오래 걸립니다. 계속할까요?').replace('{0}', String(total)))) return;
@@ -319,9 +319,9 @@ export function useExport({ paint, audio, range, doc, report, recording }: Expor
             const bytes = writer.finish();
             const { type, name } = exportFileInfo(gif);
             downloadBlob(new Blob([bytes], { type }), name);
-            alert(tr('완료!'));
+            setToast(tr('완료!'));
         } catch (e: any) {
-            alert(tr('내보내기 실패: ') + (e && e.message ? e.message : String(e)));
+            setAppError(tr('내보내기 실패: ') + (e && e.message ? e.message : String(e)));
         } finally {
             isExporting.current = false;
             setLoadProgress(null);
@@ -336,13 +336,16 @@ export function useExport({ paint, audio, range, doc, report, recording }: Expor
         const canvas = canvasRef.current;
         if (!canvas) return;
         if (typeof canvas.captureStream !== 'function' || typeof window.MediaRecorder === 'undefined') {
-            alert(tr('이 환경에서는 내보내기를 지원하지 않습니다.\nPC 브라우저(Chrome 등)에서 실행해 주세요.')); return;
+            setAppError(tr('이 환경에서는 내보내기를 지원하지 않습니다.\nPC 브라우저(Chrome 등)에서 실행해 주세요.')); return;
         }
         // Same range as the frame export and as playback. This used to be its own third answer
         // to "where does the content end" - cuts and audio, but not the reference video, which is
         // on the canvas being recorded.
-        if (playEnd <= playStart) { alert(tr('내보낼 콘텐츠가 없습니다.')); return; }
+        if (playEnd <= playStart) { setToast(tr('내보낼 콘텐츠가 없습니다.')); return; }
         const { mimeType, ext } = pickRecordingType((t: string) => MediaRecorder.isTypeSupported(t));
+        // Deliberately still a blocking dialog: dismissing it is what starts the recording, so
+        // the user gets a moment to be ready. A toast would begin recording with nobody looking.
+        // It becomes a real confirm dialog with the other blocking ones.
         alert(tr('녹화가 시작됩니다.'));
         // The loop reads its clock from the ref, and the ref only follows state while paused -
         // and isPlaying goes true in the same render. Left to state alone the loop started at
@@ -370,7 +373,7 @@ export function useExport({ paint, audio, range, doc, report, recording }: Expor
         try {
             mr = startRecorder(tracks, mimeType, (blob) => {
                 downloadBlob(blob, `mv_export.${ext}`);
-                alert(tr('완료!'));
+                setToast(tr('완료!'));
                 isExporting.current = false; requestFrameRef.current = null;
                 unmute();
             }, {
@@ -379,7 +382,7 @@ export function useExport({ paint, audio, range, doc, report, recording }: Expor
                 videoBitsPerSecond: videoBitrate({ width: canvas.width, height: canvas.height, fps: EXPORT_FPS, mimeType }),
                 audioBitsPerSecond: AUDIO_BITRATE,
             });
-        } catch (e: any) { unmute(); alert(tr('녹화를 시작할 수 없습니다: ') + e.message); return; }
+        } catch (e: any) { unmute(); setAppError(tr('녹화를 시작할 수 없습니다: ') + e.message); return; }
         exportEndRef.current = playEnd; isExporting.current = true; mediaRecorderRef.current = mr; setIsPlaying(true);
     };
 
