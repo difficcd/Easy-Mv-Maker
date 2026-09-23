@@ -1,9 +1,31 @@
 # How work happens here
 
-This is a one-person project, but changes still go through a branch and a pull request. Three
-reasons: every PR gets a Vercel preview, so it can be tried as a real deployment before it
-lands; CI is a gate, so broken code cannot reach `main`; and why something was done stays with
-the code.
+This is a one-person project that takes outside contributions. Every change - the maintainer's
+included - goes through a branch and a pull request. Three reasons: every PR gets a Vercel
+preview, so it can be tried as a real deployment before it lands; CI is a gate, so broken code
+cannot reach `main`; and why something was done stays with the code.
+
+## Contributing from outside
+
+Pull requests from anyone are welcome, and they are accepted **selectively**. Saying how that
+works up front, so nobody writes a week of work into a wall:
+
+- **Open an issue before anything larger than a small fix.** A patch that arrives with no issue
+  behind it may be a thing this project does not want, and finding that out after it is written
+  is the worst possible order.
+- **The core is not redesigned by pull request.** The document model (`src/document.d.ts`), the
+  cuts reducer, the render pipeline and the gate are what everything else stands on. Changes
+  there start as a conversation, not as a diff.
+- **Send these straight in:** a bug fix, a failing case with a test for it, a translation, a
+  documentation correction, a dependency bump.
+- **The gate has to pass.** `npm run check` is what CI runs; a red PR is not reviewed.
+- **The maintainer decides.** A pull request can be declined for not fitting the direction, not
+  only for being wrong. That is not a judgement of the work.
+
+By opening a pull request you agree that your contribution is licensed under Apache-2.0, the
+project's own licence. That is section 5 of the licence text, so there is no separate agreement
+to sign and no copyright to hand over - you keep yours.
+
 
 **Before writing a helper, look in [HELPERS.md](HELPERS.md).** It indexes every shared export,
 and `npm run check` fails when one is missing from it. The reason it exists is that the same
