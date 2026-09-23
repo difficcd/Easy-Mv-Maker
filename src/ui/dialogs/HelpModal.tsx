@@ -68,6 +68,14 @@ export function HelpModal({ keymap, onClose }: { keymap: Keymap, onClose: () => 
             <div>{tr('컷: 길게 눌러 이동 · 가장자리 드래그로 길이조절 · 더블클릭 이름변경 · Ctrl/Shift+클릭 다중선택')}</div>
             <div style={{ marginTop: 8 }}><b style={{ color: '#9aa' }}>{tr('팁')}</b></div>
             <div>{tr('애니메이션(컷·파츠)은 ▶ 재생 시에만 보입니다. 올가미 → "파츠로 분리"로 부분 애니메이션.')}</div>
+            {/* AGPL section 13: anyone using this over a network is owed the source of the
+                version they are using. A hosted copy - the previews, or anybody's fork - has to
+                say where it is, so the link lives in the app rather than only in the README. */}
+            <div style={{ marginTop: 12, paddingTop: 8, borderTop: '1px solid hsl(var(--ui-h) var(--ui-s) 20%)', fontSize: 11, color: '#888' }}>
+                Easy MV Maker · <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noreferrer" style={{ color: 'var(--accent-soft)' }}>AGPL-3.0</a>
+                {' · '}
+                <a href="https://github.com/difficcd/Easy-Mv-Maker" target="_blank" rel="noreferrer" style={{ color: 'var(--accent-soft)' }}>{tr('소스 코드')}</a>
+            </div>
         </Modal>
     );
 }
