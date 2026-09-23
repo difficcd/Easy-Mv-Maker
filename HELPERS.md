@@ -36,6 +36,7 @@ frame's image data.
 | `apiFetch` | A JSON endpoint, or throw on any status that is not ok. |
 | `fetchAsset` | One stored binary asset - a frame, the audio, the reference video - as a Blob, or throw. |
 | `putAsset` | Upload one asset as a Blob rather than base64, throwing the caller's own message so it can be localised and numbered. A legacy dataURL is fetched back into a Blob first. |
+| `retryDelayMs` | How long to wait before retrying a request the server rate limited. Believes `Retry-After`, falls back to doubling without it, and clamps both ends — never under 200ms, so it cannot busy-loop against the thing that just asked to be left alone, and never over five seconds, so a wild header cannot stall a save. A save costs one write per frame, so any ceiling can be reached by a big enough project; waiting makes that slower rather than impossible. |
 
 ## `src/core/brushSize.ts`
 
@@ -654,6 +655,7 @@ What is drawn over the frame while editing and never while playing.
 | `drawMotionPath` | A part's recorded motion path, dashed with a dot at its start; brighter for the part being edited. |
 | `drawMosaicRegion` | The rectangle a mosaic effect is confined to, drawn only while that layer's panel is open — it is a setting, not part of the picture. |
 | `drawMosaicMarquee` | The rectangle the mosaic tool is dragging out: a tint (colour passed in, so the function stays testable) with the same screen-sized marquee round it. |
+| `drawFrameGuide` | The frame — what the camera sees and what the exported file will be — outlined over the artwork, with everything outside it dimmed. Drawn only when the canvas and the frame differ, since otherwise it would trace the canvas edge and say nothing. The artwork outside is dimmed rather than hidden: it is still there, still editable, and still what the camera travels onto (#327). |
 | `drawCurveAnchors` | The curve ruler's anchors, screen-sized, the first one marked as the end the curve is drawn from. |
 | `accentSoft` | That keeps on-canvas furniture such as selection outlines and paths on the theme colour. |
 

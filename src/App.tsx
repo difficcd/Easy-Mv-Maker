@@ -49,7 +49,7 @@ import { PLAYBACK_RATES, RATE_DEFAULT, playbackRateCodec } from './core/playback
 import { scaleProjectTimes, bakePlan } from './core/timeScale.ts';
 import { paintFrameOnto, createFrameScratch, BOIL_FPS } from './canvas/framePaint.ts';
 import { drawMarquee } from './canvas/marquee.ts';
-import { drawTextSelection, drawFloatingSelection, drawMotionPath, drawMosaicRegion } from './canvas/editChrome.ts';
+import { drawTextSelection, drawFloatingSelection, drawMotionPath, drawMosaicRegion, drawFrameGuide } from './canvas/editChrome.ts';
 import { createBitmapStore } from './canvas/bitmapStore.ts';
 import { regionBounds, rectBounds, mosaic, blurMaskedRegion } from './canvas/pixelEffects.ts';
 import { useLayerCache } from './hooks/useLayerCache.ts';
@@ -109,6 +109,7 @@ import { sizeCanvas, imageDataCanvas } from './canvas/scratch.ts';
 import { drawStrokesOnCtx } from './canvas/strokes.ts';
 import { detectSceneCuts, seekTarget } from './canvas/videoFrames.ts';
 import { DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT } from './core/canvasSize.ts';
+import { frameGeometry } from './core/canvasFrame.ts';
 import { hexToRgb } from './core/colour.ts';
 import { pointInPolygon, safeArray } from './core/geometry.ts';
 import { flattenLayersInUiOrder } from './core/layerTree.ts';
@@ -365,6 +366,11 @@ export default function App() {
     // User-adjustable canvas resolution. Shadows the imported defaults for the whole component.
     const [canvasSize, setCanvasSize] = useState({ w: CANVAS_W_DEFAULT, h: CANVAS_H_DEFAULT });
     const CANVAS_W = canvasSize.w, CANVAS_H = canvasSize.h;
+    // The picture that comes out, which is the canvas unless the project says otherwise. Null
+    // rather than a copy of the canvas: a copy would have to be kept in step every time the
+    // canvas is resized, and the one thing worse than two sizes is two sizes that disagree.
+    const [frameSize, setFrameSize] = useState<{ w: number, h: number } | null>(null);
+    const FRAME_W = frameSize?.w ?? CANVAS_W, FRAME_H = frameSize?.h ?? CANVAS_H;
     const [copiedCut, setCopiedCut] = useState<Cut | null>(null);
     const [selection, setSelection] = useState<any>(null);
     const [textEdit, setTextEdit] = useState<TextEdit | null>(null);
@@ -844,6 +850,10 @@ export default function App() {
         const out: Record<string, any> = {
             version: '1.5', appName: 'EasyMVMaker', savedAt: new Date().toISOString(), numTracks, onionPrev, onionNext, pps: tl.pps, bitmaps, compressedBitmaps: compressed,
             canvas: { w: CANVAS_W, h: CANVAS_H },
+            // Only when it differs. Writing it always would put a frame into every file the
+            // moment this shipped, and a field that is always the canvas is one more thing for
+            // a reader to wonder about.
+            ...(FRAME_W !== CANVAS_W || FRAME_H !== CANVAS_H ? { frame: { w: FRAME_W, h: FRAME_H } } : {}),
             cuts: cuts.map(c => ({ ...c, layers: c.layers.map(l => ({ ...l, redoStrokes: [] })) }))
         };
         if (assetSink && assets.length) out.assets = assets;
@@ -897,6 +907,10 @@ export default function App() {
         cutList.reset();   // none of it names anything in the document being opened (#241)
         const s = projectSettings(data);
         if (s.canvas) setCanvasSize(s.canvas);
+        // Set unconditionally, unlike the canvas: a project with no frame must clear one left
+        // over from whatever was open before, or its artwork is silently cropped to somebody
+        // else's output size.
+        setFrameSize(s.frame);
         setNumTracks(s.numTracks); setCurrentCutId(s.currentCutId); setCurrentTime(0);
         setOnionPrev(s.onionPrev); setOnionNext(s.onionNext); tl.setPps(s.pps);
         setCopiedCut(null); // clipboard may reference bitmaps from the old project
@@ -1671,6 +1685,10 @@ export default function App() {
             drawFloatingSelection(ctx!, bmp || (img && imageDataCanvas(img)) || null, box, view.zoom);
         }
 
+        // What the camera will actually capture, when the artwork is bigger than it (#327).
+        // Chrome, so it is drawn here rather than in paintFrameOnto and never reaches an export.
+        if (!isPlaying) drawFrameGuide(ctx!, frameGeometry(CANVAS_W, CANVAS_H, frameSize), view.zoom);
+
         // Recorded motion paths (per layer) shown while editing so they're visible/redrawable.
         if (!isPlaying) {
             const cc = currentCut;
@@ -1681,7 +1699,7 @@ export default function App() {
             }
         }
 
-    }, [paintFrame, cuts, currentCutId, currentCut, isPlaying, tl.scrubbing, currentTime, selection, selectedText, animLayer, view.zoom]);
+    }, [paintFrame, cuts, currentCutId, currentCut, isPlaying, tl.scrubbing, currentTime, selection, selectedText, animLayer, view.zoom, frameSize, CANVAS_W, CANVAS_H]);
 
     // Boiling is motion, so it is invisible on a still frame; the phase is advanced slowly
     // while editing to preview it. That preview redraws the whole layer, though, so it stops
@@ -2045,7 +2063,7 @@ export default function App() {
                     project={{ doNew, doSave, doOpen, doLocalSave, openLocalList, doServerSave, openServerList, doServerBackup, openBackupList, backupBusy, doSplitSave, handleExportPieces, handleExport: () => dialogs.setExportRange(true) }}
                     status={{ autoSavedAt, autosaveErr, backupAt, storageInfo, serverAvailable, setToast: notices.setToast }}
                     media={{ handleAudioUpload, loadYoutubeAudio, handleDeleteAudio, audioFile, openVideoImport, loadYoutubeVideo, videoFileRef, recentVideos: vid.recent, reimportRecent }}
-                    canvas={{ canvasW: CANVAS_W, canvasH: CANVAS_H, setCanvasSize, view, zoomCanvas, resetView }}
+                    canvas={{ canvasW: CANVAS_W, canvasH: CANVAS_H, setCanvasSize, view, zoomCanvas, resetView, frameSize, setFrameSize }}
                     dialogs={{ setShowHelp: dialogs.setHelp, setShowSettings: dialogs.setSettings, keymap }}
                     ask={ask}
                     />

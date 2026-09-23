@@ -12,6 +12,8 @@ import type { Rect } from '../core/lassoOps.ts';
 
 
 import { withAlpha } from '../core/colour.ts';
+import { frameRect, restingCentre } from '../core/canvasFrame.ts';
+import type { FrameGeometry } from '../core/canvasFrame.ts';
 
 /** The rectangle around a selected text, as a marquee. */
 export function drawTextSelection(ctx: CanvasRenderingContext2D, box: Rect, zoom: number): void {
@@ -139,6 +141,39 @@ export function drawMosaicRegion(ctx: CanvasRenderingContext2D, rect: Rect | nul
     if (!rect) return;
     const { x, y, w, h } = rect;
     drawMarquee(ctx, [{ x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h }], zoom, true);
+}
+
+/**
+ * The frame: what the camera sees and what the exported file will be, drawn over the artwork.
+ *
+ * Only when the two differ. A project whose canvas is its frame has nothing to show - the guide
+ * would trace the edge of the canvas and say only that the canvas has an edge.
+ *
+ * Editing chrome, so it is drawn by App after the frame is painted and never reaches an export.
+ * The artwork outside it is dimmed rather than hidden: it is still there, still editable, and
+ * still what the camera travels onto (#327) - it simply is not in shot at rest.
+ *
+ * @param ctx
+ * @param geom the artwork and the frame
+ * @param zoom the canvas view's zoom, so the outline stays one pixel wide on screen
+ */
+export function drawFrameGuide(ctx: CanvasRenderingContext2D, geom: FrameGeometry, zoom: number): void {
+    if (geom.cw === geom.fw && geom.ch === geom.fh) return;
+    const { x, y, w, h } = frameRect(geom, restingCentre(geom), 1);
+    ctx.save();
+    // Dim everything outside the frame, as four bands rather than an even-odd path: a fill rule
+    // is the sort of thing that renders differently on one engine and is noticed by nobody.
+    ctx.fillStyle = 'rgba(0,0,0,0.32)';
+    ctx.fillRect(0, 0, geom.cw, Math.max(0, y));
+    ctx.fillRect(0, y + h, geom.cw, Math.max(0, geom.ch - (y + h)));
+    ctx.fillRect(0, y, Math.max(0, x), h);
+    ctx.fillRect(x + w, y, Math.max(0, geom.cw - (x + w)), h);
+
+    ctx.strokeStyle = accentSoft(0.9);
+    ctx.lineWidth = Math.max(1, 2 / Math.max(0.01, zoom));
+    ctx.setLineDash([]);
+    ctx.strokeRect(x, y, w, h);
+    ctx.restore();
 }
 
 // A 2D canvas context cannot read CSS variables, so the computed value is read out instead.

@@ -3,7 +3,7 @@
 ## Reporting a vulnerability
 
 Do not open a public issue for a security problem. Use GitHub's **Report a vulnerability**
-button on the Security tab, or email owlee1214@gmail.com. Either way it reaches one person, the
+button on the Security tab, or email leeow1214@gmail.com. Either way it reaches one person, the
 maintainer, and a first reply should come within a week.
 
 Please say what an attacker gets out of it, not only that something is possible - that is what
