@@ -78,6 +78,9 @@ const SHAPE: Tool = {
     down: (c) => {
         c.gesture.lineStart.current = c.pos;
         c.gesture.stroke.current = c.newStroke('brush', shapePoints(c.etool, c.pos, c.pos) || [c.pos, { ...c.pos }], c.e);
+        // These points are the shape, not a sample of a wobbling hand: the renderer must draw
+        // them as given rather than smoothing them into a bowed approximation (#342).
+        c.gesture.stroke.current.straight = true;
         c.overlay.restartStroke();
     },
     move: (c) => {

@@ -172,7 +172,7 @@ function crControls(p0: Point, p1: Point, p2: Point, p3: Point, tension = 1): [P
 
 // Draw the stroke as a Catmull-Rom spline. Uniform width renders as one continuous path
 // (no seams); variable width renders per segment with already-smoothed widths.
-function smoothStroke(ctx: CanvasRenderingContext2D, pts: readonly Point[], widths: readonly number[], applyStyle: (i: number) => void): void {
+function smoothStroke(ctx: CanvasRenderingContext2D, pts: readonly Point[], widths: readonly number[], applyStyle: (i: number) => void, straight = false): void {
     const n = pts.length;
     if (!n) return;
     if (n === 1) {
@@ -186,6 +186,10 @@ function smoothStroke(ctx: CanvasRenderingContext2D, pts: readonly Point[], widt
         ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y); ctx.lineTo(pts[1].x, pts[1].y); ctx.stroke();
         return;
     }
+    // `straight` draws the points as given. Skipping the smoothing that builds the point list is
+    // not enough on its own: this function fits a Catmull-Rom curve through whatever it is
+    // handed, so an exact rectangle still came out bowed - the ink reached eleven pixels outside
+    // the dragged box on every side with the points already correct (#342).
     const at = (i: number) => pts[Math.max(0, Math.min(n - 1, i))];
     let uniform = true;
     for (let i = 2; i < n; i++) if (Math.abs(widths[i] - widths[1]) > 0.2) { uniform = false; break; }
@@ -195,6 +199,7 @@ function smoothStroke(ctx: CanvasRenderingContext2D, pts: readonly Point[], widt
         ctx.beginPath();
         ctx.moveTo(pts[0].x, pts[0].y);
         for (let i = 0; i < n - 1; i++) {
+            if (straight) { ctx.lineTo(at(i + 1).x, at(i + 1).y); continue; }
             const [c1, c2] = crControls(at(i - 1), at(i), at(i + 1), at(i + 2));
             ctx.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, at(i + 1).x, at(i + 1).y);
         }
@@ -202,12 +207,16 @@ function smoothStroke(ctx: CanvasRenderingContext2D, pts: readonly Point[], widt
         return;
     }
     for (let i = 0; i < n - 1; i++) {
-        const [c1, c2] = crControls(at(i - 1), at(i), at(i + 1), at(i + 2));
         applyStyle(i + 1);
         ctx.lineWidth = Math.max(0.3, widths[i + 1]);
         ctx.beginPath();
         ctx.moveTo(at(i).x, at(i).y);
-        ctx.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, at(i + 1).x, at(i + 1).y);
+        if (straight) {
+            ctx.lineTo(at(i + 1).x, at(i + 1).y);
+        } else {
+            const [c1, c2] = crControls(at(i - 1), at(i), at(i + 1), at(i + 2));
+            ctx.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, at(i + 1).x, at(i + 1).y);
+        }
         ctx.stroke();
     }
 }
@@ -371,7 +380,23 @@ export function drawStrokesOnCtx(ctx: CanvasRenderingContext2D, strokes: readonl
         const roughSeed = (s.id || 0) + roughPhase * 7919;
         // The cache is only used when boiling. A plain layer already caches its canvas and draws
         // once per change, so caching there buys nothing and only costs memory.
+        //
+        // A ruler shape is exempt. smoothPoints exists to make a hand-drawn line look intended,
+        // and it does that by fitting a Catmull-Rom spline through sparse input and then cutting
+        // the corners three times. A rectangle is nothing but four sharp corners and five points,
+        // so it takes the full force of both: a drag from (100,100) to (500,400) came out
+        // spanning 70..550 by 78..438 - bowed outward by thirty to fifty pixels on every side,
+        // with the corners rounded off (#342). The points of a ruler shape are already exactly
+        // what was asked for; there is nothing to infer and nothing to improve.
+        //
+        // It is also five points instead of 5,824.
         const smooth = (p: readonly PressurePoint[]) => {
+            if (s.straight) {
+                // Boiling still applies - a shape on a boiling layer should wobble with the rest
+                // of the drawing - but it wobbles the exact outline rather than a smoothed guess.
+                if (!roughAmp) return p.slice();
+                return roughenPoints(resamplePts(p, JITTER_SPACING), roughAmp, roughSeed, roughWave);
+            }
             if (!roughAmp) return smoothPoints(p);
             return roughenPoints(jitterBasePoints(s, points), roughAmp, roughSeed, roughWave);
         };
@@ -481,7 +506,7 @@ export function drawStrokesOnCtx(ctx: CanvasRenderingContext2D, strokes: readonl
             const w = baseSize * (hasPressure ? prAt(pts, i) * 2 : 1);
             return s.tool === 'brush' ? w * taperAt(Math.max(1, i), n) : w;
         });
-        smoothStroke(ctx, pts, widths, () => { ctx.globalAlpha = isEraser ? 1 : baseOpacity; });
+        smoothStroke(ctx, pts, widths, () => { ctx.globalAlpha = isEraser ? 1 : baseOpacity; }, s.straight === true);
         ctx.restore();
         ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1.0;
     });

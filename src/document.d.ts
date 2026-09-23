@@ -58,6 +58,8 @@ interface Stroke {
     pen?: boolean;
     /** The boiling line's own displacement, when the stroke carries one rather than the layer. */
     roughAmp?: number;
+    /** A ruler shape: the points are exact, so the freehand smoothing is skipped (#342). */
+    straight?: boolean;
 
     // -- placed pixels: paste, fill, the lasso's erase and the liquify commit
     x?: number;
