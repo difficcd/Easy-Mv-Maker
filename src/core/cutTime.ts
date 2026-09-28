@@ -36,3 +36,38 @@ export function cutDuration(ac: TimeSpan): number {
 export function cutProgress(ac: TimeSpan, time: number): number {
     return Math.max(0, Math.min(1, (time - ac.startTime) / cutDuration(ac)));
 }
+
+/**
+ * The span a group of cuts covers: the earliest start to the latest end.
+ *
+ * For a camera that travels across a whole part rather than a single cut (#349). A part is not
+ * a record anywhere - it is whichever cuts carry the same partId - so its span has to be worked
+ * out from the cuts each time.
+ *
+ * Null when the id names nothing, so the caller falls back to the cut it already had rather
+ * than dividing by a span of zero.
+ *
+ * @param cuts every cut in the document
+ * @param partId the part to measure
+ */
+export function partSpan(cuts: TimeSpan[] | null | undefined, partId: unknown): { start: number, end: number } | null {
+    if (partId == null) return null;
+    let start = Infinity, end = -Infinity;
+    for (const c of (Array.isArray(cuts) ? cuts : [])) {
+        if ((c as { partId?: unknown }).partId !== partId) continue;
+        if (c.startTime < start) start = c.startTime;
+        if (c.endTime > end) end = c.endTime;
+    }
+    return Number.isFinite(start) && Number.isFinite(end) ? { start, end } : null;
+}
+
+/**
+ * How far through an arbitrary span a moment is: 0 at its start, 1 at its end.
+ *
+ * cutProgress with the span handed in rather than read off a cut, and the same floor under the
+ * length so a part whose cuts all sit at one instant cannot divide by zero.
+ */
+export function spanProgress(span: { start: number, end: number }, time: number): number {
+    const length = Math.max(MIN_CUT_SECONDS, span.end - span.start);
+    return Math.max(0, Math.min(1, (time - span.start) / length));
+}

@@ -812,6 +812,8 @@ How long a cut lasts, and how far through it a moment is.
 |---|---|
 | `cutDuration` | A cut's length in seconds, never zero - a cut can be dragged to zero length and everything that animates divides by it. |
 | `cutProgress` | How far through a cut a moment is, 0 to 1, clamped. Animations are evaluated for cuts merely near the playhead, so times outside the cut are routine and extrapolating would overshoot. |
+| `partSpan` | The span a part covers: earliest start to latest end of the cuts carrying that id. A part is not a record anywhere — it is whichever cuts share a `partId` — so its span is worked out each time. Null when the id names nothing, so the caller falls back to the cut it already had rather than dividing by zero. |
+| `spanProgress` | `cutProgress` with the span handed in rather than read off a cut, for a camera that travels across a whole part (#349). Same floor under the length, so a part whose cuts all sit at one instant cannot divide by zero. |
 
 ## `src/core/easing.ts`
 

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { evaluateFrame } from '../../src/engine/evaluateFrame.ts';
+import { CAMERA_DEFAULT } from '../../src/core/camera.ts';
 
 const W = 1920, H = 1080;
 const layer = (id, extra = {}) => ({ id, type: 'layer', parentId: null, visible: true, strokes: [], ...extra });
@@ -118,4 +119,51 @@ test('a cut with no layers and no texts still evaluates', () => {
     const e = at([c], 1).cuts[0];
     assert.deepEqual(e.groups, []);
     assert.deepEqual(e.texts, []);
+});
+
+// --- a camera that travels across a part (#349) -----------------------------------------------
+//
+// The reported symptom was "the camera does nothing". It was working: it was finishing inside
+// one drawn frame. In a frame-by-frame animation a cut is one frame, so a per-cut camera is
+// painted once, at its starting position. These pin both halves.
+
+const frameCuts = (acrossPart) => Array.from({ length: 24 }, (_, i) => ({
+    id: i + 1, startTime: i / 24, endTime: (i + 1) / 24, track: 0, layers: [], texts: [], partId: 'p1',
+    // Attached to the first cut only, which is how the panel sets it.
+    camera: i === 0 ? { ...CAMERA_DEFAULT, preset: 'panRight', acrossPart } : null,
+}));
+
+/** Where the camera sits on each of the 24 displayed frames, or null where there is none. */
+const track = (cuts) => Array.from({ length: 24 }, (_, f) => {
+    const s = evaluateFrame(cuts, f / 24 + 0.001, { playing: true, currentCutId: 1, cw: 1920, ch: 1080 });
+    return s.camera ? s.camera.cx : null;
+});
+
+test('per-cut camera on one-frame cuts is painted once and never moves - the bug', () => {
+    const xs = track(frameCuts(false));
+    assert.equal(xs.filter(v => v !== null).length, 1, 'only the cut it is attached to has a camera');
+});
+
+test('across the part, the same camera moves on every frame of it', () => {
+    const xs = track(frameCuts(true));
+    assert.equal(xs.filter(v => v !== null).length, 24, 'every frame of the part is under the camera');
+    assert.ok(xs[23] - xs[0] > 400, `should travel, went ${xs[0]} -> ${xs[23]}`);
+    // Monotonic for a pan: it should sweep, not jump back at each cut boundary.
+    for (let i = 1; i < xs.length; i++) assert.ok(xs[i] >= xs[i - 1] - 1e-9, `went backwards at frame ${i}`);
+});
+
+test('across the part changes nothing while paused', () => {
+    // The camera is a playback affair; editing must still show the artwork square on.
+    const s = evaluateFrame(frameCuts(true), 0.5, { playing: false, currentCutId: 12, cw: 1920, ch: 1080 });
+    assert.equal(s.camera, null);
+});
+
+test('a cut with no part falls back to its own span, however it is flagged', () => {
+    const cuts = [{ id: 1, startTime: 0, endTime: 2, track: 0, layers: [], texts: [], partId: null,
+                    camera: { ...CAMERA_DEFAULT, preset: 'panRight', acrossPart: true } }];
+    const a = evaluateFrame(cuts, 0, { playing: true, currentCutId: 1, cw: 1920, ch: 1080 });
+    // Just inside the end: endTime is exclusive, so at exactly 2 the cut is no longer active.
+    const b = evaluateFrame(cuts, 1.99, { playing: true, currentCutId: 1, cw: 1920, ch: 1080 });
+    assert.ok(a.camera && b.camera, 'still has a camera');
+    assert.ok(b.camera.cx > a.camera.cx, 'and still travels across its own cut');
 });

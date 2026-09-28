@@ -29,6 +29,15 @@ export interface CameraSettings {
     rotFrom: number; rotTo: number;
     ease: string; easePower: number;
     shake: number; shakeSpeed: number;
+    /**
+     * Spread the move across the whole part instead of this one cut (#349).
+     *
+     * A camera belongs to a cut and runs from that cut's start to its end. In a frame-by-frame
+     * animation a cut *is* one drawn frame, so the move finishes in a fraction of a second and
+     * gets painted once, at its starting position - which is indistinguishable from no camera
+     * at all. Set here, the move is driven by the part's whole span instead.
+     */
+    acrossPart?: boolean;
 }
 /** What a preset supplies: a path and the zoom at each end, and optionally a shake. */
 export interface PresetMove { path: Point[]; zoomFrom: number; zoomTo: number; shake?: number; shakeSpeed?: number }
@@ -54,6 +63,8 @@ export const CAMERA_DEFAULT: CameraSettings = {
     rotTo: 0,
     ease: 'inout',
     easePower: 2,
+    /** Off: the move runs over this cut alone, which is how every existing project behaves. */
+    acrossPart: false,
     /** Handheld wobble, in canvas pixels of maximum displacement. 0 is off. */
     shake: 0,
     /** Roughly how many wobbles a second. */
