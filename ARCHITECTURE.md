@@ -108,9 +108,10 @@ index signature, so a misspelt one is an error. Ids there are `DocId` - a number
   so the **canvas** becomes the artwork and the **frame** what the file is. A document with no
   frame gets frame == canvas — every project today — and every function here is then the identity.
   `framePaint` places the artwork through it, the top bar sets it, and `drawFrameGuide` outlines
-  it over the artwork while editing. The editor deliberately paints the whole canvas rather than
-  the frame - you have to see and draw the parts the camera will travel onto - so the frame is a
-  guide there, exactly as the camera is playback-only for the same reason. The export renders the
+  it over the artwork while editing. The editor paints the whole canvas rather than the frame -
+  you have to see and draw the parts the camera will travel onto - so the frame is a guide there.
+  On playback it switches: the canvas shows the shot, letterboxed to the frame's shape, because
+  that is the one moment the question is "what will come out". The export renders the
   frame: `useExport` keeps a second canvas at the frame's size and paints it through `paintOnto`,
   and a project that has not set a frame still captures the main canvas exactly as before. Still
   to come: presets that use the room instead of zooming to make some, and a camera that can span
