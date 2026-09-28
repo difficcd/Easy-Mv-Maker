@@ -14,7 +14,7 @@
 // a layer that the drag overlay is drawing instead.
 
 import { computeCutAnim } from '../core/cutAnim.ts';
-import { cutProgress } from '../core/cutTime.ts';
+import { cutProgress, partSpan, spanProgress } from '../core/cutTime.ts';
 import { safeArray } from '../core/geometry.ts';
 import { computeLayerAnim } from '../core/layerAnim.ts';
 import { flattenLayersInUiOrder } from '../core/layerTree.ts';
@@ -82,10 +82,27 @@ export function evaluateFrame(cuts: Cut[] | null | undefined, t: number, { playi
 
     // A shot belongs to the cut on the lowest active track: that is the base scene, and the tracks
     // above it are parts of the same shot rather than shots of their own.
-    const camCut = playing ? active.find(c => c.camera) : null;
+    //
+    // A camera set to span its part has to be found from the part, not from the cuts on screen:
+    // it is attached to one cut but drives all of them, and that cut is not active for most of
+    // the part's length. Looking only at `active` is what made it appear to do nothing (#349).
+    const base = active[0];
+    const partCamCut = playing && base?.partId != null
+        ? (Array.isArray(cuts) ? cuts : []).find(c => c.partId === base.partId && c.camera?.acrossPart)
+        : null;
+    const camCut = playing ? (partCamCut || active.find(c => c.camera)) : null;
+    // The span the move runs over: the part when it spans one, otherwise the cut it sits on.
+    const camSpan = partCamCut ? partSpan(cuts, partCamCut.partId) : null;
     // Elapsed seconds as well as progress: the shake is per-second, so that one setting wobbles
     // at the same rate in a short cut and a long one.
-    const camera = camCut ? computeCamera(camCut.camera, cutProgress(camCut, t), cw, ch, t - camCut.startTime) : null;
+    const camera = camCut
+        ? computeCamera(
+            camCut.camera,
+            camSpan ? spanProgress(camSpan, t) : cutProgress(camCut, t),
+            cw, ch,
+            t - (camSpan ? camSpan.start : camCut.startTime),
+        )
+        : null;
 
     return {
         // The moment this scene is of. The static needs seconds since its cut began, and the

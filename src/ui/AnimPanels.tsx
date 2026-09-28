@@ -146,6 +146,25 @@ export function CameraPanel({ cut, updCutCamera, cameraCapture, setCameraCapture
                     {Object.entries(CAMERA_PRESETS).map(([id, p]) => <option key={id} value={id}>{tr(p.label)}</option>)}
                 </select>
             </div>
+            {/* The move runs over this cut by default, which is right for a cut that lasts a
+                second and useless for one that is a single drawn frame - there it finishes
+                before the frame is even replaced. Spreading it over the part is what makes a
+                camera visible in a frame animation (#349). */}
+            <div style={R()}>
+                <span style={{ width: 34, color: '#aaa', flexShrink: 0 }}>{tr('범위')}</span>
+                <button className="small-btn" style={{ flex: 1, minWidth: 76, background: c.acrossPart ? 'var(--accent)' : undefined, color: c.acrossPart ? '#fff' : undefined }}
+                    onClick={() => set({ acrossPart: !c.acrossPart })}
+                    title={cut.partId
+                        ? tr('컷 하나가 한 장인 애니메이션에서는 카메라 이동이 그 한 장 안에서 끝나 보이지 않습니다. 파트 전체에 걸쳐 움직이게 합니다.')
+                        : tr('이 컷은 파트에 속해 있지 않아 이 컷 안에서만 움직입니다. 컷들을 파트로 묶으면 그 전체에 걸칠 수 있습니다.')}>
+                    {c.acrossPart ? tr('파트 전체') : tr('이 컷만')}
+                </button>
+            </div>
+            {c.acrossPart && !cut.partId && (
+                <div style={{ fontSize: 9, color: '#c96', marginTop: -2 }}>
+                    {tr('이 컷이 파트에 속해 있지 않아 이 컷 안에서만 움직입니다.')}
+                </div>
+            )}
             <div style={R()}>
                 <span style={{ width: 34, color: '#aaa', flexShrink: 0 }}>{tr('줌')}</span>
                 <NumIn value={round2(eff ? eff.zoomFrom : 1)} onChange={v => set({ zoomFrom: clampZoom(v) })} step={0.05} min={0.2} w={54} label={tr('시작')} title={tr('시작 배율')} />

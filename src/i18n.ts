@@ -575,6 +575,12 @@ const EN: Record<string, string> = {
 
     // -- Shared --------------------------------------------
     '취소': 'Cancel',
+    '범위': 'Range',
+    '파트 전체': 'Whole part',
+    '이 컷만': 'This cut',
+    '컷 하나가 한 장인 애니메이션에서는 카메라 이동이 그 한 장 안에서 끝나 보이지 않습니다. 파트 전체에 걸쳐 움직이게 합니다.': 'When one cut is one drawn frame, the move finishes inside that frame and is never seen. This spreads it over the whole part.',
+    '이 컷은 파트에 속해 있지 않아 이 컷 안에서만 움직입니다. 컷들을 파트로 묶으면 그 전체에 걸칠 수 있습니다.': 'This cut is not in a part, so the move runs inside it alone. Group cuts into a part to spread it across them.',
+    '이 컷이 파트에 속해 있지 않아 이 컷 안에서만 움직입니다.': 'Not in a part, so the move runs inside this cut alone.',
     '출력 화면 크기 — 캔버스보다 작게 하면 그 밖에도 그릴 수 있고, 카메라가 그 위를 움직입니다': 'Output size - set it smaller than the canvas and you can draw outside it, with the camera travelling across',
     '출력 크기 (가로x세로)': 'Output size (width x height)',
     '출력: 캔버스 전체': 'Output: the whole canvas',
