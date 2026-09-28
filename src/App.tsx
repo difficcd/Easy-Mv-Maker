@@ -110,6 +110,7 @@ import { drawStrokesOnCtx } from './canvas/strokes.ts';
 import { detectSceneCuts, seekTarget } from './canvas/videoFrames.ts';
 import { DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT } from './core/canvasSize.ts';
 import { frameGeometry } from './core/canvasFrame.ts';
+import { fitRect } from './canvas/videoFrames.ts';
 import { hexToRgb } from './core/colour.ts';
 import { pointInPolygon, safeArray } from './core/geometry.ts';
 import { flattenLayersInUiOrder } from './core/layerTree.ts';
@@ -1663,12 +1664,38 @@ export default function App() {
         });
     }, [cuts, currentCutId, currentCut, onionPrev, onionNext, selection, layerCanvasCache, frameDecodeTick, videoOverlay, boilTick, dragTick, transparentBg, CANVAS_W, CANVAS_H]);
 
-    // The editor paints the whole artwork, so the frame here is the canvas. The frame guide drawn
-    // afterwards is what says which part of it is in shot.
+    /**
+     * Paint the editing canvas.
+     *
+     * While editing, the whole artwork: you have to see and draw the parts the camera will
+     * travel onto, and the frame guide says which of it is in shot.
+     *
+     * While playing, and only when the output differs from the artwork, the shot itself -
+     * letterboxed to the frame's shape. Watching playback is the one moment the question is
+     * "what will come out", and showing the whole canvas then answers a different question.
+     * The transform maps the frame onto the fitted rect and clips to it, so paintFrameOnto
+     * still draws in plain frame coordinates and the letterbox around it stays untouched.
+     */
     const paintFrame = useCallback((t: number, playing: boolean) => {
         const canvas = canvasRef.current; if (!canvas) return;
-        paintOnto(canvas.getContext('2d')!, t, playing, CANVAS_W, CANVAS_H);
-    }, [paintOnto, CANVAS_W, CANVAS_H]);
+        const ctx = canvas.getContext('2d')!;
+        const framed = FRAME_W !== CANVAS_W || FRAME_H !== CANVAS_H;
+        if (!playing || !framed) { paintOnto(ctx, t, playing, CANVAS_W, CANVAS_H); return; }
+
+        const box = fitRect(FRAME_W, FRAME_H, CANVAS_W, CANVAS_H);
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        // The bars. Painted before the clip, so the shot cannot overwrite them.
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+        ctx.beginPath();
+        ctx.rect(box.x, box.y, box.w, box.h);
+        ctx.clip();
+        ctx.translate(box.x, box.y);
+        ctx.scale(box.w / FRAME_W, box.h / FRAME_H);
+        paintOnto(ctx, t, playing, FRAME_W, FRAME_H);
+        ctx.restore();
+    }, [paintOnto, CANVAS_W, CANVAS_H, FRAME_W, FRAME_H]);
 
     paintFrameRef.current = paintFrame;
 
