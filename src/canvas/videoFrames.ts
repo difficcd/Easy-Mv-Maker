@@ -81,6 +81,37 @@ export async function openVideoFile(file: Blob): Promise<OpenVideo> {
  *   quality?:number, dedupe?:string|number, nativeRes?:boolean, format?:string,
  *   width?:number, height?:number, onProgress?:Function, shouldStop?:Function}} [opts]
  */
+/**
+ * Mean absolute difference per pixel, 0-255, between two frame signatures.
+ *
+ * What the dedupe threshold is measured against: 0 is pixel-identical at signature resolution,
+ * and about 2 tolerates the codec noise a still shot still produces. Mismatched lengths give
+ * Infinity rather than a small number, because a signature that cannot be compared must never
+ * read as a match.
+ *
+ * Out here rather than inside extractVideoFrames because it is the whole dedupe decision and,
+ * as a closure, could not be tested at all - which is why #124 has sat open with no way to say
+ * which direction the threshold errs in.
+ */
+export function signatureDiff(a: Uint8Array | null | undefined, b: Uint8Array | null | undefined): number {
+    if (!a || !b || a.length !== b.length || !a.length) return Infinity;
+    let s = 0;
+    for (let i = 0; i < a.length; i++) s += Math.abs(a[i] - b[i]);
+    return s / a.length;
+}
+
+/**
+ * Byte-exact equality of two full-resolution frames, early-exiting on the first difference.
+ *
+ * The confirmation step behind the signature prefilter: a signature match is cheap and
+ * approximate, and only this decides that two frames really are the same picture.
+ */
+export function framesIdentical(a: Uint8ClampedArray | null | undefined, b: Uint8ClampedArray | null | undefined): boolean {
+    if (!a || !b || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+    return true;
+}
+
 export async function extractVideoFrames(file: Blob, { fps = 6, maxFrames = 0, start = 0, end = null, width, height, scale = 1, quality = 0.82, dedupe = 'exact', nativeRes = false, format = 'webp', onProgress, shouldStop }: Partial<ExtractOptions> & { onProgress?: (done: number, total: number, skipped: number) => void, shouldStop?: () => boolean } = {}): Promise<ExtractedFrames> {
     const { video, duration, seek, release } = await openVideoFile(file);
     try {
@@ -126,19 +157,6 @@ export async function extractVideoFrames(file: Blob, { fps = 6, maxFrames = 0, s
             }
             return out;
         };
-        // Mean absolute difference per pixel (0-255). ~2 tolerates codec noise on a still shot.
-        const diff = (a: Uint8Array, b: Uint8Array) => {
-            let s = 0;
-            for (let i = 0; i < a.length; i++) s += Math.abs(a[i] - b[i]);
-            return s / a.length;
-        };
-
-        // Byte-exact equality of two full-resolution frames (early-exit on first difference).
-        const bytesEqual = (a: Uint8ClampedArray | null, b: Uint8ClampedArray) => {
-            if (!a || !b || a.length !== b.length) return false;
-            for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
-            return true;
-        };
         // dedupe takes either "exact" (drop only pixel-identical frames) or a numeric threshold.
         const dd: any = dedupe;
         const on = dd && dd !== 0;
@@ -156,17 +174,22 @@ export async function extractVideoFrames(file: Blob, { fps = 6, maxFrames = 0, s
             // it has drifted far enough, instead of being swallowed step by step.
             const cur = on ? signature() : null;
             let dup = false;
+            // Kept so the full-resolution read below can reuse it. The byte compare and the
+            // record of "what the last kept frame looked like" want the same pixels, and reading
+            // them twice is the most expensive thing on this path - it is a full-frame readback,
+            // and it happened on exactly the frames the dedupe exists for: a static shot whose
+            // signature matches but whose bytes differ by codec noise.
+            let full: Uint8ClampedArray | null = null;
             if (cur && prevSig) {
                 if (exact) {
                     // 32x32 signature is a cheap prefilter; a match triggers a full-res byte compare,
                     // so only truly identical frames are merged (a static shot, a hard-held frame).
-                    if (diff(prevSig, cur) === 0) {
-                        const full = ctx.getImageData(0, 0, fw, fh).data;
-                        dup = bytesEqual(prevFull, full);
-                        if (!dup) prevFull = full;
+                    if (signatureDiff(prevSig, cur) === 0) {
+                        full = ctx.getImageData(0, 0, fw, fh).data;
+                        dup = framesIdentical(prevFull, full);
                     }
                 } else {
-                    dup = diff(prevSig, cur) <= dd;
+                    dup = signatureDiff(prevSig, cur) <= dd;
                 }
             }
             if (dup) {
@@ -176,7 +199,7 @@ export async function extractVideoFrames(file: Blob, { fps = 6, maxFrames = 0, s
                 continue;
             }
             prevSig = cur;
-            if (exact) prevFull = ctx.getImageData(0, 0, fw, fh).data;
+            if (exact) prevFull = full ?? ctx.getImageData(0, 0, fw, fh).data;
             frames.push((await toBlob())!);
             holds.push(1);
             onProgress?.(frames.length, total, skipped);

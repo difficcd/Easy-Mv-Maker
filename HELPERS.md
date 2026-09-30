@@ -943,6 +943,8 @@ Decoding a video file into frames, and finding its scene cuts.
 
 | | |
 |---|---|
+| `signatureDiff` | Mean absolute difference per pixel, 0–255, between two 32×32 frame signatures — what the dedupe threshold is measured against. 0 is identical at signature resolution; about 2 tolerates codec noise on a still shot. Mismatched or missing signatures give `Infinity`, never a small number, so an unusable comparison cannot read as a match. |
+| `framesIdentical` | Byte-exact equality of two full-resolution frames, early-exiting on the first difference. The confirmation behind the signature prefilter: a signature match is cheap and approximate, and only this decides two frames really are the same picture. |
 | `fitRect` | Letterbox rect: fit source into destination preserving aspect ratio. |
 | `seekTarget` | Where a seek should land. Never the very last frame: seeking to exactly the duration fires no `seeked` event in some browsers, so the promise waiting for one never settles and the import stops halfway with no error. |
 | `openVideoFile` | Open a video file for frame-by-frame reading: the element, its duration, a clamped seek and a release. Both readers set one up the same way and tore it down the same way, and two copies of an object URL's lifetime is two chances to leak one. |
