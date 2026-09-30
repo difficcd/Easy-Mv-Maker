@@ -785,6 +785,7 @@ Small geometry, and the one array helper everything reaches for.
 | `pointInPolygon` | Whether a point is inside a polygon, by ray casting. What decides if a lasso caught something. |
 | `dist` | Distance between two points. |
 | `safeArray` | Anything-to-array, for fields that older projects may not have at all. |
+| `inkBounds` | The pixel box a stroke's ink can occupy: its points grown by a pad, clamped to the canvas, rounded outward so nothing is cut by a fraction of a pixel. Null when there is nothing to draw, so the caller skips the work rather than allocating a zero-sized scratch. The pencil and the marker size their scratch from it instead of taking the whole canvas. |
 
 ## `src/core/layerTree.ts`
 

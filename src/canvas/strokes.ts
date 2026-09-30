@@ -7,6 +7,7 @@ import { drawWarped, isWarped } from './warpRender.ts';
 import { catmullThrough } from '../core/catmullRom.ts';
 import { makeCanvas } from './canvasFactory.ts';
 import type { Point, PressurePoint } from '../core/types.ts';
+import { inkBounds } from '../core/geometry.ts';
 
 /** Where a stroke's stored pixels are looked up: the live bitmap store, or anything with its get. */
 export interface BitmapLookup { get(id: string): { imageBitmap?: any, imageData?: ImageData | null } | undefined }
@@ -261,6 +262,17 @@ function softStamp(r: number, g: number, b: number, radius: number): HTMLCanvasE
 // repaint - with boiling redrawing ten times a second, that is gigabytes a second for a layer
 // with a handful of marker strokes. Every use here is strictly sequential (take it, draw, blend
 // it in, done) and never nested, so a single shared canvas is enough.
+/**
+ * Slack around a stroke's ink when it is drawn on its own scratch, in pixels.
+ *
+ * Not a guess. At exactly half the line width the render was visibly identical to the
+ * full-canvas version but differed in thirty-one bytes over a 400x300 comparison, every one of
+ * them at the two ends of a stroke: a round cap antialiases differently within a pixel or two
+ * of the surface edge. Twelve makes it byte-identical, and costs a few hundred pixels of
+ * scratch against the megapixel it saves.
+ */
+const SCRATCH_MARGIN = 12;
+
 let _scratch: HTMLCanvasElement | null = null;
 
 /** A cleared, full-size scratch canvas with a context in its default state. */
@@ -442,16 +454,22 @@ export function drawStrokesOnCtx(ctx: CanvasRenderingContext2D, strokes: readonl
         // Compositing per-segment with a translucent multiply darkens every overlap,
         // which showed up as black dots at the joints under pressure rendering.
         if (s.tool === 'marker') {
-            const tctx = takeScratch(ctx.canvas.width, ctx.canvas.height);
-            const tmp = tctx.canvas;
-            tctx.lineCap = 'round'; tctx.lineJoin = 'round'; tctx.strokeStyle = baseColor; tctx.fillStyle = baseColor;
             const mp = smooth(s.points);
             const mw = mp.map((_, i) => hasPressure ? baseSize * prAt(mp, i) * 2 : baseSize);
+            // Only the box the stroke can reach. The scratch used to be the whole canvas, and
+            // so did the blit back, which costs the same for a stroke in one corner as for one
+            // across the page.
+            const box = inkBounds(mp, Math.max(...mw, baseSize) / 2 + SCRATCH_MARGIN, ctx.canvas.width, ctx.canvas.height);
+            if (!box) return;
+            const tctx = takeScratch(box.w, box.h);
+            tctx.setTransform(1, 0, 0, 1, -box.x, -box.y);
+            tctx.lineCap = 'round'; tctx.lineJoin = 'round'; tctx.strokeStyle = baseColor; tctx.fillStyle = baseColor;
             smoothStroke(tctx, mp, mw, () => { });
+            tctx.setTransform(1, 0, 0, 1, 0, 0);
             ctx.save();
             ctx.globalCompositeOperation = 'multiply';
             ctx.globalAlpha = baseOpacity * 0.6;
-            ctx.drawImage(tmp, 0, 0);
+            ctx.drawImage(tctx.canvas, 0, 0, box.w, box.h, box.x, box.y, box.w, box.h);
             ctx.restore();
             ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1.0;
             return;
@@ -459,16 +477,30 @@ export function drawStrokesOnCtx(ctx: CanvasRenderingContext2D, strokes: readonl
         // Pencil: a smooth core stroke with paper-grain bitten out of it (destination-in), so it
         // reads as a textured graphite line rather than a flat vector stroke. Pressure = darkness.
         if (s.tool === 'pencil') {
-            const tctx = takeScratch(ctx.canvas.width, ctx.canvas.height);
-            const tmp = tctx.canvas;
-            tctx.lineCap = 'round'; tctx.lineJoin = 'round'; tctx.strokeStyle = baseColor; tctx.fillStyle = baseColor;
             const pp = smooth(s.points);
             const pw = pp.map((_, i) => baseSize * (0.65 + 0.35 * Math.min(1, prAt(pp, i) * 2)));
+            // As the marker: the scratch, the grain fill and the blit were all full-canvas for
+            // a stroke of any size. This was the most expensive thing the profiler found.
+            const box = inkBounds(pp, Math.max(...pw, baseSize) / 2 + SCRATCH_MARGIN, ctx.canvas.width, ctx.canvas.height);
+            if (!box) return;
+            const tctx = takeScratch(box.w, box.h);
+            // Drawn in canvas coordinates through a translate, which is what keeps the grain
+            // where it was. A pattern tiles in user space, so under this transform it still
+            // starts from canvas (0,0) - two overlapping strokes bite the same paper, as they
+            // did when the scratch was the whole canvas. Offsetting the points instead would
+            // have re-phased the grain per stroke.
+            tctx.setTransform(1, 0, 0, 1, -box.x, -box.y);
+            tctx.lineCap = 'round'; tctx.lineJoin = 'round'; tctx.strokeStyle = baseColor; tctx.fillStyle = baseColor;
             smoothStroke(tctx, pp, pw, (i) => { tctx.globalAlpha = 0.5 + 0.5 * Math.min(1, prAt(pp, i) * 2); });
             tctx.globalAlpha = 1; tctx.globalCompositeOperation = 'destination-in';
-            const pat = tctx.createPattern(grainTile(), 'repeat'); if (pat) { tctx.fillStyle = pat; tctx.fillRect(0, 0, tmp.width, tmp.height); }
+            const pat = tctx.createPattern(grainTile(), 'repeat');
+            if (pat) { tctx.fillStyle = pat; tctx.fillRect(box.x, box.y, box.w, box.h); }
             tctx.globalCompositeOperation = 'source-over';
-            ctx.save(); ctx.globalAlpha = baseOpacity * 0.9; ctx.drawImage(tmp, 0, 0); ctx.restore();
+            tctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.save();
+            ctx.globalAlpha = baseOpacity * 0.9;
+            ctx.drawImage(tctx.canvas, 0, 0, box.w, box.h, box.x, box.y, box.w, box.h);
+            ctx.restore();
             ctx.globalAlpha = 1;
             return;
         }
