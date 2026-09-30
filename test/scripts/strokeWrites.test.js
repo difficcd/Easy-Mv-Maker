@@ -43,3 +43,36 @@ test('every allowance names a file and the text that identifies the site', () =>
         assert.ok(a.match.length >= 8, `"${a.match}" is too loose to identify one site`);
     }
 });
+
+// --- a hand-rolled map is the same write ------------------------------------------------------
+//
+// The gate looked only for patchLayer, so `layers.map(...)` writing strokes went straight past
+// it. One site did exactly that - committing a floating selection - and it was a real instance
+// of both failures this gate exists for: no reveal, so a layer hidden while the selection
+// floated took the pixels back invisibly, and no check that the layer still existed, so a
+// deleted one swallowed the pair silently.
+
+const SELECTION_COMMIT = `            layers: c.layers.map(l => l.id !== sel.sourceLayerId ? l : { ...l, strokes: [...(l.strokes || []), erase, paste] }),`;
+
+test('the selection commit, as it stood, is caught', () => {
+    assert.equal(strokeWrites(SELECTION_COMMIT).length, 1);
+});
+
+test('a stroke added through a helper is caught too', () => {
+    // insertFill and friends - the list is still being rebuilt from the old one.
+    assert.equal(strokeWrites(`layers: patchLayer(c.layers, id, l => ({ strokes: insertFill(l.strokes, s, over) }))`).length, 1);
+});
+
+test('writes that add nothing are left alone', () => {
+    // Clearing a layer and passing the list through are not strokes arriving, and flagging them
+    // would push people to add ALLOWED entries, which is how a gate stops meaning anything.
+    assert.equal(strokeWrites(`layers: c.layers.map(l => ({ ...l, strokes: [] }))`).length, 0);
+    assert.equal(strokeWrites(`layers: c.layers.map(l => ({ ...l, strokes: l.strokes }))`).length, 0);
+    assert.equal(strokeWrites(`layers: c.layers.map(l => ({ ...l, visible: true }))`).length, 0);
+    assert.equal(strokeWrites(`const names = layers.map(l => l.name);`).length, 0);
+});
+
+test('commitStroke itself is exempt, and named in ALLOWED rather than skipped', () => {
+    // The function every other site is told to use has to write strokes somewhere.
+    assert.ok(ALLOWED.some(a => a.file.endsWith('layerOps.ts')), 'the exemption is written down');
+});
