@@ -342,6 +342,8 @@ decide between modes before any tool sees the event.
     cannot see these: `unreachable` asks what App's own names reach and an import is not one of
     them. Twenty-eight had piled up in App.tsx alone, left behind by the extractions.
   - `stroke-writes` — every write that adds a stroke to a layer goes through `commitStroke`,
+    whether it is spelled `patchLayer` or a hand-rolled `layers.map` — looking only for the
+    former let the selection commit through, and that one was a real instance of both failures,
     which refuses an id naming no layer and reveals the layer it writes to. Both failures are
     silent and both shipped, four times: the lasso paste and the mosaic evaporated, the bucket
     fill and the eraser landed invisibly. Its test drives it with all four bugs as they shipped.

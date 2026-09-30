@@ -480,9 +480,17 @@ export default function App() {
         const strokes = takeSelectionStrokes(sel);
         if (!strokes) return;
         const { erase, paste } = strokes;
-        updLayers(sel.cutId, c => ({
-            layers: c.layers.map(l => l.id !== sel.sourceLayerId ? l : { ...l, strokes: [...(l.strokes || []), erase, paste] }),
-        }));
+        // Through commitStroke, both at once. This hand-rolled its own map, which meant the two
+        // things commitStroke is for did not happen: the source layer was not revealed, so
+        // committing into a layer hidden while the selection floated put the pixels back
+        // invisibly; and a layer deleted in the meantime matched nothing, so the pair evaporated
+        // with no error. Both are the failures scripts/stroke-writes exists to prevent, and it
+        // did not catch this one because it only looked at patchLayer.
+        //
+        // Revealing is right here and wrong at the lift. Lifting takes pixels *out* and leaves a
+        // hole, so showing that layer would contradict the user hiding it; committing puts
+        // visible content back, and content you cannot see has not been put back.
+        commitStrokeToLayer(sel.cutId, sel.sourceLayerId, [erase, paste]);
         cancelSelection();
     };
 

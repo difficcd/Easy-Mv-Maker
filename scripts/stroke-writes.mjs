@@ -30,9 +30,20 @@ export function strokeWrites(src) {
     const lines = src.split(/\r?\n/);
     const out = [];
     for (let i = 0; i < lines.length; i++) {
-        if (!lines[i].includes('patchLayer(')) continue;
+        // patchLayer is the named way to change a layer, but a hand-rolled `layers.map` doing
+        // the same thing is the same write. Looking only for patchLayer let the selection
+        // commit through, and that one really was adding a visible stroke without the reveal
+        // and without the check that the layer still exists.
+        if (!lines[i].includes('patchLayer(') && !/\.map\s*\(/.test(lines[i])) continue;
         const window = lines.slice(i, i + 3).join(' ');   // the call may wrap
-        if (/strokes\s*:/.test(window)) out.push({ line: i + 1, text: lines[i].trim() });
+        if (!/strokes\s*:/.test(window)) continue;
+        // `strokes: []` and `strokes: l.strokes` move nothing into a layer. What this is for is
+        // a stroke being *added*, which always builds the new list out of the old one - either
+        // by spreading it or by handing it to a helper.
+        if (!/strokes\s*:\s*\[[^\]]*\.\.\./.test(window) && !/strokes\s*:\s*[A-Za-z_$][\w$]*\s*\(/.test(window)) continue;
+        // The window travels with the hit: a site is often only identifiable by the line
+        // under the one that matched, and ALLOWED has to be able to name it.
+        out.push({ line: i + 1, text: lines[i].trim(), window });
     }
     return out;
 }
@@ -46,9 +57,14 @@ export const ALLOWED = [
     // commitStrokeToLayer, so the layer has been resolved and revealed already; this only adds
     // points to that stroke, and appendPoints leaves the list alone if it is not there.
     { file: 'src/tools/canvasTools.ts', match: 'appendPoints' },
+    // commitStroke itself. It is the function every other site is told to use, so the write at
+    // the bottom of it is the sanctioned one by definition - `place` is its caller-supplied
+    // placement, which nothing else has.
+    { file: 'src/core/layerOps.ts', match: 'place(l.strokes' },
 ];
 
-const isAllowed = (file, text) => ALLOWED.some(a => file.endsWith(a.file) && text.includes(a.match));
+const isAllowed = (file, hit) => ALLOWED.some(a => file.endsWith(a.file)
+    && (hit.text.includes(a.match) || (hit.window || '').includes(a.match)));
 
 const found = [];
 const walk = (dir) => {
@@ -58,7 +74,7 @@ const walk = (dir) => {
         if (!/\.[jt]sx?$/.test(entry.name)) continue;
         const rel = path.split('\\').join('/');
         for (const hit of strokeWrites(readFileSync(path, 'utf8'))) {
-            if (!isAllowed(rel, hit.text)) found.push({ ...hit, file: rel });
+            if (!isAllowed(rel, hit)) found.push({ ...hit, file: rel });
         }
     }
 };
