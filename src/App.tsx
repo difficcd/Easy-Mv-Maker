@@ -26,7 +26,7 @@ import { DocTabs } from './ui/DocTabs.tsx';
 import { CanvasStage, canvasCursor } from './ui/CanvasStage.tsx';
 import { DockRail, DockSlot, FloatingPanels, DockHint, ReopenRight } from './ui/PanelDock.tsx';
 import { tr, loadLang, saveLang, setLangValue } from './i18n.ts';
-import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, patchLayer, nextLayerId, appendLayer, appendFolder, removeLayerTree } from './core/layerOps.ts';
+import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, patchLayer, nextLayerId, appendLayer, appendFolder, removeLayerTree, insertLayerAbove } from './core/layerOps.ts';
 import { mkCut, firstCut } from './core/document.ts';
 import { selectionAfterClick, cutsToCopy } from './core/cutSelection.ts';
 import { closeLassoPath, lassoBounds, cutOutPolygon, cropImageData, selectionStrokes, paintedBounds } from './core/lassoOps.ts';
@@ -499,7 +499,11 @@ export default function App() {
         updLayers(sel.cutId, c => {
             const layers = patchLayer(c.layers, sel.sourceLayerId, l => ({ strokes: [...(l.strokes || []), erase] }));
             const partLayer = { id: newId, name: tr('파츠 {0}', newId), type: 'layer', parentId: null, visible: true, redoStrokes: [], strokes: [paste] };
-            return { layers: [...layers, partLayer as Layer], activeLayerId: newId };
+            // Directly on top of the layer it came out of, not appended. Appending is the bottom
+            // of the stack, and the extracted piece then sat behind whatever the drawing was on
+            // - the selection appeared to vanish (#339). Above the source is the one place that
+            // changes nothing about what covers what.
+            return { layers: insertLayerAbove(layers, sel.sourceLayerId, partLayer as Layer), activeLayerId: newId };
         });
         cancelSelection();
         setAnimLayer({ cutId: sel.cutId, layerId: newId }); // open its anim panel
