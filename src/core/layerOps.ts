@@ -377,3 +377,29 @@ export function appendPoints(strokes: Stroke[] | null | undefined, points: Array
     if (!last || last.tool === 'paste' || last.tool === 'fill' || !Array.isArray(last.points)) return list;
     return [...list.slice(0, -1), { ...last, points: [...last.points, ...points] }];
 }
+
+/**
+ * Put a layer directly on top of another one.
+ *
+ * Index 0 is the top of the frame - `drawScene` walks the groups backwards so the first row of
+ * the panel is the layer nearest the viewer - so "on top of" means *before* the reference.
+ *
+ * This exists because extracting a lasso selection to its own part appended it, which is the
+ * bottom of the stack. With nothing underneath, that looks right and it shipped. With a
+ * background layer under the drawing, the extracted piece went behind it and the selection
+ * simply vanished (#339).
+ *
+ * The extracted content was at the source layer's depth, so directly above the source is where
+ * it can be put without changing what covers what. The new layer inherits the reference's
+ * parent, or it would jump out of the folder its source lives in.
+ *
+ * An unknown reference falls back to the top, which is visible and recoverable - the bottom is
+ * where things go to hide.
+ */
+export function insertLayerAbove(layers: Layer[] | null | undefined, refId: Id, layer: Layer): Layer[] {
+    const list = Array.isArray(layers) ? layers : [];
+    const i = list.findIndex(l => l.id === refId);
+    const placed = { ...layer, parentId: i >= 0 ? (list[i].parentId ?? null) : (layer.parentId ?? null) };
+    if (i < 0) return [placed, ...list];
+    return [...list.slice(0, i), placed, ...list.slice(i)];
+}

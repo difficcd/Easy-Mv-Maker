@@ -4,7 +4,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { moveLayer, isDescendantOf, resolveDrawLayer, commitStroke, insertFill, offsetLayers, mergeDown, patchLayer, mkLayer, mkFolder, nextLayerId, appendLayer, appendFolder, removeLayerTree, dropPositionFor, moveLayerToEnd, appendPoints } from '../../src/core/layerOps.ts';
+import { moveLayer, isDescendantOf, resolveDrawLayer, commitStroke, insertFill, offsetLayers, mergeDown, patchLayer, mkLayer, mkFolder, nextLayerId, appendLayer, appendFolder, removeLayerTree, dropPositionFor, moveLayerToEnd, appendPoints, insertLayerAbove } from '../../src/core/layerOps.ts';
 import { flattenLayersInUiOrder } from '../../src/core/layerTree.ts';
 
 // f1 > a, b   then c at the root
@@ -528,4 +528,42 @@ test('offsetLayers does not move the motion path', () => {
     const path = [{ x: 0, y: 0 }, { x: 50, y: 50 }];
     const cut = { layers: [{ id: 'a', strokes: [], anim: { path } }] };
     assert.deepEqual(offsetLayers(cut, ['a'], 25, -15).layers[0].anim.path, path);
+});
+
+// --- where an extracted part lands (#339) -----------------------------------------------------
+//
+// Reported as "lasso-select inside a part and the area goes invisible". Extracting a selection
+// appended the new layer, and index 0 is the top of the frame - so it went to the very bottom,
+// behind whatever the drawing was sitting on. With a single layer there is nothing to hide
+// behind, which is why it shipped.
+
+const L = (id, parentId = null) => ({ id, name: `L${id}`, type: 'layer', parentId, strokes: [], visible: true });
+
+test('insertLayerAbove: the new layer draws on top of its reference', () => {
+    const layers = [L(1), L(2), L(3)];
+    const out = insertLayerAbove(layers, 2, L(9));
+    assert.deepEqual(out.map(l => l.id), [1, 9, 2, 3], 'before the reference, which is nearer the viewer');
+});
+
+test('insertLayerAbove: above the topmost is the new top', () => {
+    assert.deepEqual(insertLayerAbove([L(1), L(2)], 1, L(9)).map(l => l.id), [9, 1, 2]);
+});
+
+test('insertLayerAbove: above the bottom one is not the bottom', () => {
+    // The bug in one line: the extracted piece must not end up under its own source.
+    const out = insertLayerAbove([L(1), L(2)], 2, L(9));
+    assert.deepEqual(out.map(l => l.id), [1, 9, 2]);
+    assert.ok(out.findIndex(l => l.id === 9) < out.findIndex(l => l.id === 2));
+});
+
+test('insertLayerAbove: it joins the folder its reference lives in', () => {
+    // Otherwise the extracted piece jumps out of the folder and stops moving with the rest.
+    const out = insertLayerAbove([L(1), L(2, 7), L(3)], 2, L(9));
+    assert.equal(out.find(l => l.id === 9).parentId, 7);
+});
+
+test('insertLayerAbove: an unknown reference goes to the top, not the bottom', () => {
+    // Visible and recoverable. The bottom is where things go to hide, which is the whole bug.
+    assert.deepEqual(insertLayerAbove([L(1), L(2)], 99, L(9)).map(l => l.id), [9, 1, 2]);
+    assert.deepEqual(insertLayerAbove(null, 1, L(9)).map(l => l.id), [9]);
 });

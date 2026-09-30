@@ -387,6 +387,7 @@ Layers: moving, merging, resolving which one a stroke lands on.
 | `mkFolder` | A blank folder. |
 | `nextLayerId` | The next free layer id within a cut (ids are per cut, not global). Was written out in three places and a fourth used the global counter. |
 | `appendLayer` | A new layer at the end of the stack, made active. |
+| `insertLayerAbove` | A layer placed directly on top of another — index 0 is the top of the frame, so "on top of" means *before* it. It inherits the reference's parent, or it would jump out of the folder its source lives in. Extracting a lasso selection used to append, which is the bottom of the stack: with a background under the drawing the extracted piece went behind it and the selection appeared to vanish (#339). |
 | `appendFolder` | A new folder at the end of the stack; not made active, a folder cannot be drawn on. |
 | `removeLayerTree` | Remove a layer, or a folder and everything nested in it at any depth. The cut keeps a drawable layer (a fresh blank if the last went) and the active id still names one that exists. |
 | `patchLayer` | Replace one layer with a patched copy, leaving the rest alone. Eight call sites wrote the map out by hand; the guard inside it is not noise, because layer ids are unique within a cut and not across cuts, so it must only ever be handed one cut layer list. |
