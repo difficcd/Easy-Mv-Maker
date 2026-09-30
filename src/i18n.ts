@@ -575,6 +575,9 @@ const EN: Record<string, string> = {
 
     // -- Shared --------------------------------------------
     '취소': 'Cancel',
+    '화면에 밝게 표시된 틀을 끌어 카메라가 비출 곳을 정합니다': 'Drag the bright frame on the canvas to say where the camera looks',
+    '끌어서 놓으세요 (다시 눌러 끄기)': 'Drag it where you want (press again to stop)',
+    '위치 잡기': 'Place the shot',
     '범위': 'Range',
     '파트 전체': 'Whole part',
     '이 컷만': 'This cut',

@@ -17,6 +17,9 @@ import type { CutsAction } from '../core/cutsReducer.ts';
 import type { LayerAnimSettings } from '../core/layerAnim.ts';
 import type { Gesture } from './useGesture.ts';
 import type { PressEvent } from './useLayerDrag.ts';
+import { cameraMovedTo, resolveCamera } from '../core/camera.ts';
+import { frameGeometry, clampCameraCentre } from '../core/canvasFrame.ts';
+import type { CameraSettings } from '../core/camera.ts';
 
 /** What is being recorded for a part: its motion path (no mode), its sway curve, or its mosaic rectangle. */
 export interface PathCapture { cutId: DocId; layerId: DocId; mode?: 'sway' | 'mosaicRect' }
@@ -28,17 +31,26 @@ export interface PathCapture { cutId: DocId; layerId: DocId; mode?: 'sway' | 'mo
  * @param {(action: any) => void} deps.dispatchCuts
  * @param {(cutId: any, layerId: any, patch: any) => void} deps.updLayerAnim
  * @param {{setToast: (s: string) => void}} deps.notices
+ * @param {(cutId: any) => any} deps.cameraOf the cut's camera, so an existing move can be carried
  * @param {number} deps.cw
  * @param {number} deps.ch
  */
-export function usePathCapture({ gesture, dispatchCuts, updLayerAnim, notices, cw, ch }: { gesture: Gesture, dispatchCuts: (action: CutsAction) => void, updLayerAnim: (cutId: DocId, layerId: DocId, patch: Partial<LayerAnimSettings>) => void, notices: { setToast: (s: string) => void }, cw: number, ch: number }) {
+export function usePathCapture({ gesture, dispatchCuts, updLayerAnim, notices, cameraOf, cw, ch, fw, fh }: { gesture: Gesture, dispatchCuts: (action: CutsAction) => void, updLayerAnim: (cutId: DocId, layerId: DocId, patch: Partial<LayerAnimSettings>) => void, notices: { setToast: (s: string) => void }, cameraOf: (cutId: DocId) => Partial<CameraSettings> | null, cw: number, ch: number, fw: number, fh: number }) {
     /** {cutId, layerId, mode?} while recording a part's path, sway curve or mosaic rectangle. */
     const [pathCapture, setPathCapture] = useState<PathCapture | null>(null);
     /** {cutId} while drawing a camera path. */
     const [cameraCapture, setCameraCapture] = useState<{ cutId: DocId } | null>(null);
+    /**
+     * {cutId} while dragging the frame guide to place the shot.
+     *
+     * Separate from cameraCapture because they are opposite gestures on the same object: one
+     * draws a new path out of the whole drag, the other keeps the path and moves it. Folding
+     * them into one mode with a flag would leave every reader working out which is which.
+     */
+    const [cameraMove, setCameraMove] = useState<{ cutId: DocId } | null>(null);
 
     /** True while a press should record points rather than draw. */
-    const active = !!(cameraCapture || pathCapture);
+    const active = !!(cameraCapture || cameraMove || pathCapture);
 
     /** The press: the first point. */
     const begin = (e: PressEvent, pos: PressurePoint) => {
@@ -62,6 +74,21 @@ export function usePathCapture({ gesture, dispatchCuts, updLayerAnim, notices, c
         const pts = gesture.pathPts.current;
         gesture.pathPts.current = null;
         gesture.end();
+        // Placing the shot: only where the drag ended matters. The mode stays on until it is
+        // switched off, so the frame can be nudged until it looks right without re-arming.
+        if (cameraMove) {
+            const last = pts[pts.length - 1];
+            if (last) {
+                const cam = cameraOf(cameraMove.cutId);
+                // Kept on the artwork. Dropping the frame half off the canvas would shoot blank
+                // paper, and a drag gives no reason to allow that - unlike a drawn path, which
+                // is followed literally because somebody may have meant to pan into white.
+                const geom = frameGeometry(cw, ch, { w: fw, h: fh });
+                const zoom = resolveCamera(cam, cw, ch)?.zoomFrom ?? 1;
+                dispatchCuts(setCutCamera(cameraMove.cutId, cameraMovedTo(cam, clampCameraCentre(last, geom, zoom))));
+            }
+            return true;
+        }
         if (cameraCapture) {
             // Evened out the same way a part path is, and for the same reason: the camera walks
             // it by index, so uneven points would replay the drawing speed. A camera doing that
@@ -106,5 +133,5 @@ export function usePathCapture({ gesture, dispatchCuts, updLayerAnim, notices, c
         return true;
     };
 
-    return { pathCapture, setPathCapture, cameraCapture, setCameraCapture, active, begin, move, end };
+    return { pathCapture, setPathCapture, cameraCapture, setCameraCapture, cameraMove, setCameraMove, active, begin, move, end };
 }

@@ -109,7 +109,8 @@ import { sizeCanvas, imageDataCanvas } from './canvas/scratch.ts';
 import { drawStrokesOnCtx } from './canvas/strokes.ts';
 import { detectSceneCuts, seekTarget } from './canvas/videoFrames.ts';
 import { DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT } from './core/canvasSize.ts';
-import { frameGeometry } from './core/canvasFrame.ts';
+import { frameGeometry, restingCentre } from './core/canvasFrame.ts';
+import { cameraStart } from './core/camera.ts';
 import { fitRect } from './canvas/videoFrames.ts';
 import { hexToRgb } from './core/colour.ts';
 import { pointInPolygon, safeArray } from './core/geometry.ts';
@@ -1295,8 +1296,14 @@ export default function App() {
     // say which one is happening rather than how each is done.
     const selGesture = useSelectionGesture({ gesture, selection, setSelection, zoom: view.zoom });
     const layerDrag = useLayerDrag({ gesture, cuts, dispatchCuts, setDragTick, liveCtx, clearLiveOverlay, ensureLayerCanvas });
-    const pathCap = usePathCapture({ gesture, dispatchCuts, updLayerAnim, notices, cw: CANVAS_W, ch: CANVAS_H });
-    const { pathCapture, setPathCapture, cameraCapture, setCameraCapture } = pathCap;
+    // cameraOf reads through the ref rather than closing over `cuts`: the hook is built once
+    // and its end-of-drag handler would otherwise carry whatever the document was then.
+    const pathCap = usePathCapture({
+        gesture, dispatchCuts, updLayerAnim, notices,
+        cw: CANVAS_W, ch: CANVAS_H, fw: FRAME_W, fh: FRAME_H,
+        cameraOf: (cutId: DocId) => renderStateRef.current.cuts.find((c: Cut) => c.id === cutId)?.camera ?? null,
+    });
+    const { pathCapture, setPathCapture, cameraCapture, setCameraCapture, cameraMove, setCameraMove } = pathCap;
 
 
 
@@ -1728,7 +1735,12 @@ export default function App() {
 
         // What the camera will actually capture, when the artwork is bigger than it (#327).
         // Chrome, so it is drawn here rather than in paintFrameOnto and never reaches an export.
-        if (!isPlaying) drawFrameGuide(ctx!, frameGeometry(CANVAS_W, CANVAS_H, frameSize), view.zoom);
+        if (!isPlaying) {
+            // Drawn where the camera actually starts, not at the middle of the artwork: once a
+            // shot has been placed, a guide still sitting in the middle describes nothing.
+            const geom = frameGeometry(CANVAS_W, CANVAS_H, frameSize);
+            drawFrameGuide(ctx!, geom, view.zoom, cameraStart(currentCut?.camera, restingCentre(geom)), !!cameraMove);
+        }
 
         // Recorded motion paths (per layer) shown while editing so they're visible/redrawable.
         if (!isPlaying) {
@@ -2014,9 +2026,9 @@ export default function App() {
                     cutOps={{ handleAddCut, handleCopyCut, handleCutClick, handleDeleteCut, handleDuplicateCut, handlePasteCut, renameCut, deleteVideoBatch, updCutAnim, updCutTime, updCutCamera }}
                     layerOps={{ handleAddFolder, handleAddLayer, onListDrop, handleSetTool }}
                     text={{ selectedText, setSelectedText, openEditText, deleteTextObject, toggleTextVisible, textEditorBody, cancelText }}
-                    camera={{ cameraCapture, setCameraCapture }}
+                    camera={{ cameraCapture, setCameraCapture, cameraMove, setCameraMove }}
                     panel={{ showRight, setShowRight, rightW, rightTab, setRightTab }}
-                    canvas={{ canvasW: CANVAS_W, canvasH: CANVAS_H }}
+                    canvas={{ canvasW: CANVAS_W, canvasH: CANVAS_H, frameW: FRAME_W, frameH: FRAME_H }}
                     cutList={cutList}
                     />
     );

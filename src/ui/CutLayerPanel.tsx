@@ -19,9 +19,11 @@ export interface CutLayerPanelProps {
     layerOps: { handleAddFolder: (e: React.MouseEvent, cutId: DocId | null) => void; handleAddLayer: (e: React.MouseEvent, cutId: DocId | null) => void; onListDrop: (e: React.DragEvent, cutId: DocId) => void; handleSetTool: (tool: string) => void };
     /** the text list and the editor that arrives as a tab */
     text: { selectedText: { cutId: DocId, textId: DocId } | null; setSelectedText: (sel: { cutId: DocId, textId: DocId } | null) => void; openEditText: (cutId: DocId, textId: DocId) => void; deleteTextObject: (cutId: DocId, textId: DocId) => void; toggleTextVisible: (cutId: DocId, textId: DocId) => void; textEditorBody: React.ReactNode; cancelText: () => void };
-    camera: { cameraCapture: { cutId: DocId } | null; setCameraCapture: (c: { cutId: DocId } | null) => void };
+    camera: { cameraCapture: { cutId: DocId } | null; setCameraCapture: (c: { cutId: DocId } | null) => void;
+        /** dragging the frame guide to place the shot */
+        cameraMove: { cutId: DocId } | null; setCameraMove: (c: { cutId: DocId } | null) => void };
     panel: { showRight: boolean; setShowRight: (on: boolean) => void; rightW: number; rightTab: string; setRightTab: (tab: string) => void };
-    canvas: { canvasW: number; canvasH: number };
+    canvas: { canvasW: number; canvasH: number; frameW: number; frameH: number };
     cutList: { collapsedCutIds: Set<DocId>; expandedCuts: Set<DocId>; renamingCutId: DocId | null; setRenamingCutId: (id: DocId | null) => void; selectedCutIds: Set<DocId>; toggleCutCollapse: (id: DocId) => void; toggleCutSettings: (id: DocId) => void };
 }
 
@@ -40,9 +42,9 @@ export function CutLayerPanel({
     const { handleAddCut, handleCopyCut, handleCutClick, handleDeleteCut, handleDuplicateCut, handlePasteCut, renameCut, deleteVideoBatch, updCutAnim, updCutTime, updCutCamera } = cutOps;
     const { handleAddFolder, handleAddLayer, onListDrop, handleSetTool } = layerOps;
     const { selectedText, setSelectedText, openEditText, deleteTextObject, toggleTextVisible, textEditorBody, cancelText } = text;
-    const { cameraCapture, setCameraCapture } = camera;
+    const { cameraCapture, setCameraCapture, cameraMove, setCameraMove } = camera;
     const { showRight, setShowRight, rightW, rightTab, setRightTab } = panel;
-    const { canvasW, canvasH } = canvas;
+    const { canvasW, canvasH, frameW, frameH } = canvas;
     const { collapsedCutIds, expandedCuts, renamingCutId, setRenamingCutId, selectedCutIds, toggleCutCollapse, toggleCutSettings } = cutList;
     // The text editor arrives as a tab rather than a panel of its own. Two panels side by side
     // in the right dock left the canvas a sliver, and a window over the canvas covered the very
@@ -131,7 +133,8 @@ export function CutLayerPanel({
                                     </div>
                                     <CutAnimPanel cut={cut} updCutAnim={updCutAnim} />
                                     <CameraPanel cut={cut} updCutCamera={updCutCamera} cameraCapture={cameraCapture}
-                                        setCameraCapture={setCameraCapture} canvasW={canvasW} canvasH={canvasH} />
+                                        setCameraCapture={setCameraCapture} cameraMove={cameraMove} setCameraMove={setCameraMove}
+                                        canvasW={canvasW} canvasH={canvasH} frameW={frameW} frameH={frameH} />
                                 </div>
                             )}
                             <div className="layer-list" onDragOver={e => e.preventDefault()} onDrop={e => onListDrop(e, cut.id)}>

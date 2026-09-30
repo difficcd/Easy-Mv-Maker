@@ -80,6 +80,8 @@ Camera moves: presets, drawn paths, and the transform they resolve to.
 | `cameraShake` | A handheld wobble: two sine waves per axis at ratios that never line up, so it does not visibly repeat, and the axes out of phase so it is not a diagonal slide. Deterministic — the export repaints the same frames, so anything random would shake differently in the file than on screen. Driven by seconds, not by progress through the cut. |
 | `resolveCamera` | Resolve a camera setting into the path and zoom range actually used. A drawn path wins over the preset's own, so somebody can pick "ken burns" for its zoom and then replace the movement without losing the zoom. |
 | `zoomForDrift` | The smallest zoom at which a camera may sit that far off centre without the frame running off the artwork. |
+| `cameraStart` | Where the move begins — the start of the path, or the middle of the artwork when it has none. What the frame guide is drawn around, so a placed shot shows its own position rather than the canvas centre. |
+| `cameraMovedTo` | The camera patch for "put the shot here", from dragging the frame guide. An existing move is **translated**, not replaced: the shape of the move is the part that took effort, where it happens is the part being dragged. A preset's path is not stored, so dragging one pins it at the new centre. |
 
 ## `src/core/canvasFrame.ts`
 

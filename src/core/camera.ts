@@ -286,3 +286,41 @@ export function applyCamera(ctx: CanvasRenderingContext2D, cam: CameraAt, fw: nu
     if (cam.rot) ctx.rotate(cam.rot);
     ctx.translate(-cam.cx, -cam.cy);
 }
+
+/**
+ * Where the camera's move begins - the point the frame guide should be drawn around.
+ *
+ * A camera is a path, so "where it is" is the start of that path. With no path it has not been
+ * placed, and the middle of the artwork is the honest answer: that is where the frame sits.
+ *
+ * @param cam the cut's camera, if it has one
+ * @param fallback the middle of the artwork, from canvasFrame's restingCentre
+ */
+export function cameraStart(cam: Partial<CameraSettings> | null | undefined, fallback: Point): Point {
+    const p = cam?.path;
+    return Array.isArray(p) && p.length && Number.isFinite(p[0]?.x) && Number.isFinite(p[0]?.y)
+        ? { x: p[0].x, y: p[0].y }
+        : fallback;
+}
+
+/**
+ * The camera patch for "put the shot here", from dragging the frame guide (#327).
+ *
+ * A one-point path for a camera that has not been placed: the frame sits there and stays. An
+ * existing move is *translated* rather than replaced - dragging the guide should reposition the
+ * move, not throw away a path that was drawn by hand. The shape of the move is the part that
+ * took effort; where it happens is the part being dragged.
+ *
+ * A preset's path is not translated, because it is not stored - it is rebuilt from the canvas
+ * size each time. Dragging a preset therefore pins it at the new centre, which is the only
+ * thing that can be meant by moving something with no stored position.
+ *
+ * @param cam the cut's camera, if it has one
+ * @param to where the frame's centre should now be
+ */
+export function cameraMovedTo(cam: Partial<CameraSettings> | null | undefined, to: Point): { path: Point[] } {
+    const p = cam?.path;
+    if (!Array.isArray(p) || p.length < 2) return { path: [{ x: to.x, y: to.y }] };
+    const dx = to.x - p[0].x, dy = to.y - p[0].y;
+    return { path: p.map(q => ({ x: q.x + dx, y: q.y + dy })) };
+}
