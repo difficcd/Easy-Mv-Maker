@@ -129,13 +129,14 @@ export function CutAnimPanel({ cut, updCutAnim }: { cut: Cut, updCutAnim: (cutId
  * different things: that one moves the drawing inside the frame, this one moves the frame. Putting
  * them in one list made it impossible to tell at a glance which was which.
  */
-export function CameraPanel({ cut, updCutCamera, cameraCapture, setCameraCapture, canvasW, canvasH }: { cut: Cut, updCutCamera: (cutId: DocId | null, patch: Partial<CameraSettings> | null) => void, cameraCapture: { cutId: DocId } | null, setCameraCapture: (c: { cutId: DocId } | null) => void, canvasW: number, canvasH: number }) {
+export function CameraPanel({ cut, updCutCamera, cameraCapture, setCameraCapture, cameraMove, setCameraMove, canvasW, canvasH, frameW, frameH }: { cut: Cut, updCutCamera: (cutId: DocId | null, patch: Partial<CameraSettings> | null) => void, cameraCapture: { cutId: DocId } | null, setCameraCapture: (c: { cutId: DocId } | null) => void, cameraMove: { cutId: DocId } | null, setCameraMove: (c: { cutId: DocId } | null) => void, canvasW: number, canvasH: number, frameW: number, frameH: number }) {
     const c: CameraSettings = { ...CAMERA_DEFAULT, ...cut.camera };
     const set = (o: Partial<CameraSettings> | null) => updCutCamera(cut.id, o);
     // What the camera actually resolves to, preset included. Reading the raw fields would show
     // zoom 1 while the picture visibly zooms, because a preset's zoom lives on the preset.
     const eff = resolveCamera(cut.camera, canvasW, canvasH);
     const capturing = !!cameraCapture && cameraCapture.cutId === cut.id;
+    const placing = !!cameraMove && cameraMove.cutId === cut.id;
 
     return (
         <div style={{ marginTop: 8, borderTop: '1px solid hsl(var(--ui-h) var(--ui-s) 20%)', paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -188,6 +189,18 @@ export function CameraPanel({ cut, updCutCamera, cameraCapture, setCameraCapture
                 <NumIn value={c.shake || 0} onChange={v => set({ shake: Math.max(0, v) })} step={2} min={0} w={54} label={tr('세기')} suffix="px" title={tr('손으로 든 것처럼 흔들립니다. 0이면 끕니다')} />
                 <NumIn value={c.shakeSpeed ?? 6} onChange={v => set({ shakeSpeed: Math.max(0.1, v) })} step={1} min={0.1} w={54} label={tr('속도')} title={tr('초당 흔들리는 횟수')} />
             </div>
+            {/* Placing the shot, as against drawing its route. Only offered when the artwork is
+                bigger than the output: otherwise the frame fills the canvas and there is nowhere
+                to drag it to (#327). */}
+            {(canvasW !== frameW || canvasH !== frameH) && (
+                <div style={R()}>
+                    <button className="button" style={{ flex: 1, height: 26, background: placing ? 'var(--accent)' : undefined }}
+                        onClick={() => setCameraMove(placing ? null : { cutId: cut.id })}
+                        title={tr('화면에 밝게 표시된 틀을 끌어 카메라가 비출 곳을 정합니다')}>
+                        {placing ? tr('끌어서 놓으세요 (다시 눌러 끄기)') : tr('위치 잡기')}
+                    </button>
+                </div>
+            )}
             <div style={R()}>
                 <button className="button" style={{ flex: 1, height: 26, background: capturing ? 'var(--accent)' : undefined }}
                     onClick={() => setCameraCapture(capturing ? null : { cutId: cut.id })}

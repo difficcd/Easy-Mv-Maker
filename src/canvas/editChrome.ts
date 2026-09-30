@@ -157,9 +157,9 @@ export function drawMosaicRegion(ctx: CanvasRenderingContext2D, rect: Rect | nul
  * @param geom the artwork and the frame
  * @param zoom the canvas view's zoom, so the outline stays one pixel wide on screen
  */
-export function drawFrameGuide(ctx: CanvasRenderingContext2D, geom: FrameGeometry, zoom: number): void {
+export function drawFrameGuide(ctx: CanvasRenderingContext2D, geom: FrameGeometry, zoom: number, centre?: Point | null, live = false): void {
     if (geom.cw === geom.fw && geom.ch === geom.fh) return;
-    const { x, y, w, h } = frameRect(geom, restingCentre(geom), 1);
+    const { x, y, w, h } = frameRect(geom, centre || restingCentre(geom), 1);
     ctx.save();
     // Dim everything outside the frame, as four bands rather than an even-odd path: a fill rule
     // is the sort of thing that renders differently on one engine and is noticed by nobody.
@@ -169,8 +169,10 @@ export function drawFrameGuide(ctx: CanvasRenderingContext2D, geom: FrameGeometr
     ctx.fillRect(0, y, Math.max(0, x), h);
     ctx.fillRect(x + w, y, Math.max(0, geom.cw - (x + w)), h);
 
-    ctx.strokeStyle = accentSoft(0.9);
-    ctx.lineWidth = Math.max(1, 2 / Math.max(0.01, zoom));
+    // Brighter and thicker while it is being placed, so the thing under the finger is the
+    // thing that looks active - the dimming alone reads the same either way.
+    ctx.strokeStyle = accentSoft(live ? 1 : 0.9);
+    ctx.lineWidth = Math.max(1, (live ? 3.5 : 2) / Math.max(0.01, zoom));
     ctx.setLineDash([]);
     ctx.strokeRect(x, y, w, h);
     ctx.restore();

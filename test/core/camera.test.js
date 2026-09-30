@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CAMERA_DEFAULT, CAMERA_PRESETS, resolveCamera, computeCamera, applyCamera, zoomForDrift } from '../../src/core/camera.ts';
+import { CAMERA_DEFAULT, CAMERA_PRESETS, resolveCamera, computeCamera, applyCamera, zoomForDrift, cameraStart, cameraMovedTo } from '../../src/core/camera.ts';
 
 const W = 1920, H = 1080;
 const cam = (over) => ({ ...CAMERA_DEFAULT, ...over });
@@ -169,4 +169,41 @@ test('zoomForDrift gives exactly the zoom that fits, and no more', () => {
     // Nonsense in, something usable out - a half-frame drift would need infinite zoom.
     assert.ok(Number.isFinite(zoomForDrift(0.9)));
     assert.equal(zoomForDrift(-1), 1);
+});
+
+// --- placing the shot by dragging the frame guide (#327) ---------------------------------------
+
+test('cameraStart: the move begins where the path does', () => {
+    assert.deepEqual(cameraStart({ path: [{ x: 300, y: 200 }, { x: 900, y: 200 }] }, { x: 0, y: 0 }),
+        { x: 300, y: 200 });
+});
+
+test('cameraStart: no path means it has not been placed, so the middle of the artwork', () => {
+    const mid = { x: 960, y: 540 };
+    assert.deepEqual(cameraStart(null, mid), mid);
+    assert.deepEqual(cameraStart({}, mid), mid);
+    assert.deepEqual(cameraStart({ path: [] }, mid), mid);
+    assert.deepEqual(cameraStart({ path: [{ x: NaN, y: 1 }] }, mid), mid, 'junk is no position');
+});
+
+test('cameraMovedTo: an unplaced camera gets a one-point path where it was dropped', () => {
+    assert.deepEqual(cameraMovedTo(null, { x: 400, y: 300 }), { path: [{ x: 400, y: 300 }] });
+    assert.deepEqual(cameraMovedTo({ path: [{ x: 10, y: 10 }] }, { x: 400, y: 300 }),
+        { path: [{ x: 400, y: 300 }] }, 'a single point is a position, so it is replaced');
+});
+
+test('cameraMovedTo: an existing move is carried over, not thrown away', () => {
+    // The shape of the move is the part that took effort; where it happens is what is dragged.
+    const cam = { path: [{ x: 100, y: 100 }, { x: 300, y: 140 }, { x: 500, y: 100 }] };
+    const moved = cameraMovedTo(cam, { x: 600, y: 500 });
+    assert.deepEqual(moved.path[0], { x: 600, y: 500 }, 'starts where it was dropped');
+    for (let i = 1; i < cam.path.length; i++) {
+        assert.equal(moved.path[i].x - moved.path[i - 1].x, cam.path[i].x - cam.path[i - 1].x);
+        assert.equal(moved.path[i].y - moved.path[i - 1].y, cam.path[i].y - cam.path[i - 1].y);
+    }
+});
+
+test('cameraMovedTo: dropping twice ends where it was dropped, not twice as far', () => {
+    const once = cameraMovedTo({ path: [{ x: 0, y: 0 }, { x: 100, y: 0 }] }, { x: 500, y: 500 });
+    assert.deepEqual(cameraMovedTo(once, { x: 700, y: 200 }).path[0], { x: 700, y: 200 });
 });
