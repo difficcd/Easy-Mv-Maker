@@ -7,8 +7,10 @@ const mbps = (n) => n / 1_000_000;
 test('a codec is recognised from every type pickRecordingType can return', () => {
     // These are the exact strings in CANDIDATES. If one stops matching, that codec silently
     // falls back to the VP8 figure - not a crash, just a worse or wasteful file.
-    assert.equal(codecFamily('video/mp4;codecs=h264'), 'h264');
     assert.equal(codecFamily('video/mp4'), 'h264');
+    assert.equal(codecFamily('video/mp4;codecs="avc1.42E01E,mp4a.40.2"'), 'h264');
+    assert.equal(codecFamily('video/mp4;codecs=avc1.42E01E'), 'h264');
+    assert.equal(codecFamily('video/mp4;codecs=avc1'), 'h264');
     assert.equal(codecFamily('video/webm;codecs=vp9'), 'vp9');
     assert.equal(codecFamily('video/webm;codecs=vp8'), 'vp8');
     assert.equal(codecFamily('video/webm'), 'vp8');

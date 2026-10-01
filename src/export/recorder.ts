@@ -4,8 +4,28 @@
 // made and torn down. handleExport in App is left with what only it knows: the range, the
 // audio graph, and the playback loop that paints the frames.
 
-/** Preferred first: an MP4 plays everywhere the user is likely to send it. */
-const CANDIDATES = ['video/mp4;codecs=h264', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+/**
+ * Preferred first: an MP4 plays everywhere the user is likely to send it.
+ *
+ * The list used to open with `video/mp4;codecs=h264`, which no browser accepts - inside an MP4
+ * the H.264 codec is named `avc1`, and `h264` is not a string MediaRecorder recognises. So the
+ * intended first choice had never once matched, and every MP4 this app has ever recorded came
+ * from the bare `video/mp4` behind it. That was invisible on a desktop, where bare `video/mp4`
+ * is supported; a browser that wants to be told the codec got no MP4 offered that it could say
+ * yes to and fell through to WebM for no reason.
+ *
+ * Bare `video/mp4` stays in front so that where MP4 already worked, nothing changes about the
+ * codec the browser picks. The explicit `avc1` forms behind it only add reach.
+ */
+const CANDIDATES = [
+    'video/mp4',
+    'video/mp4;codecs="avc1.42E01E,mp4a.40.2"',   // H.264 baseline + AAC, named in full
+    'video/mp4;codecs=avc1.42E01E',
+    'video/mp4;codecs=avc1',
+    'video/webm;codecs=vp9',
+    'video/webm;codecs=vp8',
+    'video/webm',
+];
 
 /**
  * The best type this browser will record, and the file extension to go with it.

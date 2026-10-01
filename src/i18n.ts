@@ -327,6 +327,7 @@ const EN: Record<string, string> = {
     'WebP로 압축 저장': 'saved as compressed WebP',
     '내보낼 콘텐츠가 없습니다.': 'There is nothing to export.',
     '녹화가 시작됩니다.': 'Recording will start.',
+    '이 브라우저는 MP4 녹화를 지원하지 않아 WebM으로 저장됩니다.': 'This browser cannot record MP4, so the file will be saved as WebM.',
     '녹화를 시작할 수 없습니다:': 'Could not start recording:',
     '화질/용량 선택. 고화질=원본 해상도 WebP(거의 무손실, 용량 적당) / 무손실=PNG(픽셀 완전 보존, 용량 큼)': 'Quality vs. size. High quality = WebP at the original resolution (near-lossless, moderate size). Lossless = PNG (every pixel preserved, large).',
 
