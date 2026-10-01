@@ -478,7 +478,15 @@ export function drawStrokesOnCtx(ctx: CanvasRenderingContext2D, strokes: readonl
         // reads as a textured graphite line rather than a flat vector stroke. Pressure = darkness.
         if (s.tool === 'pencil') {
             const pp = smooth(s.points);
-            const pw = pp.map((_, i) => baseSize * (0.65 + 0.35 * Math.min(1, prAt(pp, i) * 2)));
+            // 0.65x at no pressure, 1x at the neutral 0.5, 1.35x at a full press. The `* 2` is
+            // what puts neutral at 1, and this used to be wrapped in `Math.min(1, ...)` - which
+            // meant the width stopped growing at 0.5 and every press above it drew exactly the
+            // same stroke, to the pixel. A stylus writes well above 0.5, so in practice the
+            // pencil behaved as though pressure were switched off: #338's "pencil pressure is
+            // ignored". Removing the clamp only extends the curve past neutral; nothing at or
+            // below 0.5 changes, so no mouse-drawn stroke - which reports no pressure and reads
+            // as the neutral 0.5 - renders any differently than before.
+            const pw = pp.map((_, i) => baseSize * (0.65 + 0.7 * prAt(pp, i)));
             // As the marker: the scratch, the grain fill and the blit were all full-canvas for
             // a stroke of any size. This was the most expensive thing the profiler found.
             const box = inkBounds(pp, Math.max(...pw, baseSize) / 2 + SCRATCH_MARGIN, ctx.canvas.width, ctx.canvas.height);
@@ -491,6 +499,11 @@ export function drawStrokesOnCtx(ctx: CanvasRenderingContext2D, strokes: readonl
             // have re-phased the grain per stroke.
             tctx.setTransform(1, 0, 0, 1, -box.x, -box.y);
             tctx.lineCap = 'round'; tctx.lineJoin = 'round'; tctx.strokeStyle = baseColor; tctx.fillStyle = baseColor;
+            // Darkness, 0.5x at no pressure up to fully opaque at the neutral 0.5. This clamp,
+            // unlike the width's, is real and stays: alpha is already 1 at neutral, so there is
+            // no headroom to press into. Lowering the neutral to make room would re-render every
+            // pencil stroke ever drawn - lighter - so above neutral the pencil says pressure in
+            // its width alone.
             smoothStroke(tctx, pp, pw, (i) => { tctx.globalAlpha = 0.5 + 0.5 * Math.min(1, prAt(pp, i) * 2); });
             tctx.globalAlpha = 1; tctx.globalCompositeOperation = 'destination-in';
             const pat = tctx.createPattern(grainTile(), 'repeat');

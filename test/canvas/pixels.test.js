@@ -66,6 +66,35 @@ test('an eraser stroke takes ink away where it crosses', () => {
     assert.ok(after > 0, 'the eraser took the whole stroke, not a band of it');
 });
 
+/** A straight pencil stroke at one pressure, and how thick it came out. */
+function pencilThickness(pressure, pen = true, size = 24) {
+    const { c, ctx } = fresh();
+    const points = [];
+    for (let x = 20; x <= 180; x += 10) points.push({ x, y: 60, pressure });
+    drawStrokesOnCtx(ctx, [stroke({ tool: 'pencil', size, pen, points })], false, new Map());
+    const { box } = ink(c);
+    return box ? box.y1 - box.y0 + 1 : 0;
+}
+
+test('a pencil keeps widening above the neutral pressure', () => {
+    // The width term was wrapped in `Math.min(1, pr * 2)`, which stopped growing at 0.5 - so
+    // every press above neutral drew the same stroke to the pixel, and a stylus (which writes
+    // well above 0.5) behaved as though pressure were switched off. That is #338's "pencil
+    // pressure is ignored"; on main these three numbers are all equal.
+    const a = pencilThickness(0.5), b = pencilThickness(0.75), d = pencilThickness(1);
+    assert.ok(b > a, `0.75 is no thicker than neutral: ${a} -> ${b}`);
+    assert.ok(d > b, `a full press is no thicker than 0.75: ${b} -> ${d}`);
+});
+
+test('a pencil drawn with no pressure is drawn at the neutral weight', () => {
+    // The invariant that keeps the curve change off existing artwork: a mouse reports no
+    // pressure, which reads as 0.5, and the width at 0.5 is exactly 1x. So any future reshaping
+    // of the pencil's pressure response has to keep passing through 1 at neutral, or every
+    // pencil stroke ever drawn re-renders differently.
+    const mouse = pencilThickness(0.5, false), neutralPen = pencilThickness(0.5, true);
+    assert.equal(mouse, neutralPen);
+});
+
 /**
  * The width an eraser actually clears, measured as the gap it cuts through a solid band.
  * `pen` is set, so the pressure is trusted as a tablet's would be.
