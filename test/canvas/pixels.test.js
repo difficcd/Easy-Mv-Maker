@@ -66,6 +66,41 @@ test('an eraser stroke takes ink away where it crosses', () => {
     assert.ok(after > 0, 'the eraser took the whole stroke, not a band of it');
 });
 
+/**
+ * The width an eraser actually clears, measured as the gap it cuts through a solid band.
+ * `pen` is set, so the pressure is trusted as a tablet's would be.
+ */
+function eraserGap(pressure, size = 30) {
+    const { c, ctx } = fresh();
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 50, W, 20);
+    drawStrokesOnCtx(ctx, [stroke({
+        id: 2, tool: 'eraser', size, pen: true,
+        points: [{ x: 100, y: 20, pressure }, { x: 100, y: 100, pressure }],
+    })], false, new Map());
+    const d = ctx.getImageData(0, 60, W, 1).data;
+    let gap = 0;
+    for (let x = 0; x < W; x++) if (d[x * 4 + 3] === 0) gap++;
+    return gap;
+}
+
+test('an eraser clears at least the width it is set to, however light the press', () => {
+    // The pressure term is `pr * 2`, so a light press used to make the eraser a fraction of its
+    // size: a 30px eraser cleared 6px at p=0.1 and 14px at p=0.25, and a sweep over a stroke
+    // left a ribbon of it behind. Only a stylus could do it - a mouse always reports the
+    // neutral 0.5, which lands exactly on the nominal size.
+    for (const p of [0.05, 0.1, 0.25, 0.4, 0.5]) {
+        assert.ok(eraserGap(p) >= 30, `a 30px eraser cleared only ${eraserGap(p)}px at pressure ${p}`);
+    }
+});
+
+test('an eraser still widens when the pen is pressed hard', () => {
+    // The floor is a floor, not a fixed width: the pressure the eraser had above neutral is
+    // untouched, so this is the one direction that still varies.
+    const even = eraserGap(0.5), hard = eraserGap(1);
+    assert.ok(hard > even + 10, `a hard press did not widen the eraser: ${even} -> ${hard}`);
+});
+
 test('drawing is deterministic: the same stroke twice gives the same pixels', () => {
     const a = fresh(), b = fresh();
     drawStrokesOnCtx(a.ctx, [stroke()], false, new Map());
