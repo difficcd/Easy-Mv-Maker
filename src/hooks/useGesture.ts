@@ -18,6 +18,30 @@ export type Gesture = ReturnType<typeof useGesture>;
 // does not. Nothing here should ever be read during render.
 
 /**
+ * Whether a pointer event belongs to the gesture in flight.
+ *
+ * A tablet has more than one pointer. A palm resting on the glass while the pen draws is a
+ * second one, and while `startDraw` refused to *begin* a gesture from a touch, nothing stopped a
+ * touch from feeding the gesture already running: the palm's moves were appended to the pen's
+ * stroke as points, and the palm lifting ran stopDraw and committed the stroke early - after
+ * which the pen kept moving over a gesture that had already ended. That is #338's "strokes break
+ * up", and it cannot happen on a PC, where there is only ever one pointer.
+ *
+ * While nothing is in flight every pointer passes, so hovering still updates the cursor. A call
+ * made from code rather than from an event passes too - `onPointerLeaveCanvas` ends a stroke
+ * without having an event to name.
+ *
+ * @param {boolean} active whether a gesture is in flight
+ * @param {number|null} ownerId the pointer that began it
+ * @param {number|null} [eventId] the pointer the event came from; absent for a call from code
+ * @returns {boolean}
+ */
+export function pointerIsOwner(active: boolean, ownerId: number | null, eventId?: number | null): boolean {
+    if (!active || ownerId === null || eventId === null || eventId === undefined) return true;
+    return eventId === ownerId;
+}
+
+/**
  * @param {object} opts
  * @param {{current: HTMLCanvasElement|null}} opts.canvasRef the element that captures the pointer
  */
@@ -63,11 +87,17 @@ export function useGesture({ canvasRef }: { canvasRef: { current: HTMLCanvasElem
         pointerId.current = null;
     };
 
+    /**
+     * Whether an event is from the pointer that began what is in flight - the guard every
+     * handler needs on a touchscreen. See pointerIsOwner for what it is protecting against.
+     */
+    const isOurs = (e?: { pointerId?: number } | null) => pointerIsOwner(drawing.current, pointerId.current, e?.pointerId);
+
     // One object, made once. Effects that read a gesture ref have to list this in their
     // dependencies, and a fresh object each render would make every one of them run every
     // render. Everything in here is a ref or closes over one, so there is nothing to refresh.
     return useMemo(
-        () => ({ drawing, pointerId, stroke, lineStart, lasso, layerDrag, selectionDrag, pathPts, target, clearPending, begin, end }),
+        () => ({ drawing, pointerId, stroke, lineStart, lasso, layerDrag, selectionDrag, pathPts, target, clearPending, begin, end, isOurs }),
         [],   // eslint-disable-line react-hooks/exhaustive-deps -- refs and functions over refs
     );
 }

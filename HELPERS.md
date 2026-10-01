@@ -992,6 +992,7 @@ What is happening between the pen going down and coming back up.
 | | |
 |---|---|
 | `useGesture` | Owns the scratch state of one pointer gesture — the stroke, the lasso loop, the layers or selection being dragged, the path being recorded, the layer the stroke will commit to — plus `begin`/`end`, which take and give back pointer capture. All refs: a pointer move arrives far more often than a frame. The returned object is stable, so an effect can list it. |
+| `pointerIsOwner` | Whether a pointer event belongs to the gesture in flight — on a touchscreen the palm is a second pointer, and its moves and its lift were being taken for the pen's (#338). Passes everything through when nothing is in flight, and when the call has no event to name. |
 
 ## `src/hooks/useHistory.ts`
 

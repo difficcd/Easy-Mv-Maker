@@ -1488,6 +1488,9 @@ export default function App() {
     const [hoverHandle, setHoverHandle] = useState<string | null>(null);
 
     const onDraw = (e: React.PointerEvent<HTMLCanvasElement>) => {
+        // Not from the pointer that started this. A palm on the glass used to have its moves
+        // appended to the pen's stroke, which put a jump across the drawing (#338).
+        if (!gesture.isOurs(e)) return;
         // Hovering, not drawing: the only thing to work out is what the cursor should say. A
         // selection has eight handles and hitTestSelection already knows which one a point is
         // over; without this the cursor said "move" over all of them, so the one gesture that
@@ -1513,7 +1516,11 @@ export default function App() {
         TOOLS[etool]?.move?.(toolCtx(e, pos, null));
     };
 
-    const stopDraw = () => {
+    // The event is optional: onPointerLeaveCanvas ends a stroke without one to name.
+    const stopDraw = (e?: { pointerId?: number } | null) => {
+        // A second pointer lifting is not this gesture ending. A palm coming off the glass used
+        // to commit the pen's stroke mid-line, which is what made strokes break up (#338).
+        if (!gesture.isOurs(e)) return;
         // A whole-layer move commits its offset into every stroke.
         if (layerDrag.end()) return;
         // Curve ruler: one anchor placed or fine-tuned; the done button commits it.
