@@ -535,7 +535,15 @@ export function drawStrokesOnCtx(ctx: CanvasRenderingContext2D, strokes: readonl
         // the eraser and anything older that never got its own branch. This used to carry pencil
         // and airbrush cases too, which could not be reached and said otherwise.
         const widths = pts.map((_, i) => {
-            const w = baseSize * (hasPressure ? prAt(pts, i) * 2 : 1);
+            // The pressure term is `pr * 2`: nominal at the neutral 0.5, double at a full press,
+            // and - the part that was a bug for the eraser - *half* at a light one. A brush that
+            // thins under a light touch is the whole point of pressure. An eraser that thins is
+            // a tool lying about its size: a 40px eraser drawn at p=0.25 is 20px, so a sweep
+            // over a stroke leaves a ribbon of it behind. That is the "it does not erase
+            // cleanly" report, and it was invisible on a mouse, which always reports 0.5.
+            // So the eraser's set size is a floor. Pressing harder still widens it.
+            const pr = hasPressure ? prAt(pts, i) * 2 : 1;
+            const w = baseSize * (isEraser ? Math.max(1, pr) : pr);
             return s.tool === 'brush' ? w * taperAt(Math.max(1, i), n) : w;
         });
         smoothStroke(ctx, pts, widths, () => { ctx.globalAlpha = isEraser ? 1 : baseOpacity; }, s.straight === true);

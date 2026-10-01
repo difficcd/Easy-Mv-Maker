@@ -130,9 +130,9 @@ function ToolSettings({
             ))}
         </div>
         <input type="range" min="1" max="80" value={Math.min(80, curSize)} onChange={e => setSize(+e.target.value)} className="v-slider" disabled={isSelectionTool} />
-        {/* The eraser is included: its width goes through the same pressure term as a brush
-            (canvasUtils, `s.size * (hasPressure ? pr * 2 : 1)`), so an even eraser is exactly as
-            useful as an even line. */}
+        {/* The eraser is included: pressing harder widens it too (strokes.ts), so an even eraser
+            is exactly as useful as an even line. It will not go *below* the size set above,
+            though, however lightly the pen is pressed - a narrow eraser leaves residue. */}
         <label className="te-check" style={{ justifyContent: 'center', marginTop: 2 }}
             title={tr('끄면 세게 눌러도 굵기가 일정합니다. 이미 그린 선은 그대로입니다.')}>
             <input type="checkbox" checked={!!pressureOn} onChange={e => setPressureOn(e.target.checked)} /> {tr('필압')}
