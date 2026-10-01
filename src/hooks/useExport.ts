@@ -372,10 +372,15 @@ export function useExport({ paint, audio, range, doc, report, recording, ask }: 
         // on the canvas being recorded.
         if (playEnd <= playStart) { setToast(tr('내보낼 콘텐츠가 없습니다.')); return; }
         const { mimeType, ext } = pickRecordingType((t: string) => MediaRecorder.isTypeSupported(t));
+        // Which container came out was only ever visible in the saved file's name, so "MP4 did
+        // not seem to work on the tablet" was not a thing the app could answer. Say it up front,
+        // in the confirm that starts the recording - and only when it is not MP4, because that
+        // is the case worth a sentence.
+        const formatNote = ext === 'mp4' ? '' : '\n' + tr('이 브라우저는 MP4 녹화를 지원하지 않아 WebM으로 저장됩니다.');
         // Still blocking, and deliberately so: closing it is what starts the recording, so the
         // user gets a moment to be ready. A toast would begin recording with nobody looking.
         // Now a real question rather than an alert, which also gives the moment a way out.
-        if (!await ask.confirm(tr('녹화가 시작됩니다.'), { okLabel: tr('녹화 시작') })) return;
+        if (!await ask.confirm(tr('녹화가 시작됩니다.') + formatNote, { okLabel: tr('녹화 시작') })) return;
         // The loop reads its clock from the ref, and the ref only follows state while paused -
         // and isPlaying goes true in the same render. Left to state alone the loop started at
         // wherever the playhead was, the recorder ran from that moment, and the frames only
