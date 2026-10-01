@@ -797,6 +797,7 @@ Reading a cut's layer tree: order, cache keys and change signatures.
 | `flattenForCanvas` | The layers to draw, bottom first, with folders resolved and hidden branches dropped. |
 | `strokeSig` | A cheap change signature for a layer's strokes, used to invalidate the layer canvas cache without stringifying the whole array. Sound because strokes here are only ever appended or replaced. |
 | `layerSig` | The cache key for one baked layer canvas. Two caches use it and compare their keys against each other, so for a layer that is not boiling both forms must come out byte-identical - otherwise every such layer misses the cache and is redrawn every frame, with no visible symptom. |
+| `appendedAfter` | How many of a layer's strokes a canvas baked under a given signature already holds, when the strokes are that same list with more on the end — so a commit draws only the new ones instead of redrawing the layer. `null` when anything else changed. Leans on the same `rev` invariant the cache already needs. |
 | `flattenLayersInUiOrder` | The layer tree flattened the way the panel shows it, so an index in the list means the same thing to the UI and to the renderer. |
 
 ## `src/core/cutAnim.ts`

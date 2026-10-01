@@ -130,6 +130,32 @@ test('an eraser still widens when the pen is pressed hard', () => {
     assert.ok(hard > even + 10, `a hard press did not widen the eraser: ${even} -> ${hard}`);
 });
 
+test('drawing only the new strokes gives the same pixels as redrawing the layer', () => {
+    // The claim the incremental bake rests on (appendedAfter): strokes paint in order, each on
+    // top of the last, so painting the new ones onto a canvas that already holds the old ones
+    // must land exactly where redrawing everything would. If this ever stops being true the
+    // symptom is a drawing that is quietly wrong, so it is checked on bytes, not on ink counts.
+    const all = [
+        stroke({ id: 1, tool: 'brush', color: '#cc3344' }),
+        stroke({ id: 2, tool: 'pencil', color: '#2244aa', points: [{ x: 30, y: 30, pressure: 0.5 }, { x: 170, y: 90, pressure: 0.5 }] }),
+        // An eraser in the appended part: destination-out has to compose against what is
+        // already on the canvas, which is the case most likely to come apart.
+        stroke({ id: 3, tool: 'eraser', size: 24, points: [{ x: 60, y: 10, pressure: 0.5 }, { x: 60, y: 110, pressure: 0.5 }] }),
+        stroke({ id: 4, tool: 'marker', color: '#117733', points: [{ x: 20, y: 90, pressure: 0.5 }, { x: 180, y: 70, pressure: 0.5 }] }),
+    ];
+    for (const split of [1, 2, 3]) {
+        const full = fresh(), incr = fresh();
+        drawStrokesOnCtx(full.ctx, all, true, new Map());
+        drawStrokesOnCtx(incr.ctx, all.slice(0, split), true, new Map());
+        drawStrokesOnCtx(incr.ctx, all.slice(split), false, new Map());
+        assert.deepEqual(
+            [...incr.ctx.getImageData(0, 0, W, H).data],
+            [...full.ctx.getImageData(0, 0, W, H).data],
+            `appending from ${split} did not match a full redraw`,
+        );
+    }
+});
+
 test('drawing is deterministic: the same stroke twice gives the same pixels', () => {
     const a = fresh(), b = fresh();
     drawStrokesOnCtx(a.ctx, [stroke()], false, new Map());
