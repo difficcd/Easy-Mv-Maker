@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { sizeCanvas, scratchCanvas } from '../canvas/scratch.ts';
 import { drawStrokesOnCtx } from '../canvas/strokes.ts';
 import { safeArray } from '../core/geometry.ts';
-import { layerKey, layerSig } from '../core/layerTree.ts';
+import { layerKey, layerSig, appendedAfter } from '../core/layerTree.ts';
 import { scanLayerBitmaps } from '../engine/pendingBitmaps.ts';
 import { cutsToCache } from '../engine/selectCuts.ts';
 import { layerKeysUsingBitmaps, keysWithPhases, prefetchWindow } from '../core/decodeBudget.ts';
@@ -246,8 +246,26 @@ export function useLayerCache({
         // which is why this does not go through scratchCanvas.
         const bake = (signature: string) => {
             const cnv = hit || document.createElement('canvas');
-            sizeCanvas(cnv, canvasW, canvasH);
-            drawStrokesOnCtx(cnv.getContext('2d')!, layer.strokes || [], true, store, rOpts);
+            // Read before sizing. Resizing a canvas clears it, and then nothing is already drawn
+            // however much the signature says is.
+            const stored = cnv.dataset.strokes;
+            const resized = sizeCanvas(cnv, canvasW, canvasH);
+            // Committing a stroke redrew every stroke the layer held, so the Nth stroke of a
+            // drawing cost N times the first and a session's baking grew with the square of the
+            // strokes drawn: on a 1920x1080 layer, 40 brush strokes drawn one at a time cost
+            // ~38s of baking where drawing only each new stroke costs ~1.9s.
+            //
+            // When the strokes are the ones already on this canvas plus more on the end, only
+            // the new ones need drawing - they paint on top, which is the order they would have
+            // been drawn in anyway. Everything else (a stroke edited or removed, the layer
+            // dragged, a merge) still bakes in full; appendedAfter says which this is.
+            //
+            // Boiling layers are left out: each phase keeps its own canvas, so an append would
+            // have to reach all of them.
+            const from = (resized || layer.roughen) ? null : appendedAfter(stored, layer, rOpts);
+            const target = cnv.getContext('2d')!;
+            if (from === null) drawStrokesOnCtx(target, layer.strokes || [], true, store, rOpts);
+            else drawStrokesOnCtx(target, (layer.strokes || []).slice(from), false, store, rOpts);
             cnv.dataset.strokes = signature;
             map.delete(slotKey); map.set(slotKey, cnv);   // re-insert = most recently used
             while (map.size > LAYER_CANVAS_LRU) map.delete(map.keys().next().value!);
