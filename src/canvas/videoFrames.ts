@@ -28,13 +28,36 @@ export function fitRect(sw: number, sh: number, dw: number, dh: number): Rect {
  * with no error. The scene detector had learnt this and clamped; the frame extractor had not,
  * and it steps right up to the end of the range it was given.
  *
+ * And never exactly on a frame boundary, which is #124. Asking for time t when a frame starts
+ * at t is ambiguous - the frame ending there also touches it - and the browser may hand back
+ * the one before. The extractor steps by 1/fps, so at a frame rate near the video's own, every
+ * other seek came back as the previous picture. Those captures really are byte-identical, so
+ * the exact-duplicate dedupe merged them, and the import quietly lost frames.
+ *
+ * Measured on a one-second 30fps clip whose 30 frames are all different colours, seeking to
+ * each frame time and reading the pixels back:
+ *
+ *     offset 0        21 of 30 distinct, 9 consecutive repeats
+ *     offset 0.0001   30 of 30 distinct, 0 repeats
+ *     offset 1/60     30 of 30 distinct, 0 repeats
+ *
+ * A millisecond is far below any real frame interval - 8.3ms even at 120fps - so the nudge
+ * cannot reach the next frame, and far above the float error in `start + i * step`. It is
+ * applied before the end clamp so it can never push a seek past the point that hangs.
+ *
+ * Waiting longer was the obvious other theory and it is wrong: with the nudge, `seeked` alone
+ * is exact, and waiting on requestVideoFrameCallback instead cost 16x the time (133ms to
+ * 2123ms over 30 seeks) while fixing nothing.
+ *
  * @param {number} t
  * @param {number} duration
  * @returns {number}
  */
+const SEEK_NUDGE = 0.001;
+
 export function seekTarget(t: number, duration: number): number {
     if (!Number.isFinite(duration) || duration <= 0) return 0;
-    return Math.max(0, Math.min(t, duration - 0.02));
+    return Math.max(0, Math.min(t + SEEK_NUDGE, duration - 0.02));
 }
 
 /**

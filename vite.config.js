@@ -17,8 +17,13 @@ export default defineConfig({
   plugins: [react(), qrcode()],
   server: {
     host: true, // expose on LAN so a tablet on the same Wi-Fi can connect
-    port: 5173,
-    strictPort: false,
+    // 5175, not Vite's default: another project on this machine holds 5173 permanently. The two
+    // did not collide loudly, which was the problem - that one listens on ::1 and this one on
+    // ::, `localhost` resolves to ::1 first, and so the browser quietly got the *other* app on
+    // the address this one had just printed. strictPort turns the next such clash into a
+    // refusal to start, which is the one outcome that cannot be mistaken for working.
+    port: 5175,
+    strictPort: true,
     proxy: API_PROXY,
   },
   build: {
