@@ -452,10 +452,33 @@ test('a seek never lands on the very last frame', () => {
     assert.equal(seekTarget(99, 10), 9.98, 'past the end clamps too');
 });
 
-test('a seek inside the video is left alone', () => {
-    assert.equal(seekTarget(0, 10), 0);
-    assert.equal(seekTarget(3.5, 10), 3.5);
-    assert.equal(seekTarget(9.97, 10), 9.97);
+test('a seek is nudged off the frame boundary it was asked for', () => {
+    // #124. Asking for time t when a frame *starts* at t is ambiguous - the frame ending there
+    // touches it too - and the browser may hand back the one before. The extractor steps by
+    // 1/fps, so importing at a rate near the video's own made every other seek return the
+    // previous picture; those captures are byte-identical, so the exact-duplicate dedupe merged
+    // them and the import quietly lost frames. Measured on a 30fps clip of 30 different
+    // colours: seeking on the boundary gave 21 distinct frames and 9 repeats, nudged gave 30
+    // and 0.
+    assert.equal(seekTarget(3.5, 10), 3.501);
+    assert.equal(seekTarget(0, 10), 0.001);
+});
+
+test('the nudge is far smaller than a frame and far larger than float error', () => {
+    // It must not be able to reach into the next frame - 1/120s is 8.3ms, the shortest interval
+    // worth worrying about - and must still clear the error in `start + i * step`.
+    const nudge = seekTarget(1, 10) - 1;
+    assert.ok(nudge > 0, 'the nudge has to move the seek at all');
+    assert.ok(nudge < 1 / 120, `a nudge of ${nudge}s could cross a 120fps frame`);
+    assert.ok(nudge > 1e-6, 'a nudge below float error would not reliably clear the boundary');
+});
+
+test('the nudge can never push a seek past the point that hangs', () => {
+    // The end clamp exists because seeking to the duration fires no `seeked` in some browsers.
+    // Applying the nudge after it would walk straight back into that.
+    assert.equal(seekTarget(9.98, 10), 9.98);
+    assert.equal(seekTarget(9.9799, 10), 9.98);
+    assert.ok(seekTarget(9.999, 10) <= 9.98);
 });
 
 test('a negative time becomes the start', () => {
