@@ -1,0 +1,41 @@
+# Process cycles
+
+How the way this project is built gets improved, and the record of each time it was.
+
+Each cycle is **Measure → Analyze → Change**, then measure again. The measuring comes first and
+is not optional: a process change judged by feel cannot be told apart from one that did nothing,
+and without a baseline the next cycle cannot know what to change either. It is also the cheapest
+step - every figure comes out of records the repository already keeps.
+
+## Running a cycle
+
+```bash
+node scripts/process-metrics.mjs              # all of history
+node scripts/process-metrics.mjs --since 30   # the last 30 days - compare this one
+node scripts/process-metrics.mjs --json       # for diffing against a saved baseline
+```
+
+Then write a new file here, named for the date - **a new file each cycle, never an edit to an old
+one**, so the trend stays readable (the same rule as `docs/health/`). Save the `--json` output
+beside it, so the next cycle compares numbers rather than prose.
+
+A record says what was measured, what the numbers meant, what was changed because of them and
+which number each change is expected to move - so the next cycle can check.
+
+## What the measures are
+
+| measure | from | note |
+|---|---|---|
+| deployment frequency | merged PRs | every merge to main deploys to Vercel |
+| lead time | PRs, issues | PR lead time is near zero because PRs open after the work; issue → close is the real one |
+| automated test pass ratio | Actions runs of `ci.yml` | cancelled runs are superseded, not verdicts, and are left out |
+| defect escape rate | `fix:` merges ÷ feat + perf + refactor merges | nothing lands without passing CI, so each fix is a defect that passed it |
+| MTTR | bug-labelled issues, open → close | only as good as the labelling |
+| fixes carrying a test | fix commits touching `test/` | the test-after rate, directly |
+| risk indicators | issues, git history | deferred verification, reverts, fixes of a recent fix, stalls |
+| defect hotspots | files touched by fix commits | where a test-first rule pays most |
+
+## Records
+
+- [2026-10-14](2026-10-14.md) — cycle 1. The baseline; CI found running four of its ten gates;
+  ARCHITECTURE.md missing 29% of the files; fixes required to carry a test.

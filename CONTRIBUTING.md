@@ -50,7 +50,19 @@ git commit -m "fix: ..."
 git push -u origin HEAD
 gh pr create --fill                   # put "Closes #12" in the body
 gh pr checks                          # CI
-gh pr merge --squash --delete-branch
+gh pr merge --rebase --delete-branch  # rebase, so each commit lands on main as written
+```
+
+**A `fix:` brings its test.** If a branch has a `fix:` commit, it has to change something under
+`test/` - the test that fails without the fix. That is the moment a defect is best understood and
+a test is cheapest to write, and it is what stops the same defect coming back: before this rule,
+over half of all fixes had landed without one. When nothing can be observed by a test (a colour,
+a config value), say so in the commit message and the gate accepts it:
+
+```
+fix: the panel border is visible in the light theme
+
+No-Test: colour only; nothing here a test can observe
 ```
 
 ## `main` is protected
@@ -76,7 +88,7 @@ Turning it back on is the part that gets forgotten, so do both in one sitting.
 ## Verifying
 
 ```bash
-npm run check   # typecheck → tests → hook-warning baseline → build
+npm run check   # typecheck → tests → nine static guards → build; CI runs exactly this
 ```
 
 **Passing this proves less than it looks.** A component that returns `undefined` is legal
@@ -107,7 +119,8 @@ evidence you will have.
 ## Where code goes
 
 The folders under `src/` say what a file is allowed to touch. The details are in
-[ARCHITECTURE.md](ARCHITECTURE.md) — **read it before editing App.jsx.**
+[ARCHITECTURE.md](ARCHITECTURE.md) — **read it before editing App.tsx.** Every file under `src/`
+is named in it, and `npm run check` fails when a new one is not.
 
 ```
 core/     pure logic — no React, no DOM, no canvas. Everything here has tests.

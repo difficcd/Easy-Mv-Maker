@@ -30,7 +30,11 @@ jobs:
     # the six-hour default.
     timeout-minutes: 10
     steps:
+      # Full history, not the default single commit: the fix-needs-a-test gate compares the branch
+      # against origin/main, and with one commit there is no merge base to compare from.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v7
         with:
@@ -41,19 +45,13 @@ jobs:
       # added without committing the lockfile fails here rather than on someone else's machine.
       - run: npm ci
 
-      - name: Type check
-        run: npm run typecheck
-
-      - name: Unit tests
-        run: npm test
-
-      # Fails only when hook dependency warnings grow, i.e. when a change adds new stale-closure
-      # risk. See scripts/hook-baseline.mjs for why zero is not the target.
-      - name: Hook baseline
-        run: node scripts/hook-baseline.mjs
-
-      - name: Build
-        run: npm run build
+      # The whole gate, as one command - the same one run locally. This used to list its steps by
+      # hand (type check, tests, hook baseline, build), and as gates were added to `npm run check`
+      # the copy here was never updated: by 2026-10-14 CI ran four of the ten, and the helper index,
+      # unreachable names, unused imports, stroke writes, native dialogs and i18n checks bound only
+      # on a machine where someone remembered to run them. One list cannot drift from itself.
+      - name: npm run check
+        run: npm run check
 
   # Separate from `check` on purpose: that job is the required gate and it finishes in half a
   # minute, so it must not wait behind a browser. This one is allowed to be the slow one.

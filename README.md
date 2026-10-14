@@ -98,8 +98,9 @@ npm run lint       # eslint-plugin-react-hooks
 npm run smoke      # boots the built app in a headless browser and draws a stroke
 ```
 
-`npm run check` is the gate: typecheck, the unit tests, then six static guards, then the build.
-The same steps run in CI on every push and pull request.
+`npm run check` is the gate: typecheck, the unit tests, then nine static guards, then the build.
+CI runs that one command on every push and pull request - it used to list its steps by hand, and
+by October that copy ran four of the ten (see [docs/process/](docs/process/2026-10-14.md)).
 
 The code is TypeScript, moved from JavaScript one folder at a time (#268), and every file is
 held to `strict`. The point was never the annotations - the JavaScript was already typed through
@@ -119,15 +120,21 @@ dependency), and the bundler and `tsc` accept it.
 | `scripts/unused-imports.mjs` | an import nothing in the file uses |
 | `scripts/stroke-writes.mjs` | a write that adds a stroke to a layer without going through `commitStroke` |
 | `scripts/native-dialogs.mjs` | an `alert`, `confirm` or `prompt` in `src/` — a browser that blocks dialogs makes all three fail silently |
+| `scripts/architecture-index.mjs` | a file under `src/` that `ARCHITECTURE.md` does not name |
+| `scripts/fix-needs-test.mjs` | a branch with a `fix:` commit that changes nothing under `test/`, unless a `No-Test:` trailer says why |
+| `scripts/i18n-check.mjs` | a `tr()` literal with no English entry, or a dictionary row whose key no longer appears in the source |
 
-Two measuring tools, neither in the gate — they print numbers rather than pass or fail:
+Measuring tools, none in the gate — they print numbers rather than pass or fail:
 `npm run bench` times the pure hot paths, and `node scripts/profile-frame.mjs` drives a real
 browser against a running dev server and reports frame time, 2d calls per frame attributed to the
 canvas they landed on, and image readbacks. The first cannot see the canvas; the second cannot see
-raster and compositing. Both say so in their own headers.
-| `scripts/i18n-check.mjs` | a `tr()` literal with no English entry, or a dictionary row whose key no longer appears in the source |
+raster and compositing. Both say so in their own headers. `node scripts/video-dedupe-check.mjs`
+imports a generated clip whose every frame differs and fails if any are merged (#124), and
+`node scripts/process-metrics.mjs` reads the repository's own records into the process measures
+- deployment frequency, lead time, test pass ratio, defect escape rate - that each
+[process cycle](docs/process/) is judged against.
 
-Around 1,150 unit tests cover the pure modules under `src/core`, `src/canvas`, `src/engine` and
+Around 1,300 unit tests cover the pure modules under `src/core`, `src/canvas`, `src/engine` and
 `src/export` — geometry, easing, keyframe sampling, the cuts reducer, layer-tree moves, lasso
 cut-out, timeline snapping, the time-scale bake, GIF and zip writers. They use Node's built-in
 runner because none of it needs a DOM or a framework. The functions that draw - strokes into

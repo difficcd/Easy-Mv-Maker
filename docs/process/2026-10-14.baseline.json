@@ -1,0 +1,163 @@
+{
+  "all": {
+    "window": "all history",
+    "measuredAt": "2026-10-14",
+    "merges": 291,
+    "mergesByKind": {
+      "refactor": 108,
+      "fix": 73,
+      "feat": 54,
+      "docs": 17,
+      "chore": 10,
+      "perf": 7,
+      "test": 5,
+      "ci": 2,
+      "security": 2,
+      "deps": 2
+    },
+    "deploymentsPerWeek": 32.8,
+    "prLeadTimeHours": {
+      "median": 0,
+      "p90": 1.9
+    },
+    "issueLeadTimeDays": {
+      "median": 0,
+      "p90": 15.5,
+      "closed": 49
+    },
+    "ciPassRatio": 96.9,
+    "ciRunsJudged": 769,
+    "mainBranchFailures": 1,
+    "defectEscapeRate": 43.2,
+    "fixMerges": 73,
+    "introducingMerges": 169,
+    "mttrDays": {
+      "median": 0,
+      "bugsClosed": 11
+    },
+    "fixCommitsWithATest": 43.6,
+    "fixCommits": 101,
+    "risk": {
+      "untickedChecklistItems": 3,
+      "issuesAwaitingVerification": 2,
+      "reverts": 0,
+      "fixesOfARecentFix": 43,
+      "longestGapBetweenMergesDays": 9,
+      "openIssues": 3,
+      "oldestOpenIssueDays": 62.1
+    },
+    "defectHotspots": [
+      [
+        "src/App",
+        63
+      ],
+      [
+        "src/ui/AnimPanels",
+        7
+      ],
+      [
+        "src/canvasUtils",
+        6
+      ],
+      [
+        "src/hooks/useExport",
+        5
+      ],
+      [
+        "src/canvas/canvasUtils",
+        5
+      ],
+      [
+        "src/core/layerOps",
+        4
+      ],
+      [
+        "src/ui/TopBar",
+        4
+      ],
+      [
+        "src/canvas/pixelEffects",
+        4
+      ]
+    ]
+  },
+  "last30": {
+    "window": "last 30 days",
+    "measuredAt": "2026-10-14",
+    "merges": 170,
+    "mergesByKind": {
+      "refactor": 67,
+      "fix": 46,
+      "feat": 26,
+      "docs": 11,
+      "chore": 7,
+      "perf": 6,
+      "test": 3
+    },
+    "deploymentsPerWeek": 39.7,
+    "prLeadTimeHours": {
+      "median": 0,
+      "p90": 0.1
+    },
+    "issueLeadTimeDays": {
+      "median": 0,
+      "p90": 9.7,
+      "closed": 29
+    },
+    "ciPassRatio": 99.7,
+    "ciRunsJudged": 371,
+    "mainBranchFailures": 0,
+    "defectEscapeRate": 46.5,
+    "fixMerges": 46,
+    "introducingMerges": 99,
+    "mttrDays": {
+      "median": 4.9,
+      "bugsClosed": 5
+    },
+    "fixCommitsWithATest": 60.4,
+    "fixCommits": 48,
+    "risk": {
+      "untickedChecklistItems": 3,
+      "issuesAwaitingVerification": 2,
+      "reverts": 0,
+      "fixesOfARecentFix": 25,
+      "longestGapBetweenMergesDays": 5.2,
+      "openIssues": 3,
+      "oldestOpenIssueDays": 62.1
+    },
+    "defectHotspots": [
+      [
+        "src/App",
+        23
+      ],
+      [
+        "src/ui/AnimPanels",
+        7
+      ],
+      [
+        "src/hooks/useExport",
+        5
+      ],
+      [
+        "src/canvas/canvasUtils",
+        4
+      ],
+      [
+        "src/canvas/pixelEffects",
+        4
+      ],
+      [
+        "src/canvas/strokes",
+        3
+      ],
+      [
+        "src/core/layerOps",
+        3
+      ],
+      [
+        "src/export/recorder",
+        2
+      ]
+    ]
+  }
+}
