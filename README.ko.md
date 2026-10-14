@@ -96,7 +96,7 @@ npm run lint       # eslint-plugin-react-hooks
 npm run smoke      # 빌드된 앱을 헤드리스 브라우저에서 띄워 선 하나 긋기
 ```
 
-`npm run check`가 관문입니다: 타입 검사, 단위 테스트, 정적 가드 여섯, 빌드. 같은 단계가 모든 푸시와 PR에서 CI로 돕니다.
+`npm run check`가 관문입니다: 타입 검사, 단위 테스트, 정적 가드 아홉, 빌드. CI는 모든 푸시와 PR에서 이 명령 하나를 그대로 돌립니다 - 예전에는 단계를 손으로 나열했고, 10월에는 그 사본이 열 개 중 넷만 돌리고 있었습니다([docs/process/](docs/process/2026-10-14.md)).
 
 코드는 TypeScript입니다 — JavaScript에서 폴더 하나씩 옮겼고(#268) 모든 파일이 `strict`로 검사됩니다.
 목적은 주석을 타입으로 바꾸는 것이 아니라(JS도 이미 JSDoc으로 타입이 있었음) JSDoc이 줄 수 없던
@@ -115,9 +115,11 @@ npm run smoke      # 빌드된 앱을 헤드리스 브라우저에서 띄워 선
 | `scripts/unused-imports.mjs` | 파일 안 아무것도 쓰지 않는 import |
 | `scripts/stroke-writes.mjs` | `commitStroke`를 거치지 않고 레이어에 선을 추가하는 쓰기 |
 | `scripts/native-dialogs.mjs` | `src/` 안의 `alert`·`confirm`·`prompt` — 브라우저가 대화상자를 막으면 셋 다 조용히 실패함 |
+| `scripts/architecture-index.mjs` | `ARCHITECTURE.md`가 이름을 대지 않는 `src/` 아래 파일 |
+| `scripts/fix-needs-test.mjs` | `fix:` 커밋이 있는데 `test/` 아래를 하나도 바꾸지 않은 브랜치 (`No-Test:` 트레일러로 이유를 적으면 예외) |
 | `scripts/i18n-check.mjs` | 영어 항목 없는 `tr()` 리터럴, 또는 소스에 키가 더는 없는 사전 항목 |
 
-단위 테스트 약 1,150개가 `src/core`, `src/canvas`, `src/engine`, `src/export`의 순수 모듈을
+단위 테스트 약 1,300개가 `src/core`, `src/canvas`, `src/engine`, `src/export`의 순수 모듈을
 덮습니다 — 기하, 이징, 키프레임 샘플링, 컷 리듀서, 레이어 트리 이동, 올가미 오려내기, 타임라인
 스냅, 시간 배율 굳히기, GIF·zip 라이터. DOM도 프레임워크도 필요 없어 Node 내장 러너를 씁니다.
 실제로 그리는 함수들 — 선을 픽셀로, 노이즈, 모자이크, 채우기 — 는 `@napi-rs/canvas`(브라우저

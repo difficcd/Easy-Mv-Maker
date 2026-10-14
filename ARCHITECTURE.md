@@ -9,7 +9,7 @@ Frame-by-frame MV/animation app. Vite + React 19. Capacitor wraps it for Android
 
 ## Files
 
-App.tsx is around 2,100 lines; it is mostly wiring now — which hook owns what, and
+App.tsx is around 2,200 lines; it is mostly wiring now — which hook owns what, and
 which component gets which props. **Put new pure logic in a module, not in App.tsx** — anything
 that is a function of its arguments belongs next to its tests. See [#234] for where the rest of
 App is going and why.
@@ -52,6 +52,10 @@ know storage exists at all, because reading it is `useStored`'s decoder.
   write UI strings in Korean and add the English to the dictionary. Called `tr`, not `t` — `t` is
   a local variable in dozens of places.
 - `src/db.ts` — IndexedDB autosave (`saveAutosave`, `loadAutosave`, plus project CRUD).
+- `src/i18n.ja.ts` — the Japanese dictionary, keyed by the same Korean text; a missing entry falls
+  back to English, not to the Korean key.
+- `src/globals.d.ts` — browser and vendor globals the type checker does not know (the EyeDropper
+  among them), declared as possibly absent because the code checks before using them.
 
 **core/** — pure logic, all of it tested, all of it TypeScript (the first folder converted; the
 shapes the modules share are in `types.ts`, and the document's own are declared in
@@ -117,6 +121,44 @@ index signature, so a misspelt one is an error. Ids there are `DocId` - a number
   to come: presets that use the room instead of zooming to make some, and a camera that can span
   more than one cut.
 
+- `ids.ts` — `nextId`, `randomId`. These were `Date.now()` in nineteen places, and a millisecond
+  is long enough to make two things with one id.
+- `camera.ts` — where the camera is looking at a moment in a cut: a window onto the artwork (a
+  centre and a zoom), its presets and paths. Applied at playback only.
+- `clipping.ts` — `clipGroups`, `canClip`: a layer that only shows where the layer beneath it has
+  paint, which is how shading goes over flat colour.
+- `shapeStroke.ts` — `rectPoints`, `ellipsePoints`: ruler shapes as ordinary point lists, which is
+  the whole idea - a shape is then just a stroke.
+- `pathMotion.ts` — turning a drawn line into a path something can travel along evenly: smoothing
+  and resampling by length, since a pen piles points up wherever it slowed down.
+- `brushSize.ts` / `viewZoom.ts` — the brush width range and the canvas zoom range, each in one
+  place after being written in two and three places that disagreed.
+- `timelineZoom.ts` — timeline pixels to time and back (`timeAtX`, `xAtTime`), and zooming without
+  the content sliding out from under the cursor.
+- `windowDrag.ts` — `dragOnWindow`: a drag run on window listeners, because the pointer leaves the
+  element it started on constantly. Ends on `pointercancel` too, which every hand-rolled one missed.
+- `persist.ts` — `readStored`/`writeStored` and the codecs under `useStored`: the small preferences
+  kept in localStorage.
+- `playbackRate.ts` / `playbackStart.ts` / `timeScale.ts` — the preview speed and that it is
+  remembered, where play begins when it is pressed, and baking a preview speed into the film's
+  real timings.
+- `mediaReducer.ts` / `mediaEl.ts` — the audio and video tracks as one reducer, and the one thing
+  done to the elements playing them (`detachMedia`).
+- `api.ts` / `probeBackoff.ts` — talking to the local project server (`apiFetch` adds the status
+  check fetch does not do; `retryDelayMs` honours a 429), and how often to ask whether it is there.
+- `projectAssets.ts` — how each piece of a project is stored - as an asset, a blob or a data URL -
+  and how a stored one comes back.
+- `splitProject.ts` — cutting one long project into sequential pieces that can be worked on apart
+  (#123).
+- `textEdit.ts` — a text object's twenty-odd fields in one place (`textFromEdit`, `editFromText`)
+  instead of three hand-copied ones.
+- `videoCuts.ts` — the arithmetic in the middle of a video import: extracted frames into cuts,
+  their durations and parts.
+- `recordBitrate.ts` — the bitrate to ask the recorder for, by codec and canvas size; left unset,
+  Chrome settles near 2.5 Mbps whatever the size.
+- `decodeBudget.ts` — how many decoded frames to hold, which to let go of, and which cached layers
+  a decode invalidates.
+
 **engine/** — what a frame *is*, with no canvas anywhere near it. TypeScript; `Scene`,
 `EvaluatedCut` and `EvaluatedGroup` in `evaluateFrame.ts` are the renderer's whole input, named.
 
@@ -155,6 +197,21 @@ frame is made of, and `SceneDeps` what the renderer needs from the app.
 - `warpRender.ts` / `shearSlices.ts` / `swayRender.ts` — a selection's rotate/skew/bend outline,
   the slice stack that draws a sheared bitmap, and the sway deformation.
 
+- `canvasFactory.ts` — `makeCanvas`/`setCanvasFactory`: where the canvas modules get a canvas, which
+  is what lets the pixel tests run them in Node on `@napi-rs/canvas`.
+
+**export/** — turning the timeline into a file. No React; what only the app knows (the range, the
+audio graph, the playback loop) stays in `hooks/useExport.ts`.
+
+- `recorder.ts` — `pickRecordingType` (MP4 first, asked for by a codec name browsers accept),
+  `frameSource`, `startRecorder`: recording the canvas, minus the parts that need the app.
+- `gif.ts` — a GIF89a encoder, enough for an animation with a transparent background, which no
+  browser API produces.
+- `zip.ts` / `byteWriter.ts` — a store-only ZIP writer (PNGs are already deflated, so compressing
+  them again buys nothing) and the growable byte buffer under it.
+- `download.ts` — `downloadBlob`: handing a finished file to the browser, once rather than three
+  times.
+
 **styles/** — the stylesheets, one per area (top bar, toolbar, canvas, the cut/layer panel, the
 timeline, the colour panel, touch, …), imported in their original cascade order by
 `styles/index.css`. The order is load-bearing: some rules override others by position alone.
@@ -177,6 +234,13 @@ prompt, tool keys, project picker, progress overlay), all over `Modal.tsx`. And 
 - `Notices.tsx` — the background chips, the frame-extraction chip, the failure banner. None of
   them stops the work underneath; that is the rule they share.
 - `NumField.tsx` — **use NumField for any new numeric field.**
+
+- `Logo.tsx` — the app mark: three receding frames - the onion skin - with a play mark on the front.
+- `dialogs/` — one file per dialog. `AskModal.tsx` is the app's own confirm and prompt (a browser
+  told to block dialogs makes `confirm` return silently, so the button looks dead).
+  `SettingsModal.tsx` / `ToolKeysModal.tsx` are the settings and the two keymap editors;
+  `VideoImportModal.tsx`, `SceneDetectModal.tsx`, `ExportRangeModal.tsx`, `ProjectPicker.tsx`,
+  `LinkPromptModal.tsx`, `ProgressOverlay.tsx` and `HelpModal.tsx` do what they are called.
 
 **hooks/** — TypeScript. State that belongs together, lifted out of App so its wiring is somewhere
 with a name; each hook's dependency bag is an interface (`PlaybackDeps`, `ExportDeps`, `LayerCacheDeps`, …). Each takes what it cannot own as arguments, and the rule for what it cannot own is the same
@@ -235,6 +299,11 @@ needs a document takes those two functions rather than the document.
   return promises, so a hook that renders nothing can still put a question on screen, and the
   call sites keep the shape `window.confirm` gave them. `AskModal` draws it.
 - `useDialogs.ts` — which dialog is open, and the rebinding two of them share.
+
+- `useCutListUi.ts` — what is picked in the cut list and how much of it is unfolded, kept in one
+  hook so opening a document clears all of it at once (#241).
+- `useTimelineView.ts` — how far the timeline is zoomed, which part is on screen, and the two
+  overlays drawn while a drag is happening.
 
 - `server/` — the Express file-backed project DB on :8787, files under `server/data/`. `index.js`
   is the wiring (body limit, rate-limit tiers, mount, listen); `projects.js`, `backups.js` and
