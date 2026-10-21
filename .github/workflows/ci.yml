@@ -53,6 +53,18 @@ jobs:
       - name: npm run check
         run: npm run check
 
+      # What the app ships with - the server's Express stack and the runtime packages - must have
+      # no known high or critical vulnerability. On 2026-10-21 it had one critical and three high,
+      # all transitive and all with a non-breaking fix, sitting there while weekly Dependabot PRs
+      # made it look covered: those only bump the packages package.json names.
+      #
+      # Outside `npm run check` on purpose: it asks the registry, so it needs a network, and it is
+      # a property of the lockfile rather than of the code. Dev tooling is left out (--omit=dev)
+      # because its advisories are about the build machine, not the app - and some of them, in the
+      # Android toolchain, have no fix that is not a downgrade.
+      - name: Runtime dependencies have no known high or critical vulnerability
+        run: npm audit --omit=dev --audit-level=high
+
   # Separate from `check` on purpose: that job is the required gate and it finishes in half a
   # minute, so it must not wait behind a browser. This one is allowed to be the slow one.
   smoke:
