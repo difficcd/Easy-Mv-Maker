@@ -39,3 +39,6 @@ which number each change is expected to move - so the next cycle can check.
 
 - [2026-10-14](2026-10-14.md) — cycle 1. The baseline; CI found running four of its ten gates;
   ARCHITECTURE.md missing 29% of the files; fixes required to carry a test.
+- [2026-10-21](2026-10-21.md) — cycle 2, an inspection. Runtime vulnerabilities to zero; a threat
+  model that matched neither document; coverage measured honestly (50.7%, not 96.8%) and held by a
+  ratchet; the most-fixed logic in App moved out under test.
