@@ -8,6 +8,7 @@ import os from 'node:os';
 import { spawn } from 'node:child_process';
 import { isYouTubeUrl } from './youtubeUrl.js';
 import { audioType, videoType } from './paths.js';
+import { sendError } from './errors.js';
 
 /** @param {import('express').Express} app */
 export function youtubeRoutes(app) {
@@ -39,7 +40,7 @@ export function youtubeRoutes(app) {
             res.setHeader('Content-Type', audioType(path.extname(f).toLowerCase()));
             res.send(await fs.readFile(path.join(dir, f)));
         } catch (e) {
-            res.status(500).json({ error: String(e) });
+            sendError(res, e, 'GET /api/youtube-audio');
         } finally {
             fs.rm(dir, { recursive: true, force: true }).catch(() => { });
         }
@@ -143,7 +144,7 @@ export function youtubeRoutes(app) {
             }
             res.status(500).json({ error: friendlyYtError(lastErr) });
         } catch (e) {
-            res.status(500).json({ error: String(e) });
+            sendError(res, e, 'GET /api/youtube-video');
         } finally {
             fs.rm(dir, { recursive: true, force: true }).catch(() => { });
         }
