@@ -28,6 +28,7 @@ import { DockRail, DockSlot, FloatingPanels, DockHint, ReopenRight } from './ui/
 import { tr, loadLang, saveLang, setLangValue } from './i18n.ts';
 import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, patchLayer, nextLayerId, appendLayer, appendFolder, removeLayerTree, insertLayerAbove } from './core/layerOps.ts';
 import { planPress } from './core/pressPlan.ts';
+import { lightenStroke } from './core/simplifyStroke.ts';
 import { mkCut, firstCut } from './core/document.ts';
 import { selectionAfterClick, cutsToCopy } from './core/cutSelection.ts';
 import { closeLassoPath, lassoBounds, cutOutPolygon, cropImageData, selectionStrokes, paintedBounds } from './core/lassoOps.ts';
@@ -1556,7 +1557,10 @@ export default function App() {
                 applyBlurStroke(st);
                 return;
             }
-            if (st.points.length) commitLiveStroke(st);
+            // Stored with the points that carry the line and no more: about half of them, for a
+            // line within half a pixel of the one drawn (core/simplifyStroke). Only here, at the
+            // freehand commit - the curve ruler and ruler shapes are exact already.
+            if (st.points.length) commitLiveStroke(lightenStroke(st));
             else clearLiveOverlay();
             return;
         }
