@@ -27,6 +27,7 @@ import { CanvasStage, canvasCursor } from './ui/CanvasStage.tsx';
 import { DockRail, DockSlot, FloatingPanels, DockHint, ReopenRight } from './ui/PanelDock.tsx';
 import { tr, loadLang, saveLang, setLangValue } from './i18n.ts';
 import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, patchLayer, nextLayerId, appendLayer, appendFolder, removeLayerTree, insertLayerAbove } from './core/layerOps.ts';
+import { planPress } from './core/pressPlan.ts';
 import { mkCut, firstCut } from './core/document.ts';
 import { selectionAfterClick, cutsToCopy } from './core/cutSelection.ts';
 import { closeLassoPath, lassoBounds, cutOutPolygon, cropImageData, selectionStrokes, paintedBounds } from './core/lassoOps.ts';
@@ -1415,37 +1416,39 @@ export default function App() {
     });
 
     const startDraw = (e: React.PointerEvent<HTMLCanvasElement>) => {
-        // No drawing while panning with space or the middle button - canvas-area handles that.
-        if (spaceDownRef.current || e.button === 1 || panningRef.current) return;
-        // Palm rejection: only a stylus (S Pen) or mouse may draw — ignore finger/touch.
-        if (e.pointerType === 'touch') return;
-        const pos = getPos(e);
-        // Eyedropper fallback: sample the composited canvas pixel under the click.
-        if (pickingColor) {
-            try { const d = canvasRef.current!.getContext('2d')!.getImageData(Math.round(pos.x), Math.round(pos.y), 1, 1).data; if (d[3] > 0) applyColor('#' + [d[0], d[1], d[2]].map(v => v.toString(16).padStart(2, '0')).join('')); } catch { }
-            setPickingColor(false); return;
-        }
-        // Recording a camera path. Checked before the part path because a camera belongs to the
-        // cut, not to whichever layer is selected - and before the layer is resolved at all, so
-        // it works on a cut whose active layer is a folder or hidden.
-        // Same for a part's motion path, sway curve or mosaic rectangle.
-        if (pathCap.active) { pathCap.begin(e, pos); return; }
         // Even if the active layer is a folder, hidden or invalid, this substitutes a real
         // drawable layer, so the stroke always survives and stays visible.
         const activeLayer = resolveDrawLayer(currentCut);
-        if (!activeLayer) return;
+        // Which gesture this press starts - and the order those questions are asked in, which is
+        // the part that kept breaking - is decided in core/pressPlan, with a test per rule. What
+        // follows is only the doing.
+        const plan = planPress({
+            spaceHeld: spaceDownRef.current, button: e.button, panning: panningRef.current,
+            pointerType: e.pointerType, pickingColour: pickingColor, recordingPath: pathCap.active,
+            hasDrawLayer: !!activeLayer, editingText: !!textEdit, hasSelection: !!selection,
+            tool, etool,
+        });
+        if ('stop' in plan) {
+            // Eyedropper fallback: sample the composited canvas pixel under the click.
+            if (plan.stop === 'pick-colour') {
+                const pos = getPos(e);
+                try { const d = canvasRef.current!.getContext('2d')!.getImageData(Math.round(pos.x), Math.round(pos.y), 1, 1).data; if (d[3] > 0) applyColor('#' + [d[0], d[1], d[2]].map(v => v.toString(16).padStart(2, '0')).join('')); } catch { }
+                setPickingColor(false);
+            // A camera, motion, sway or mosaic path being recorded.
+            } else if (plan.stop === 'record-path') pathCap.begin(e, getPos(e));
+            return;
+        }
+        if (!activeLayer) return;   // planPress has already stopped a press with no layer
+        const pos = getPos(e);
         gesture.target.current = activeLayer.id;
 
-        if (textEdit) return;
-
-        // Selection has priority over other interactions to avoid tool conflicts.
-        if (selection) {
+        if (plan.offerSelection && selection) {
             if (selGesture.begin(e, pos)) return;
             // Click outside selection commits by default (standard behavior).
             commitSelectionImpl(selection);
         }
 
-        if (tool === 'text') {
+        if (plan.route === 'text') {
             const hit = hitTestText(pos, currentCut);
             if (hit) { startTextDrag(e, pos, hit, true); return; }
             openTextEditorAt(pos, currentCut!);
@@ -1454,7 +1457,8 @@ export default function App() {
             return;
         }
 
-        if (tool === 'move') {
+        // Falls through to the generic tool below when there is nothing to move.
+        if (plan.route === 'move') {
             // A move applies to what is selected (#177). A text under the pen selects itself;
             // a text already selected moves even from a press beside it, so a small caption can
             // be dragged without landing on it; otherwise the active layer moves, and every
@@ -1469,7 +1473,7 @@ export default function App() {
             if (ids.length) { layerDrag.begin(e, pos, currentCutId, ids); return; }
         }
 
-        if (etool === 'curve') {
+        if (plan.route === 'curve') {
             // Curve ruler: tap to place anchors (hold and drag to fine-tune), then confirm with
             // the done button.
             gesture.begin(e);
