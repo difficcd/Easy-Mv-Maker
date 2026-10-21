@@ -5,6 +5,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { safeId, assetsDirFor, backupDirFor, safeStamp, BACKUP_KEEP } from './paths.js';
 import { listJsonDir } from './projects.js';
+import { sendError } from './errors.js';
 
 /** @param {import('express').Express} app */
 export function backupRoutes(app) {
@@ -70,7 +71,7 @@ export function backupRoutes(app) {
             }
             const pruned = await pruneBackupAssets(req.params.key, dir);
             res.json({ ok: true, stamp, savedAt, kept: Math.min(files.length, BACKUP_KEEP), pruned });
-        } catch (e) { res.status(500).json({ error: String(e) }); }
+        } catch (e) { sendError(res, e, 'POST /api/backups/:key'); }
     });
 
     app.get('/api/backups/:key', async (_req, res) => {
@@ -86,7 +87,7 @@ export function backupRoutes(app) {
                     return { stamp: f.replace(/\.json$/, ''), name: head.name || 'Untitled', savedAt: head.savedAt || st.mtime.toISOString(), size: st.size };
                 } finally { await fh.close(); }
             }));
-        } catch (e) { res.status(500).json({ error: String(e) }); }
+        } catch (e) { sendError(res, e, 'GET /api/backups/:key'); }
     });
 
     app.get('/api/backups/:key/:stamp', async (req, res) => {

@@ -1277,6 +1277,16 @@ Where things live on disk and what they are called - the one place a path is bui
 | `audioType` | Content type for an extracted audio file, by extension. |
 | `videoType` | Content type for a downloaded video file, by extension. |
 
+## `server/errors.js`
+
+What a failed request is told. Nine handlers used to send `String(e)`, which carries filesystem paths to whoever called the API - through the dev server's LAN proxy, anyone on the network.
+
+| | |
+|---|---|
+| `publicMessage` | The part of an error safe to send: a Korean sentence for a known code (a full disk, a permission, a missing file), otherwise `GENERIC`. Never the message, which is where paths live. |
+| `sendError` | Logs the whole error with the route that failed, and sends `publicMessage` as a 500 - unless the response has already started streaming, when the log line is all that is possible. |
+| `GENERIC` | The sentence sent for an error with no known code. |
+
 ## `server/projects.js`
 
 The project routes: list, fetch, create, overwrite, delete, and the binary assets beside each project.

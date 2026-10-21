@@ -4,6 +4,7 @@ import express from 'express';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { DATA_DIR, fileFor, assetsDirFor, newId, ASSET_MIME, AUDIO_MIME, safeId } from './paths.js';
+import { sendError } from './errors.js';
 
 /**
  * The .json files in a directory, summarised, newest first.
@@ -63,7 +64,7 @@ export function projectRoutes(app) {
                 const raw = JSON.parse(await fs.readFile(full, 'utf8'));
                 return { id: f.replace(/\.json$/, ''), name: raw.name || raw.data?.appName || f, savedAt: raw.savedAt || null };
             }));
-        } catch (e) { res.status(500).json({ error: String(e) }); }
+        } catch (e) { sendError(res, e, 'GET /api/projects'); }
     });
 
     // Fetch one project's full data.
@@ -78,14 +79,14 @@ export function projectRoutes(app) {
     app.post('/api/projects', async (req, res) => {
         try {
             await writeProject(newId(), req, res);
-        } catch (e) { res.status(500).json({ error: String(e) }); }
+        } catch (e) { sendError(res, e, 'POST /api/projects'); }
     });
 
     // Overwrite an existing project.
     app.put('/api/projects/:id', async (req, res) => {
         try {
             await writeProject(req.params.id, req, res);
-        } catch (e) { res.status(500).json({ error: String(e) }); }
+        } catch (e) { sendError(res, e, 'PUT /api/projects/:id'); }
     });
 
     // Binary asset store (video frames). Kept OUT of the project JSON so large/original-quality
@@ -98,7 +99,7 @@ export function projectRoutes(app) {
             const ext = String(req.query.ext || 'webp').replace(/[^a-z0-9]/gi, '').slice(0, 5) || 'webp';
             await fs.writeFile(path.join(dir, `${safeId(req.params.assetId)}.${ext}`), req.body);
             res.json({ ok: true });
-        } catch (e) { res.status(500).json({ error: String(e) }); }
+        } catch (e) { sendError(res, e, 'PUT /api/projects/:id/asset/:assetId'); }
     });
     app.get('/api/projects/:id/asset/:assetId', async (req, res) => {
         try {
@@ -121,7 +122,7 @@ export function projectRoutes(app) {
             const dir = assetsDirFor(req.params.id);
             const files = await fs.readdir(dir).catch(() => []);
             res.json(files.map(f => f.replace(/\.[^.]+$/, '')));
-        } catch (e) { res.status(500).json({ error: String(e) }); }
+        } catch (e) { sendError(res, e, 'GET /api/projects/:id/assets'); }
     });
 
 
