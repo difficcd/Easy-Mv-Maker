@@ -89,7 +89,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
         ], { stdio: 'inherit' });
         if (run.status !== 0) process.exit(run.status ?? 1);
 
-        const files = execFileSync('git', ['ls-files', 'src'], { encoding: 'utf8' })
+        // --others as well as the index: a new file is untracked until it is added, and without
+        // this a new untested file was invisible here - the gate passed locally and failed in CI.
+        // Found the first time it was used, on a module that had not been `git add`ed yet.
+        const files = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', 'src'], { encoding: 'utf8' })
             .split('\n').filter(f => /\.(ts|tsx)$/.test(f) && !f.endsWith('.d.ts'));
         const r = honestCoverage(parseLcov(readFileSync(lcovFile, 'utf8')), files, nodeLines);
 

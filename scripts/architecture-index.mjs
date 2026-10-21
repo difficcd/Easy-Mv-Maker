@@ -40,7 +40,9 @@ export function unnamed(doc, files) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-    const files = execFileSync('git', ['ls-files', 'src'], { encoding: 'utf8' })
+    // --others as well: a file not yet added is still a file the map should name, and checking
+    // only the index let a new one pass here and fail later in CI.
+    const files = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', 'src'], { encoding: 'utf8' })
         .split('\n').filter(f => /\.(ts|tsx)$/.test(f));
     const missing = unnamed(readFileSync(MAP, 'utf8'), files);
     if (missing.length) {
