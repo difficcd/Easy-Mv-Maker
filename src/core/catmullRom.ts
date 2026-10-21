@@ -39,3 +39,48 @@ export function catmullThrough(pts: ReadonlyArray<PressurePoint> | null | undefi
     out.push(at(pts.length - 1));
     return out;
 }
+
+/**
+ * One span of a centripetal Catmull-Rom spline: `n` points from `p1` towards `p2`, `p2` itself
+ * left for the next span.
+ *
+ * Centripetal rather than the uniform form `catmullThrough` uses, for points spaced unevenly - a
+ * hand slowing down and speeding up. The uniform form gives every span the same parameter length
+ * whatever its real length, so a 2px span beside an 80px one inherits a tangent forty times its
+ * own size and swings out into a loop; at the point of a V drawn on purpose that was a 4.5px hook
+ * past the corner. Spacing the knots by the square root of each span's length (Barry-Goldman,
+ * alpha 0.5) is the standard cure: no cusps, no self-intersection within a span, and on evenly
+ * spaced points it is exactly the uniform curve.
+ *
+ * A missing neighbour at either end is reflected through the end point, so the first and last
+ * spans leave and arrive along the drawn direction instead of dividing by a zero-length knot.
+ *
+ * @param {PressurePoint|null} p0 the point before, or null at the start
+ * @param {PressurePoint} p1
+ * @param {PressurePoint} p2
+ * @param {PressurePoint|null} p3 the point after, or null at the end
+ * @param {number} n samples in the span
+ * @returns {PressurePoint[]}
+ */
+export function centripetalSpan(p0: PressurePoint | null, p1: PressurePoint, p2: PressurePoint, p3: PressurePoint | null, n: number): PressurePoint[] {
+    const reflect = (a: PressurePoint, b: PressurePoint): PressurePoint => ({ x: 2 * a.x - b.x, y: 2 * a.y - b.y, pressure: a.pressure });
+    const q0 = p0 && (p0.x !== p1.x || p0.y !== p1.y) ? p0 : reflect(p1, p2);
+    const q3 = p3 && (p3.x !== p2.x || p3.y !== p2.y) ? p3 : reflect(p2, p1);
+    // Knot spacing: the square root of each span's length, floored so a repeated point cannot
+    // make a zero-length interval.
+    const step = (a: PressurePoint, b: PressurePoint) => Math.max(1e-4, Math.sqrt(Math.hypot(b.x - a.x, b.y - a.y)));
+    const t0 = 0, t1 = t0 + step(q0, p1), t2 = t1 + step(p1, p2), t3 = t2 + step(p2, q3);
+    const mix = (a: number, ta: number, b: number, tb: number, t: number) => (tb === ta ? a : ((tb - t) * a + (t - ta) * b) / (tb - ta));
+    const pr1 = p1.pressure ?? 0.5, pr2 = p2.pressure ?? 0.5;
+    const out: PressurePoint[] = [];
+    for (let k = 0; k < n; k++) {
+        const s = k / n, t = t1 + (t2 - t1) * s;
+        const ax1 = mix(q0.x, t0, p1.x, t1, t), ay1 = mix(q0.y, t0, p1.y, t1, t);
+        const ax2 = mix(p1.x, t1, p2.x, t2, t), ay2 = mix(p1.y, t1, p2.y, t2, t);
+        const ax3 = mix(p2.x, t2, q3.x, t3, t), ay3 = mix(p2.y, t2, q3.y, t3, t);
+        const bx1 = mix(ax1, t0, ax2, t2, t), by1 = mix(ay1, t0, ay2, t2, t);
+        const bx2 = mix(ax2, t1, ax3, t3, t), by2 = mix(ay2, t1, ay3, t3, t);
+        out.push({ x: mix(bx1, t1, bx2, t2, t), y: mix(by1, t1, by2, t2, t), pressure: pr1 + (pr2 - pr1) * s });
+    }
+    return out;
+}

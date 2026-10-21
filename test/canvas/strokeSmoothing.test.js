@@ -40,3 +40,55 @@ test('under three points there is nothing to smooth', () => {
     assert.deepEqual(smoothPoints([{ x: 0, y: 0 }, { x: 10, y: 0 }]), [{ x: 0, y: 0 }, { x: 10, y: 0 }]);
     assert.deepEqual(smoothPoints(null), []);
 });
+
+// --- a fast stretch inside a slow stroke ---------------------------------------------------------
+//
+// Whether a stroke was interpolated was decided by its *mean* sample spacing. A stroke drawn slowly
+// and then swept quickly averages out dense - so the fast stretch, with samples 30px apart, was
+// never interpolated: resampled along its straight chords, with Chaikin rounding each corner by a
+// pixel or two. That is "a fast curve looks angular". Measured on the saved projects: 409 of 4,681
+// real strokes (8.7%) had such a stretch, carrying 1,857 kinks.
+
+const arc = (cx, cy, r, from, to, gap) => {
+    const n = Math.max(2, Math.ceil(Math.abs(to - from) * r / gap));
+    return Array.from({ length: n + 1 }, (_, i) => { const a = from + (to - from) * i / n; return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a), pressure: 0.5 }; });
+};
+/** Slow (2px samples) into a fast sweep (30px samples) of the same circle. */
+const slowThenFast = () => [...arc(200, 200, 120, Math.PI, Math.PI * 1.25, 2), ...arc(200, 200, 120, Math.PI * 1.25, Math.PI * 2.2, 30).slice(1)];
+
+/** The worst vertex turning far more than the curve around it - a kink, not curvature. */
+const worstSpike = (pts) => {
+    const t = [];
+    for (let i = 1; i < pts.length - 1; i++) {
+        const ax = pts[i].x - pts[i - 1].x, ay = pts[i].y - pts[i - 1].y, bx = pts[i + 1].x - pts[i].x, by = pts[i + 1].y - pts[i].y;
+        const la = Math.hypot(ax, ay), lb = Math.hypot(bx, by);
+        if (la > 1e-6 && lb > 1e-6) t.push(Math.acos(Math.max(-1, Math.min(1, (ax * bx + ay * by) / (la * lb)))) * 180 / Math.PI);
+    }
+    let worst = 0;
+    for (let i = 3; i < t.length - 3; i++) {
+        const around = [t[i - 3], t[i - 2], t[i + 2], t[i + 3]].sort((a, b) => a - b);
+        worst = Math.max(worst, t[i] - (around[1] + around[2]) / 2);
+    }
+    return worst;
+};
+
+test('a fast sweep inside a slow stroke comes out round, not angular', () => {
+    const spike = worstSpike(smoothPoints(slowThenFast()));
+    assert.ok(spike < 3, `a ${spike.toFixed(1)} degree kink - the fast stretch was drawn as straight chords`);
+});
+
+test('the fast stretch still passes through where it was drawn', () => {
+    // Interpolated, so it stays on the circle the hand traced rather than cutting inside it.
+    const radii = smoothPoints(slowThenFast()).map(p => Math.hypot(p.x - 200, p.y - 200));
+    assert.ok(Math.min(...radii) > 116 && Math.max(...radii) < 124, `radius ${Math.min(...radii).toFixed(1)}..${Math.max(...radii).toFixed(1)}`);
+});
+
+test('a sharp corner drawn on purpose is not rounded away', () => {
+    // The centripetal form is what keeps this: a uniform spline overshoots a corner between
+    // segments of very different lengths, which reads as a loop or a hook at the point of a V.
+    const v = [...Array.from({ length: 20 }, (_, i) => ({ x: 100 + i * 2, y: 100 + i * 2, pressure: 0.5 })), { x: 180, y: 60, pressure: 0.5 }, { x: 220, y: 20, pressure: 0.5 }];
+    const out = smoothPoints(v);
+    const xs = out.map(p => p.x), ys = out.map(p => p.y);
+    // No loop beyond the drawn extent: the curve stays inside the box of what was drawn, plus a pixel.
+    assert.ok(Math.max(...xs) <= 221 && Math.min(...ys) >= 19 && Math.max(...ys) <= 139, `left the drawn box: x..${Math.max(...xs).toFixed(1)} y ${Math.min(...ys).toFixed(1)}..${Math.max(...ys).toFixed(1)}`);
+});

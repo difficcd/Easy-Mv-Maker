@@ -4,7 +4,7 @@
 import { imageDataCanvas, resetCtx, sizeCanvas } from './scratch.ts';
 import { hexToRgb } from '../core/colour.ts';
 import { drawWarped, isWarped } from './warpRender.ts';
-import { catmullThrough } from '../core/catmullRom.ts';
+import { centripetalSpan } from '../core/catmullRom.ts';
 import { makeCanvas } from './canvasFactory.ts';
 import type { Point, PressurePoint } from '../core/types.ts';
 import { inkBounds } from '../core/geometry.ts';
@@ -69,21 +69,35 @@ const SPARSE_SPACING = 4;
  */
 export function smoothPoints(pts: readonly PressurePoint[] | null | undefined, passes?: number | null): PressurePoint[] {
     if (!pts || pts.length < 3) return pts ? pts.slice() : [];
-    let raw: readonly PressurePoint[] = pts;
-    const mean = strokeLength(pts) / (pts.length - 1);
-    if (mean > SPARSE_SPACING) raw = catmullThrough(pts, Math.min(16, Math.ceil(mean / 2)));
-    let cur = resamplePts(raw, 2);
+    let cur = resamplePts(interpolateSparse(pts), 2);
     if (cur.length < 3) cur = pts.slice();
     const iters = passes != null ? passes : 3; // one more corner-cut pass = smoother
     for (let k = 0; k < iters; k++) cur = chaikin(cur);
     return cur;
 }
 
-/** Length of a polyline. */
-function strokeLength(pts: readonly PressurePoint[]): number {
-    let len = 0;
-    for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
-    return len;
+/**
+ * Every span longer than SPARSE_SPACING interpolated as a curve; the rest left as drawn.
+ *
+ * Decided span by span. It used to be decided once per stroke, by the stroke's *mean* spacing, and
+ * a stroke drawn slowly and then swept fast averages out dense - so the fast stretch, samples 30px
+ * apart, was never interpolated and came out as straight chords with each joint rounded by a pixel
+ * or two. On the saved projects that was 409 strokes in 4,681, with 1,857 kinks between them: the
+ * "a fast curve looks angular" report.
+ *
+ * Centripetal spans (core/catmullRom.centripetalSpan), because the spacing that makes a stretch
+ * sparse is exactly uneven spacing, and the uniform form loops there.
+ */
+function interpolateSparse(pts: readonly PressurePoint[]): PressurePoint[] {
+    const out: PressurePoint[] = [];
+    for (let i = 0; i < pts.length - 1; i++) {
+        const a = pts[i], b = pts[i + 1];
+        const len = Math.hypot(b.x - a.x, b.y - a.y);
+        if (len <= SPARSE_SPACING) { out.push(a); continue; }
+        out.push(...centripetalSpan(pts[i - 1] ?? null, a, b, pts[i + 2] ?? null, Math.min(16, Math.ceil(len / 2))));
+    }
+    out.push(pts[pts.length - 1]);
+    return out;
 }
 
 // Boiling-line effect: displaces a smooth path along its normal to give a hand-drawn wobble.
