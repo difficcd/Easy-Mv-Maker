@@ -98,7 +98,8 @@ npm run lint       # eslint-plugin-react-hooks
 npm run smoke      # boots the built app in a headless browser and draws a stroke
 ```
 
-`npm run check` is the gate: typecheck, the unit tests, then nine static guards, then the build.
+`npm run check` is the gate: first a check that the installed packages are the ones the lockfile
+asks for, then typecheck, the unit tests, nine static guards, and the build.
 CI runs that one command on every push and pull request - it used to list its steps by hand, and
 by October that copy ran four of the ten (see [docs/process/](docs/process/2026-10-14.md)).
 
@@ -114,6 +115,7 @@ dependency), and the bundler and `tsc` accept it.
 
 | Guard | What it fails on |
 |---|---|
+| `scripts/deps-installed.mjs` | an installed package below its declared version, or missing - so every check after it would run on a different toolchain from CI's |
 | `scripts/hook-baseline.mjs` | more React hook dependency warnings than the pinned baseline |
 | `scripts/helper-index.mjs` | a shared export missing from `HELPERS.md` |
 | `scripts/unreachable.mjs` | an App-level name nothing can reach |

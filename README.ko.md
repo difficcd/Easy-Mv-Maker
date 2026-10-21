@@ -96,7 +96,7 @@ npm run lint       # eslint-plugin-react-hooks
 npm run smoke      # 빌드된 앱을 헤드리스 브라우저에서 띄워 선 하나 긋기
 ```
 
-`npm run check`가 관문입니다: 타입 검사, 단위 테스트, 정적 가드 아홉, 빌드. CI는 모든 푸시와 PR에서 이 명령 하나를 그대로 돌립니다 - 예전에는 단계를 손으로 나열했고, 10월에는 그 사본이 열 개 중 넷만 돌리고 있었습니다([docs/process/](docs/process/2026-10-14.md)).
+`npm run check`가 관문입니다: 먼저 설치된 패키지가 lockfile이 요구하는 것과 같은지 보고, 그다음 타입 검사, 단위 테스트, 정적 가드 아홉, 빌드. CI는 모든 푸시와 PR에서 이 명령 하나를 그대로 돌립니다 - 예전에는 단계를 손으로 나열했고, 10월에는 그 사본이 열 개 중 넷만 돌리고 있었습니다([docs/process/](docs/process/2026-10-14.md)).
 
 코드는 TypeScript입니다 — JavaScript에서 폴더 하나씩 옮겼고(#268) 모든 파일이 `strict`로 검사됩니다.
 목적은 주석을 타입으로 바꾸는 것이 아니라(JS도 이미 JSDoc으로 타입이 있었음) JSDoc이 줄 수 없던
@@ -109,6 +109,7 @@ npm run smoke      # 빌드된 앱을 헤드리스 브라우저에서 띄워 선
 
 | 가드 | 실패 조건 |
 |---|---|
+| `scripts/deps-installed.mjs` | 선언된 버전보다 낮거나 빠진 설치 패키지 — 그러면 이후 모든 검사가 CI와 다른 도구로 돎 |
 | `scripts/hook-baseline.mjs` | React 훅 의존성 경고가 고정된 기준선보다 늘어남 |
 | `scripts/helper-index.mjs` | 공유 export가 `HELPERS.md`에 없음 |
 | `scripts/unreachable.mjs` | App 수준 이름 중 아무 데서도 닿지 않는 것 |

@@ -88,7 +88,7 @@ Turning it back on is the part that gets forgotten, so do both in one sitting.
 ## Verifying
 
 ```bash
-npm run check   # typecheck → tests → nine static guards → build; CI runs exactly this
+npm run check   # installed packages → typecheck → tests → nine static guards → build; CI runs exactly this
 ```
 
 **Passing this proves less than it looks.** A component that returns `undefined` is legal
