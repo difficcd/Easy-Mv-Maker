@@ -9,14 +9,37 @@ const API_PROXY = {
   '/api': { target: 'http://localhost:8787', changeOrigin: true },
 };
 
+// Serving on the LAN is what lets the tablet connect, so it stays the default. But it also puts
+// /api on the LAN, through the proxy above - and the API has no authentication, so anyone on the
+// same Wi-Fi can read, overwrite and delete projects. That used to happen silently, while
+// SECURITY.md described a loopback-only server. MV_LAN=0 keeps the dev server on this machine,
+// for a network you do not trust; otherwise it says so when it starts. The API server's own
+// warning for MV_API_HOST is the model.
+const LAN = process.env.MV_LAN !== '0';
+const lanWarning = {
+  name: 'mv-lan-warning',
+  configureServer(server) {
+    if (!LAN) return;
+    server.httpServer?.once('listening', () => {
+      server.config.logger.warn([
+        '',
+        '  [mv] /api is reachable from your network through this dev server, with no authentication.',
+        '       Anyone on the same Wi-Fi can read and change your projects. On a network you do not',
+        '       trust, start it with MV_LAN=0 (see SECURITY.md).',
+        '',
+      ].join('\n'));
+    });
+  },
+};
+
 // https://vitejs.dev/config/
 export default defineConfig({
   // Relative base so Capacitor/Android WebView can load /assets (avoids white screen).
   base: './',
   // qrcode prints a scannable QR of the Network URL on `npm run dev` so a tablet can connect.
-  plugins: [react(), qrcode()],
+  plugins: [react(), qrcode(), lanWarning],
   server: {
-    host: true, // expose on LAN so a tablet on the same Wi-Fi can connect
+    host: LAN, // on the LAN so a tablet on the same Wi-Fi can connect; MV_LAN=0 keeps it local
     // 5175, not Vite's default: another project on this machine holds 5173 permanently. The two
     // did not collide loudly, which was the problem - that one listens on ::1 and this one on
     // ::, `localhost` resolves to ::1 first, and so the browser quietly got the *other* app on

@@ -24,8 +24,21 @@ attack surface is local. Worth reporting:
 ## What is not
 
 The local API server binds to `127.0.0.1` and has no authentication, by design: it is the
-user's own machine and their own files. "Anyone on your machine can read your projects" is how
-it works, not a vulnerability. The same is true of the browser holding projects in IndexedDB.
+user's own machine and their own files. The same is true of the browser holding projects in
+IndexedDB.
+
+**In the default dev workflow that reaches further than this machine, and that is known.**
+`npm run dev` serves on the LAN so a tablet on the same Wi-Fi can connect, and it proxies `/api`
+to the loopback server - so anyone on the same network can read, overwrite and delete projects
+through `:5175/api`. The dev server prints a warning saying so when it starts, and `MV_LAN=0`
+keeps it on this machine for a network you do not trust. Until 2026-10-21 this page said only
+"anyone on your machine", which was not the configuration the app actually ran under; an
+authenticated mode is not built. A report that this exposure exists is not a finding - a way
+through it *with* `MV_LAN=0`, or from outside the local network, is.
+
+Server errors do not carry internal detail to the client: a failed request gets a sentence for a
+known error code (a full disk, a permission) or a generic one, and the full error goes to the
+server's own log.
 
 `MV_API_HOST` can bind it to another interface - that is for the tablet-over-a-proxy workflow
 and it is documented as such. Exposing it to a network on purpose and then reading someone

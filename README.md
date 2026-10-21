@@ -80,11 +80,11 @@
 
 ```bash
 npm install
-npm run dev      # web (:5173, LAN + QR) + API (:8787)
+npm run dev      # web (:5175, LAN + QR) + API (:8787, this machine only)
 npm run build
 ```
 
-On a tablet, scan the QR printed by `npm run dev` (same Wi-Fi). If 5173 is taken, Vite moves to 5174, 5175… — check the address in the terminal.
+On a tablet, scan the QR printed by `npm run dev` (same Wi-Fi). The port is fixed at 5175: if something else holds it, the dev server refuses to start rather than moving to another port, since moving once meant the browser quietly opened a different app. On a network you do not trust, `MV_LAN=0 npm run dev` keeps everything on this machine.
 
 **Requirements**: Node 18+. Importing video from a URL needs `yt-dlp`; merged formats such as 1080p additionally need `ffmpeg`. Everything else works without either.
 
@@ -222,10 +222,12 @@ here.
 **The server is for local use only.** It is a convenience for reaching your own machine from a
 tablet on the same Wi-Fi, and it is not written to be exposed to anything wider:
 
-- No authentication of any kind. Anyone who can reach :8787 can read, overwrite and delete every
+- No authentication of any kind. Anyone who can reach it can read, overwrite and delete every
   project, and trigger downloads.
-- It listens on all interfaces, because the tablet has to reach it. On an untrusted network that
-  means everyone on that network.
+- The API itself listens only on this machine (127.0.0.1:8787). **The dev server is what puts it
+  on your network:** `npm run dev` serves on the LAN so the tablet can connect, and proxies `/api`
+  through to the API - so in the default workflow, everyone on the same network reaches it at
+  :5175/api. It says so when it starts. `MV_LAN=0` keeps the dev server on this machine too.
 - Asset uploads accept up to 1GB of raw body per request, so an open port is also a way to fill
   your disk.
 - Path traversal is handled — project ids are sanitised before touching the filesystem — but that
