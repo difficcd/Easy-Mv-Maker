@@ -131,6 +131,10 @@ index signature, so a misspelt one is an error. Ids there are `DocId` - a number
   the whole idea - a shape is then just a stroke.
 - `pathMotion.ts` — turning a drawn line into a path something can travel along evenly: smoothing
   and resampling by length, since a pen piles points up wherever it slowed down.
+- `pressPlan.ts` — `planPress`: what a pen press on the canvas starts. The decision half of
+  App's `startDraw` - panning before the eyedropper, the eyedropper before a path, a path before
+  the layer is resolved, a selection before any tool - with a test per rule; startDraw keeps the
+  effects. The draw handlers were the largest cluster of fixes inside App.
 - `brushSize.ts` / `viewZoom.ts` — the brush width range and the canvas zoom range, each in one
   place after being written in two and three places that disagreed.
 - `timelineZoom.ts` — timeline pixels to time and back (`timeAtX`, `xAtTime`), and zooming without

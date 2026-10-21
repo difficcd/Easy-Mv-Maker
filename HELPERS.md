@@ -438,6 +438,14 @@ Typing into a number field without the value fighting the cursor.
 | `commitNumber` | The value to settle on when the field is left: unreadable text falls back to the old value. |
 | `liveNumber` | The value to report while typing; null means "not a number yet, hold on". Intermediate states like "", "-", "." and "1e" hold rather than snapping to zero. |
 
+## `src/core/pressPlan.ts`
+
+What a press on the canvas starts - the decision half of App's startDraw, whose early-return order was the behaviour and was recorded only in comments.
+
+| | |
+|---|---|
+| `planPress` | From plain values (panning, pointer type, eyedropper, path recording, a layer to draw on, text editing, a selection, the tool), the press's fate: stopped and why, or which route it takes and whether a selection is offered it first. One test per rule of the order. |
+
 ## `src/core/playRange.ts`
 
 Where the content starts and where it ends. Answered in three places with three different answers
