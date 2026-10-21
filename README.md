@@ -116,6 +116,7 @@ dependency), and the bundler and `tsc` accept it.
 | Guard | What it fails on |
 |---|---|
 | `scripts/deps-installed.mjs` | an installed package below its declared version, or missing - so every check after it would run on a different toolchain from CI's |
+| `scripts/coverage-ratchet.mjs` | runs the unit tests with coverage, and fails if the coverage of `src/` - counting files no test loads as uncovered - drops below the pinned baseline |
 | `scripts/hook-baseline.mjs` | more React hook dependency warnings than the pinned baseline |
 | `scripts/helper-index.mjs` | a shared export missing from `HELPERS.md` |
 | `scripts/unreachable.mjs` | an App-level name nothing can reach |
@@ -135,6 +136,11 @@ imports a generated clip whose every frame differs and fails if any are merged (
 `node scripts/process-metrics.mjs` reads the repository's own records into the process measures
 - deployment frequency, lead time, test pass ratio, defect escape rate - that each
 [process cycle](docs/process/) is judged against.
+
+**About half of `src/` is run by a test: 50.7% of its lines** (2026-10-21), measured with the files
+no test loads counted as uncovered - Node's own report leaves them out and says 96.8%. The other
+half is every hook, every component and `App.tsx`; `scripts/coverage-ratchet.mjs` keeps the figure
+from falling, and moving logic out of App into tested modules is how it rises.
 
 Around 1,300 unit tests cover the pure modules under `src/core`, `src/canvas`, `src/engine` and
 `src/export` — geometry, easing, keyframe sampling, the cuts reducer, layer-tree moves, lasso

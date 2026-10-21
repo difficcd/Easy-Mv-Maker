@@ -110,6 +110,7 @@ npm run smoke      # 빌드된 앱을 헤드리스 브라우저에서 띄워 선
 | 가드 | 실패 조건 |
 |---|---|
 | `scripts/deps-installed.mjs` | 선언된 버전보다 낮거나 빠진 설치 패키지 — 그러면 이후 모든 검사가 CI와 다른 도구로 돎 |
+| `scripts/coverage-ratchet.mjs` | 커버리지와 함께 단위 테스트를 돌리고, 테스트가 불러오지 않는 파일을 미커버로 셀 때의 `src/` 커버리지가 고정된 기준선 아래로 떨어지면 실패 |
 | `scripts/hook-baseline.mjs` | React 훅 의존성 경고가 고정된 기준선보다 늘어남 |
 | `scripts/helper-index.mjs` | 공유 export가 `HELPERS.md`에 없음 |
 | `scripts/unreachable.mjs` | App 수준 이름 중 아무 데서도 닿지 않는 것 |
@@ -119,6 +120,11 @@ npm run smoke      # 빌드된 앱을 헤드리스 브라우저에서 띄워 선
 | `scripts/architecture-index.mjs` | `ARCHITECTURE.md`가 이름을 대지 않는 `src/` 아래 파일 |
 | `scripts/fix-needs-test.mjs` | `fix:` 커밋이 있는데 `test/` 아래를 하나도 바꾸지 않은 브랜치 (`No-Test:` 트레일러로 이유를 적으면 예외) |
 | `scripts/i18n-check.mjs` | 영어 항목 없는 `tr()` 리터럴, 또는 소스에 키가 더는 없는 사전 항목 |
+
+**`src/`의 약 절반만 테스트가 실행합니다: 줄 기준 50.7%** (2026-10-21). 테스트가 불러오지 않는 파일을
+미커버로 센 값입니다 — Node 자체 보고서는 그런 파일을 빼고 96.8%라고 합니다. 나머지 절반은 모든 훅,
+모든 컴포넌트, `App.tsx`이고, `scripts/coverage-ratchet.mjs`가 이 수치가 떨어지지 않게 막습니다. App의
+로직을 테스트된 모듈로 옮기는 것이 수치를 올리는 길입니다.
 
 단위 테스트 약 1,300개가 `src/core`, `src/canvas`, `src/engine`, `src/export`의 순수 모듈을
 덮습니다 — 기하, 이징, 키프레임 샘플링, 컷 리듀서, 레이어 트리 이동, 올가미 오려내기, 타임라인
