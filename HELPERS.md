@@ -148,11 +148,22 @@ Running a drag on window listeners, so it survives the pointer leaving the eleme
 
 ## `src/core/catmullRom.ts`
 
-The spline behind the curve ruler.
+The spline behind the curve ruler, and the one that fills in the fast stretches of a freehand stroke.
 
 | | |
 |---|---|
+| `centripetalSpan` | One span of a centripetal Catmull-Rom spline, for unevenly spaced points - a hand slowing and speeding up. The uniform form loops where a short span meets a long one (a 4.5px hook past the point of a V); this does not, and on even spacing it is the same curve. Reflects a missing end neighbour instead of dividing by a zero-length knot. Used by the stroke smoothing for every span over 4px. |
 | `catmullThrough` | A Catmull-Rom spline through every anchor, not near it — which is why it is this and not a Bezier, since the user taps where the line should go. Carries pressure through, clamps the end neighbours so the line does not hook at each end, and returns fewer than three points unchanged. |
+
+## `src/core/simplifyStroke.ts`
+
+Fewer points for the same line - what a freehand stroke stores.
+
+| | |
+|---|---|
+| `simplifyStroke` | Ramer-Douglas-Peucker that also tests pressure: a point stays if dropping it would move the line by more than the tolerance (0.5px) or bend the pressure by more than 0.04. Iterative, so a long stroke cannot overflow the stack. On real pointer data it keeps about half the points. |
+| `lightenStroke` | A freehand stroke as it should be stored: simplified when its tool draws through the smoothing (brush, pencil, marker), otherwise returned as it is - never a ruler shape, the dot pen, the airbrush or the eraser. |
+| `SIMPLIFIED_TOOLS` | The tools `lightenStroke` simplifies, and why the rest are left alone. |
 
 ## `src/core/colour.ts`
 

@@ -94,7 +94,11 @@ index signature, so a misspelt one is an error. Ids there are `DocId` - a number
 - `frameExport.ts` / `exportQueue.ts` — the size, rate and frame count a frame export comes out
   at, and the per-piece range for the multi-file queue.
 - `recordClock.ts` — the fixed frame grid a video recording is painted on (#156).
-- `catmullRom.ts` — the spline behind the curve ruler; passes through every anchor.
+- `catmullRom.ts` — the spline behind the curve ruler; passes through every anchor. Also
+  `centripetalSpan`, which the stroke smoothing uses for the fast, sparse stretches of a freehand
+  line - the centripetal form, because the uniform one loops where spacing is uneven.
+- `simplifyStroke.ts` — `simplifyStroke`/`lightenStroke`: what a freehand pen, pencil or marker
+  stroke stores - about half its points, within half a pixel of the line drawn, pressure kept.
 - `colour.ts` — `withAlpha`, which replaces an existing alpha rather than appending a second one.
 - `liquify.ts` — `pushAlong`, the forward warp the liquify brush applies.
 - `document.ts` / `cutSelection.ts` / `keyframes.ts` — making a cut, which cuts a click selects,
