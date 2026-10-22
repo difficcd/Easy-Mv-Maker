@@ -77,6 +77,28 @@ export function smoothPoints(pts: readonly PressurePoint[] | null | undefined, p
 }
 
 /**
+ * The path a dot-pen stroke stamps along.
+ *
+ * The dot pen is the default tool, so it is what most drawing is done with, and it stamped along
+ * straight chords between pointer samples: a fast curve, samples 30px apart, came out a polygon.
+ * The pen's smoothing never reached it. Now its sparse stretches are interpolated the same way -
+ * through every sample, so a pixel placed on purpose stays where it was put, and slow, dense pixel
+ * work (no gap over SPARSE_SPACING) comes back exactly as drawn. No resampling or corner-cutting:
+ * the stamps stay hard-edged and where the samples say.
+ *
+ * Only for strokes marked `curved`; one drawn before that keeps its chords.
+ *
+ * @param {{curved?: boolean, points?: PressurePoint[]}} s
+ * @returns {PressurePoint[]}
+ */
+export function dotPath(s: { curved?: boolean, points?: readonly PressurePoint[] }): readonly PressurePoint[] {
+    const pts = s.points ?? [];
+    if (!s.curved || pts.length < 2) return pts;
+    const out = interpolateSparse(pts);
+    return out.length === pts.length ? pts : out;
+}
+
+/**
  * Every span longer than SPARSE_SPACING interpolated as a curve; the rest left as drawn.
  *
  * Decided span by span. It used to be decided once per stroke, by the stroke's *mean* spacing, and
@@ -438,7 +460,7 @@ export function drawStrokesOnCtx(ctx: CanvasRenderingContext2D, strokes: readonl
             const dotHasPr = s.pen === true || s.points.some((p: PressurePoint) => p.pressure !== undefined && p.pressure !== 0.5);
             const sizeAt = (pr: number) => Math.max(1, Math.round(base * (dotHasPr ? Math.min(2, Math.max(0.15, pr * 2)) : 1)));
             const stamp = (x: number, y: number, size: number) => { const half = size / 2; ctx.fillRect(Math.round(x - half), Math.round(y - half), size, size); };
-            const P = roughAmp ? roughenPoints(jitterBasePoints(s, points), roughAmp, roughSeed, roughWave) : s.points;
+            const P = roughAmp ? roughenPoints(jitterBasePoints(s, points), roughAmp, roughSeed, roughWave) : dotPath(s);
             if (P.length === 1) {
                 stamp(P[0].x, P[0].y, sizeAt(P[0].pressure ?? 0.5));
             } else {

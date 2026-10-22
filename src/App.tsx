@@ -1174,6 +1174,9 @@ export default function App() {
     const newStroke = (tool: string, points: PressurePoint[], e: any) => ({
         id: nextId(), tool, color, opacity, size: tool === 'eraser' ? eraserSize : brushSize, points,
         pen: pressureOn && e.pointerType === 'pen',
+        // The dot pen's fast stretches follow the curve (canvas/strokes.dotPath). Marked per
+        // stroke so dot drawings made before keep the shape they were drawn with.
+        ...(tool === 'pen' ? { curved: true } : null),
     });
     // Render only the in-progress stroke on the overlay canvas — one stroke, no full-layer rebuild.
     // Live preview while drawing. This used to re-smooth and redraw the entire stroke on every
