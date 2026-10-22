@@ -22,6 +22,9 @@ import type { BitmapLookup } from '../canvas/strokes.ts';
 import { dotPathRange, isV2, STROKE_RENDER_V3 } from '../canvas/strokes.ts';
 import { lightenStroke } from '../core/simplifyStroke.ts';
 
+/** Samples up to which a marker stroke's preview is redrawn whole each frame. */
+const MARKER_REDRAW_MAX = 1200;
+
 
 /**
  * @param {object} opts
@@ -90,7 +93,11 @@ export function useLiveOverlay({ strokeRef, bitmapStoreRef, drawStrokes }: { str
         // not have: its smoothing and its simplification both depend on samples still to come.
         // Redrawing whole was tried at v2 and stuttered (100ms frames at 400 samples), because
         // v2 still stroked every pixel of length separately; v3 is one fill.
-        if (st.tool === 'brush' && (st.v ?? 1) >= STROKE_RENDER_V3) {
+        // The marker too since its v3 outline: one stroke costs 3.5ms at 200 samples and 11ms at 1,200,
+        // but its multiply composite grows with the stroke's box (35ms at 2,400), so past
+        // MARKER_REDRAW_MAX it goes back to the tail. The pencil still strokes per segment wherever
+        // its darkness varies with pressure and keeps the tail.
+        if ((st.v ?? 1) >= STROKE_RENDER_V3 && (st.tool === 'brush' || (st.tool === 'marker' && n <= MARKER_REDRAW_MAX))) {
             clear();
             drawStrokes(c, [lightenStroke(st)], false, bitmapStoreRef.current);
             drawnRef.current = n;

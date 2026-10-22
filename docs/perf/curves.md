@@ -204,3 +204,26 @@ too short to taper at full width.
 
 **Ghosts now:** Dot 0, pen 0, pencil still 6,003px - the pencil varies its alpha with pressure along
 the line, which one fill cannot do as it stands.
+
+## v3 for the marker, and where the pencil stands (2026-10-22)
+
+The marker's opacity is applied once in its multiply composite, so drawing its scratch as one
+outline instead of a stroke per pixel changes the cost and nothing else (body within 8% of v2):
+
+| marker, one stroke | 200 | 600 | 1,200 | 2,400 samples |
+|---|---|---|---|---|
+| v2 | 32.7 | 108.8 | 155.9 | 310.7ms |
+| **v3** | **3.5** | **8.0** | **11.2** | **35.0ms** |
+
+Cheap enough for the preview to redraw it whole each frame, as the pen does, up to 1,200 samples
+(beyond that the composite over a large box grows): ghost pixels 0, frame gaps p95 10.1-10.2ms. One
+gap of 180ms was seen once at 400 samples, probably the previous stroke's commit landing inside the
+measured window; not investigated further.
+
+**The pencil is only partly done.** It expresses light pressure as darkness along the line, and
+that works - mean alpha 0.42 in the body at pressure 0.1, 0.72 at 0.5, in proportion to what it
+aims for. One fill cannot vary alpha along a path. So v3 fills the outline only when the darkness is
+even all the way - a mouse, or a pen pressed at least halfway - and a stroke with varying darkness is
+drawn exactly as v2 draws it (byte-identical, tested). That leaves the slow case slow: a tablet
+pencil stroke, 34ms at 200 samples, still ghosting in the preview (5,991px). Fixing it needs the
+darkness drawn as a separate map and applied as alpha, not another fill - a design of its own.
