@@ -63,3 +63,38 @@ test('a ruler shape is never lightened', () => {
     const rect = { tool: 'brush', straight: true, points: [P(0, 0), P(10, 0), P(10, 10), P(0, 10), P(0, 0)] };
     assert.equal(lightenStroke(rect), rect);
 });
+
+// --- windowed: what has been drawn never changes ---------------------------------------------------
+//
+// The pen's preview redraws the stroke as it will commit, every frame. Simplifying the whole
+// stroke each time would let a new sample change which earlier points are kept - the line already
+// drawn would shift as the pen moved on. So the stroke is simplified in fixed windows of samples,
+// and a finished window is final.
+
+import { simplifyWindowed, SIMPLIFY_WINDOW } from '../../src/core/simplifyStroke.ts';
+
+const wander = (n) => Array.from({ length: n }, (_, i) => P(100 + i * 1.7 + Math.sin(i / 9) * 30, 200 + Math.sin(i / 14) * 60, 0.5 + 0.3 * Math.sin(i / 11)));
+
+test('a finished window keeps the same points however the stroke goes on', () => {
+    const all = wander(300);
+    const whole = simplifyWindowed(all);
+    for (const m of [70, 129, 200, 257]) {
+        const prefix = simplifyWindowed(all.slice(0, m));
+        // Every point of a window that was already complete at m samples.
+        const done = Math.floor((m - 1) / SIMPLIFY_WINDOW) * SIMPLIFY_WINDOW;
+        const settled = (list) => list.filter(p => all.indexOf(p) <= done);
+        assert.deepEqual(settled(prefix), settled(whole), `at ${m} samples`);
+    }
+});
+
+test('windowed keeps about as few points as the whole-stroke version', () => {
+    // The window ends are kept whatever they are, which costs a little.
+    const all = wander(600);
+    const w = simplifyWindowed(all).length, g = simplifyStroke(all).length;
+    assert.ok(w <= g * 1.25 + 2, `windowed ${w} against ${g}`);
+});
+
+test('lightenStroke stores the windowed simplification', () => {
+    const all = wander(200);
+    assert.deepEqual(lightenStroke({ tool: 'brush', points: all }).points, simplifyWindowed(all));
+});

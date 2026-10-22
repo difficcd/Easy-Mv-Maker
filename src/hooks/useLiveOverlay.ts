@@ -19,7 +19,8 @@
 
 import { useCallback, useRef } from 'react';
 import type { BitmapLookup } from '../canvas/strokes.ts';
-import { dotPathRange, isV2 } from '../canvas/strokes.ts';
+import { dotPathRange, isV2, STROKE_RENDER_V3 } from '../canvas/strokes.ts';
+import { lightenStroke } from '../core/simplifyStroke.ts';
 
 
 /**
@@ -81,6 +82,18 @@ export function useLiveOverlay({ strokeRef, bitmapStoreRef, drawStrokes }: { str
                 drawStrokes(c, [{ ...st, points: dotPathRange(st.points, from, last), curved: false, v: 1 }], false, bitmapStoreRef.current);
                 drawnRef.current = last + 1;
             }
+            return;
+        }
+        // The pen (renderer v3) is redrawn whole each frame, exactly as it will commit -
+        // lightenStroke and all - so the line under the pen is the line that lands. Drawing only
+        // the new tail left 5,168px of a fast stroke on the overlay that the committed stroke did
+        // not have: its smoothing and its simplification both depend on samples still to come.
+        // Redrawing whole was tried at v2 and stuttered (100ms frames at 400 samples), because
+        // v2 still stroked every pixel of length separately; v3 is one fill.
+        if (st.tool === 'brush' && (st.v ?? 1) >= STROKE_RENDER_V3) {
+            clear();
+            drawStrokes(c, [lightenStroke(st)], false, bitmapStoreRef.current);
+            drawnRef.current = n;
             return;
         }
         if (full || drawnRef.current === 0 || n < drawnRef.current) {

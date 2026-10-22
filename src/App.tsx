@@ -108,7 +108,7 @@ import { bucketFillTransparentRegion } from './canvas/fill.ts';
 import { imageDataToDataURL, dataURLToImageData } from './canvas/imageCodec.ts';
 import { morphPrepare } from './canvas/morph.ts';
 import { sizeCanvas, imageDataCanvas } from './canvas/scratch.ts';
-import { drawStrokesOnCtx, STROKE_RENDER_V2 } from './canvas/strokes.ts';
+import { drawStrokesOnCtx, STROKE_RENDER } from './canvas/strokes.ts';
 import { detectSceneCuts, seekTarget } from './canvas/videoFrames.ts';
 import { DEFAULT_CUT_DURATION, CANVAS_W as CANVAS_W_DEFAULT, CANVAS_H as CANVAS_H_DEFAULT } from './core/canvasSize.ts';
 import { frameGeometry, restingCentre } from './core/canvasFrame.ts';
@@ -1174,10 +1174,10 @@ export default function App() {
     const newStroke = (tool: string, points: PressurePoint[], e: any) => ({
         id: nextId(), tool, color, opacity, size: tool === 'eraser' ? eraserSize : brushSize, points,
         pen: pressureOn && e.pointerType === 'pen',
-        // Drawn with renderer version 2 (canvas/strokes.STROKE_RENDER_V2): smoothed tools from 1px
-        // points, the pen's opacity applied once, the dot pen's fast stretches curved. Marked per
+        // Drawn with the current renderer (canvas/strokes.STROKE_RENDER): smoothed tools from 1px
+        // points, the pen as one filled outline, the dot pen's fast stretches curved. Marked per
         // stroke, so everything drawn before keeps the look it was drawn with.
-        v: STROKE_RENDER_V2,
+        v: STROKE_RENDER,
     });
     // Render only the in-progress stroke on the overlay canvas — one stroke, no full-layer rebuild.
     // Live preview while drawing. This used to re-smooth and redraw the entire stroke on every
