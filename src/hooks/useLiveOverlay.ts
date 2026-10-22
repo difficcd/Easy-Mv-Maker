@@ -19,7 +19,7 @@
 
 import { useCallback, useRef } from 'react';
 import type { BitmapLookup } from '../canvas/strokes.ts';
-import { dotPathRange } from '../canvas/strokes.ts';
+import { dotPathRange, isV2 } from '../canvas/strokes.ts';
 
 
 /**
@@ -69,16 +69,16 @@ export function useLiveOverlay({ strokeRef, bitmapStoreRef, drawStrokes }: { str
         // settled when the pen lifted. The newest span now waits for the next sample, a frame at
         // most, and dotPathRange takes each span's neighbours from the whole stroke, so the pieces
         // join into the committed curve to the pixel.
-        if (st.curved && !full && n >= drawnRef.current) {
+        if (st.tool === 'pen' && isV2(st) && !full && n >= drawnRef.current) {
             if (drawnRef.current === 0) {
                 // The press itself: one stamp, so a dot appears under the pen at once.
                 clear();
-                drawStrokes(c, [{ ...st, points: st.points.slice(0, 1), curved: false }], false, bitmapStoreRef.current);
+                drawStrokes(c, [{ ...st, points: st.points.slice(0, 1), curved: false, v: 1 }], false, bitmapStoreRef.current);
                 drawnRef.current = 1;
             }
             const last = n - 2, from = drawnRef.current - 1;
             if (last > from) {
-                drawStrokes(c, [{ ...st, points: dotPathRange(st.points, from, last), curved: false }], false, bitmapStoreRef.current);
+                drawStrokes(c, [{ ...st, points: dotPathRange(st.points, from, last), curved: false, v: 1 }], false, bitmapStoreRef.current);
                 drawnRef.current = last + 1;
             }
             return;

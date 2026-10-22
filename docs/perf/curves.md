@@ -130,3 +130,36 @@ path - tested by drawing the same stroke in pieces of one, two and seven spans.
 **The pen and pencil, open.** Their smoothing - resampling along the length, corner-cutting, the
 taper at the end, and the simplification at commit - each depends on the whole stroke, so "draw
 only the final part" does not carry over as it stands. Next.
+
+## Renderer version 2 (2026-10-22)
+
+Measuring what a full-redraw preview would cost turned up what *any* drawing of these tools cost.
+Three corner-cutting passes double the points three times, so the smoothed path came out 0.25px
+apart - 6,776 points for a 1,700px stroke - and the pen, pencil and marker stroke each segment
+separately because the width changes along the line. In Chrome on the GPU (`scripts/stroke-cost.mjs`),
+one stroke, simplified, smoothed and drawn:
+
+| | before | v2 (1px points) |
+|---|---|---|
+| pen, 200 / 600 / 1,200 samples | 20.8 / 76.7 / 155ms | **6.3 / 10.6 / 15.1ms** |
+| pencil, 200 / 600 | 124 / 393ms | **34 / 96ms** |
+| marker, 200 / 600 | 104 / 332ms | **58 / 169ms** |
+
+paid at every commit, not only in a preview. The pencil and marker are still heavy - what remains
+is compositing a stroke-sized scratch, a separate problem.
+
+**The same overdraw was a bug.** The pen applied its opacity per segment, so a quarter-pixel's worth
+of overlapping round caps stacked it: **a pen set to 30% painted at 91%** (mean alpha), and 60% at
+94% - the slider did almost nothing. The pencil and marker composite once and were right.
+
+**But fixing it changes how strokes look.** Rendered with both renderers, real strokes' bodies
+(alpha ≥ 128) came out 4.97% slimmer for the pen, 2.35% for the pencil, 2.05% for the marker: the
+overdraw had been compounding every antialiased edge. Asked how to handle drawings already made,
+the answer was *new strokes only*. So each new stroke records `v: 2`, and a stroke without it is drawn
+by the old path: **byte-identical to the previous renderer on 292 of 292 real strokes, for each of
+the pen, pencil and marker.** Version 2: smoothed points 1px apart, the taper kept at the same 1.5px
+of length (it was six points, which at 1px would have quadrupled it), and a translucent pen drawn
+opaque on a scratch and composited once - **30% now paints at 30%**.
+
+The dot pen's `curved` flag from earlier the same day is folded in: `v: 2` implies it, and strokes
+that carry `curved` keep it.

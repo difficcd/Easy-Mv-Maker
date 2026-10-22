@@ -165,3 +165,26 @@ test('a range covers just its spans, ending on its last point', () => {
     assert.deepEqual(r[0], pts[5]);
     assert.deepEqual(r[r.length - 1], pts[9]);
 });
+
+// --- renderer version 2: spacing -------------------------------------------------------------------
+
+import { OUTPUT_SPACING } from '../../src/canvas/strokes.ts';
+
+test('with a spacing, the smoothed points come out that far apart', () => {
+    // 0.25px apart they cost a stroke() call each: 6,776 for a 1,700px pen stroke.
+    const out = smoothPoints(circle(600), null, OUTPUT_SPACING);
+    const gaps = []; for (let i = 1; i < out.length - 1; i++) gaps.push(Math.hypot(out[i].x - out[i - 1].x, out[i].y - out[i - 1].y));
+    const mean = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+    assert.ok(Math.abs(mean - OUTPUT_SPACING) < 0.05, `mean spacing ${mean.toFixed(3)}px`);
+});
+
+test('without one, the output is the dense version-1 path, unchanged', () => {
+    const out = smoothPoints(circle(600));
+    const gaps = []; for (let i = 1; i < out.length - 1; i++) gaps.push(Math.hypot(out[i].x - out[i - 1].x, out[i].y - out[i - 1].y));
+    assert.ok(gaps.reduce((a, b) => a + b, 0) / gaps.length < 0.4, 'version 1 strokes must keep their dense path');
+});
+
+test('a dot stroke marked v2 follows the curve, as `curved` did', () => {
+    const fast = arc(200, 200, 120, 0, Math.PI, 30);
+    assert.ok(dotPath({ tool: 'pen', v: 2, points: fast }).length > fast.length * 5);
+});

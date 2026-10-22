@@ -66,6 +66,13 @@ interface Stroke {
      * ones, which keep the shape they were drawn with.
      */
     curved?: boolean;
+    /**
+     * The renderer version the stroke was drawn with (canvas/strokes.STROKE_RENDER_V2). Absent means
+     * version 1 - every stroke drawn before 2026-10-22 - which is drawn exactly as it always was.
+     * Version 2 draws the smoothed tools from points 1px apart and applies the pen's opacity once;
+     * it also implies `curved` for the dot pen.
+     */
+    v?: number;
 
     // -- placed pixels: paste, fill, the lasso's erase and the liquify commit
     x?: number;

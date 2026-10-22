@@ -275,3 +275,39 @@ test('a straight shape still boils with the layer, rather than being left stiff'
     // displaced outline covers a different set of pixels even when it spans the same box.
     assert.notEqual(ink(boiling.c).n, ink(still.c).n, 'the boiling shape is identical to the still one');
 });
+
+// --- renderer version 2 ---------------------------------------------------------------------------
+//
+// New strokes carry `v: 2`; strokes drawn before have no `v` and are drawn exactly as they always
+// were (checked byte for byte against the previous renderer on 292 real strokes per tool).
+
+/** The most opaque pixel of a stroke, 0..1. */
+function peakAlpha(c) {
+    const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+    let mx = 0; for (let k = 3; k < d.length; k += 4) mx = Math.max(mx, d[k]);
+    return mx / 255;
+}
+const wave = Array.from({ length: 40 }, (_, i) => ({ x: 10 + i * 4.5, y: 60 + Math.sin(i / 6) * 20, pressure: 0.5 }));
+
+test('a v2 pen at 30% opacity paints at 30%', () => {
+    // Applied per segment, overlapping segments stacked the opacity: a pen set to 30% painted at
+    // 91% and its slider did almost nothing. Version 2 applies it once to the whole stroke.
+    const { c, ctx } = fresh();
+    drawStrokesOnCtx(ctx, [stroke({ tool: 'brush', size: 10, opacity: 0.3, v: 2, points: wave })], false, new Map());
+    const a = peakAlpha(c);
+    assert.ok(a > 0.26 && a < 0.34, `peak alpha ${a.toFixed(2)} for an opacity of 0.30`);
+});
+
+test('a pen stroke drawn before keeps the opacity it was drawn with', () => {
+    // Its author saw it at the stacked opacity; it must not lighten under them.
+    const { c, ctx } = fresh();
+    drawStrokesOnCtx(ctx, [stroke({ tool: 'brush', size: 10, opacity: 0.3, points: wave })], false, new Map());
+    assert.ok(peakAlpha(c) > 0.9, `peak alpha ${peakAlpha(c).toFixed(2)} - an old stroke was redrawn differently`);
+});
+
+test('an opaque v2 pen is drawn without the detour through a scratch', () => {
+    // Same pixels either way at full opacity; the scratch is only for translucent strokes.
+    const { c, ctx } = fresh();
+    drawStrokesOnCtx(ctx, [stroke({ tool: 'brush', size: 10, opacity: 1, v: 2, points: wave })], false, new Map());
+    assert.ok(peakAlpha(c) > 0.99);
+});
