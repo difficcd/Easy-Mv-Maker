@@ -18,7 +18,7 @@
 // functions the app already calls.
 
 import { useEffect, useRef, useCallback } from 'react';
-import { pushSnapshot, step } from '../core/historyOps.ts';
+import { pushSnapshot, step, type HistoryEntry } from '../core/historyOps.ts';
 
 /**
  * @template T
@@ -27,10 +27,13 @@ import { pushSnapshot, step } from '../core/historyOps.ts';
  * @param {() => boolean} opts.shouldSkip true while the app is mid-gesture and a snapshot would
  *   capture a half-finished state
  * @param {(snapshot: T) => void} opts.apply put a snapshot back into the app
- * @returns {{undo: () => void, redo: () => void, record: (snapshot: T) => void, entries: () => T[]}}
+ * @param {(snapshot: T) => K} [opts.summarize] what to keep beside each entry, readable without parsing it
+ * @returns {{undo: () => void, redo: () => void, record: (snapshot: T) => void, kept: () => K[]}}
  */
-export function useHistory<T>({ snapshot, shouldSkip, apply }: { snapshot: T, shouldSkip: () => boolean, apply: (snapshot: T) => void }): { undo: () => void, redo: () => void, record: (snapshot: T) => void, entries: () => T[] } {
-    const entriesRef = useRef<T[]>([]);
+export function useHistory<T, K = unknown>({ snapshot, shouldSkip, apply, summarize }: { snapshot: T, shouldSkip: () => boolean, apply: (snapshot: T) => void, summarize?: (snapshot: T) => K }): { undo: () => void, redo: () => void, record: (snapshot: T) => void, kept: () => K[] } {
+    const entriesRef = useRef<HistoryEntry<K>[]>([]);
+    const summarizeRef = useRef(summarize);
+    summarizeRef.current = summarize;
     const indexRef = useRef(-1);
     // Applying a snapshot changes the document, which would otherwise be recorded as a new entry
     // and make undo un-undoable.
@@ -46,7 +49,7 @@ export function useHistory<T>({ snapshot, shouldSkip, apply }: { snapshot: T, sh
 
     /** Record a snapshot now, whatever the effect is doing. Stable, so callers may store it. */
     const record = useCallback((snap: T) => {
-        const r = pushSnapshot(entriesRef.current, indexRef.current, snap);
+        const r = pushSnapshot(entriesRef.current, indexRef.current, snap, null, summarizeRef.current);
         if (!r.changed) return;
         entriesRef.current = r.history;
         indexRef.current = r.index;
@@ -63,9 +66,10 @@ export function useHistory<T>({ snapshot, shouldSkip, apply }: { snapshot: T, sh
         if (!r) return;                       // already at that end
         indexRef.current = r.index;
         applyingRef.current = true;
-        // Deep copied on the way out as well as in: the app mutates what it is given, and an entry
-        // that gets mutated is an undo that quietly stops going back where it said it would.
-        applyRef.current(JSON.parse(JSON.stringify(r.snapshot)));
+        // Parsed fresh each time: the app mutates what it is given, and an entry that got mutated
+        // would be an undo that quietly stopped going back where it said it would. The entry is a
+        // string, so it cannot be.
+        applyRef.current(JSON.parse(r.snapshot.json) as T);
     }, []);
 
     const undo = useCallback(() => go(-1), [go]);
@@ -79,7 +83,10 @@ export function useHistory<T>({ snapshot, shouldSkip, apply }: { snapshot: T, sh
      * undo still needs is not a leak, it is an undo that comes back blank. A function rather than
      * the array itself, so callers always see the current stack.
      */
-    const entries = useCallback(() => entriesRef.current, []);
+    // What `summarize` kept for each entry. The entries themselves are JSON now, and parsing every
+    // one to ask what it refers to would cost a pass over the whole history; the summary was taken
+    // when the entry was, from the object, for nothing extra.
+    const kept = useCallback(() => entriesRef.current.map(e => e.keep as K), []);
 
-    return { undo, redo, record, entries };
+    return { undo, redo, record, kept };
 }

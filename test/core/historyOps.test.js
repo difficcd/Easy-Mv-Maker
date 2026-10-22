@@ -6,6 +6,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { pushSnapshot, canUndo, canRedo, step, limitFor, HISTORY_LIMIT } from '../../src/core/historyOps.ts';
 
+/** An entry's snapshot, read back. Entries are kept as JSON. */
+const snap = (e) => JSON.parse(e.json);
+
 // Build a history by pushing in order, the way the app does.
 const build = (...snaps) => snaps.reduce(
     (acc, s) => { const r = pushSnapshot(acc.history, acc.index, s); return { history: r.history, index: r.index }; },
@@ -16,7 +19,7 @@ test('pushSnapshot: the index always points at what was just recorded', () => {
     const { history, index } = build({ n: 1 }, { n: 2 }, { n: 3 });
     assert.equal(history.length, 3);
     assert.equal(index, 2);
-    assert.deepEqual(history[index], { n: 3 });
+    assert.deepEqual(snap(history[index]), { n: 3 });
 });
 
 test('pushSnapshot: recording the same state again is not an undo step', () => {
@@ -40,7 +43,7 @@ test('pushSnapshot: a new action after undoing drops the branch that was undone 
     const built = build({ n: 1 }, { n: 2 }, { n: 3 });
     const back = step(built.history, built.index, -1);   // index 1
     const r = pushSnapshot(built.history, back.index, { n: 9 });
-    assert.deepEqual(r.history.map(s => s.n), [1, 2, 9]);
+    assert.deepEqual(r.history.map(e => snap(e).n), [1, 2, 9]);
     assert.equal(r.index, 2);
     assert.equal(canRedo(r.history, r.index), false, 'nothing to redo into');
 });
@@ -53,8 +56,8 @@ test('pushSnapshot: the oldest is dropped when full, and the index comes down wi
     }
     assert.equal(acc.history.length, HISTORY_LIMIT, 'capped');
     assert.equal(acc.index, HISTORY_LIMIT - 1, 'still pointing at the newest');
-    assert.deepEqual(acc.history[acc.index], { n: HISTORY_LIMIT + 9 });
-    assert.deepEqual(acc.history[0], { n: 10 }, 'the oldest ten fell off the front');
+    assert.deepEqual(snap(acc.history[acc.index]), { n: HISTORY_LIMIT + 9 });
+    assert.deepEqual(snap(acc.history[0]), { n: 10 }, 'the oldest ten fell off the front');
 });
 
 // ── how far back undo reaches ──────────────────────────────────────────────
@@ -88,7 +91,7 @@ test('pushSnapshot: sizes its own limit when none is given', () => {
     }
     assert.ok(acc.history.length <= 20, `heavy snapshots were capped low (${acc.history.length})`);
     assert.equal(acc.index, acc.history.length - 1, 'and the index still points at the newest');
-    assert.equal(acc.history[acc.index].n, 29);
+    assert.equal(snap(acc.history[acc.index]).n, 29);
 });
 
 test('pushSnapshot: a smaller limit still leaves the index on the newest', () => {
@@ -97,7 +100,7 @@ test('pushSnapshot: a smaller limit still leaves the index on the newest', () =>
         const r = pushSnapshot(acc.history, acc.index, { n: i }, 3);
         acc = { history: r.history, index: r.index };
     }
-    assert.deepEqual(acc.history.map(s => s.n), [2, 3, 4]);
+    assert.deepEqual(acc.history.map(e => snap(e).n), [2, 3, 4]);
     assert.equal(acc.index, 2);
 });
 
@@ -105,7 +108,7 @@ test('pushSnapshot: stores a copy, so later edits to the live state do not rewri
     const live = { cuts: [{ id: 1 }] };
     const r = pushSnapshot([], -1, live);
     live.cuts[0].id = 999;
-    assert.equal(r.history[0].cuts[0].id, 1);
+    assert.equal(snap(r.history[0]).cuts[0].id, 1);
 });
 
 test('pushSnapshot: does not modify the list it was given', () => {
@@ -133,11 +136,11 @@ test('canUndo/canRedo: an empty history offers neither', () => {
 test('step: walks back and forward over the same snapshots', () => {
     const { history, index } = build({ n: 1 }, { n: 2 }, { n: 3 });
     const b1 = step(history, index, -1);
-    assert.deepEqual([b1.index, b1.snapshot], [1, { n: 2 }]);
+    assert.deepEqual([b1.index, snap(b1.snapshot)], [1, { n: 2 }]);
     const b2 = step(history, b1.index, -1);
-    assert.deepEqual([b2.index, b2.snapshot], [0, { n: 1 }]);
+    assert.deepEqual([b2.index, snap(b2.snapshot)], [0, { n: 1 }]);
     const f1 = step(history, b2.index, 1);
-    assert.deepEqual([f1.index, f1.snapshot], [1, { n: 2 }]);
+    assert.deepEqual([f1.index, snap(f1.snapshot)], [1, { n: 2 }]);
 });
 
 test('step: returns null at either end rather than an out-of-range index', () => {
@@ -154,4 +157,17 @@ test('undo then redo lands exactly where it started', () => {
     const fwd = step(history, back.index, 1);
     assert.equal(fwd.index, index);
     assert.deepEqual(fwd.snapshot, history[index]);
+});
+
+test('pushSnapshot: an entry is its JSON, so the next change compares against a string', () => {
+    // It used to keep a parsed copy, and every change stringified that copy again to compare -
+    // with the new snapshot's stringify and a parse, three passes over the document per stroke.
+    const r = pushSnapshot([], -1, { cuts: [{ id: 1 }] });
+    assert.equal(typeof r.history[0].json, 'string');
+    assert.equal(r.history[0].json, '{"cuts":[{"id":1}]}');
+});
+
+test('pushSnapshot: what summarize returns is kept beside the entry', () => {
+    const r = pushSnapshot([], -1, { cuts: [{ id: 7 }] }, null, (s) => s.cuts.map(c => c.id));
+    assert.deepEqual(r.history[0].keep, [7]);
 });

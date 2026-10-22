@@ -263,7 +263,7 @@ Undo and redo, and the memory budget that bounds them.
 | `canUndo` | Whether there is anything to step to. Index 0 is the original state, so undo needs 1 or more. |
 | `HISTORY_LIMIT` | The old fixed cap, kept as the default when no size is known. |
 | `limitFor` | The undo memory budget. Raising it is a deliberate decision, not a tuning knob. |
-| `pushSnapshot` | Record a snapshot, returning the new list and position. The input is never modified, so the caller can keep the old pair if it wants to. |
+| `pushSnapshot` | Record a snapshot, returning the new list and position. Entries are kept as JSON with an optional `summarize` result beside them: one stringify per change instead of two stringifies and a parse (89ms -> 32ms per change on a 3.5MB document). The input is never modified, so the caller can keep the old pair if it wants to. |
 | `step` | Step one snapshot back or forward. |
 
 ## `src/core/cutSelection.ts`
@@ -1038,7 +1038,7 @@ Undo and redo: the wiring around `historyOps`, kept out of App.
 
 | | |
 |---|---|
-| `useHistory` | Records the document when it changes, unless `shouldSkip()` says a gesture is in progress. Returns `undo`, `redo`, a stable `record` for callers that choose their own moment, and `entries()` for the bitmap GC - a snapshot keeps pixels reachable, and freeing those is an undo that comes back blank. |
+| `useHistory` | Records the document when it changes, unless `shouldSkip()` says a gesture is in progress. Returns `undo`, `redo`, a stable `record` for callers that choose their own moment, and `kept()` - what `summarize` took from each entry when it was recorded. The app keeps each entry's bitmap ids that way, so the bitmap GC never has to parse the history, whose entries are JSON. |
 
 ## `src/hooks/useCurveTool.ts`
 

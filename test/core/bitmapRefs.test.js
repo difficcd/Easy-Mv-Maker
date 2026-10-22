@@ -67,3 +67,19 @@ test('unusedBitmapIds: only ids no source mentions are returned', () => {
 test('unusedBitmapIds: with no sources at all everything is orphaned', () => {
     assert.deepEqual(unusedBitmapIds(['a', 'b'], {}), ['a', 'b']);
 });
+
+test('ids an undo entry refers to are kept, when handed over as ids', () => {
+    // Undo keeps its snapshots as JSON and hands the collector the ids each one referred to,
+    // rather than the snapshots to parse. An id only an undo step still needs must not be freed:
+    // freeing it is an undo that comes back blank.
+    const dead = unusedBitmapIds(['a', 'b', 'c'], { cuts: [], historyIds: [new Set(['a']), ['b'], null] });
+    assert.deepEqual([...dead], ['c']);
+});
+
+test('the ids handed over match what scanning the same snapshot finds', () => {
+    // The summary is taken with collectUsedBitmapIds itself, so the two sources cannot drift.
+    const cuts = [{ layers: [{ strokes: [{ bitmapId: 'x' }, { bitmapId: 'y' }] }] }];
+    const viaSnap = collectUsedBitmapIds({ history: [{ cuts }] });
+    const viaIds = collectUsedBitmapIds({ historyIds: [collectUsedBitmapIds({ cuts })] });
+    assert.deepEqual([...viaIds].sort(), [...viaSnap].sort());
+});
