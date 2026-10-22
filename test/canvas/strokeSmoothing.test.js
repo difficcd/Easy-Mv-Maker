@@ -132,3 +132,36 @@ test('a dot stroke drawn before this keeps its shape', () => {
     const fast = arc(200, 200, 120, 0, Math.PI, 30);
     assert.equal(dotPath({ tool: 'pen', points: fast }), fast);
 });
+
+// --- the live preview draws exactly what commits ---------------------------------------------------
+//
+// The preview adds only the new part of a stroke each frame. A curved span's shape depends on the
+// sample *after* it, so the newest span was drawn as a guess and then drawn again once the next
+// sample came - the guess staying on the overlay underneath. On fast loops the guess was off by
+// 1.15px on average, 1.44px at worst: a ghost edge while drawing that settled when the pen lifted.
+// The overlay now draws only spans whose neighbours are all known, so every piece is final.
+
+import { dotPathRange } from '../../src/canvas/strokes.ts';
+
+const loops = () => Array.from({ length: 27 }, (_, i) => { const a = i / 26 * Math.PI * 4; return { x: 100 + i * 12 + Math.cos(a) * 60, y: 200 + Math.sin(a) * 80, pressure: 0.5 }; });
+
+test('drawn in pieces, a dot stroke comes out exactly as drawn whole', () => {
+    const pts = loops();
+    const whole = dotPath({ tool: 'pen', curved: true, points: pts });
+    // Every way the frames could fall: pieces of one, two and seven spans.
+    for (const step of [1, 2, 7]) {
+        const joined = [];
+        for (let from = 0; from < pts.length - 1; from += step) {
+            const piece = dotPathRange(pts, from, Math.min(pts.length - 1, from + step));
+            joined.push(...(joined.length ? piece.slice(1) : piece));   // pieces share their end point
+        }
+        assert.deepEqual(joined, whole, `in pieces of ${step}`);
+    }
+});
+
+test('a range covers just its spans, ending on its last point', () => {
+    const pts = loops();
+    const r = dotPathRange(pts, 5, 9);
+    assert.deepEqual(r[0], pts[5]);
+    assert.deepEqual(r[r.length - 1], pts[9]);
+});
