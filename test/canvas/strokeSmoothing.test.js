@@ -92,3 +92,43 @@ test('a sharp corner drawn on purpose is not rounded away', () => {
     // No loop beyond the drawn extent: the curve stays inside the box of what was drawn, plus a pixel.
     assert.ok(Math.max(...xs) <= 221 && Math.min(...ys) >= 19 && Math.max(...ys) <= 139, `left the drawn box: x..${Math.max(...xs).toFixed(1)} y ${Math.min(...ys).toFixed(1)}..${Math.max(...ys).toFixed(1)}`);
 });
+
+// --- the dot pen ----------------------------------------------------------------------------------
+//
+// The dot pen is the default tool, so it is what gets drawn with - nearly every stroke in the saved
+// projects is one. It stamped squares along *straight chords* between pointer samples, so a fast
+// curve came out as a polygon: the screenshot of 2026-10-22, "still bending in that subtle way".
+// None of the curve work on the pen reached it, because it never went through the smoothing.
+
+import { dotPath } from '../../src/canvas/strokes.ts';
+
+test('a new dot stroke follows the curve between fast samples', () => {
+    const fast = arc(200, 200, 120, 0, Math.PI * 1.5, 30);   // a quick circle, samples 30px apart
+    const path = dotPath({ tool: 'pen', curved: true, points: fast });
+    assert.ok(path.length > fast.length * 5, 'the gaps were not filled in');
+    // What was visible was an angle at every sample. The chords turned the whole 14 degrees at
+    // each one; the curve spreads it out.
+    assert.ok(worstSpike(path) < 3, `a ${worstSpike(path).toFixed(1)} degree kink at a sample`);
+    // And it stays on the circle rather than cutting across it (the chords cut 0.94px inside).
+    const radii = path.map(p => Math.hypot(p.x - 200, p.y - 200));
+    assert.ok(Math.min(...radii) > 119.3 && Math.max(...radii) < 120.7, `radius ${Math.min(...radii).toFixed(2)}..${Math.max(...radii).toFixed(2)}`);
+});
+
+test('every sample is still where it was put', () => {
+    // Interpolation, not smoothing: a deliberate pixel is passed through, not averaged away.
+    const fast = arc(200, 200, 120, 0, Math.PI, 30);
+    const path = dotPath({ tool: 'pen', curved: true, points: fast });
+    for (const s of fast) assert.ok(path.some(p => p.x === s.x && p.y === s.y), `sample ${s.x.toFixed(1)},${s.y.toFixed(1)} missing`);
+});
+
+test('slow pixel work - dense samples - is left exactly as drawn', () => {
+    const dense = Array.from({ length: 30 }, (_, i) => ({ x: 10 + i, y: 10 + (i % 3), pressure: 0.5 }));
+    assert.deepEqual(dotPath({ tool: 'pen', curved: true, points: dense }), dense);
+});
+
+test('a dot stroke drawn before this keeps its shape', () => {
+    // Strokes are re-drawn from their points on every paint; without the flag, every dot drawing
+    // already made would change at once.
+    const fast = arc(200, 200, 120, 0, Math.PI, 30);
+    assert.equal(dotPath({ tool: 'pen', points: fast }), fast);
+});

@@ -72,8 +72,11 @@ export function centripetalSpan(p0: PressurePoint | null, p1: PressurePoint, p2:
     const t0 = 0, t1 = t0 + step(q0, p1), t2 = t1 + step(p1, p2), t3 = t2 + step(p2, q3);
     const mix = (a: number, ta: number, b: number, tb: number, t: number) => (tb === ta ? a : ((tb - t) * a + (t - ta) * b) / (tb - ta));
     const pr1 = p1.pressure ?? 0.5, pr2 = p2.pressure ?? 0.5;
-    const out: PressurePoint[] = [];
-    for (let k = 0; k < n; k++) {
+    // The span starts *at* p1, exactly: evaluating the spline there gives it back only to within
+    // floating point (320 came back as 319.99999...), and "passes through every drawn point" has
+    // to be true to the bit for the dot pen, whose samples are pixels placed on purpose.
+    const out: PressurePoint[] = [p1];
+    for (let k = 1; k < n; k++) {
         const s = k / n, t = t1 + (t2 - t1) * s;
         const ax1 = mix(q0.x, t0, p1.x, t1, t), ay1 = mix(q0.y, t0, p1.y, t1, t);
         const ax2 = mix(p1.x, t1, p2.x, t2, t), ay2 = mix(p1.y, t1, p2.y, t2, t);

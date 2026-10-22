@@ -60,6 +60,12 @@ interface Stroke {
     roughAmp?: number;
     /** A ruler shape: the points are exact, so the freehand smoothing is skipped (#342). */
     straight?: boolean;
+    /**
+     * A dot-pen stroke whose fast stretches are drawn as curves rather than straight chords
+     * (canvas/strokes.dotPath). Set on every dot stroke drawn since 2026-10-22; absent on older
+     * ones, which keep the shape they were drawn with.
+     */
+    curved?: boolean;
 
     // -- placed pixels: paste, fill, the lasso's erase and the liquify commit
     x?: number;

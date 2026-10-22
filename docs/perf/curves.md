@@ -84,3 +84,26 @@ The live preview draws the unsimplified points; the committed stroke is the simp
 0.5px the median difference is under half a pixel, but at the 99th percentile it is 4.7px, so on
 roughly one stroke in a hundred the line may visibly settle when the pen lifts. Worth checking on
 the tablet, where sampling is denser and pressure varies.
+
+## The dot pen (2026-10-22)
+
+The day after the above, a screenshot: fast loops still bending at every sample. The tool selected
+was **Dot** - and Dot is the **default tool** (`useToolSettings`: `useState('pen')`), which is why
+nearly every stroke in the saved projects is one. It stamped its squares along *straight chords*
+between pointer samples and never went through the smoothing, so none of the work above reached
+the strokes actually being drawn.
+
+**Change.** `canvas/strokes.dotPath`: a dot stroke's spans over 4px are interpolated with the same
+centripetal spline - through every sample, exactly (the spline's start is the drawn point itself,
+not a re-evaluation of it, after `320` came back as `319.99999…`), so a pixel placed on purpose
+stays put. Slow pixel work, where no gap exceeds 4px, comes back exactly as drawn; no resampling,
+no corner-cutting, the stamps stay hard-edged.
+
+**Existing dot drawings do not change.** Strokes are re-drawn from their points on every paint, so
+changing how Dot draws would have changed every dot drawing already made. New dot strokes carry
+`curved: true`, and only they are drawn this way.
+
+**Verified** on a quick circle sampled 30px apart: the chords turned the full 14° at each sample;
+the curve's worst kink is under 3°, staying within 0.7px of the circle. And in the running app,
+fast loops drawn with Dot: before, a polygon with a corner at every sample - the screenshot; after,
+round.
