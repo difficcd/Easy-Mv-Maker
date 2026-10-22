@@ -67,14 +67,40 @@ const SPARSE_SPACING = 4;
  * @param {Array<{x: number, y: number, pressure?: number}>} pts
  * @param {number} [passes]
  */
-export function smoothPoints(pts: readonly PressurePoint[] | null | undefined, passes?: number | null): PressurePoint[] {
+export function smoothPoints(pts: readonly PressurePoint[] | null | undefined, passes?: number | null, spacing?: number): PressurePoint[] {
     if (!pts || pts.length < 3) return pts ? pts.slice() : [];
     let cur = resamplePts(interpolateSparse(pts), 2);
     if (cur.length < 3) cur = pts.slice();
     const iters = passes != null ? passes : 3; // one more corner-cut pass = smoother
     for (let k = 0; k < iters; k++) cur = chaikin(cur);
-    return cur;
+    // A stroke drawn since renderer v2 is then brought back down to `spacing`. Three corner-cutting
+    // passes double the points three times, so a 2px resample came out 0.25px apart - 6,776 points
+    // for a 1,700px stroke - and the pen, pencil and marker stroke each segment separately, because
+    // the width changes along the line. That was the whole cost of drawing them: 21ms for a
+    // 200-sample pen stroke, 124ms for a pencil one, measured on the GPU, paid at every commit. The
+    // renderer joins consecutive points with Catmull-Rom beziers, so points 1px apart on a curve
+    // already this smooth draw the same line. Older strokes keep the dense output: it changes how
+    // they look (STROKE_RENDER_V2), and a drawing should not change under its author.
+    return spacing ? resamplePts(cur, spacing) : cur;
 }
+
+/** How far apart the smoothed points of a v2 stroke come out. See the end of smoothPoints. */
+export const OUTPUT_SPACING = 1;
+
+/**
+ * The renderer version new strokes are drawn with, recorded on each stroke as `v`.
+ *
+ * Version 2 draws the smoothed tools from points 1px apart instead of 0.25px, and the pen with its
+ * opacity applied once. Both change how a stroke looks, measured on real strokes: the 0.25px
+ * spacing overdrew every edge with dozens of round caps, which made pen strokes about 5% bolder
+ * than their size, and the pen applied its opacity per segment, so overlapping segments stacked
+ * it - a pen set to 30% painted at 91%. Correct and up to ten times faster to draw, but a stroke
+ * drawn before keeps the look it was drawn with: it has no `v`, and is drawn as version 1.
+ */
+export const STROKE_RENDER_V2 = 2;
+
+/** Whether a stroke was drawn with renderer version 2 or later. The dot pen's `curved` counts. */
+export const isV2 = (s: { v?: number, curved?: boolean }): boolean => (s.v ?? 1) >= STROKE_RENDER_V2 || s.curved === true;
 
 /**
  * The path a dot-pen stroke stamps along.
@@ -91,9 +117,9 @@ export function smoothPoints(pts: readonly PressurePoint[] | null | undefined, p
  * @param {{curved?: boolean, points?: PressurePoint[]}} s
  * @returns {PressurePoint[]}
  */
-export function dotPath(s: { curved?: boolean, points?: readonly PressurePoint[] }): readonly PressurePoint[] {
+export function dotPath(s: { curved?: boolean, v?: number, points?: readonly PressurePoint[] }): readonly PressurePoint[] {
     const pts = s.points ?? [];
-    if (!s.curved || pts.length < 2) return pts;
+    if (!isV2(s) || pts.length < 2) return pts;
     const out = interpolateSparse(pts);
     return out.length === pts.length ? pts : out;
 }
@@ -279,7 +305,16 @@ function smoothStroke(ctx: CanvasRenderingContext2D, pts: readonly Point[], widt
 const pressureAt = (pts: readonly PressurePoint[], i: number): number => ((pts[i - 1]?.pressure ?? 0.5) + (pts[i]?.pressure ?? 0.5)) / 2;
 
 // Thin the first/last few segments so strokes taper instead of ending bluntly.
+// Version 1: six points, which at its 0.25px spacing is 1.5px - kept exactly, so older strokes
+// end as they always did.
 const taperAt = (i: number, n: number): number => { const t = Math.min(6, Math.max(2, Math.floor(n / 4))); return Math.min(1, i / t, (n - i) / t) * 0.75 + 0.25; };
+// Version 2: the same 1.5px measured in length, since its points are 1px apart and six of them
+// would be a taper four times as long.
+const TAPER_PX = 1.5;
+const taperAtV2 = (i: number, n: number): number => {
+    const t = Math.min(TAPER_PX, Math.max(0.5, (n * OUTPUT_SPACING) / 16)) / OUTPUT_SPACING;
+    return Math.min(1, i / t, (n - i) / t) * 0.75 + 0.25;
+};
 
 // Deterministic alpha-noise tile — punched into a pencil stroke (destination-in) to fake the
 // grain of paper tooth. Deterministic so a redraw of the same stroke looks identical.
@@ -456,6 +491,7 @@ export function drawStrokesOnCtx(ctx: CanvasRenderingContext2D, strokes: readonl
         // what was asked for; there is nothing to infer and nothing to improve.
         //
         // It is also five points instead of 5,824.
+        const v2 = isV2(s);
         const smooth = (p: readonly PressurePoint[]) => {
             if (s.straight) {
                 // Boiling still applies - a shape on a boiling layer should wobble with the rest
@@ -463,7 +499,7 @@ export function drawStrokesOnCtx(ctx: CanvasRenderingContext2D, strokes: readonl
                 if (!roughAmp) return p.slice();
                 return roughenPoints(resamplePts(p, JITTER_SPACING), roughAmp, roughSeed, roughWave);
             }
-            if (!roughAmp) return smoothPoints(p);
+            if (!roughAmp) return smoothPoints(p, null, v2 ? OUTPUT_SPACING : undefined);
             return roughenPoints(jitterBasePoints(s, points), roughAmp, roughSeed, roughWave);
         };
         // Dot pen: hard square stamps (pixel-art look), no anti-aliased round stroke.
@@ -611,8 +647,28 @@ export function drawStrokesOnCtx(ctx: CanvasRenderingContext2D, strokes: readonl
             // So the eraser's set size is a floor. Pressing harder still widens it.
             const pr = hasPressure ? prAt(pts, i) * 2 : 1;
             const w = baseSize * (isEraser ? Math.max(1, pr) : pr);
-            return s.tool === 'brush' ? w * taperAt(Math.max(1, i), n) : w;
+            return s.tool === 'brush' ? w * (v2 ? taperAtV2 : taperAt)(Math.max(1, i), n) : w;
         });
+        // Version 2 applies a translucent pen's opacity once, to the whole stroke. Applied to each
+        // segment, overlapping segments stacked it: a pen at 30% painted at 91%, so the setting did
+        // almost nothing. The marker and pencil already work this way. Drawn on a scratch the size
+        // of the stroke, opaque, then composited; an opaque pen needs no scratch and skips it.
+        if (v2 && !isEraser && baseOpacity < 1) {
+            ctx.restore();
+            const box = inkBounds(pts, Math.max(...widths, baseSize) / 2 + SCRATCH_MARGIN, ctx.canvas.width, ctx.canvas.height);
+            if (!box) return;
+            const tctx = takeScratch(box.w, box.h);
+            tctx.setTransform(1, 0, 0, 1, -box.x, -box.y);
+            tctx.lineCap = 'round'; tctx.lineJoin = 'round'; tctx.strokeStyle = baseColor; tctx.fillStyle = baseColor;
+            smoothStroke(tctx, pts, widths, () => { tctx.globalAlpha = 1; }, s.straight === true);
+            tctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.save();
+            ctx.globalAlpha = baseOpacity;
+            ctx.drawImage(tctx.canvas, 0, 0, box.w, box.h, box.x, box.y, box.w, box.h);
+            ctx.restore();
+            ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1.0;
+            return;
+        }
         smoothStroke(ctx, pts, widths, () => { ctx.globalAlpha = isEraser ? 1 : baseOpacity; }, s.straight === true);
         ctx.restore();
         ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1.0;
