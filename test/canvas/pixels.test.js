@@ -311,3 +311,53 @@ test('an opaque v2 pen is drawn without the detour through a scratch', () => {
     drawStrokesOnCtx(ctx, [stroke({ tool: 'brush', size: 10, opacity: 1, v: 2, points: wave })], false, new Map());
     assert.ok(peakAlpha(c) > 0.99);
 });
+
+// --- renderer version 3: the pen as one filled outline ----------------------------------------------
+//
+// Stroking every 1px segment separately made a pen stroke cost one stroke() call per pixel of its
+// length, so redrawing it each frame - the only way the preview can match the commit exactly -
+// stuttered past a few hundred samples (frame gaps of 100ms at 400). Version 3 builds the stroke's
+// outline once and fills it: one call, whatever the length, and one application of opacity.
+
+test('a v3 pen at 30% paints at 30%, everywhere along it', () => {
+    // A single fill cannot stack its own opacity, so even where the line crosses itself it is 30%.
+    const loop = Array.from({ length: 60 }, (_, i) => { const a = i / 59 * Math.PI * 2.4; return { x: 100 + Math.cos(a) * 40, y: 60 + Math.sin(a) * 40, pressure: 0.5 }; });
+    const { c, ctx } = fresh();
+    drawStrokesOnCtx(ctx, [stroke({ tool: 'brush', size: 10, opacity: 0.3, v: 3, points: loop })], false, new Map());
+    const a = peakAlpha(c);
+    assert.ok(a > 0.26 && a < 0.34, `peak alpha ${a.toFixed(2)} for an opacity of 0.30`);
+});
+
+test('a v3 pen covers the same band as the stroked one, within a few percent', () => {
+    const body = (v) => {
+        const { c, ctx } = fresh();
+        drawStrokesOnCtx(ctx, [stroke({ tool: 'brush', size: 10, opacity: 1, v, points: wave })], false, new Map());
+        const d = ctx.getImageData(0, 0, W, H).data; let n = 0; for (let k = 3; k < d.length; k += 4) if (d[k] >= 128) n++; return n;
+    };
+    const v2 = body(2), v3 = body(3);
+    assert.ok(Math.abs(v3 / v2 - 1) < 0.06, `body ${v3} against ${v2}`);
+});
+
+test('a v3 pen turning tighter than its own width leaves no hole', () => {
+    // The inner edge of a tight turn folds back over itself; the nonzero fill rule covers the fold
+    // rather than punching it out.
+    const tight = Array.from({ length: 40 }, (_, i) => { const a = i / 39 * Math.PI * 2; return { x: 100 + Math.cos(a) * 6, y: 60 + Math.sin(a) * 6, pressure: 0.5 }; });
+    const { c, ctx } = fresh();
+    drawStrokesOnCtx(ctx, [stroke({ tool: 'brush', size: 20, opacity: 1, v: 3, points: tight })], false, new Map());
+    const d = ctx.getImageData(100, 60, 1, 1).data;
+    assert.ok(d[3] > 250, `the centre of a tight loop came out ${d[3]}/255`);
+});
+
+test('a v3 pen of one or two points is a dot or a capsule, not nothing', () => {
+    for (const pts of [[{ x: 100, y: 60, pressure: 0.5 }], [{ x: 90, y: 60, pressure: 0.5 }, { x: 110, y: 60, pressure: 0.5 }]]) {
+        const { c, ctx } = fresh();
+        drawStrokesOnCtx(ctx, [stroke({ tool: 'brush', size: 10, opacity: 1, v: 3, points: pts })], false, new Map());
+        assert.ok(ink(c).n > 50, `${pts.length} point(s) drew ${ink(c).n}px`);
+    }
+});
+
+test('a tap with the pen leaves a dot its full size in v3, and a quarter in older strokes', () => {
+    const dot = (v) => { const { c, ctx } = fresh(); drawStrokesOnCtx(ctx, [stroke({ tool: 'brush', size: 10, opacity: 1, v, points: [{ x: 100, y: 60, pressure: 0.5 }] })], false, new Map()); return ink(c).n; };
+    assert.ok(dot(3) > 60, `v3 tap ${dot(3)}px`);
+    assert.ok(dot(undefined) < 20, `an old tap was redrawn larger: ${dot(undefined)}px`);
+});

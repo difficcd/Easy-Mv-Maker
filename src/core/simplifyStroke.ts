@@ -71,5 +71,35 @@ export const SIMPLIFIED_TOOLS: ReadonlySet<string> = new Set(['brush', 'pencil',
  */
 export function lightenStroke<S extends { tool?: string, straight?: boolean, points?: PressurePoint[] }>(s: S): S {
     if (s.straight || !s.tool || !SIMPLIFIED_TOOLS.has(s.tool) || !Array.isArray(s.points) || s.points.length < 3) return s;
-    return { ...s, points: simplifyStroke(s.points) };
+    return { ...s, points: simplifyWindowed(s.points) };
+}
+
+/** Samples per window of `simplifyWindowed`. */
+export const SIMPLIFY_WINDOW = 64;
+
+/**
+ * `simplifyStroke`, a window of samples at a time, so a finished window is final.
+ *
+ * The pen's preview redraws the stroke exactly as it will commit, every frame, so what is on
+ * screen while drawing is what lands. Simplifying the whole stroke each frame would undo that in a
+ * different way: a new sample moves the chord every split is measured against, so which earlier
+ * points survive could change, and the line already drawn would shift as the pen went on. Each
+ * window is simplified on its own with both ends kept; once a window is full, nothing after it can
+ * reach it. The kept ends cost a few points against the whole-stroke version.
+ *
+ * @param {PressurePoint[]} pts
+ * @param {number} [tol]
+ * @param {number} [pressureTol]
+ * @returns {PressurePoint[]}
+ */
+export function simplifyWindowed(pts: readonly PressurePoint[] | null | undefined, tol = 0.5, pressureTol = 0.04): PressurePoint[] {
+    if (!pts || pts.length < 3) return pts ? pts.slice() : [];
+    const out: PressurePoint[] = [];
+    for (let a = 0; a < pts.length - 1; a += SIMPLIFY_WINDOW) {
+        const b = Math.min(pts.length - 1, a + SIMPLIFY_WINDOW);
+        const part = simplifyStroke(pts.slice(a, b + 1), tol, pressureTol);
+        // Windows share their end point; take it once.
+        out.push(...(out.length ? part.slice(1) : part));
+    }
+    return out;
 }

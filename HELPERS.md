@@ -164,6 +164,8 @@ Fewer points for the same line - what a freehand stroke stores.
 | `simplifyStroke` | Ramer-Douglas-Peucker that also tests pressure: a point stays if dropping it would move the line by more than the tolerance (0.5px) or bend the pressure by more than 0.04. Iterative, so a long stroke cannot overflow the stack. On real pointer data it keeps about half the points. |
 | `lightenStroke` | A freehand stroke as it should be stored: simplified when its tool draws through the smoothing (brush, pencil, marker), otherwise returned as it is - never a ruler shape, the dot pen, the airbrush or the eraser. |
 | `SIMPLIFIED_TOOLS` | The tools `lightenStroke` simplifies, and why the rest are left alone. |
+| `simplifyWindowed` | `simplifyStroke` a window of samples at a time, so a finished window never changes - the pen's preview redraws the stroke as it will commit each frame, and the line already drawn must not shift as the pen goes on. What `lightenStroke` stores. |
+| `SIMPLIFY_WINDOW` | Samples per window of `simplifyWindowed` (64). |
 
 ## `src/core/colour.ts`
 
@@ -939,6 +941,9 @@ Strokes become pixels here: smoothing a hand path, the boiling line, and every b
 | `OUTPUT_SPACING` | How far apart a v2 stroke's smoothed points come out (1px). Three corner-cutting passes leave them 0.25px apart, which made the pen, pencil and marker cost a stroke() call per quarter pixel. |
 | `STROKE_RENDER_V2` | The renderer version new strokes record as `v`. Version 2 draws from 1px points and applies the pen's opacity once; strokes without `v` are drawn exactly as before, so a drawing never changes under its author. |
 | `isV2` | Whether a stroke was drawn with renderer v2 - its `v`, or the dot pen's earlier `curved` flag. |
+| `STROKE_RENDER_V3` | Renderer version 3: the pen drawn as one filled outline rather than a stroke() per pixel of length - one call whatever the length, and the opacity applied once. |
+| `STROKE_RENDER` | The renderer version new strokes record (currently 3). |
+| `fillOutline` | Fill a variable-width line as its outline - the centre line offset by half its width along the local normal, half-circle caps at each end - with the nonzero rule, so a turn tighter than the width folds over itself instead of leaving a hole. |
 | `dotPath` | The path a dot-pen stroke stamps along: its fast, sparse stretches interpolated as curves (centripetal, through every sample), dense pixel work left exactly as drawn. Only for strokes marked `curved` - older dot strokes keep their straight chords. |
 | `dotPathRange` | The interpolated path over a range of a stroke's spans, each span's neighbours taken from the whole stroke - so the live preview can draw a curved stroke in pieces that join into exactly `dotPath` of the whole, to the pixel. |
 | `drawStrokesOnCtx` | Draw a list of strokes onto a context: the one place that knows what each tool looks like. Clears first unless told not to, and takes the boiling options so a roughened layer draws its own phase. |

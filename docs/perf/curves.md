@@ -163,3 +163,44 @@ opaque on a scratch and composited once - **30% now paints at 30%**.
 
 The dot pen's `curved` flag from earlier the same day is folded in: `v: 2` implies it, and strokes
 that carry `curved` keep it.
+
+## Renderer version 3: the pen as one outline (2026-10-22)
+
+With v2 the pen's preview could finally be *redrawn whole* each frame - the only way it can match the
+commit exactly - and it did: ghost pixels 5,168 → 0. But it stuttered. Drawing in the running app,
+frame gaps on the GPU:
+
+| stroke | tail only (before) | whole redraw, v2 | whole redraw, **v3** |
+|---|---|---|---|
+| 150 samples, p95 / worst | 10.2 / 11.9ms | 20 / 20ms | **10.1 / 10.5ms** |
+| 400 samples | 10.2 / 30ms | 50 / 100ms | **10.3 / 28ms** |
+| 850 samples | 10.2 / 20ms | 70 / 140ms | **10.2 / 30ms** |
+
+v2 still stroked the line one pixel of length at a time. Version 3 builds the outline - the centre
+line offset half its width each way along the local normal, with round caps - and fills it once
+(`canvas/strokes.fillOutline`), the approach of the outline-based ink libraries web drawing tools
+use. One call whatever the length, and the opacity applied once by construction, so translucent
+pens need no scratch. Turns tighter than the width fold the inner edge over itself; the nonzero
+fill rule covers the fold.
+
+One stroke, simplified, smoothed and drawn (`scripts/stroke-cost.mjs`, GPU):
+
+| pen | 200 | 600 | 1,200 | 2,400 samples |
+|---|---|---|---|---|
+| v1 | 20.8 | 76.7 | 155 | 341ms |
+| v2 | 6.4 | 7.6 | 13.4 | 81ms |
+| **v3** | **3.6** | **3.3** | **6.3** | **11.8ms** |
+
+Its body is within 6% of v2's. As before, only new strokes: v1 and v2 strokes keep their paths.
+
+The simplification the preview runs each frame is **windowed** (`simplifyWindowed`, 64 samples a
+window): simplifying the whole stroke each frame would let a new sample change which earlier points
+survive, and the line already drawn would shift as the pen went on. A finished window is final -
+tested by simplifying prefixes of a stroke and comparing.
+
+**Found on the way: a tap left a quarter-size dot.** The taper narrows a stroke towards both ends,
+so on one or two points it shrank the whole stroke to 25% - in every version so far. v3 leaves strokes
+too short to taper at full width.
+
+**Ghosts now:** Dot 0, pen 0, pencil still 6,003px - the pencil varies its alpha with pressure along
+the line, which one fill cannot do as it stands.

@@ -103,6 +103,62 @@ export const STROKE_RENDER_V2 = 2;
 export const isV2 = (s: { v?: number, curved?: boolean }): boolean => (s.v ?? 1) >= STROKE_RENDER_V2 || s.curved === true;
 
 /**
+ * Renderer version 3: the pen drawn as one filled outline instead of a stroke() call per segment.
+ *
+ * At v2's 1px spacing a pen stroke still cost one call per pixel of its length, which made
+ * redrawing it each frame - the only way the live preview can match the commit exactly - stutter
+ * past a few hundred samples. One fill costs the same whatever the length, and applies the opacity
+ * once by construction. New strokes are drawn with this; earlier versions keep their own path.
+ */
+export const STROKE_RENDER_V3 = 3;
+
+/** The renderer version new strokes record. */
+export const STROKE_RENDER = STROKE_RENDER_V3;
+
+/**
+ * Fill a variable-width line as its outline: the points offset by half their width either side,
+ * joined, with a half-circle cap at each end.
+ *
+ * The offsets are taken along the normal of the local direction (the neighbours either side), so
+ * at 1px spacing the edges are as smooth as the centre line. On a turn tighter than half the width
+ * the inner edge folds back over itself; the nonzero fill rule covers the fold instead of punching
+ * a hole where it crosses.
+ *
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {Point[]} pts the centre line
+ * @param {number[]} widths the full width at each point
+ */
+export function fillOutline(ctx: CanvasRenderingContext2D, pts: readonly Point[], widths: readonly number[]): void {
+    const n = pts.length;
+    if (!n) return;
+    const half = (i: number) => Math.max(0.3, widths[i] / 2);
+    if (n === 1) { ctx.beginPath(); ctx.arc(pts[0].x, pts[0].y, half(0), 0, Math.PI * 2); ctx.fill(); return; }
+    const dirAt = (i: number) => {
+        const a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)];
+        const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1;
+        return [dx / len, dy / len];
+    };
+    const left: number[] = [], right: number[] = [];
+    for (let i = 0; i < n; i++) {
+        const [tx, ty] = dirAt(i), r = half(i);
+        left.push(pts[i].x - ty * r, pts[i].y + tx * r);
+        right.push(pts[i].x + ty * r, pts[i].y - tx * r);
+    }
+    const [sx, sy] = dirAt(0), [ex, ey] = dirAt(n - 1);
+    const t0 = Math.atan2(sy, sx), t1 = Math.atan2(ey, ex);
+    ctx.beginPath();
+    ctx.moveTo(left[0], left[1]);
+    for (let i = 1; i < n; i++) ctx.lineTo(left[2 * i], left[2 * i + 1]);
+    // Round the far end: from the left edge, through the direction of travel, to the right edge.
+    ctx.arc(pts[n - 1].x, pts[n - 1].y, half(n - 1), t1 + Math.PI / 2, t1 - Math.PI / 2, true);
+    for (let i = n - 1; i >= 0; i--) ctx.lineTo(right[2 * i], right[2 * i + 1]);
+    // And the near end, through the direction it came from.
+    ctx.arc(pts[0].x, pts[0].y, half(0), t0 - Math.PI / 2, t0 + Math.PI / 2, true);
+    ctx.closePath();
+    ctx.fill('nonzero');
+}
+
+/**
  * The path a dot-pen stroke stamps along.
  *
  * The dot pen is the default tool, so it is what most drawing is done with, and it stamped along
@@ -647,8 +703,23 @@ export function drawStrokesOnCtx(ctx: CanvasRenderingContext2D, strokes: readonl
             // So the eraser's set size is a floor. Pressing harder still widens it.
             const pr = hasPressure ? prAt(pts, i) * 2 : 1;
             const w = baseSize * (isEraser ? Math.max(1, pr) : pr);
-            return s.tool === 'brush' ? w * (v2 ? taperAtV2 : taperAt)(Math.max(1, i), n) : w;
+            if (s.tool !== 'brush') return w;
+            // A tap has no length to taper over. The formula tapers towards both ends, so on one
+            // or two points it shrank the whole stroke: a tap with the pen left a dot a quarter of
+            // its size, in every version so far. Version 3 leaves short strokes at full width.
+            if ((s.v ?? 1) >= STROKE_RENDER_V3 && n < 3) return w;
+            return w * (v2 ? taperAtV2 : taperAt)(Math.max(1, i), n);
         });
+        // Version 3: one filled outline. One call whatever the length, and one application of the
+        // opacity, so neither the scratch below nor its cost is needed. Ruler shapes keep the
+        // stroked path, which keeps their corners sharp.
+        if ((s.v ?? 1) >= STROKE_RENDER_V3 && !isEraser && !s.straight) {
+            ctx.globalAlpha = baseOpacity;
+            fillOutline(ctx, pts, widths);
+            ctx.restore();
+            ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1.0;
+            return;
+        }
         // Version 2 applies a translucent pen's opacity once, to the whole stroke. Applied to each
         // segment, overlapping segments stacked it: a pen at 30% painted at 91%, so the setting did
         // almost nothing. The marker and pencil already work this way. Drawn on a scratch the size
