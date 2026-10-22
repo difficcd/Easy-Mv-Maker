@@ -683,6 +683,14 @@ What is drawn over the frame while editing and never while playing.
 | `drawCurveAnchors` | The curve ruler's anchors, screen-sized, the first one marked as the end the curve is drawn from. |
 | `accentSoft` | That keeps on-canvas furniture such as selection outlines and paths on the theme colour. |
 
+## `src/canvas/layerBake.ts`
+
+Drawing a layer's strokes into its cache canvas - one rule, called from both cache paths.
+
+| | |
+|---|---|
+| `bakeLayer` | Bring a cache canvas up to date with a layer: only the new strokes when the layer has just grown (`appendedAfter`), the whole layer for anything else, a resize or a boiling layer. There were two copies of this; only one had been made incremental, and it was not the one baking what is on screen. |
+
 ## `src/canvas/layerComposite.ts`
 
 Putting one layer onto the frame: where it sits, and how a floating selection is cut out of it. Both came out of the composite loop, which runs for every layer of every visible cut, sixty times a second.

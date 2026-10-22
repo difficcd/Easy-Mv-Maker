@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { sizeCanvas, scratchCanvas } from '../canvas/scratch.ts';
+import { scratchCanvas } from '../canvas/scratch.ts';
 import { drawStrokesOnCtx } from '../canvas/strokes.ts';
 import { safeArray } from '../core/geometry.ts';
-import { layerKey, layerSig, appendedAfter } from '../core/layerTree.ts';
+import { layerKey, layerSig } from '../core/layerTree.ts';
+import { bakeLayer } from '../canvas/layerBake.ts';
 import { scanLayerBitmaps } from '../engine/pendingBitmaps.ts';
 import { cutsToCache } from '../engine/selectCuts.ts';
 import { layerKeysUsingBitmaps, keysWithPhases, prefetchWindow } from '../core/decodeBudget.ts';
@@ -122,9 +123,10 @@ export function useLayerCache({
                     // decodes it and repaints. Do NOT request a decode here (would loop with tick).
                     if (scanLayerBitmaps(layer, bitmaps.map).pending.length) continue;
                     const newCanvas = canvas || document.createElement('canvas');
-                    sizeCanvas(newCanvas, canvasW, canvasH);
-                    drawStrokesOnCtx(newCanvas.getContext('2d')!, layer.strokes || [], true, bitmaps.map, { roughen: layer.roughen || 0 });
-                    newCanvas.dataset.strokes = layerStrokes;
+                    // Through bakeLayer, so a stroke added is drawn on its own here too. This was
+                    // the second copy of the baking rule, and the one that bakes what is on screen:
+                    // it redrew the whole layer on every commit while the other copy did not.
+                    bakeLayer(newCanvas, layer, layerStrokes, canvasW, canvasH, bitmaps.map, { roughen: layer.roughen || 0 });
                     newCache[key] = newCanvas;
                     changed = true;
                 }
@@ -246,27 +248,8 @@ export function useLayerCache({
         // which is why this does not go through scratchCanvas.
         const bake = (signature: string) => {
             const cnv = hit || document.createElement('canvas');
-            // Read before sizing. Resizing a canvas clears it, and then nothing is already drawn
-            // however much the signature says is.
-            const stored = cnv.dataset.strokes;
-            const resized = sizeCanvas(cnv, canvasW, canvasH);
-            // Committing a stroke redrew every stroke the layer held, so the Nth stroke of a
-            // drawing cost N times the first and a session's baking grew with the square of the
-            // strokes drawn: on a 1920x1080 layer, 40 brush strokes drawn one at a time cost
-            // ~38s of baking where drawing only each new stroke costs ~1.9s.
-            //
-            // When the strokes are the ones already on this canvas plus more on the end, only
-            // the new ones need drawing - they paint on top, which is the order they would have
-            // been drawn in anyway. Everything else (a stroke edited or removed, the layer
-            // dragged, a merge) still bakes in full; appendedAfter says which this is.
-            //
-            // Boiling layers are left out: each phase keeps its own canvas, so an append would
-            // have to reach all of them.
-            const from = (resized || layer.roughen) ? null : appendedAfter(stored, layer, rOpts);
-            const target = cnv.getContext('2d')!;
-            if (from === null) drawStrokesOnCtx(target, layer.strokes || [], true, store, rOpts);
-            else drawStrokesOnCtx(target, (layer.strokes || []).slice(from), false, store, rOpts);
-            cnv.dataset.strokes = signature;
+            // Only the new strokes when the layer has just grown; see canvas/layerBake.
+            bakeLayer(cnv, layer, signature, canvasW, canvasH, store, rOpts);
             map.delete(slotKey); map.set(slotKey, cnv);   // re-insert = most recently used
             while (map.size > LAYER_CANVAS_LRU) map.delete(map.keys().next().value!);
             return cnv;

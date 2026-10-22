@@ -193,6 +193,8 @@ frame is made of, and `SceneDeps` what the renderer needs from the app.
   thin callback over it.
 - `sceneRender.ts` — `drawScene`, the other half of `engine/evaluateFrame`: it draws the answer
   and decides nothing. Also the video reference, the onion skin and the scene's texts.
+- `layerBake.ts` — `bakeLayer`: a layer's strokes into its cache canvas, drawing only the new strokes
+  when the layer has just grown. Both cache paths in `hooks/useLayerCache` call it.
 - `layerComposite.ts` — one layer onto the frame, with its clip group and opacity.
 - `bitmapStore.ts` — the pixels behind fill / lasso / paste strokes: store, decode, clone, trim.
   The Map is `bitmapStoreRef`; this owns it.
