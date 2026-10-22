@@ -13,7 +13,7 @@
 import type { Id } from './types.ts';
 
 /** Everywhere a bitmap id can be held: the document, its history, the clipboard, a lifted selection. */
-export interface BitmapSources { cuts?: unknown; history?: Array<{ cuts?: unknown } | null | undefined> | null; copiedCut?: unknown; lassoClip?: { bitmapId?: Id | null } | null; selection?: { bitmapId?: Id | null, maskBitmapId?: Id | null } | null }
+export interface BitmapSources { cuts?: unknown; history?: Array<{ cuts?: unknown } | null | undefined> | null; historyIds?: Iterable<Iterable<Id> | null | undefined> | null; copiedCut?: unknown; lassoClip?: { bitmapId?: Id | null } | null; selection?: { bitmapId?: Id | null, maskBitmapId?: Id | null } | null }
 
 /** Ids referenced by the strokes of a list of cuts. */
 function scanCuts(cuts: unknown, into: Set<Id>): void {
@@ -36,7 +36,7 @@ function scanCuts(cuts: unknown, into: Set<Id>): void {
  * @param {{bitmapId?: string|null, maskBitmapId?: string|null}|null} [sources.selection] the live selection, which has a mask as well
  * @returns {Set<string>} every id that must be kept
  */
-export function collectUsedBitmapIds({ cuts, history, copiedCut, lassoClip, selection }: BitmapSources = {}): Set<Id> {
+export function collectUsedBitmapIds({ cuts, history, historyIds, copiedCut, lassoClip, selection }: BitmapSources = {}): Set<Id> {
     const used = new Set<Id>();
 
     scanCuts(cuts, used);
@@ -44,6 +44,9 @@ export function collectUsedBitmapIds({ cuts, history, copiedCut, lassoClip, sele
     // Undo snapshots reference bitmaps the current cuts no longer do; dropping those makes undo
     // restore an empty region.
     if (Array.isArray(history)) for (const snap of history) scanCuts(snap?.cuts, used);
+    // The same history, as the ids each entry referred to when it was taken. Undo keeps its
+    // snapshots as JSON, so it hands over what they refer to rather than the snapshots to parse.
+    if (historyIds) for (const ids of historyIds) if (ids) for (const id of ids) used.add(id);
 
     if (copiedCut) scanCuts(Array.isArray(copiedCut) ? copiedCut : [copiedCut], used);
 

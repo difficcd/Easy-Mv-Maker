@@ -101,7 +101,7 @@ import { dragOnWindow } from './core/windowDrag.ts';
 // rather than of whichever layer happens to be selected.
 
 import { topCutAt } from './engine/selectCuts.ts';
-import { unusedBitmapIds } from './core/bitmapRefs.ts';
+import { unusedBitmapIds, collectUsedBitmapIds } from './core/bitmapRefs.ts';
 import { dragCut, resizeCut } from './core/cutOps.ts';
 import { accentSoft } from './canvas/editChrome.ts';
 import { bucketFillTransparentRegion } from './canvas/fill.ts';
@@ -571,9 +571,12 @@ export default function App() {
     // dragging a cut, moving a selection - during which a snapshot would capture a half-finished
     // state.
     const historySnapshot = useMemo(() => ({ cuts, audioData, numTracks }), [cuts, audioData, numTracks]);
-    const { undo: globalUndo, redo: globalRedo, record: recordHistory, entries: historyEntries } = useHistory({
+    const { undo: globalUndo, redo: globalRedo, record: recordHistory, kept: historyBitmapIds } = useHistory({
         snapshot: historySnapshot,
         shouldSkip: () => gesture.drawing.current || isDraggingOrResizingRef.current || !!gesture.selectionDrag.current,
+        // Each entry keeps the bitmap ids it refers to, so freeing pixels never has to parse the
+        // history - its entries are JSON.
+        summarize: (snap) => collectUsedBitmapIds({ cuts: snap.cuts }),
         apply: (snap) => {
             dispatchCuts(replaceCuts(snap.cuts));
             dispatchMedia(setAudioClip(snap.audioData ?? null));
@@ -843,7 +846,7 @@ export default function App() {
         // here would free pixels that undo, paste or the current selection still need.
         const dead = unusedBitmapIds(bitmapStoreRef.current.keys(), {
             cuts: live.cuts,
-            history: historyEntries(),
+            historyIds: historyBitmapIds(),
             copiedCut: live.copiedCut,
             lassoClip: lassoClipRef.current,
             selection: live.selection,
