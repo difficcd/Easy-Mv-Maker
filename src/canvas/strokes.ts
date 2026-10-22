@@ -610,7 +610,10 @@ export function drawStrokesOnCtx(ctx: CanvasRenderingContext2D, strokes: readonl
             const tctx = takeScratch(box.w, box.h);
             tctx.setTransform(1, 0, 0, 1, -box.x, -box.y);
             tctx.lineCap = 'round'; tctx.lineJoin = 'round'; tctx.strokeStyle = baseColor; tctx.fillStyle = baseColor;
-            smoothStroke(tctx, mp, mw, () => { });
+            // v3: the outline, filled once, instead of a stroke() per pixel of length. The marker's
+            // opacity is applied once in the composite below either way, so only the cost changes.
+            if ((s.v ?? 1) >= STROKE_RENDER_V3) fillOutline(tctx, mp, mw);
+            else smoothStroke(tctx, mp, mw, () => { });
             tctx.setTransform(1, 0, 0, 1, 0, 0);
             ctx.save();
             ctx.globalCompositeOperation = 'multiply';
@@ -650,7 +653,14 @@ export function drawStrokesOnCtx(ctx: CanvasRenderingContext2D, strokes: readonl
             // no headroom to press into. Lowering the neutral to make room would re-render every
             // pencil stroke ever drawn - lighter - so above neutral the pencil says pressure in
             // its width alone.
-            smoothStroke(tctx, pp, pw, (i) => { tctx.globalAlpha = 0.5 + 0.5 * Math.min(1, prAt(pp, i) * 2); });
+            const alphaAt = (i: number) => 0.5 + 0.5 * Math.min(1, prAt(pp, i) * 2);
+            // v3 fills the outline once when the darkness is the same all along - a mouse, or a pen
+            // pressed at least halfway. One fill cannot vary its alpha along the line, so a light
+            // pen stroke keeps the stroke-per-segment path; the cost only differs, not the darkness.
+            let even = (s.v ?? 1) >= STROKE_RENDER_V3;
+            for (let i = 1; even && i < pp.length; i++) if (alphaAt(i) !== alphaAt(0)) even = false;
+            if (even) { tctx.globalAlpha = alphaAt(0); fillOutline(tctx, pp, pw); }
+            else smoothStroke(tctx, pp, pw, (i) => { tctx.globalAlpha = alphaAt(i); });
             tctx.globalAlpha = 1; tctx.globalCompositeOperation = 'destination-in';
             const pat = tctx.createPattern(grainTile(), 'repeat');
             if (pat) { tctx.fillStyle = pat; tctx.fillRect(box.x, box.y, box.w, box.h); }

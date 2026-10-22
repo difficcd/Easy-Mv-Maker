@@ -361,3 +361,26 @@ test('a tap with the pen leaves a dot its full size in v3, and a quarter in olde
     assert.ok(dot(3) > 60, `v3 tap ${dot(3)}px`);
     assert.ok(dot(undefined) < 20, `an old tap was redrawn larger: ${dot(undefined)}px`);
 });
+
+// --- v3 marker and pencil ---------------------------------------------------------------------------
+
+const bodyOf = (st) => { const { ctx } = fresh(); drawStrokesOnCtx(ctx, [st], false, new Map()); const d = ctx.getImageData(0, 0, W, H).data; let n = 0; for (let k = 3; k < d.length; k += 4) if (d[k] >= 40) n++; return n; };
+
+test('a v3 marker covers the same band as a v2 one, within a few percent', () => {
+    const v2 = bodyOf(stroke({ tool: 'marker', size: 10, v: 2, points: wave })), v3 = bodyOf(stroke({ tool: 'marker', size: 10, v: 3, points: wave }));
+    assert.ok(v2 > 0 && Math.abs(v3 / v2 - 1) < 0.08, `marker body ${v3} against ${v2}`);
+});
+
+test('a v3 pencil drawn at even darkness covers the same band as a v2 one', () => {
+    const firm = wave.map(p => ({ ...p, pressure: 0.7 }));
+    const v2 = bodyOf(stroke({ tool: 'pencil', size: 10, pen: true, v: 2, points: firm })), v3 = bodyOf(stroke({ tool: 'pencil', size: 10, pen: true, v: 3, points: firm }));
+    assert.ok(v2 > 0 && Math.abs(v3 / v2 - 1) < 0.08, `pencil body ${v3} against ${v2}`);
+});
+
+test('a v3 pencil whose darkness varies with pressure is drawn as v2 draws it', () => {
+    // One fill cannot vary its alpha along the line, and light pressure really does draw lighter
+    // (mean alpha 0.42 at pressure 0.1, 0.72 at 0.5), so this case keeps the per-segment path.
+    const varying = wave.map((p, i) => ({ ...p, pressure: 0.15 + 0.3 * (i % 7) / 6 }));
+    const draw = (v) => { const { ctx } = fresh(); drawStrokesOnCtx(ctx, [stroke({ tool: 'pencil', size: 10, pen: true, v, points: varying })], false, new Map()); return ctx.getImageData(0, 0, W, H).data; };
+    assert.deepEqual(Buffer.from(draw(3)), Buffer.from(draw(2)));
+});

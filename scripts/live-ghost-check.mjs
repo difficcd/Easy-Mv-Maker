@@ -12,8 +12,8 @@
 import { chromium } from 'playwright-core';
 
 const ORIGIN = process.env.MV_ORIGIN || 'http://127.0.0.1:5175/';
-// Positions in the tool strip: lasso, move, text, Dot, pen, pencil.
-const TOOLS = [['Dot', 3], ['pen', 4], ['pencil', 5]];
+// Positions in the tool strip: lasso, move, text, Dot, pen, pencil, airbrush, marker.
+const TOOLS = [['Dot', 3], ['pen', 4], ['pencil', 5], ['marker', 7]];
 
 const b = await chromium.launch({ channel: 'chrome' });
 try {
