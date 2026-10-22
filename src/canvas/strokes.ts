@@ -111,14 +111,32 @@ export function dotPath(s: { curved?: boolean, points?: readonly PressurePoint[]
  * sparse is exactly uneven spacing, and the uniform form loops there.
  */
 function interpolateSparse(pts: readonly PressurePoint[]): PressurePoint[] {
+    return dotPathRange(pts, 0, pts.length - 1);
+}
+
+/**
+ * The interpolated path over spans `from`..`to` of a stroke, from point `from` to point `to`
+ * inclusive - with each span's true neighbours taken from the whole stroke, not from the range.
+ *
+ * This is what lets the live preview draw a curved stroke in pieces and still match the commit to
+ * the pixel. A span's shape depends on the point before it and the point after it; drawing a slice
+ * on its own would reflect a missing neighbour at each cut and draw a different curve there. Taken
+ * from the whole stroke, the pieces join into exactly `dotPath` of the whole, which the test pins.
+ *
+ * @param {PressurePoint[]} pts the whole stroke
+ * @param {number} from the first span's start index
+ * @param {number} to the last point's index
+ * @returns {PressurePoint[]}
+ */
+export function dotPathRange(pts: readonly PressurePoint[], from: number, to: number): PressurePoint[] {
     const out: PressurePoint[] = [];
-    for (let i = 0; i < pts.length - 1; i++) {
+    for (let i = from; i < to; i++) {
         const a = pts[i], b = pts[i + 1];
         const len = Math.hypot(b.x - a.x, b.y - a.y);
         if (len <= SPARSE_SPACING) { out.push(a); continue; }
         out.push(...centripetalSpan(pts[i - 1] ?? null, a, b, pts[i + 2] ?? null, Math.min(16, Math.ceil(len / 2))));
     }
-    out.push(pts[pts.length - 1]);
+    if (pts[to]) out.push(pts[to]);
     return out;
 }
 

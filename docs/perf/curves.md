@@ -107,3 +107,26 @@ changing how Dot draws would have changed every dot drawing already made. New do
 the curve's worst kink is under 3°, staying within 0.7px of the circle. And in the running app,
 fast loops drawn with Dot: before, a polygon with a corner at every sample - the screenshot; after,
 round.
+
+## The live preview (2026-10-22)
+
+What is drawn while the pen is down should be what commits when it lifts. The preview adds only the
+new part of a stroke each frame, but a curved span's shape depends on the sample *after* it - so the
+newest span was drawn as a guess, then drawn again once the next sample came, with the guess left
+on the overlay underneath. `scripts/live-ghost-check.mjs` draws the same fast loops with each tool
+and counts overlay ink, just before pen-up, that is not in the committed stroke:
+
+| tool | before | after |
+|---|---|---|
+| Dot | 5,197px (28%) | **0px** |
+| pen (`brush`) | 4,994px (27%) | open |
+| pencil | 5,999px (37%) | open |
+
+**Dot, fixed.** The overlay draws only spans whose neighbours are all known; the newest waits for
+the next sample, a frame at most. `canvas/strokes.dotPathRange` takes each span's neighbours from
+the whole stroke rather than the slice being drawn, so the pieces join into exactly the committed
+path - tested by drawing the same stroke in pieces of one, two and seven spans.
+
+**The pen and pencil, open.** Their smoothing - resampling along the length, corner-cutting, the
+taper at the end, and the simplification at commit - each depends on the whole stroke, so "draw
+only the final part" does not carry over as it stands. Next.
