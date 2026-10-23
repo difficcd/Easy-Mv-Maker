@@ -602,6 +602,7 @@ const EN: Record<string, string> = {
     '끄기': 'Off',
     '켜기': 'On',
     '필압': 'Pressure',
+    '방금 획에 필압 정보가 없었습니다. 펜 타블렛이면 드라이버 설정에서 Windows Ink를 켜 주세요.': 'Your last stroke had no pressure. On a pen tablet, turn on Windows Ink in the driver settings.',
     '농도': 'Opacity',
     '영상 설정': 'Video settings',
     '다른 프로젝트를 여는 동안 영상 프레임 추출이 끝나 결과를 버렸습니다. 프로젝트를 연 뒤 다시 가져오세요.': 'The frame extraction finished after a different project was opened, so its frames were discarded rather than added to the wrong project. Import again with the project you want open.',
