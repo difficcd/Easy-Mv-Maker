@@ -49,6 +49,9 @@ app.get('/api/*splat', rateLimit(readLimit, 'requests'));
 app.put('/api/*splat', rateLimit(writeLimit, 'writes'));
 app.post('/api/*splat', rateLimit(writeLimit, 'writes'));
 app.delete('/api/*splat', rateLimit(writeLimit, 'writes'));
+// Renaming and moving a project or folder (PATCH) are writes too; without this line they were the
+// one method no limit covered.
+app.patch('/api/*splat', rateLimit(writeLimit, 'writes'));
 app.get('/api/youtube-audio', rateLimit(importLimit, 'imports'));
 app.get('/api/youtube-video', rateLimit(importLimit, 'imports'));
 
