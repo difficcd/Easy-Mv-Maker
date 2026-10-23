@@ -7,11 +7,16 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-export const DATA_DIR = path.join(__dirname, 'data');
+// MV_DATA_DIR lets the route tests run against a temporary directory instead of real saves.
+export const DATA_DIR = process.env.MV_DATA_DIR || path.join(__dirname, 'data');
 
 export const safeId = (id) => String(id).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
 export const fileFor = (id) => path.join(DATA_DIR, `${safeId(id)}.json`);
 export const assetsDirFor = (id) => path.join(DATA_DIR, `${safeId(id)}.assets`);
+/** A project's preview image: the frame open when it was saved. */
+export const thumbFor = (id) => path.join(DATA_DIR, `${safeId(id)}.thumb`);
+/** The folder list. Not .json, so the project listing never mistakes it for a project. */
+export const FOLDERS_FILE = path.join(DATA_DIR, 'folders.idx');
 export const newId = () => `p_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 export const ASSET_MIME = {
     webp: 'image/webp', png: 'image/png', jpeg: 'image/jpeg', jpg: 'image/jpeg',

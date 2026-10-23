@@ -45,7 +45,12 @@ export interface ServerStorageDeps {
     liveRef: { current: any };
     /** a name to fall back on for an unnamed backup */
     localNameRef: { current: string };
+    /** the frame open now, small, for the project's preview in the server browser */
+    makeThumb?: () => Promise<Blob | null>;
 }
+
+/** A project as the server lists it. */
+export interface ServerProject { id: string; name: string; savedAt?: string | null; folder: string; thumb?: boolean }
 
 
 /** How often the automatic backup wakes up. */
@@ -67,9 +72,12 @@ const BACKUP_EVERY_MS = 5 * 60 * 1000;
 export function useServerStorage({
     serverAvailable, buildData, restore,
     setLoadProgress, setAppError, setToast, ask,
-    liveRef, localNameRef,
+    liveRef, localNameRef, makeThumb,
 }: ServerStorageDeps) {
-    const [serverProjects, setServerProjects] = useState<any[] | null>(null); // null = picker closed
+    const [serverProjects, setServerProjects] = useState<ServerProject[] | null>(null); // null = browser closed
+    const [serverFolders, setServerFolders] = useState<string[]>([]);
+    // The folder open in the browser, which is where "save as new" puts a project.
+    const browseFolderRef = useRef('');
     const [backupAt, setBackupAt] = useState<number | null>(null);
     const [backupBusy, setBackupBusy] = useState(false);
     const [backupList, setBackupList] = useState<any[] | null>(null);        // null = list closed
@@ -106,7 +114,7 @@ export function useServerStorage({
                 // Create the record first (just to get an id); the real data is committed LAST.
                 const r = await apiFetch('/api/projects', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name, data: { appName: 'EasyMVMaker', pending: true } }),
+                    body: JSON.stringify({ name, folder: browseFolderRef.current, data: { appName: 'EasyMVMaker', pending: true } }),
                 });
                 id = r.id; serverIdRef.current = r.id; serverNameRef.current = r.name;
             }
@@ -117,6 +125,7 @@ export function useServerStorage({
                 method: 'PUT', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name, data }),
             });
+            await uploadThumb(id!);
             setToast(tr('서버에 저장했습니다.'));
         } catch (e: any) {
             console.error('[import]', e);
@@ -124,10 +133,42 @@ export function useServerStorage({
         } finally { setLoadProgress(null); }
     };
 
+    // The preview is a nicety: a project saved without one is still saved, so a failure here is
+    // logged and the save goes on to report success.
+    const uploadThumb = async (id: string) => {
+        try {
+            const blob = await makeThumb?.();
+            if (blob) await apiFetch(`/api/projects/${id}/thumb`, { method: 'PUT', headers: { 'Content-Type': blob.type || 'image/webp' }, body: blob });
+        } catch (e) { console.warn('[thumb]', e); }
+    };
+
     const openServerList = async () => {
-        try { setServerProjects(await apiFetch('/api/projects')); }
+        try {
+            const [projects, folders] = await Promise.all([apiFetch('/api/projects'), apiFetch('/api/folders')]);
+            setServerProjects(projects); setServerFolders(folders);
+        }
         catch (e: any) { setAppError(tr('서버 목록을 불러오지 못했습니다: ') + e.message + '\n' + tr('(API 서버 실행 확인: npm run dev)')); }
     };
+
+    /** Run one change to the server's projects or folders, then show the list as it now is. */
+    const changeThenRefresh = async (run: () => Promise<unknown>) => {
+        try { await run(); await openServerList(); }
+        catch (e: any) { setAppError(tr('변경 실패: ') + e.message); }
+    };
+    const json = (method: string, body: unknown): RequestInit => ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+    const renameServerProject = (id: string, name: string) => changeThenRefresh(async () => {
+        const r = await apiFetch(`/api/projects/${id}`, json('PATCH', { name }));
+        if (serverIdRef.current === id) serverNameRef.current = r.name;
+    });
+    const moveServerProject = (id: string, folder: string) => changeThenRefresh(() => apiFetch(`/api/projects/${id}`, json('PATCH', { folder })));
+    const createServerFolder = (path: string) => changeThenRefresh(() => apiFetch('/api/folders', json('POST', { path })));
+    const moveServerFolder = (from: string, to: string) => changeThenRefresh(() => apiFetch('/api/folders', json('PATCH', { from, to })));
+    const deleteServerFolder = async (path: string) => {
+        if (!await ask.confirm(tr('이 폴더를 지울까요? 안에 있던 프로젝트와 폴더는 한 단계 위로 옮겨집니다.'), { okLabel: tr('삭제') })) return;
+        await changeThenRefresh(() => apiFetch(`/api/folders?path=${encodeURIComponent(path)}`, { method: 'DELETE' }));
+    };
+    const setBrowseFolder = (folder: string) => { browseFolderRef.current = folder; };
 
     const doServerOpen = async (id: string, name?: string) => {
         try {
@@ -240,7 +281,8 @@ export function useServerStorage({
     }, [serverAvailable, liveRef]);
 
     return {
-        serverProjects, setServerProjects,
+        serverProjects, setServerProjects, serverFolders,
+        renameServerProject, moveServerProject, createServerFolder, moveServerFolder, deleteServerFolder, setBrowseFolder,
         backupAt, backupBusy, backupList, setBackupList, backupProg,
         serverIdRef, serverNameRef, forgetProject,
         doServerSave, openServerList, doServerOpen, doServerDelete,

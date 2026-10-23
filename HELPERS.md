@@ -164,6 +164,31 @@ Whether a stroke came in with pressure - a tablet the browser sees as a mouse se
 | `strokeHasPressure` | True when any point carries a pressure other than the neutral 0.5. |
 | `missingPressure` | Whether to tell the artist the stroke just drawn had no pressure: pressure on, pointer not a pen, nothing varied. |
 
+## `src/core/serverFolders.ts`
+
+What the server project browser shows for a folder. Folder paths as the server stores them ("Songs/Chorus", "" the top); the server's own copies are in `server/folders.js`, which runs without the TypeScript loader and cannot import these.
+
+| | |
+|---|---|
+| `childFolders` | The folders directly inside a folder, sorted by name - not a folder whose name merely starts the same. |
+| `projectsIn` | The projects stored in a folder itself, not in folders beneath it. |
+| `crumbs` | The trail from the top to a folder, each step with its path; the top is "". |
+| `folderName` | The last part of a folder path. |
+| `parentFolder` | The folder a folder is in; "" at the top. |
+| `joinFolder` | A folder named so inside a parent. |
+| `inFolder` | Whether a path is a folder or anywhere beneath it. |
+| `canMoveFolder` | Whether a folder may move into a target: not into itself, beneath itself, or where it already is. |
+
+## `src/canvas/thumbnail.ts`
+
+A project's preview for the server browser.
+
+| | |
+|---|---|
+| `renderThumbnail` | Paint a frame at its own size, scale it down, encode WebP. Painted full size because the frame painter lays out in frame pixels. |
+| `thumbSize` | The preview size for a frame: long side at most `THUMB_MAX`, never enlarged. |
+| `THUMB_MAX` | The longest side of a preview, 320px. |
+
 ## `src/core/simplifyStroke.ts`
 
 Fewer points for the same line - what a freehand stroke stores.
@@ -1322,6 +1347,23 @@ Where things live on disk and what they are called - the one place a path is bui
 | `safeStamp` | A snapshot stamp reduced to `[0-9A-Za-z_-]`, at most 40 characters. |
 | `audioType` | Content type for an extracted audio file, by extension. |
 | `videoType` | Content type for a downloaded video file, by extension. |
+| `thumbFor` | A project's preview image, beside its file: the frame open when it was saved. |
+| `FOLDERS_FILE` | The folder list. Not `.json`, so the project listing never takes it for a project. |
+
+## `server/folders.js`
+
+Folders for saved projects: a path on each project, not a directory on disk, so moving is a metadata write. Removing a folder moves its contents up; nothing here deletes a project.
+
+| | |
+|---|---|
+| `normFolder` | A folder path as stored: segments trimmed, characters a file manager refuses removed, `..` and empty parts dropped, at most 16 deep. Never refuses - "" at worst. |
+| `parentOf` | The folder a folder is in; "" at the top. Mirrors `parentFolder` in `src/core/serverFolders.ts`. |
+| `isInside` | Whether a path is a folder or beneath it. Mirrors `inFolder`. |
+| `movePath` | A path with one folder renamed or moved; other paths unchanged. |
+| `removedPath` | Where a path ends up when a folder is removed: up one level. |
+| `withAncestors` | Every folder given plus the folders above each, sorted. |
+| `readFolders` | The stored folder list - what keeps an empty folder in existence. |
+| `writeFolders` | Store the folder list, temp file then rename. |
 
 ## `server/errors.js`
 
