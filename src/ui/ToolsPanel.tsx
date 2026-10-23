@@ -13,6 +13,8 @@ interface ToolSettingsProps {
     mosaicBlock: number; setMosaicBlock: (n: number) => void;
     toolSize: number; setToolSize: (n: number) => void;
     pressureOn?: boolean; setPressureOn: (on: boolean) => void;
+    /** the last stroke came in with no pressure though pressure is on (core/pressureInput) */
+    noPressure?: boolean;
 }
 /** One entry of the tool grid: its id, its label, and the icon that draws it. */
 export interface ToolType { id: string; label: string; Icon: React.ComponentType<{ size?: number }> }
@@ -53,7 +55,7 @@ function ToolSettings({
     rulerMode, setRulerMode,
     mosaicBlock, setMosaicBlock,
     toolSize, setToolSize,
-    pressureOn = true, setPressureOn,
+    pressureOn = true, setPressureOn, noPressure,
 }: ToolSettingsProps) {
     if (tool === 'soft') {
         return (<>
@@ -137,6 +139,13 @@ function ToolSettings({
             title={tr('끄면 세게 눌러도 굵기가 일정합니다. 이미 그린 선은 그대로입니다.')}>
             <input type="checkbox" checked={!!pressureOn} onChange={e => setPressureOn(e.target.checked)} /> {tr('필압')}
         </label>
+        {/* A tablet whose driver has Windows Ink off reaches the browser as a mouse, with no
+            pressure; nothing here can recover it, so say so rather than draw flat lines silently. */}
+        {pressureOn && noPressure && (
+            <span style={{ fontSize: 9, color: 'var(--accent-color)', textAlign: 'center', lineHeight: 1.3 }}>
+                {tr('방금 획에 필압 정보가 없었습니다. 펜 타블렛이면 드라이버 설정에서 Windows Ink를 켜 주세요.')}
+            </span>
+        )}
     </>);
 }
 

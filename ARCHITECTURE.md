@@ -97,6 +97,8 @@ index signature, so a misspelt one is an error. Ids there are `DocId` - a number
 - `catmullRom.ts` — the spline behind the curve ruler; passes through every anchor. Also
   `centripetalSpan`, which the stroke smoothing uses for the fast, sparse stretches of a freehand
   line - the centripetal form, because the uniform one loops where spacing is uneven.
+- `pressureInput.ts` — whether a stroke came in with pressure; a pen tablet with Windows Ink off reaches
+  the browser as a mouse and sends none, and the tools panel says so (`missingPressure`).
 - `simplifyStroke.ts` — `simplifyStroke`/`lightenStroke`: what a freehand pen, pencil or marker
   stroke stores - about half its points, within half a pixel of the line drawn, pressure kept.
 - `colour.ts` — `withAlpha`, which replaces an existing alpha rather than appending a second one.

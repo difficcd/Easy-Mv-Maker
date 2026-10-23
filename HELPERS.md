@@ -155,6 +155,15 @@ The spline behind the curve ruler, and the one that fills in the fast stretches 
 | `centripetalSpan` | One span of a centripetal Catmull-Rom spline, for unevenly spaced points - a hand slowing and speeding up. The uniform form loops where a short span meets a long one (a 4.5px hook past the point of a V); this does not, and on even spacing it is the same curve. Reflects a missing end neighbour instead of dividing by a zero-length knot. Used by the stroke smoothing for every span over 4px. |
 | `catmullThrough` | A Catmull-Rom spline through every anchor, not near it — which is why it is this and not a Bezier, since the user taps where the line should go. Carries pressure through, clamps the end neighbours so the line does not hook at each end, and returns fewer than three points unchanged. |
 
+## `src/core/pressureInput.ts`
+
+Whether a stroke came in with pressure - a tablet the browser sees as a mouse sends none.
+
+| | |
+|---|---|
+| `strokeHasPressure` | True when any point carries a pressure other than the neutral 0.5. |
+| `missingPressure` | Whether to tell the artist the stroke just drawn had no pressure: pressure on, pointer not a pen, nothing varied. |
+
 ## `src/core/simplifyStroke.ts`
 
 Fewer points for the same line - what a freehand stroke stores.

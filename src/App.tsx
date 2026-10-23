@@ -29,6 +29,7 @@ import { tr, loadLang, saveLang, setLangValue } from './i18n.ts';
 import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, patchLayer, nextLayerId, appendLayer, appendFolder, removeLayerTree, insertLayerAbove } from './core/layerOps.ts';
 import { planPress } from './core/pressPlan.ts';
 import { lightenStroke } from './core/simplifyStroke.ts';
+import { missingPressure } from './core/pressureInput.ts';
 import { mkCut, firstCut } from './core/document.ts';
 import { selectionAfterClick, cutsToCopy } from './core/cutSelection.ts';
 import { closeLassoPath, lassoBounds, cutOutPolygon, cropImageData, selectionStrokes, paintedBounds } from './core/lassoOps.ts';
@@ -1161,6 +1162,8 @@ export default function App() {
     // the drawing keeps the shape it had when it was made. Turning the preference off later does
     // not go back and change work that is already on the canvas.
     // 0.5 is the neutral value the renderer treats as "no pressure information".
+    // Set at each freehand commit: the stroke had no pressure though pressure is on (ToolsPanel says why).
+    const [noPressure, setNoPressure] = useState(false);
     const getPos = (e: React.PointerEvent | PointerEvent) => {
         const c = canvasRef.current!, r = c.getBoundingClientRect();
         const pressure = pressureOn && e.pressure > 0 ? e.pressure : 0.5;
@@ -1567,6 +1570,7 @@ export default function App() {
             // Stored with the points that carry the line and no more: about half of them, for a
             // line within half a pixel of the one drawn (core/simplifyStroke). Only here, at the
             // freehand commit - the curve ruler and ruler shapes are exact already.
+            setNoPressure(missingPressure(pressureOn, st));
             if (st.points.length) commitLiveStroke(lightenStroke(st));
             else clearLiveOverlay();
             return;
@@ -2032,7 +2036,7 @@ export default function App() {
         <ToolsPanel
                     panel={{ width: toolW, onClose: () => setShowLeft(false), TOOL_TYPES }}
                     tools={{ tool, handleSetTool, isSelectionTool, pickingColor, pickColor, hasLassoClip, pasteLassoSelection }}
-                    brush={{ color, applyColor, opacity, setOpacity, toolSize, setToolSize, pressureOn, setPressureOn, softMode, setSoftMode, rulerMode, setRulerMode, mosaicBlock, setMosaicBlock }}
+                    brush={{ color, applyColor, opacity, setOpacity, toolSize, setToolSize, pressureOn, setPressureOn, noPressure, softMode, setSoftMode, rulerMode, setRulerMode, mosaicBlock, setMosaicBlock }}
                     edit={{ globalUndo, globalRedo, handleClearCut, doTween }}
                     onion={{ onionPrev, setOnionPrev, onionNext, setOnionNext }}
                     />
