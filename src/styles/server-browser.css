@@ -1,0 +1,48 @@
+/* The server project browser (ui/dialogs/ServerBrowser): a trail of folders, then folder and
+   project cards in a grid. Neutral surfaces; the accent marks only where a drop or a paste goes. */
+
+.sb-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.sb-trail { flex: 1; min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 2px; }
+.sb-crumb-wrap { display: inline-flex; align-items: center; gap: 2px; }
+.sb-sep { color: #666; flex-shrink: 0; }
+.sb-crumb {
+    background: none; border: 1px solid transparent; color: #aaa; font-size: 12px; font-weight: 600;
+    padding: 3px 8px; border-radius: 6px; cursor: pointer; white-space: nowrap; transition: all .15s;
+}
+.sb-crumb:hover { background: hsl(var(--ui-h) var(--ui-s) 20%); color: #eee; }
+.sb-crumb.current { color: #fff; font-weight: 800; }
+.sb-crumb.drop { border-color: var(--accent-hi); background: color-mix(in srgb, var(--accent) 22%, transparent); color: #fff; }
+.sb-btn { height: 28px; padding: 0 10px; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+
+.sb-held {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 10px; padding: 6px 8px 6px 12px; border-radius: 10px;
+    border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent); background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.sb-held-name { flex: 1; min-width: 0; font-size: 12px; color: #ddd; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sb-paste {
+    display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 12px; border: none; border-radius: 6px;
+    background: var(--accent); color: #fff; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap;
+}
+.sb-paste:disabled { opacity: .4; cursor: default; }
+
+.sb-empty { font-size: 12px; color: #888; padding: 18px 4px; text-align: center; }
+
+.sb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.sb-card {
+    min-width: 0; display: flex; flex-direction: column; gap: 4px; padding: 6px; border-radius: 10px; cursor: pointer;
+    border: 1px solid hsl(var(--ui-h) var(--ui-s) 20%); background: hsl(var(--ui-h) var(--ui-s) 11%); transition: all .15s;
+}
+.sb-card:hover { border-color: hsl(var(--ui-h) var(--ui-s) 34%); background: hsl(var(--ui-h) var(--ui-s) 14%); }
+.sb-card.drop { border-color: var(--accent-hi); background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.sb-card.held { border-style: dashed; border-color: color-mix(in srgb, var(--accent) 60%, transparent); opacity: .7; }
+.sb-thumb {
+    aspect-ratio: 16 / 10; border-radius: 6px; overflow: hidden; display: flex; align-items: center; justify-content: center;
+    background: hsl(var(--ui-h) var(--ui-s) 7%);
+}
+.sb-thumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.sb-folder-icon { color: hsl(var(--ui-h) var(--ui-s) 60%); background: hsl(var(--ui-h) var(--ui-s) 9%); }
+.sb-nothumb { color: #555; }
+.sb-name { font-size: 12.5px; font-weight: 700; color: #ddd; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 2px; }
+.sb-date { font-size: 10px; color: #777; padding: 0 2px; font-variant-numeric: tabular-nums; }
+.sb-actions { display: flex; gap: 2px; justify-content: flex-end; }
+.sb-actions .icon-btn { width: 26px; height: 26px; }

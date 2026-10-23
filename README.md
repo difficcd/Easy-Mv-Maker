@@ -61,6 +61,7 @@
 
 **I/O**
 - Autosave, `.emv` save/open, server save
+- Server projects as nested folders with a preview of each (the frame open when it was saved); rename, and move by dragging or by cut and paste
 - Automatic server backup every 5 minutes, keeping the newest 12 — runs in the background without blocking the UI
 - Video import from a local file or URL: frame extraction, scene-change detection, audio track (with a mute that lifts itself for the export)
 - Imports match the source video's own size by default, so a vertical shorts clip fills the canvas instead of being letterboxed; landscape and portrait presets are there too
@@ -209,7 +210,7 @@ src/
   styles/          one stylesheet per area, imported in cascade order by styles/index.css
   i18n.ts          the English dictionary (~710 entries) and the tr() lookup; i18n.ja.ts the Japanese one
   globals.d.ts     ambient declarations (EyeDropper, Capacitor, File System Access…)
-server/            the API: index.js wires it; projects, backups and youtube are a route module each; paths.js builds every path
+server/            the API: index.js wires it; projects, backups and youtube are a route module each; paths.js builds every path; folders.js keeps project folders
 scripts/           the check guards above, the hot-path benchmark, font subsetting
 test/              unit tests (node --test), mirroring src/ - test/core for src/core and so on - plus smoke/
 ```

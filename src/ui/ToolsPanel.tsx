@@ -142,7 +142,7 @@ function ToolSettings({
         {/* A tablet whose driver has Windows Ink off reaches the browser as a mouse, with no
             pressure; nothing here can recover it, so say so rather than draw flat lines silently. */}
         {pressureOn && noPressure && (
-            <span style={{ fontSize: 9, color: 'var(--accent-color)', textAlign: 'center', lineHeight: 1.3 }}>
+            <span style={{ fontSize: 9, color: 'var(--accent-pale)', textAlign: 'center', lineHeight: 1.3 }}>
                 {tr('방금 획에 필압 정보가 없었습니다. 펜 타블렛이면 드라이버 설정에서 Windows Ink를 켜 주세요.')}
             </span>
         )}

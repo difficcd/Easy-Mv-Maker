@@ -99,6 +99,8 @@ index signature, so a misspelt one is an error. Ids there are `DocId` - a number
   line - the centripetal form, because the uniform one loops where spacing is uneven.
 - `pressureInput.ts` — whether a stroke came in with pressure; a pen tablet with Windows Ink off reaches
   the browser as a mouse and sends none, and the tools panel says so (`missingPressure`).
+- `serverFolders.ts` — what the server browser shows for a folder: subfolders, projects, the trail
+  to the top, and whether a folder may move somewhere.
 - `simplifyStroke.ts` — `simplifyStroke`/`lightenStroke`: what a freehand pen, pencil or marker
   stroke stores - about half its points, within half a pixel of the line drawn, pressure kept.
 - `colour.ts` — `withAlpha`, which replaces an existing alpha rather than appending a second one.
@@ -197,6 +199,7 @@ frame is made of, and `SceneDeps` what the renderer needs from the app.
   and decides nothing. Also the video reference, the onion skin and the scene's texts.
 - `layerBake.ts` — `bakeLayer`: a layer's strokes into its cache canvas, drawing only the new strokes
   when the layer has just grown. Both cache paths in `hooks/useLayerCache` call it.
+- `thumbnail.ts` — `renderThumbnail`: the frame open at save time, small, for the server browser.
 - `layerComposite.ts` — one layer onto the frame, with its clip group and opacity.
 - `bitmapStore.ts` — the pixels behind fill / lasso / paste strokes: store, decode, clone, trim.
   The Map is `bitmapStoreRef`; this owns it.
@@ -253,6 +256,8 @@ prompt, tool keys, project picker, progress overlay), all over `Modal.tsx`. And 
   `SettingsModal.tsx` / `ToolKeysModal.tsx` are the settings and the two keymap editors;
   `VideoImportModal.tsx`, `SceneDetectModal.tsx`, `ExportRangeModal.tsx`, `ProjectPicker.tsx`,
   `LinkPromptModal.tsx`, `ProgressOverlay.tsx` and `HelpModal.tsx` do what they are called.
+  `ServerBrowser.tsx` is the server's projects as nested folders and preview cards, with rename
+  and move (drag on a mouse, cut and paste on a pen or finger).
 
 **hooks/** — TypeScript. State that belongs together, lifted out of App so its wiring is somewhere
 with a name; each hook's dependency bag is an interface (`PlaybackDeps`, `ExportDeps`, `LayerCacheDeps`, …). Each takes what it cannot own as arguments, and the rule for what it cannot own is the same
@@ -320,7 +325,8 @@ needs a document takes those two functions rather than the document.
 - `server/` — the Express file-backed project DB on :8787, files under `server/data/`. `index.js`
   is the wiring (body limit, rate-limit tiers, mount, listen); `projects.js`, `backups.js` and
   `youtube.js` are one route family each; `paths.js` builds every path, so `safeId` cannot be
-  forgotten by a route.
+  forgotten by a route. `folders.js` is the project folders - a path on each project, not a
+  directory, so moving one is a metadata write.
   Proxied at `/api` (vite.config).
 - `src/main.tsx` — boot + service-worker register (PWA, skipped in Capacitor) + fatal-error
   overlay. That overlay is how a render crash shows up — check the page text for "Unhandled".

@@ -12,6 +12,8 @@ import { TextEditor } from './ui/TextEditor.tsx';
 import { ToolsPanel } from './ui/ToolsPanel.tsx';
 import { Timeline } from './ui/Timeline.tsx';
 import { ProjectPicker } from './ui/dialogs/ProjectPicker.tsx';
+import { ServerBrowser } from './ui/dialogs/ServerBrowser.tsx';
+import { renderThumbnail } from './canvas/thumbnail.ts';
 import { ProgressOverlay } from './ui/dialogs/ProgressOverlay.tsx';
 import { SettingsModal } from './ui/dialogs/SettingsModal.tsx';
 import { HelpModal } from './ui/dialogs/HelpModal.tsx';
@@ -954,7 +956,8 @@ export default function App() {
     // be called anywhere in the body as long as it is called unconditionally and in the same
     // order every render, and this is the first place both exist.
     const {
-        serverProjects, setServerProjects,
+        serverProjects, setServerProjects, serverFolders,
+        renameServerProject, moveServerProject, createServerFolder, moveServerFolder, deleteServerFolder, setBrowseFolder,
         backupAt, backupBusy, backupList, setBackupList, backupProg,
         serverIdRef, serverNameRef, forgetProject,
         doServerSave, openServerList, doServerOpen, doServerDelete,
@@ -963,6 +966,9 @@ export default function App() {
         serverAvailable, buildData, restore,
         setLoadProgress: notices.setProgress, setAppError: notices.setError, setToast: notices.setToast, ask,
         liveRef, localNameRef,
+        // The preview is the frame open at the moment of saving, as it will come out (no onion
+        // skin or handles: painted as playback paints it).
+        makeThumb: () => renderThumbnail(ctx => paintOnto(ctx, currentTimeRef.current, true, FRAME_W, FRAME_H), FRAME_W, FRAME_H),
     });
 
     const resetToEmpty = () => {
@@ -2096,7 +2102,10 @@ export default function App() {
                     bakeInfo={bakeInfo} bakePlaybackSpeed={bakePlaybackSpeed}
                     rebinding={dialogs.rebinding} setRebinding={dialogs.setRebinding} />
             )}
-            {serverProjects !== null && <ProjectPicker title={tr('서버에서 열기')} items={serverProjects} onOpen={doServerOpen} onDelete={doServerDelete} onClose={() => setServerProjects(null)} />}
+            {serverProjects !== null && <ServerBrowser projects={serverProjects} folders={serverFolders} ask={ask}
+                onOpen={doServerOpen} onDelete={doServerDelete} onRename={renameServerProject} onMove={moveServerProject}
+                onCreateFolder={createServerFolder} onMoveFolder={moveServerFolder} onDeleteFolder={deleteServerFolder}
+                onBrowse={setBrowseFolder} onClose={() => setServerProjects(null)} />}
             {localProjects !== null && <ProjectPicker title={tr('로컬에서 열기')} items={localProjects} onOpen={doLocalOpen} onDelete={doLocalDelete} onClose={() => setLocalProjects(null)} />}
             {backupList !== null && (
                 <ProjectPicker
