@@ -14,6 +14,7 @@ import assert from 'node:assert/strict';
 import { createCanvas, ImageData, DOMMatrix } from '@napi-rs/canvas';
 import { setCanvasFactory, makeCanvas } from '../../src/canvas/canvasFactory.ts';
 import { drawStrokesOnCtx } from '../../src/canvas/strokes.ts';
+import { lightenStroke } from '../../src/core/simplifyStroke.ts';
 import { pixelateCanvas, staticCanvas, grainTile, mosaic } from '../../src/canvas/pixelEffects.ts';
 import { bucketFillTransparentRegion } from '../../src/canvas/fill.ts';
 import { scratchCanvas } from '../../src/canvas/scratch.ts';
@@ -384,3 +385,26 @@ test('a v3 pencil whose darkness varies with pressure is drawn as v2 draws it', 
     const draw = (v) => { const { ctx } = fresh(); drawStrokesOnCtx(ctx, [stroke({ tool: 'pencil', size: 10, pen: true, v, points: varying })], false, new Map()); return ctx.getImageData(0, 0, W, H).data; };
     assert.deepEqual(Buffer.from(draw(3)), Buffer.from(draw(2)));
 });
+
+// --- pressure through simplification (2026-10-23: "pressure doesn't work") -------------------------
+//
+// A straight pen stroke whose pressure rises evenly is, to the simplifier, two points: nothing in
+// between is off the line, in position or in pressure. Stored as two points it came back a constant
+// width - smoothPoints handed a two-point stroke back untouched, and the width at each point was the
+// average of its neighbours' pressure, which for two points is the same number twice. The pen,
+// pencil and marker all lost pressure that way; the dot pen, never simplified, kept it.
+
+/** Thickness of the drawn line at a column, in pixels. */
+const thickAt = (c, x) => { const d = c.getContext('2d').getImageData(x, 0, 1, H).data; let n = 0; for (let y = 0; y < H; y++) if (d[y * 4 + 3] > 100) n++; return n; };
+const ramp = Array.from({ length: 61 }, (_, i) => ({ x: 20 + i * 2.7, y: 60, pressure: 0.1 + 0.9 * i / 60 }));
+
+for (const tool of ['brush', 'pencil', 'marker']) {
+    test(`a ${tool} stroke keeps its pressure after it is simplified`, () => {
+        const stored = lightenStroke(stroke({ tool, size: 12, pen: true, v: 3, points: ramp }));
+        assert.ok(stored.points.length < ramp.length, 'it was simplified');
+        const { c, ctx } = fresh();
+        drawStrokesOnCtx(ctx, [stored], false, new Map());
+        const light = thickAt(c, 40), heavy = thickAt(c, 170);
+        assert.ok(heavy > light + 4, `${tool}: ${light}px at the light end, ${heavy}px at the heavy end`);
+    });
+}

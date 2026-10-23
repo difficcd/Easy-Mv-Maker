@@ -68,6 +68,10 @@ const SPARSE_SPACING = 4;
  * @param {number} [passes]
  */
 export function smoothPoints(pts: readonly PressurePoint[] | null | undefined, passes?: number | null, spacing?: number): PressurePoint[] {
+    // A two-point stroke still needs the points in between when it is drawn at `spacing`: since new
+    // strokes are simplified, a straight line with evenly rising pressure is stored as its two ends,
+    // and the pressure ramp lives only in the points resampled between them.
+    if (spacing && pts && pts.length === 2) return resamplePts(pts, spacing);
     if (!pts || pts.length < 3) return pts ? pts.slice() : [];
     let cur = resamplePts(interpolateSparse(pts), 2);
     if (cur.length < 3) cur = pts.slice();
