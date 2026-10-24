@@ -602,6 +602,8 @@ const EN: Record<string, string> = {
     '끄기': 'Off',
     '켜기': 'On',
     '필압': 'Pressure',
+    '음원 볼륨 — 저장되고 내보내기에도 들어갑니다': 'Music volume - saved with the project and used in the export',
+    '음원 볼륨': 'Music volume',
     '변경 실패: ': 'Change failed: ',
     '이 폴더를 지울까요? 안에 있던 프로젝트와 폴더는 한 단계 위로 옮겨집니다.': 'Remove this folder? The projects and folders in it move up one level.',
     '새 폴더 이름:': 'New folder name:',

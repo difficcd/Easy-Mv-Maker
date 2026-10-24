@@ -60,6 +60,7 @@
 - Numeric fields (speed, coordinates…) accept free input rather than being capped by the slider range
 
 **I/O**
+- Music volume on the audio track, saved with the project and carried into the export
 - Autosave, `.emv` save/open, server save; each project opened goes into a tab of its own (a blank tab is reused)
 - Server projects as nested folders with a preview of each (the frame open when it was saved); rename, and move by dragging or by cut and paste
 - Automatic server backup every 5 minutes, keeping the newest 12 — runs in the background without blocking the UI

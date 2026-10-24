@@ -480,6 +480,8 @@ The audio and video tracks, as named actions.
 | | |
 |---|---|
 | `clearAudio` | Action: forget the audio track — the file, the url, the clip range, all of it. |
+| `setAudioVolume` | Action: the music's volume, 0 to 1. Part of the project - saved, and the export hears it. Clearing the track resets it to full. |
+| `clampVolume` | A volume as stored: 0 to 1, full volume when missing or not a number. |
 | `clearMedia` | Everything gone: a new project. |
 | `clearVideo` | Action: forget the video overlay track. |
 | `clearVideoCuts` | Throw away the detected scene markers without touching the video itself. |

@@ -1,5 +1,6 @@
 import { ChevronDown, ChevronUp, Grid3x3, Pause, Play, Plus, Repeat, Square, Trash2, Eye, EyeOff, Settings, Volume2, VolumeX } from 'lucide-react';
 import { accentSoft } from '../canvas/editChrome.ts';
+import { VolumeControl } from './VolumeControl.tsx';
 import { safeArray } from '../core/geometry.ts';
 import { tr } from '../i18n.ts';
 import { PLAYBACK_RATES, RATE_DEFAULT } from '../core/playbackRate.ts';
@@ -37,7 +38,7 @@ export interface TimelineProps {
     /** useCutListUi's bundle */
     cutList: { activePartId: PartId | null; marquee: { x: number, y: number, w: number, h: number } | null; selectedCutIds: Set<DocId>; setSelectedCutIds: (f: Set<DocId> | ((p: Set<DocId>) => Set<DocId>)) => void; [k: string]: any };
     /** useAudioTrack's bundle */
-    audio: { muted: boolean; setMuted: (f: (v: boolean) => boolean) => void; handleDeleteAudio: () => void; [k: string]: any };
+    audio: { muted: boolean; setMuted: (f: (v: boolean) => boolean) => void; handleDeleteAudio: () => void; volume: number; setVolume: (v: number) => void; [k: string]: any };
     openPlaybackSettings: () => void;
     openVideoSettings: () => void;
     sceneDetect: { done: number, total: number } | null;
@@ -92,7 +93,7 @@ export function Timeline({
     const { seekToTime, goToScene, startTimelinePan, onTimelinePointerDown, zoomTimelineAt } = gestures;
     const { pps, snapLinePos, win: tlWin } = tl;
     const { activePartId, marquee, selectedCutIds, setSelectedCutIds } = cutList;
-    const { muted: audioMuted, setMuted: setAudioMuted, handleDeleteAudio } = audio;
+    const { muted: audioMuted, setMuted: setAudioMuted, handleDeleteAudio, volume: audioVolume, setVolume: setAudioVolume } = audio;
 
     return (
     <div className="timeline" style={{ height: showBottom ? timelineH : 44, flexShrink: 0 }}>
@@ -280,6 +281,8 @@ export function Timeline({
                                 onPointerDown={e => { e.stopPropagation(); cutDragMovedRef.current = false; clearTimeout(cutDragTimerRef.current); cutDragArmedRef.current = e.pointerType !== 'touch'; if (e.pointerType === 'touch') cutDragTimerRef.current = setTimeout(() => { cutDragArmedRef.current = true; }, 350); try { e.currentTarget.setPointerCapture(e.pointerId); } catch { } setDraggingCutData({ cutId: 'audio', startX: e.clientX, startY: e.clientY, initialStart: audioData.startTime, initialTrack: 0 }); }}>
                                 <div className="rh rh-left" style={{ touchAction: 'none' }} onPointerDown={e => { e.stopPropagation(); try { (e.target as HTMLElement).setPointerCapture(e.pointerId); } catch { } setResizingData({ cutId: 'audio', edge: 'left', startX: e.clientX, initialStart: audioData.startTime, initialEnd: audioData.endTime, initialOffset: audioData.offset }); }} />
                                 <span>Audio</span>
+                                {/* On the clip, not the header: the header is 60px by one track row, already full. */}
+                                <VolumeControl volume={audioVolume} setVolume={setAudioVolume} />
                                 <div className="rh rh-right" style={{ touchAction: 'none' }} onPointerDown={e => { e.stopPropagation(); try { (e.target as HTMLElement).setPointerCapture(e.pointerId); } catch { } setResizingData({ cutId: 'audio', edge: 'right', startX: e.clientX, initialStart: audioData.startTime, initialEnd: audioData.endTime, initialOffset: audioData.offset }); }} />
                             </div>
                         </div>

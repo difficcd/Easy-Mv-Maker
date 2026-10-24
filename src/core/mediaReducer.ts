@@ -24,6 +24,8 @@ export interface MediaState {
     audioUrl: string | null;
     audioDuration: number;
     audioData: AudioClip | null;
+    /** the music's volume, 0 to 1 - part of the project, so saved and exported */
+    audioVolume: number;
     videoOverlay: VideoOverlay | null;
 }
 /** Every action the reducer takes; the creators below build them. */
@@ -32,6 +34,7 @@ export type MediaAction =
     | { type: 'setAudioDuration', duration: number }
     | { type: 'setAudioClip', clip: AudioClip | null }
     | { type: 'clearAudio' }
+    | { type: 'setAudioVolume', volume: number }
     | { type: 'loadVideo', overlay: VideoOverlay }
     | { type: 'clearVideo' }
     | { type: 'setVideoCuts', cuts: number[], cutStart?: number, cutOffset?: number }
@@ -48,6 +51,7 @@ export const EMPTY_MEDIA: MediaState = {
     audioUrl: null,       // object URL or data URL being played
     audioDuration: 30,    // length of the source, from the audio element
     audioData: null,      // { startTime, endTime, offset } — where the clip sits on the timeline
+    audioVolume: 1,       // full volume until the user turns it down
     videoOverlay: null,   // { name, startTime, endTime, offset, duration, w, h, cuts?, ... }
 };
 
@@ -60,6 +64,11 @@ export const setAudioDuration = (duration: number) => ({ type: 'setAudioDuration
 /** Where the clip sits on the timeline, and which part of the source it plays. */
 export const setAudioClip = (clip: AudioClip | null) => ({ type: 'setAudioClip', clip }) as const;
 export const clearAudio = () => ({ type: 'clearAudio' }) as const;
+/** Set the music's volume; anything outside 0-1, or not a number, is brought into range. */
+export const setAudioVolume = (volume: number) => ({ type: 'setAudioVolume', volume }) as const;
+
+/** A volume as stored: 0 to 1, full volume when there is none or it is not a number. */
+export const clampVolume = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 1);
 
 export const loadVideo = (overlay: VideoOverlay) => ({ type: 'loadVideo', overlay }) as const;
 export const clearVideo = () => ({ type: 'clearVideo' }) as const;
@@ -104,7 +113,9 @@ export function mediaReducer(state: MediaState | null | undefined, action: Media
         case 'clearAudio':
             // Duration is left as it is: it belongs to the source that has gone, and resetting it
             // would shrink the timeline under the user mid-edit.
-            return { ...s, audioFile: null, audioUrl: null, audioData: null };
+            return { ...s, audioFile: null, audioUrl: null, audioData: null, audioVolume: 1 };
+        case 'setAudioVolume':
+            return { ...s, audioVolume: clampVolume(action.volume) };
 
         case 'loadVideo':
             return { ...s, videoOverlay: action.overlay };
