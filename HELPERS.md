@@ -1004,8 +1004,10 @@ Strokes become pixels here: smoothing a hand path, the boiling line, and every b
 | `STROKE_RENDER_V2` | The renderer version new strokes record as `v`. Version 2 draws from 1px points and applies the pen's opacity once; strokes without `v` are drawn exactly as before, so a drawing never changes under its author. |
 | `isV2` | Whether a stroke was drawn with renderer v2 - its `v`, or the dot pen's earlier `curved` flag. |
 | `STROKE_RENDER_V3` | Renderer version 3: the pen drawn as one filled outline rather than a stroke() per pixel of length - one call whatever the length, and the opacity applied once. |
+| `STROKE_RENDER_V4` | Renderer version 4: a pencil whose darkness varies with pressure filled as runs of equal darkness that meet edge to edge, instead of stroked per pixel with stacking caps - 40ms to 7ms at 200 samples, and a light touch draws light. |
 | `STROKE_RENDER` | The renderer version new strokes record (currently 3). |
 | `fillOutline` | Fill a variable-width line as its outline - the centre line offset by half its width along the local normal, half-circle caps at each end - with the nonzero rule, so a turn tighter than the width folds over itself instead of leaving a hole. |
+| `fillOutlineRange` | The stretch of a line's outline between two points, rounded only at the line's own ends; normals come from the whole line, so ranges sharing a point meet edge to edge. |
 | `dotPath` | The path a dot-pen stroke stamps along: its fast, sparse stretches interpolated as curves (centripetal, through every sample), dense pixel work left exactly as drawn. Only for strokes marked `curved` - older dot strokes keep their straight chords. |
 | `dotPathRange` | The interpolated path over a range of a stroke's spans, each span's neighbours taken from the whole stroke - so the live preview can draw a curved stroke in pieces that join into exactly `dotPath` of the whole, to the pixel. |
 | `drawStrokesOnCtx` | Draw a list of strokes onto a context: the one place that knows what each tool looks like. Clears first unless told not to, and takes the boiling options so a roughened layer draws its own phase. |

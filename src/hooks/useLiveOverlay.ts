@@ -19,11 +19,13 @@
 
 import { useCallback, useRef } from 'react';
 import type { BitmapLookup } from '../canvas/strokes.ts';
-import { dotPathRange, isV2, STROKE_RENDER_V3 } from '../canvas/strokes.ts';
+import { dotPathRange, isV2, STROKE_RENDER_V3, STROKE_RENDER_V4 } from '../canvas/strokes.ts';
 import { lightenStroke } from '../core/simplifyStroke.ts';
 
 /** Samples up to which a marker stroke's preview is redrawn whole each frame. */
 const MARKER_REDRAW_MAX = 1200;
+/** The same for the pencil: 7ms at 200 samples, 16ms at 600, 23ms at 1,200 (renderer v4). */
+const PENCIL_REDRAW_MAX = 800;
 
 
 /**
@@ -95,9 +97,13 @@ export function useLiveOverlay({ strokeRef, bitmapStoreRef, drawStrokes }: { str
         // v2 still stroked every pixel of length separately; v3 is one fill.
         // The marker too since its v3 outline: one stroke costs 3.5ms at 200 samples and 11ms at 1,200,
         // but its multiply composite grows with the stroke's box (35ms at 2,400), so past
-        // MARKER_REDRAW_MAX it goes back to the tail. The pencil still strokes per segment wherever
-        // its darkness varies with pressure and keeps the tail.
-        if ((st.v ?? 1) >= STROKE_RENDER_V3 && (st.tool === 'brush' || (st.tool === 'marker' && n <= MARKER_REDRAW_MAX))) {
+        // MARKER_REDRAW_MAX it goes back to the tail.
+        // The pencil since v4, which fills its pressure as a few outlines: drawn as a tail, its
+        // pieces overlapped at the seams and filled in the grain, so the texture only appeared
+        // once the pen lifted. Whole, the grain is there as it is drawn.
+        const v = st.v ?? 1;
+        if ((v >= STROKE_RENDER_V3 && (st.tool === 'brush' || (st.tool === 'marker' && n <= MARKER_REDRAW_MAX)))
+            || (v >= STROKE_RENDER_V4 && st.tool === 'pencil' && n <= PENCIL_REDRAW_MAX)) {
             clear();
             drawStrokes(c, [lightenStroke(st)], false, bitmapStoreRef.current);
             drawnRef.current = n;
