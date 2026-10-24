@@ -21,7 +21,8 @@
 // but that the cut was the narrowest.
 
 import { useState, useRef, useEffect } from 'react';
-import { apiFetch, putAsset } from '../core/api.ts';
+import { apiFetch, putAsset, fetchAsset } from '../core/api.ts';
+import { renderDocPreview } from '../canvas/docPreview.ts';
 import { readStored, writeStored } from '../core/persist.ts';
 import { randomId } from '../core/ids.ts';
 import { safeArray } from '../core/geometry.ts';
@@ -78,6 +79,11 @@ export function useServerStorage({
     const [serverFolders, setServerFolders] = useState<string[]>([]);
     // The folder open in the browser, which is where "save as new" puts a project.
     const browseFolderRef = useRef('');
+    // Whether the browser is open, read by the preview filler between projects so it stops when
+    // the browser closes; and whether a filler is already running.
+    const browserOpenRef = useRef(false);
+    browserOpenRef.current = serverProjects !== null;
+    const fillingRef = useRef(false);
     const [backupAt, setBackupAt] = useState<number | null>(null);
     const [backupBusy, setBackupBusy] = useState(false);
     const [backupList, setBackupList] = useState<any[] | null>(null);        // null = list closed
@@ -146,8 +152,30 @@ export function useServerStorage({
         try {
             const [projects, folders] = await Promise.all([apiFetch('/api/projects'), apiFetch('/api/folders')]);
             setServerProjects(projects); setServerFolders(folders);
+            browserOpenRef.current = true;
+            fillMissingPreviews(projects);
         }
         catch (e: any) { setAppError(tr('서버 목록을 불러오지 못했습니다: ') + e.message + '\n' + tr('(API 서버 실행 확인: npm run dev)')); }
+    };
+
+    // Projects saved before previews existed get one from their first page (canvas/docPreview),
+    // drawn here in the background one project at a time and stored, so it is done once. Each
+    // card shows its preview as it arrives. A project that fails is skipped and tried again the
+    // next time the browser opens.
+    const fillMissingPreviews = async (projects: ServerProject[]) => {
+        if (fillingRef.current) return;
+        fillingRef.current = true;
+        try {
+            for (const p of projects.filter(q => !q.thumb)) {
+                if (!browserOpenRef.current) break;
+                try {
+                    const blob = await renderDocPreview(await apiFetch(`/api/projects/${p.id}`), `/api/projects/${p.id}`, fetchAsset);
+                    if (!blob) continue;
+                    await apiFetch(`/api/projects/${p.id}/thumb`, { method: 'PUT', headers: { 'Content-Type': blob.type || 'image/webp' }, body: blob });
+                    setServerProjects(list => list && list.map(q => (q.id === p.id ? { ...q, thumb: true } : q)));
+                } catch (e) { console.warn('[preview]', p.id, e); }
+            }
+        } finally { fillingRef.current = false; }
     };
 
     /** Run one change to the server's projects or folders, then show the list as it now is. */

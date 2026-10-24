@@ -199,6 +199,7 @@ frame is made of, and `SceneDeps` what the renderer needs from the app.
   and decides nothing. Also the video reference, the onion skin and the scene's texts.
 - `layerBake.ts` — `bakeLayer`: a layer's strokes into its cache canvas, drawing only the new strokes
   when the layer has just grown. Both cache paths in `hooks/useLayerCache` call it.
+- `docPreview.ts` — `renderDocPreview`: a first-page preview for a saved project that has none.
 - `thumbnail.ts` — `renderThumbnail`: the frame open at save time, small, for the server browser.
 - `layerComposite.ts` — one layer onto the frame, with its clip group and opacity.
 - `bitmapStore.ts` — the pixels behind fill / lasso / paste strokes: store, decode, clone, trim.

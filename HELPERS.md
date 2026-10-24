@@ -179,6 +179,16 @@ What the server project browser shows for a folder. Folder paths as the server s
 | `inFolder` | Whether a path is a folder or anywhere beneath it. |
 | `canMoveFolder` | Whether a folder may move into a target: not into itself, beneath itself, or where it already is. |
 
+## `src/canvas/docPreview.ts`
+
+A preview for a saved project that has none, drawn from the document without opening it.
+
+| | |
+|---|---|
+| `renderDocPreview` | The first cut's visible layers, each on its own canvas, with only the pictures it uses loaded from the server. No texts, effects or animation. |
+| `firstCut` | The cut that starts earliest, the lowest track winning a tie. |
+| `picturesFor` | A document's assets and embedded bitmaps cut down to the ids given; numeric and string ids match. |
+
 ## `src/canvas/thumbnail.ts`
 
 A project's preview for the server browser.
