@@ -116,8 +116,22 @@ export const isV2 = (s: { v?: number, curved?: boolean }): boolean => (s.v ?? 1)
  */
 export const STROKE_RENDER_V3 = 3;
 
+/**
+ * Version 4: a pencil whose darkness varies with pressure is filled as a few outlines, one per
+ * run of equal darkness, instead of stroked a pixel of length at a time. Stroking it segment by
+ * segment cost 40ms for a 200-sample stroke and 840ms at 2,400, paid at every commit, and was
+ * why the pencil's preview drew only the newest tail - whose pieces overlapped at the seams and
+ * filled in the grain until the pen lifted. The overlapping round caps also stacked the darkness,
+ * so a light touch drew nearly as dark as a firm one; the runs draw the darkness asked for. That
+ * changes how a light pencil line looks, so it is a version of its own.
+ */
+export const STROKE_RENDER_V4 = 4;
+
 /** The renderer version new strokes record. */
-export const STROKE_RENDER = STROKE_RENDER_V3;
+export const STROKE_RENDER = STROKE_RENDER_V4;
+
+/** How finely a v4 pencil's darkness is stepped: runs differ by 1/48 of the range at most. */
+const DARKNESS_STEPS = 48;
 
 /**
  * Fill a variable-width line as its outline: the points offset by half their width either side,
@@ -133,8 +147,18 @@ export const STROKE_RENDER = STROKE_RENDER_V3;
  * @param {number[]} widths the full width at each point
  */
 export function fillOutline(ctx: CanvasRenderingContext2D, pts: readonly Point[], widths: readonly number[]): void {
+    fillOutlineRange(ctx, pts, widths, 0, pts.length - 1);
+}
+
+/**
+ * Fill the stretch of a line's outline from point `from` to `to`, rounded only at the line's own
+ * ends. Two ranges that share a point meet edge to edge, on the same offset points - the normals
+ * come from the whole line - so a line can be filled in pieces with no overlap to stack up and no
+ * gap between them.
+ */
+export function fillOutlineRange(ctx: CanvasRenderingContext2D, pts: readonly Point[], widths: readonly number[], from: number, to: number): void {
     const n = pts.length;
-    if (!n) return;
+    if (!n || to < from) return;
     const half = (i: number) => Math.max(0.3, widths[i] / 2);
     if (n === 1) { ctx.beginPath(); ctx.arc(pts[0].x, pts[0].y, half(0), 0, Math.PI * 2); ctx.fill(); return; }
     const dirAt = (i: number) => {
@@ -142,22 +166,27 @@ export function fillOutline(ctx: CanvasRenderingContext2D, pts: readonly Point[]
         const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1;
         return [dx / len, dy / len];
     };
+    const m = to - from + 1;
     const left: number[] = [], right: number[] = [];
-    for (let i = 0; i < n; i++) {
+    for (let i = from; i <= to; i++) {
         const [tx, ty] = dirAt(i), r = half(i);
         left.push(pts[i].x - ty * r, pts[i].y + tx * r);
         right.push(pts[i].x + ty * r, pts[i].y - tx * r);
     }
-    const [sx, sy] = dirAt(0), [ex, ey] = dirAt(n - 1);
-    const t0 = Math.atan2(sy, sx), t1 = Math.atan2(ey, ex);
     ctx.beginPath();
     ctx.moveTo(left[0], left[1]);
-    for (let i = 1; i < n; i++) ctx.lineTo(left[2 * i], left[2 * i + 1]);
-    // Round the far end: from the left edge, through the direction of travel, to the right edge.
-    ctx.arc(pts[n - 1].x, pts[n - 1].y, half(n - 1), t1 + Math.PI / 2, t1 - Math.PI / 2, true);
-    for (let i = n - 1; i >= 0; i--) ctx.lineTo(right[2 * i], right[2 * i + 1]);
-    // And the near end, through the direction it came from.
-    ctx.arc(pts[0].x, pts[0].y, half(0), t0 - Math.PI / 2, t0 + Math.PI / 2, true);
+    for (let k = 1; k < m; k++) ctx.lineTo(left[2 * k], left[2 * k + 1]);
+    if (to === n - 1) {
+        // Round the far end: from the left edge, through the direction of travel, to the right edge.
+        const [ex, ey] = dirAt(n - 1), t1 = Math.atan2(ey, ex);
+        ctx.arc(pts[n - 1].x, pts[n - 1].y, half(n - 1), t1 + Math.PI / 2, t1 - Math.PI / 2, true);
+    } else ctx.lineTo(right[2 * (m - 1)], right[2 * (m - 1) + 1]);
+    for (let k = m - 1; k >= 0; k--) ctx.lineTo(right[2 * k], right[2 * k + 1]);
+    if (from === 0) {
+        // And the near end, through the direction it came from.
+        const [sx, sy] = dirAt(0), t0 = Math.atan2(sy, sx);
+        ctx.arc(pts[0].x, pts[0].y, half(0), t0 - Math.PI / 2, t0 + Math.PI / 2, true);
+    }
     ctx.closePath();
     ctx.fill('nonzero');
 }
@@ -664,6 +693,19 @@ export function drawStrokesOnCtx(ctx: CanvasRenderingContext2D, strokes: readonl
             let even = (s.v ?? 1) >= STROKE_RENDER_V3;
             for (let i = 1; even && i < pp.length; i++) if (alphaAt(i) !== alphaAt(0)) even = false;
             if (even) { tctx.globalAlpha = alphaAt(0); fillOutline(tctx, pp, pw); }
+            else if ((s.v ?? 1) >= STROKE_RENDER_V4) {
+                // One fill per run of equal darkness (STROKE_RENDER_V4), stepped finely enough that
+                // the steps do not show, the runs meeting edge to edge.
+                const step = (i: number) => Math.round((alphaAt(i) - 0.5) * 2 * DARKNESS_STEPS);
+                for (let a = 0; a < pp.length;) {
+                    const lv = step(a);
+                    let b = a;
+                    while (b + 1 < pp.length && step(b + 1) === lv) b++;
+                    tctx.globalAlpha = 0.5 + lv / (2 * DARKNESS_STEPS);
+                    fillOutlineRange(tctx, pp, pw, a, Math.min(pp.length - 1, b + 1));
+                    a = b + 1;
+                }
+            }
             else smoothStroke(tctx, pp, pw, (i) => { tctx.globalAlpha = alphaAt(i); });
             tctx.globalAlpha = 1; tctx.globalCompositeOperation = 'destination-in';
             const pat = tctx.createPattern(grainTile(), 'repeat');

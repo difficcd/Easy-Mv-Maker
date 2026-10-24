@@ -408,3 +408,32 @@ for (const tool of ['brush', 'pencil', 'marker']) {
         assert.ok(heavy > light + 4, `${tool}: ${light}px at the light end, ${heavy}px at the heavy end`);
     });
 }
+
+// --- pencil darkness (renderer v4, 2026-10-24) -------------------------------------------------------
+//
+// A pencil whose darkness varies with pressure was stroked a pixel of length at a time, every piece
+// with round caps at its own alpha. The caps overlapped and stacked, so a light touch came out
+// almost as dark as a firm one - and it cost 40ms for a 200-sample stroke. v4 fills it as runs of
+// equal darkness that meet edge to edge.
+
+/** Mean alpha of the inked pixels in a column band. */
+const meanInk = (c, x0, x1) => {
+    const d = c.getContext('2d').getImageData(x0, 0, x1 - x0, H).data; let sum = 0, n = 0;
+    for (let i = 3; i < d.length; i += 4) if (d[i] > 0) { sum += d[i]; n++; }
+    return n ? sum / n : 0;
+};
+const lightToFirm = Array.from({ length: 61 }, (_, i) => ({ x: 20 + i * 2.7, y: 60 + Math.sin(i / 9) * 6, pressure: 0.05 + 0.45 * i / 60 }));
+
+test('a v4 pencil draws a light touch lighter than a firm one', () => {
+    const { c, ctx } = fresh();
+    drawStrokesOnCtx(ctx, [lightenStroke(stroke({ tool: 'pencil', size: 10, pen: true, v: 4, points: lightToFirm }))], false, new Map());
+    const light = meanInk(c, 25, 60), firm = meanInk(c, 140, 175);
+    assert.ok(firm > light + 40, `light end ${light.toFixed(0)}, firm end ${firm.toFixed(0)}`);
+});
+
+test('a pencil stroke drawn before v4 keeps its look', () => {
+    const { c, ctx } = fresh();
+    drawStrokesOnCtx(ctx, [lightenStroke(stroke({ tool: 'pencil', size: 10, pen: true, v: 3, points: lightToFirm }))], false, new Map());
+    const light = meanInk(c, 25, 60), firm = meanInk(c, 140, 175);
+    assert.ok(Math.abs(firm - light) < 40, `light end ${light.toFixed(0)}, firm end ${firm.toFixed(0)}: the stacked caps`);
+});

@@ -227,3 +227,28 @@ even all the way - a mouse, or a pen pressed at least halfway - and a stroke wit
 drawn exactly as v2 draws it (byte-identical, tested). That leaves the slow case slow: a tablet
 pencil stroke, 34ms at 200 samples, still ghosting in the preview (5,991px). Fixing it needs the
 darkness drawn as a separate map and applied as alpha, not another fill - a design of its own.
+
+## 2026-10-24: pencil renderer v4
+
+The owner: the pencil's grain appears only after the stroke is drawn, and pressure makes it slow.
+
+Both had one cause. Wherever its darkness varied with pressure (any pen stroke lighter than half
+pressure), the pencil was stroked a pixel of length at a time, each piece at its own alpha with
+round caps. That was the cost, and it was why the live preview drew only the newest tail - whose
+pieces overlapped at the seams and filled the grain in until the pen lifted. The stacked caps also
+made a light touch nearly as dark as a firm one.
+
+v4 fills the stroke as runs of equal darkness (48 steps over the range), meeting edge to edge
+(`fillOutlineRange`), and the preview redraws the whole stroke each frame up to 800 samples.
+
+`scripts/stroke-cost.mjs`, pressure 0.5 ± 0.3, full redraw per frame:
+
+| samples | v3 pencil | v4 pencil | pen (for scale) |
+|---|---|---|---|
+| 200 | 39.7 ms | 7.3 ms | 5.4 ms |
+| 600 | 131.0 ms | 16.0 ms | 9.3 ms |
+| 1,200 | 248.6 ms | 23.3 ms | 17.0 ms |
+| 2,400 | 838.6 ms | 43.3 ms | 36.2 ms |
+
+`scripts/live-ghost-check.mjs`: pencil overlay ink not in the committed stroke, 5,999 px -> 0.
+New strokes only; a pencil stroke drawn before keeps its look.
