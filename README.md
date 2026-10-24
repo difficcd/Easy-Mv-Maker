@@ -60,7 +60,7 @@
 - Numeric fields (speed, coordinates…) accept free input rather than being capped by the slider range
 
 **I/O**
-- Autosave, `.emv` save/open, server save
+- Autosave, `.emv` save/open, server save; each project opened goes into a tab of its own (a blank tab is reused)
 - Server projects as nested folders with a preview of each (the frame open when it was saved); rename, and move by dragging or by cut and paste
 - Automatic server backup every 5 minutes, keeping the newest 12 — runs in the background without blocking the UI
 - Video import from a local file or URL: frame extraction, scene-change detection, audio track (with a mute that lifts itself for the export)

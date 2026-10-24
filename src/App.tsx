@@ -993,11 +993,11 @@ export default function App() {
         doSave, doOpen, doNew, readAndRestore, doSplitSave,
         localProjects, setLocalProjects, localIdRef,
         doLocalSave, openLocalList, doLocalOpen, doLocalDelete,
-        tabs, activeTabId, switchTab, newTab, closeTab, renameTab,
+        tabs, activeTabId, switchTab, newTab, closeTab, renameTab, openInTab,
         storageInfo, didRecoverRef,
     } = useLocalDocuments({
         buildData, restore, resetToEmpty,
-        setAppError: notices.setError, setToast: notices.setToast, setLoadProgress: notices.setProgress, ask, fileHandleRef, localNameRef,
+        setAppError: notices.setError, setToast: notices.setToast, setLoadProgress: notices.setProgress, ask, fileHandleRef, localNameRef, serverIdRef, serverNameRef,
     });
 
     // Debounced autosave to IndexedDB, so a refresh or a crash never costs work. It waits for
@@ -2104,7 +2104,7 @@ export default function App() {
                     rebinding={dialogs.rebinding} setRebinding={dialogs.setRebinding} />
             )}
             {serverProjects !== null && <ServerBrowser projects={serverProjects} folders={serverFolders} ask={ask}
-                onOpen={doServerOpen} onDelete={doServerDelete} onRename={renameServerProject} onMove={moveServerProject}
+                onOpen={(id, name) => doServerOpen(id, name, openInTab)} onDelete={doServerDelete} onRename={renameServerProject} onMove={moveServerProject}
                 onCreateFolder={createServerFolder} onMoveFolder={moveServerFolder} onDeleteFolder={deleteServerFolder}
                 onBrowse={setBrowseFolder} onClose={() => setServerProjects(null)} />}
             {localProjects !== null && <ProjectPicker title={tr('로컬에서 열기')} items={localProjects} onOpen={doLocalOpen} onDelete={doLocalDelete} onClose={() => setLocalProjects(null)} />}

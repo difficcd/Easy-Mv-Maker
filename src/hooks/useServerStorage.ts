@@ -198,15 +198,20 @@ export function useServerStorage({
     };
     const setBrowseFolder = (folder: string) => { browseFolderRef.current = folder; };
 
-    const doServerOpen = async (id: string, name?: string) => {
+    /**
+     * Open a server project. `inTab` puts it in a tab of its own (useLocalDocuments.openInTab);
+     * App passes it, since that hook is made after this one.
+     */
+    const doServerOpen = async (id: string, name?: string, inTab?: (name: string | undefined, open: () => Promise<boolean>) => Promise<boolean>) => {
         try {
             const data = await apiFetch(`/api/projects/${id}`);
+            setServerProjects(null);
+            // Named in the overlay: it covers the screen, and which project is landing matters.
+            const open = () => restore(data, `/api/projects/${id}`, name ? `${tr('프로젝트 여는 중')} — ${name}` : undefined);
             // Only claim the identity if the document actually went in - otherwise the next save
             // would write this project's id over whatever is really on screen.
-            // Named in the overlay: it covers the screen, and which project is landing matters.
-            if (!await restore(data, `/api/projects/${id}`, name ? `${tr('프로젝트 여는 중')} — ${name}` : undefined)) return;
+            if (!await (inTab ? inTab(name, open) : open())) return;
             serverIdRef.current = id; serverNameRef.current = name || '';
-            setServerProjects(null);
         } catch (e: any) { setAppError(tr('서버에서 열기 실패: ') + e.message); }
     };
 

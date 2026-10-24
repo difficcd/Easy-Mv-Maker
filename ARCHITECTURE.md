@@ -97,6 +97,8 @@ index signature, so a misspelt one is an error. Ids there are `DocId` - a number
 - `catmullRom.ts` — the spline behind the curve ruler; passes through every anchor. Also
   `centripetalSpan`, which the stroke smoothing uses for the fast, sparse stretches of a freehand
   line - the centripetal form, because the uniform one loops where spacing is uneven.
+- `docTabs.ts` — what a tab remembers about where its document saves, and when a tab is blank enough
+  to be reused by opening a project.
 - `pressureInput.ts` — whether a stroke came in with pressure; a pen tablet with Windows Ink off reaches
   the browser as a mouse and sends none, and the tools panel says so (`missingPressure`).
 - `serverFolders.ts` — what the server browser shows for a folder: subfolders, projects, the trail
