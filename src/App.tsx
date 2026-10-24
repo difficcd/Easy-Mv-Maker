@@ -966,9 +966,10 @@ export default function App() {
         serverAvailable, buildData, restore,
         setLoadProgress: notices.setProgress, setAppError: notices.setError, setToast: notices.setToast, ask,
         liveRef, localNameRef,
-        // The preview is the frame open at the moment of saving, as it will come out (no onion
-        // skin or handles: painted as playback paints it).
-        makeThumb: () => renderThumbnail(ctx => paintOnto(ctx, currentTimeRef.current, true, FRAME_W, FRAME_H), FRAME_W, FRAME_H),
+        // The preview is the page open at the moment of saving. Painted as the editor paints a
+        // still, not as playback does: playback shows whatever cut is under the playhead, and the
+        // cut being edited is often somewhere else. The onion skin is left out.
+        makeThumb: () => renderThumbnail(ctx => paintOnto(ctx, currentTimeRef.current, false, FRAME_W, FRAME_H, true), FRAME_W, FRAME_H),
     });
 
     const resetToEmpty = () => {
@@ -1706,10 +1707,10 @@ export default function App() {
      * travels onto - and the file has to be the frame's. The scratch is shared, which is safe
      * because nothing paints two surfaces at once.
      */
-    const paintOnto = useCallback((ctx: CanvasRenderingContext2D, t: number, playing: boolean, fw: number, fh: number) => {
+    const paintOnto = useCallback((ctx: CanvasRenderingContext2D, t: number, playing: boolean, fw: number, fh: number, noOnion = false) => {
         paintFrameOnto(ctx, {
             t, playing, cw: CANVAS_W, ch: CANVAS_H, fw, fh, cuts, currentCutId, currentCut, transparentBg, selection,
-            onionPrev, onionNext, videoOverlay, videoEl: vid.elRef.current,
+            onionPrev: onionPrev && !noOnion, onionNext: onionNext && !noOnion, videoOverlay, videoEl: vid.elRef.current,
             bitmapStore: bitmapStoreRef.current, requestFrameDecode, ensureLayerCanvas, flattenClipGroup, hiddenByGesture,
             boilPhaseRef, boilTick, measureTextBox, scratch: frameScratch.current,
         });
