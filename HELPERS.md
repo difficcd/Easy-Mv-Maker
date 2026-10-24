@@ -155,6 +155,16 @@ The spline behind the curve ruler, and the one that fills in the fast stretches 
 | `centripetalSpan` | One span of a centripetal Catmull-Rom spline, for unevenly spaced points - a hand slowing and speeding up. The uniform form loops where a short span meets a long one (a 4.5px hook past the point of a V); this does not, and on even spacing it is the same curve. Reflects a missing end neighbour instead of dividing by a zero-length knot. Used by the stroke smoothing for every span over 4px. |
 | `catmullThrough` | A Catmull-Rom spline through every anchor, not near it — which is why it is this and not a Bezier, since the user taps where the line should go. Carries pressure through, clamps the end neighbours so the line does not hook at each end, and returns fewer than three points unchanged. |
 
+## `src/core/docTabs.ts`
+
+The document tabs' rules that need no React. Each tab keeps a `DocIdentity` - where its document saves to (file, browser record, server project) - so a save in one tab cannot write over another tab's project.
+
+| | |
+|---|---|
+| `BLANK_IDENTITY` | A document that saves nowhere: a new tab. |
+| `hasIdentity` | Whether a document saves anywhere. |
+| `isBlankDocument` | One cut, nothing drawn, no text, audio or video - a tab that opening a project reuses instead of adding another. |
+
 ## `src/core/pressureInput.ts`
 
 Whether a stroke came in with pressure - a tablet the browser sees as a mouse sends none.

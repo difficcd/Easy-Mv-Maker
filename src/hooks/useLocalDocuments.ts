@@ -26,6 +26,7 @@ import { randomId, nextId } from '../core/ids.ts';
 import { safeArray } from '../core/geometry.ts';
 import { tr } from '../i18n.ts';
 import type { Ask } from './useAsk.ts';
+import { BLANK_IDENTITY, hasIdentity, isBlankDocument, type DocIdentity } from '../core/docTabs.ts';
 /** What the local side needs from the app: how to build and restore a document, how to empty it, and where to report. */
 export interface LocalDocumentDeps {
     buildData: (includeAudio?: boolean, assetSink?: any[] | null, blobsOk?: boolean) => Promise<any>;
@@ -40,6 +41,9 @@ export interface LocalDocumentDeps {
     fileHandleRef: { current: any };
     /** owned by App, because the server backup falls back on it */
     localNameRef: { current: string };
+    /** the server project this document saves to - useServerStorage's; kept per tab here */
+    serverIdRef: { current: string | null };
+    serverNameRef: { current: string };
 }
 /** One open document in the tab strip. */
 export interface Tab { id: string; name: string }
@@ -61,7 +65,7 @@ const QUOTA_POLL_MS = 60000;
  * @param {{current: string}} opts.localNameRef owned by App, because the server backup falls back
  *   to it for a name and that hook is created first
  */
-export function useLocalDocuments({ buildData, restore, resetToEmpty, setAppError, setToast, ask, setLoadProgress, fileHandleRef, localNameRef }: LocalDocumentDeps) {
+export function useLocalDocuments({ buildData, restore, resetToEmpty, setAppError, setToast, ask, setLoadProgress, fileHandleRef, localNameRef, serverIdRef, serverNameRef }: LocalDocumentDeps) {
     const [localProjects, setLocalProjects] = useState<any[] | null>(null); // null = picker closed
     const localIdRef = useRef<string | null>(null);
     const [storageInfo, setStorageInfo] = useState<{ usage: number, quota: number, pct: number } | null>(null);
@@ -138,14 +142,14 @@ export function useLocalDocuments({ buildData, restore, resetToEmpty, setAppErro
                 // Only after the file is actually open. Set first, the handle pointed at a file
                 // that had not been loaded - and the next save would write whatever is on screen
                 // over it.
-                if (await readAndRestore(async () => (await h.getFile()).text(), h.name)) fileHandleRef.current = h;
+                if (await openInTab(h.name, () => readAndRestore(async () => (await h.getFile()).text(), h.name))) fileHandleRef.current = h;
                 return;
             } catch (e: any) { if (e.name === 'AbortError') return; }
         }
         const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.emv';
         inp.onchange = e => {
             const f = (e.target as HTMLInputElement).files?.[0]; if (!f) return;
-            readAndRestore(() => new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = ev => res(ev.target!.result as string); r.onerror = rej; r.readAsText(f); }), f.name);
+            openInTab(f.name, () => readAndRestore(() => new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = ev => res(ev.target!.result as string); r.onerror = rej; r.readAsText(f); }), f.name));
         };
         inp.click();
     };
@@ -225,8 +229,9 @@ export function useLocalDocuments({ buildData, restore, resetToEmpty, setAppErro
             const data = await loadProject(id);
             if (!data) { setAppError(tr('데이터가 없습니다.')); return; }
             // As in doServerOpen: the identity is only ours once the document is actually in.
-            if (!await restore(data, null, openingLabel(name))) return;
-            localIdRef.current = id; localNameRef.current = name || ''; setLocalProjects(null);
+            setLocalProjects(null);
+            if (!await openInTab(name, () => restore(data, null, openingLabel(name)))) return;
+            localIdRef.current = id; localNameRef.current = name || '';
         }
         catch (e: any) { setAppError(tr('로컬 열기 실패: ') + e.message); }
     };
@@ -240,10 +245,65 @@ export function useLocalDocuments({ buildData, restore, resetToEmpty, setAppErro
     // --- Tabs (multiple projects open at once, Clip Studio / SAI style) -----------------------
     // Each tab keeps a full in-memory document snapshot (buildData with Blobs, so no base64 cost).
     // Switching = snapshot the current tab, then restore the target's snapshot.
+    // Where each tab's document saves to (core/docTabs). Taken when a tab is left and put back
+    // when it is entered, so a save in one tab never writes over another tab's project.
+    const tabIdentityRef = useRef<Record<string, DocIdentity>>({});
+    const currentIdentity = (): DocIdentity => ({
+        fileHandle: fileHandleRef.current, localId: localIdRef.current, localName: localNameRef.current,
+        serverId: serverIdRef.current, serverName: serverNameRef.current,
+    });
+    const applyIdentity = (id: DocIdentity | undefined) => {
+        const i = id || BLANK_IDENTITY;
+        fileHandleRef.current = i.fileHandle; localIdRef.current = i.localId; localNameRef.current = i.localName;
+        serverIdRef.current = i.serverId; serverNameRef.current = i.serverName;
+    };
+
     const snapshotActiveTab = async () => {
         // A failure here is not cosmetic: the snapshot is the only copy of this tab's work once we
         // switch away from it, so the caller must not switch.
-        tabDocsRef.current[activeTabId] = await buildData(true, null, true);
+        const doc = await buildData(true, null, true);
+        tabDocsRef.current[activeTabId] = doc;
+        tabIdentityRef.current[activeTabId] = currentIdentity();
+        return doc;
+    };
+
+    /**
+     * Open a project in a tab of its own. `open` puts the document on screen and says whether it
+     * went in; the caller records where it saves to afterwards, as before.
+     *
+     * A blank tab that saves nowhere is used as it is, the way a drawing app reuses its untitled
+     * canvas. Otherwise the current tab is kept as it is and a new one opened; if the document
+     * does not go in, the new tab is closed and the one that was open comes back.
+     */
+    const openInTab = async (name: string | undefined, open: () => Promise<boolean>): Promise<boolean> => {
+        if (tabBusyRef.current) return false;
+        tabBusyRef.current = true;
+        try {
+            const prevId = activeTabId;
+            let prevDoc: any;
+            try { prevDoc = await snapshotActiveTab(); }
+            catch (e: any) { setAppError(tr('현재 탭을 저장할 수 없어 새 탭을 열지 않았습니다: ') + (e?.message || String(e))); return false; }
+            const label = name || tr('프로젝트');
+            if (isBlankDocument(prevDoc) && !hasIdentity(tabIdentityRef.current[prevId])) {
+                applyIdentity(BLANK_IDENTITY);
+                const ok = await open();
+                if (ok) setTabs(p => p.map(t => (t.id === prevId ? { ...t, name: label } : t)));
+                return ok;
+            }
+            const id = 't' + nextId().toString(36);
+            setTabs(p => [...p, { id, name: label }]);
+            tabDocsRef.current[id] = null;
+            setActiveTabId(id);
+            applyIdentity(BLANK_IDENTITY);
+            if (await open()) return true;
+            // It did not go in: back to the tab that was open, as it was.
+            setTabs(p => p.filter(t => t.id !== id));
+            delete tabDocsRef.current[id];
+            setActiveTabId(prevId);
+            await restore(prevDoc, null, openingLabel(tabs.find(t => t.id === prevId)?.name));
+            applyIdentity(tabIdentityRef.current[prevId]);
+            return false;
+        } finally { tabBusyRef.current = false; }
     };
 
     const switchTab = async (id: string) => {
@@ -255,6 +315,7 @@ export function useLocalDocuments({ buildData, restore, resetToEmpty, setAppErro
             setActiveTabId(id);
             const doc = tabDocsRef.current[id];
             if (doc) await restore(doc, null, openingLabel(tabs.find(t => t.id === id)?.name)); else resetToEmpty();
+            applyIdentity(tabIdentityRef.current[id]);
         } finally { tabBusyRef.current = false; }
     };
 
@@ -270,6 +331,7 @@ export function useLocalDocuments({ buildData, restore, resetToEmpty, setAppErro
             tabDocsRef.current[id] = null;
             setActiveTabId(id);
             resetToEmpty();
+            applyIdentity(BLANK_IDENTITY);
         } finally { tabBusyRef.current = false; }
     };
 
@@ -277,9 +339,10 @@ export function useLocalDocuments({ buildData, restore, resetToEmpty, setAppErro
     const renameTab = (id: string, name: string) => setTabs(p => p.map(t => (t.id === id ? { ...t, name: name || t.name } : t)));
 
     const closeTab = async (id: string) => {
-        if (tabs.length <= 1) { if (await ask.confirm(tr('마지막 탭입니다. 내용을 비울까요?'), { okLabel: tr('비우기') })) { resetToEmpty(); tabDocsRef.current[id] = null; } return; }
+        if (tabs.length <= 1) { if (await ask.confirm(tr('마지막 탭입니다. 내용을 비울까요?'), { okLabel: tr('비우기') })) { resetToEmpty(); applyIdentity(BLANK_IDENTITY); tabDocsRef.current[id] = null; } return; }
         if (!await ask.confirm(tr('이 탭을 닫을까요? 저장하지 않은 내용은 사라집니다.'), { okLabel: tr('닫기') })) return;
         delete tabDocsRef.current[id];
+        delete tabIdentityRef.current[id];
         const rest = tabs.filter(t => t.id !== id);
         setTabs(rest);
         if (id === activeTabId) {
@@ -287,6 +350,7 @@ export function useLocalDocuments({ buildData, restore, resetToEmpty, setAppErro
             setActiveTabId(target.id);
             const doc = tabDocsRef.current[target.id];
             if (doc) await restore(doc, null, openingLabel(target.name)); else resetToEmpty();
+            applyIdentity(tabIdentityRef.current[target.id]);
         }
     };
 
@@ -332,7 +396,7 @@ export function useLocalDocuments({ buildData, restore, resetToEmpty, setAppErro
         doSave, doOpen, doNew, readAndRestore, doSplitSave,
         localProjects, setLocalProjects, localIdRef, localNameRef,
         doLocalSave, openLocalList, doLocalOpen, doLocalDelete,
-        tabs, activeTabId, switchTab, newTab, closeTab, renameTab,
+        tabs, activeTabId, switchTab, newTab, closeTab, renameTab, openInTab,
         storageInfo, didRecoverRef,
     };
 }
