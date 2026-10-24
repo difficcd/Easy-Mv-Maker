@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { loadAudio, setAudioDuration, setAudioClip, clearAudio } from '../core/mediaReducer.ts';
+import { loadAudio, setAudioDuration, setAudioClip, clearAudio, setAudioVolume, clampVolume } from '../core/mediaReducer.ts';
 import { detachMedia, safeMediaSrc } from '../core/mediaEl.ts';
 import { fetchAsset } from '../core/api.ts';
 import { blobToDataURL, unpackMedia } from '../core/projectAssets.ts';
@@ -29,7 +29,7 @@ import type { MediaAction } from '../core/mediaReducer.ts';
  * @param {(action: any) => void} deps.dispatchMedia
  * @param {(p: any) => void} deps.setLinkPrompt asks for a YouTube URL when none was given
  */
-export function useAudioTrack({ audioUrl, dispatchMedia, setLinkPrompt, setAppError }: { audioUrl: string | null, dispatchMedia: (action: MediaAction) => void, setLinkPrompt: (p: { kind: 'audio' }) => void, setAppError: (m: string) => void }) {
+export function useAudioTrack({ audioUrl, audioVolume = 1, dispatchMedia, setLinkPrompt, setAppError }: { audioUrl: string | null, audioVolume?: number, dispatchMedia: (action: MediaAction) => void, setLinkPrompt: (p: { kind: 'audio' }) => void, setAppError: (m: string) => void }) {
 
     const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -47,6 +47,11 @@ export function useAudioTrack({ audioUrl, dispatchMedia, setLinkPrompt, setAppEr
      */
     const [muted, setMuted] = useState(false);
     useEffect(() => { const el = audioRef.current; if (el) el.muted = muted; }, [muted]);
+    // The volume, unlike muting, is the film's: it is saved with the project, and the export hears
+    // it too - Chrome applies an element's volume before the audio reaches the
+    // MediaElementAudioSourceNode the recorder taps (measured: 0.433 RMS at 1, 0.086 at 0.2).
+    useEffect(() => { const el = audioRef.current; if (el) el.volume = clampVolume(audioVolume); }, [audioVolume, audioUrl]);
+    const setVolume = (v: number) => dispatchMedia(setAudioVolume(v));
     const audioB64Ref = useRef<string | null>(null);
     const audioBlobRef = useRef<{ src: string | null, blob: Blob | null }>({ src: null, blob: null });
     // The export recorder mixes the audio into the captured stream through these. Created once,
@@ -129,6 +134,7 @@ export function useAudioTrack({ audioUrl, dispatchMedia, setLinkPrompt, setAppEr
             endTime: data.audio.endTime ?? (data.audio.duration || 30),
             offset: data.audio.offset ?? 0,
         }));
+        dispatchMedia(setAudioVolume(clampVolume(data.audio.volume)));
         // Checked, not trusted: this URL came out of a project file. See core/mediaEl.
         const src = safeMediaSrc(url, 'audio');
         if (audioRef.current && src) audioRef.current.src = src;
@@ -163,6 +169,6 @@ export function useAudioTrack({ audioUrl, dispatchMedia, setLinkPrompt, setAppEr
     return {
         audioRef, audioB64Ref, audioBlobRef, audioCtxRef, audioSourceRef, audioDestRef,
         audioAsBlob, restoreAudio, loadAudioUrl, handleAudioUpload, handleDeleteAudio, loadYoutubeAudio,
-        muted, setMuted,
+        muted, setMuted, volume: clampVolume(audioVolume), setVolume,
     };
 }

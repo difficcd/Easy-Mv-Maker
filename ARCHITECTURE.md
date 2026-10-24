@@ -237,7 +237,7 @@ timeline, the colour panel, touch, …), imported in their original cascade orde
 **ui/** — TypeScript (`.tsx`); every component's props are an interface. Everything App used to
 return inline. Panels: `AnimPanels.tsx` (`CutAnimPanel`,
 `LayerAnimPanel`, `JitterPanel`), `CutLayerPanel.tsx` + `LayerRows.tsx`, `ColorPanel.tsx`,
-`ToolsPanel.tsx`, `Timeline.tsx`, `TopBar.tsx`, `TextEditor.tsx`, `SwaySpine.tsx`. Dialogs: one
+`ToolsPanel.tsx`, `Timeline.tsx` (with `VolumeControl.tsx`, the music volume on its audio track), `TopBar.tsx`, `TextEditor.tsx`, `SwaySpine.tsx`. Dialogs: one
 file each under `ui/dialogs/` (settings, help, video import, scene detect, export range, link
 prompt, tool keys, project picker, progress overlay), all over `Modal.tsx`. And the chrome:
 

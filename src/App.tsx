@@ -293,7 +293,7 @@ export default function App() {
     // they are one reducer. Destructured here so every read site keeps the name it always had;
     // only the writes go through an action. See core/mediaReducer.
     const [media, dispatchMedia] = React.useReducer(mediaReducer, EMPTY_MEDIA);
-    const { audioFile, audioUrl, audioDuration, audioData } = media;
+    const { audioFile, audioUrl, audioDuration, audioData, audioVolume } = media;
     // Video overlay track: play the original video underneath the drawing layers (no per-frame
     // cuts) - for drawing over a video. Like audio, but painted onto the canvas each frame.
     const { videoOverlay } = media; // { name, startTime, endTime, offset, duration, w, h, cuts? }
@@ -311,7 +311,7 @@ export default function App() {
     const [autoSceneDetect, setAutoSceneDetect] = useStored('mv_auto_scene', true, onOffCodec);
     // YouTube link input. A native prompt fails silently once blocked, so this asks in-app.
 
-    const audio = useAudioTrack({ audioUrl, dispatchMedia, setLinkPrompt: notices.setLinkPrompt, setAppError: notices.setError });
+    const audio = useAudioTrack({ audioUrl, audioVolume, dispatchMedia, setLinkPrompt: notices.setLinkPrompt, setAppError: notices.setError });
     const {
         audioRef, audioB64Ref, audioCtxRef, audioSourceRef, audioDestRef,
         audioAsBlob, restoreAudio, loadAudioUrl, handleAudioUpload, handleDeleteAudio, loadYoutubeAudio,
@@ -885,7 +885,7 @@ export default function App() {
         // The three shapes a track can take - asset, Blob, dataURL - are packMedia's decision.
         // The audio is held as a dataURL and can make a Blob; the video is the reverse.
         if (includeAudio && audioB64Ref.current && audioData) {
-            const meta = { name: audioFile?.name || tr('오디오'), startTime: audioData.startTime, endTime: audioData.endTime, offset: audioData.offset, duration: audioDuration };
+            const meta = { name: audioFile?.name || tr('오디오'), startTime: audioData.startTime, endTime: audioData.endTime, offset: audioData.offset, duration: audioDuration, ...(audioVolume !== 1 ? { volume: audioVolume } : {}) };
             out.audio = await packMedia(meta, { id: '__audio__', ext: audioExt(audioB64Ref.current), assetSink, blobsOk, dataUrl: audioB64Ref.current, toBlob: audioAsBlob });
         }
         if (videoOverlay && vid.blobRef.current) {

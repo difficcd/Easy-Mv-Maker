@@ -187,3 +187,21 @@ test('clearVideoCuts: drops the markers and keeps the video', () => {
 test('clearVideoCuts: harmless with no video', () => {
     assert.equal(mediaReducer(EMPTY_MEDIA, clearVideoCuts()).videoOverlay, null);
 });
+
+// --- the music volume (2026-10-24) ------------------------------------------------------------------
+import { mediaReducer as reduceVolume, setAudioVolume, clampVolume, clearAudio as dropAudio, EMPTY_MEDIA as NOTHING } from '../../src/core/mediaReducer.ts';
+
+test('the volume starts full, is kept in range, and resets with the track', () => {
+    assert.equal(NOTHING.audioVolume, 1);
+    assert.equal(reduceVolume(NOTHING, setAudioVolume(0.4)).audioVolume, 0.4);
+    assert.equal(reduceVolume(NOTHING, setAudioVolume(3)).audioVolume, 1);
+    assert.equal(reduceVolume(NOTHING, setAudioVolume(-1)).audioVolume, 0);
+    assert.equal(reduceVolume(reduceVolume(NOTHING, setAudioVolume(0.2)), dropAudio()).audioVolume, 1);
+});
+
+test('a stored volume that is missing or not a number plays at full volume', () => {
+    assert.equal(clampVolume(undefined), 1);
+    assert.equal(clampVolume('0.5'), 1);
+    assert.equal(clampVolume(NaN), 1);
+    assert.equal(clampVolume(0), 0);
+});
