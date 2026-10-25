@@ -192,6 +192,16 @@ Whether a stroke came in with pressure - a tablet the browser sees as a mouse se
 | `mapPressure` | A pen's reading mapped into the artist's range (#394) - light and heavy as % of the size, 0-300%, either order - as the pressure to store. The default 0-200% returns the reading unchanged. |
 | `PRESSURE_RANGE_DEFAULT` | 0% to 200%: what the pen gives untouched. |
 
+## `src/core/strokePrediction.ts`
+
+Where the pen is about to be, drawn ahead of the samples on the live overlay only.
+
+| | |
+|---|---|
+| `withPrediction` | A stroke's points with the browser's predicted ones after them, at the last real pressure; at most `PREDICTION_MAX`, none past `PREDICTION_REACH` of the last real point. The real points are not changed. |
+| `PREDICTION_MAX` | 3: predicted points drawn at most; past that the guess overshoots on turns. |
+| `PREDICTION_REACH` | 40px: how far ahead a predicted point may be before the tail stops there. |
+
 ## `src/core/projectFolders.ts`
 
 Project folders as paths ("Songs/Chorus", "" the top), for both browsers: what a folder shows, and how paths move for the browser's own storage. The server keeps its own copies in `server/folders.js`, which runs without the TypeScript loader and cannot import these.

@@ -103,6 +103,8 @@ index signature, so a misspelt one is an error. Ids there are `DocId` - a number
   to be reused by opening a project.
 - `pressureInput.ts` — whether a stroke came in with pressure; a pen tablet with Windows Ink off reaches
   the browser as a mouse and sends none, and the tools panel says so (`missingPressure`).
+- `strokePrediction.ts` — `withPrediction`: the browser's predicted pen positions drawn after the real
+  samples on the live overlay, so the line keeps up with the pen; never stored.
 - `projectFolders.ts` — project folders as paths, for the server and local browsers: subfolders, projects,
   the trail to the top, whether a folder may move somewhere, and how paths move in browser storage.
 - `simplifyStroke.ts` — `simplifyStroke`/`lightenStroke`: what a freehand pen, pencil or marker
