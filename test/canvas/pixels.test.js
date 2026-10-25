@@ -68,11 +68,11 @@ test('an eraser stroke takes ink away where it crosses', () => {
 });
 
 /** A straight pencil stroke at one pressure, and how thick it came out. */
-function pencilThickness(pressure, pen = true, size = 24) {
+function pencilThickness(pressure, pen = true, size = 24, v = undefined) {
     const { c, ctx } = fresh();
     const points = [];
     for (let x = 20; x <= 180; x += 10) points.push({ x, y: 60, pressure });
-    drawStrokesOnCtx(ctx, [stroke({ tool: 'pencil', size, pen, points })], false, new Map());
+    drawStrokesOnCtx(ctx, [stroke({ tool: 'pencil', size, pen, points, v })], false, new Map());
     const { box } = ink(c);
     return box ? box.y1 - box.y0 + 1 : 0;
 }
@@ -436,4 +436,22 @@ test('a pencil stroke drawn before v4 keeps its look', () => {
     drawStrokesOnCtx(ctx, [lightenStroke(stroke({ tool: 'pencil', size: 10, pen: true, v: 3, points: lightToFirm }))], false, new Map());
     const light = meanInk(c, 25, 60), firm = meanInk(c, 140, 175);
     assert.ok(Math.abs(firm - light) < 40, `light end ${light.toFixed(0)}, firm end ${firm.toFixed(0)}: the stacked caps`);
+});
+
+// --- pencil width (renderer v5, 2026-10-25) ----------------------------------------------------------
+//
+// A tablet user: "only the pencil barely answers pressure". The pen's width runs 0x to 2x of its
+// size; the pencil's ran 0.65x to 1.35x, so a light and a firm stroke differed by a third. v5
+// widens it to 0.3x to 1.7x, still through 1x at neutral so a mouse-drawn pencil is unchanged.
+
+test('a v5 pencil answers pressure in its width well beyond v4', () => {
+    const ratio = (v) => pencilThickness(0.9, true, 24, v) / pencilThickness(0.2, true, 24, v);
+    const v4 = ratio(4), v5 = ratio(5);
+    assert.ok(v5 >= 2.2, `v5 firm/light width ${v5.toFixed(2)}`);
+    assert.ok(v4 < 1.8, `v4 firm/light width ${v4.toFixed(2)}: kept as drawn`);
+});
+
+test('a v5 pencil at neutral pressure is as wide as before', () => {
+    assert.equal(pencilThickness(0.5, true, 24, 5), pencilThickness(0.5, true, 24, 4));
+    assert.equal(pencilThickness(0.5, false, 24, 5), pencilThickness(0.5, false, 24, 4));
 });

@@ -127,8 +127,16 @@ export const STROKE_RENDER_V3 = 3;
  */
 export const STROKE_RENDER_V4 = 4;
 
+/**
+ * Version 5: the pencil's width answers pressure over 0.3x to 1.7x of its size, where it ran 0.65x
+ * to 1.35x. On a tablet a light and a firm pencil stroke differed by a third, against the pen's 0x
+ * to 2x, and read as the pencil ignoring pressure. Still 1x at the neutral 0.5, so a pencil drawn
+ * without pressure looks the same in every version; a pressed one drawn before keeps its width.
+ */
+export const STROKE_RENDER_V5 = 5;
+
 /** The renderer version new strokes record. */
-export const STROKE_RENDER = STROKE_RENDER_V4;
+export const STROKE_RENDER = STROKE_RENDER_V5;
 
 /** How finely a v4 pencil's darkness is stepped: runs differ by 1/48 of the range at most. */
 const DARKNESS_STEPS = 48;
@@ -668,7 +676,9 @@ export function drawStrokesOnCtx(ctx: CanvasRenderingContext2D, strokes: readonl
             // ignored". Removing the clamp only extends the curve past neutral; nothing at or
             // below 0.5 changes, so no mouse-drawn stroke - which reports no pressure and reads
             // as the neutral 0.5 - renders any differently than before.
-            const pw = pp.map((_, i) => baseSize * (0.65 + 0.7 * prAt(pp, i)));
+            // v5 widens the range to 0.3x - 1.7x (STROKE_RENDER_V5), through the same 1x at neutral.
+            const [lo, span] = (s.v ?? 1) >= STROKE_RENDER_V5 ? [0.3, 1.4] : [0.65, 0.7];
+            const pw = pp.map((_, i) => baseSize * (lo + span * prAt(pp, i)));
             // As the marker: the scratch, the grain fill and the blit were all full-canvas for
             // a stroke of any size. This was the most expensive thing the profiler found.
             const box = inkBounds(pp, Math.max(...pw, baseSize) / 2 + SCRATCH_MARGIN, ctx.canvas.width, ctx.canvas.height);

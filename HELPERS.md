@@ -1029,6 +1029,7 @@ Strokes become pixels here: smoothing a hand path, the boiling line, and every b
 | `isV2` | Whether a stroke was drawn with renderer v2 - its `v`, or the dot pen's earlier `curved` flag. |
 | `STROKE_RENDER_V3` | Renderer version 3: the pen drawn as one filled outline rather than a stroke() per pixel of length - one call whatever the length, and the opacity applied once. |
 | `STROKE_RENDER_V4` | Renderer version 4: a pencil whose darkness varies with pressure filled as runs of equal darkness that meet edge to edge, instead of stroked per pixel with stacking caps - 40ms to 7ms at 200 samples, and a light touch draws light. |
+| `STROKE_RENDER_V5` | Renderer version 5: the pencil's width answers pressure over 0.3x - 1.7x of its size instead of 0.65x - 1.35x, still 1x at neutral, so a pressed pencil reads as pressed on a tablet. |
 | `STROKE_RENDER` | The renderer version new strokes record (currently 3). |
 | `fillOutline` | Fill a variable-width line as its outline - the centre line offset by half its width along the local normal, half-circle caps at each end - with the nonzero rule, so a turn tighter than the width folds over itself instead of leaving a hole. |
 | `fillOutlineRange` | The stretch of a line's outline between two points, rounded only at the line's own ends; normals come from the whole line, so ranges sharing a point meet edge to edge. |
