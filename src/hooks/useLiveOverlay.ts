@@ -21,6 +21,7 @@ import { useCallback, useRef } from 'react';
 import type { BitmapLookup } from '../canvas/strokes.ts';
 import { dotPathRange, isV2, STROKE_RENDER_V3, STROKE_RENDER_V4 } from '../canvas/strokes.ts';
 import { lightenStroke } from '../core/simplifyStroke.ts';
+import { withPrediction } from '../core/strokePrediction.ts';
 
 /** Samples up to which a marker stroke's preview is redrawn whole each frame. */
 const MARKER_REDRAW_MAX = 1200;
@@ -38,9 +39,19 @@ export function useLiveOverlay({ strokeRef, bitmapStoreRef, drawStrokes }: { str
     const overlayRef = useRef<HTMLCanvasElement | null>(null);
     const drawnRef = useRef(0);   // how many points of the stroke are already on the overlay
     const rafRef = useRef(0);
+    // Where the browser predicts the pen is going, for the stroke it was predicted for. Keyed by
+    // the stroke object, so a new stroke never draws the last one's guess from its first point.
+    const predictedRef = useRef<{ stroke: unknown, points: PressurePoint[] } | null>(null);
 
-    /** The overlay's 2D context, or null before the canvas has mounted. */
-    const ctx = () => overlayRef.current?.getContext('2d') ?? null;
+    /**
+     * The overlay's 2D context, or null before the canvas has mounted.
+     *
+     * Desynchronized: the first getContext fixes a canvas's options, and this is the only place the
+     * overlay's is taken. A low-latency canvas lets the browser show what was drawn without waiting
+     * on the page's compositing, which is a frame of the delay between the pen and its line on a
+     * PC tablet (2026-10-25). Where the browser cannot honour it, it is an ordinary canvas.
+     */
+    const ctx = () => overlayRef.current?.getContext('2d', { desynchronized: true }) ?? null;
 
     /**
      * Wipe it. Safe to call when there is no overlay yet.
@@ -105,7 +116,10 @@ export function useLiveOverlay({ strokeRef, bitmapStoreRef, drawStrokes }: { str
         if ((v >= STROKE_RENDER_V3 && (st.tool === 'brush' || (st.tool === 'marker' && n <= MARKER_REDRAW_MAX)))
             || (v >= STROKE_RENDER_V4 && st.tool === 'pencil' && n <= PENCIL_REDRAW_MAX)) {
             clear();
-            drawStrokes(c, [lightenStroke(st)], false, bitmapStoreRef.current);
+            // With the predicted tail, which the next frame replaces with the real samples.
+            const pr = predictedRef.current, guess = pr && pr.stroke === st ? pr.points : null;
+            const shown = lightenStroke(st);
+            drawStrokes(c, [guess ? { ...shown, points: withPrediction(shown.points, guess) } : shown], false, bitmapStoreRef.current);
             drawnRef.current = n;
             return;
         }
@@ -136,5 +150,10 @@ export function useLiveOverlay({ strokeRef, bitmapStoreRef, drawStrokes }: { str
      */
     const restart = () => { drawnRef.current = 0; renderStroke(true); };
 
-    return { overlayRef, ctx, clear, renderStroke, schedule, restart };
+    /** The browser's predicted positions for the stroke being drawn; drawn by the whole-redraw tools only. */
+    const predict = (points: PressurePoint[] | null) => {
+        predictedRef.current = points && strokeRef.current ? { stroke: strokeRef.current, points } : null;
+    };
+
+    return { overlayRef, ctx, clear, renderStroke, schedule, restart, predict };
 }

@@ -1217,6 +1217,7 @@ export default function App() {
     const {
         overlayRef: liveCanvasRef, ctx: liveCtx, clear: clearLiveOverlay,
         renderStroke: renderLiveStroke, schedule: scheduleLiveRender, restart: restartLiveStroke,
+        predict: predictLiveStroke,
     } = useLiveOverlay({ strokeRef: gesture.stroke, bitmapStoreRef, drawStrokes: drawStrokesOnCtx });
     // The loop as it is drawn, on the overlay. Line width in screen pixels, so it is as visible
     // zoomed out as zoomed in.
@@ -1548,6 +1549,9 @@ export default function App() {
         if (selGesture.move(pos)) return;
 
         TOOLS[etool]?.move?.(toolCtx(e, pos, null));
+        // Where the pen is about to be, so the line keeps up with it (core/strokePrediction).
+        const ahead = e.nativeEvent.getPredictedEvents?.();
+        predictLiveStroke(ahead && ahead.length ? ahead.map(getPos) : null);
     };
 
     // The event is optional: onPointerLeaveCanvas ends a stroke without one to name.
