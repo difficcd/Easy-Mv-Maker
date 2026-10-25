@@ -101,8 +101,8 @@ index signature, so a misspelt one is an error. Ids there are `DocId` - a number
   to be reused by opening a project.
 - `pressureInput.ts` — whether a stroke came in with pressure; a pen tablet with Windows Ink off reaches
   the browser as a mouse and sends none, and the tools panel says so (`missingPressure`).
-- `serverFolders.ts` — what the server browser shows for a folder: subfolders, projects, the trail
-  to the top, and whether a folder may move somewhere.
+- `projectFolders.ts` — project folders as paths, for the server and local browsers: subfolders, projects,
+  the trail to the top, whether a folder may move somewhere, and how paths move in browser storage.
 - `simplifyStroke.ts` — `simplifyStroke`/`lightenStroke`: what a freehand pen, pencil or marker
   stroke stores - about half its points, within half a pixel of the line drawn, pressure kept.
 - `colour.ts` — `withAlpha`, which replaces an existing alpha rather than appending a second one.
@@ -259,7 +259,7 @@ prompt, tool keys, project picker, progress overlay), all over `Modal.tsx`. And 
   `SettingsModal.tsx` / `ToolKeysModal.tsx` are the settings and the two keymap editors;
   `VideoImportModal.tsx`, `SceneDetectModal.tsx`, `ExportRangeModal.tsx`, `ProjectPicker.tsx`,
   `LinkPromptModal.tsx`, `ProgressOverlay.tsx` and `HelpModal.tsx` do what they are called.
-  `ServerBrowser.tsx` is the server's projects as nested folders and preview cards, with rename
+  `ProjectBrowser.tsx` is saved projects - server or local - as nested folders and preview cards, with rename
   and move (drag on a mouse, cut and paste on a pen or finger).
 
 **hooks/** — TypeScript. State that belongs together, lifted out of App so its wiring is somewhere

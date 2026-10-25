@@ -125,7 +125,9 @@ test('a committed save is what comes back, and the shape is unchanged', async ()
     assert.equal(await loadProject('nothing-here'), null, 'a missing project is null, not undefined');
     const rows = await listProjects();
     const five = rows.find(r => r.id === 'p5');
-    assert.deepEqual(five, { id: 'p5', name: 'Five', savedAt: 'then' });
+    // Since the local browser (2026-10-25) a row also says which folder it is in and carries its
+    // preview - a small image, not the project.
+    assert.deepEqual(five, { id: 'p5', name: 'Five', savedAt: 'then', folder: '', thumb: null });
     assert.ok(!('data' in five), 'the list carries metadata only - it must not pull whole projects into memory');
 });
 

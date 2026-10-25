@@ -62,7 +62,7 @@
 **I/O**
 - Music volume on the audio track, saved with the project and carried into the export
 - Autosave, `.emv` save/open, server save; each project opened goes into a tab of its own (a blank tab is reused)
-- Server projects as nested folders with a preview of each (the frame open when it was saved); rename, and move by dragging or by cut and paste
+- Saved projects, on the server and in browser storage alike, as nested folders with a preview of each (the frame open when it was saved); rename, and move by dragging or by cut and paste
 - Automatic server backup every 5 minutes, keeping the newest 12 — runs in the background without blocking the UI
 - Video import from a local file or URL: frame extraction, scene-change detection, audio track (with a mute that lifts itself for the export)
 - Imports match the source video's own size by default, so a vertical shorts clip fills the canvas instead of being letterboxed; landscape and portrait presets are there too

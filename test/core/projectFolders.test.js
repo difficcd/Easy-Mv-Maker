@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { folderName, parentFolder, joinFolder, childFolders, projectsIn, crumbs, canMoveFolder } from '../../src/core/serverFolders.ts';
+import { folderName, parentFolder, joinFolder, childFolders, projectsIn, crumbs, canMoveFolder, normFolder, movePath, removedPath, withAncestors } from '../../src/core/projectFolders.ts';
 
 const folders = ['Songs', 'Songs/Chorus', 'Songs/Chorus/Take 2', 'Songs/Bridge', 'Practice', 'Practicebook'];
 
@@ -35,4 +35,14 @@ test('a folder cannot move into itself, under itself, or where it already is', (
     assert.equal(canMoveFolder('Songs/Chorus', 'Songs'), false);
     assert.equal(canMoveFolder('Songs/Chorus', ''), true);
     assert.equal(canMoveFolder('Songs', 'Practice'), true);
+});
+
+test('the browser storage folders move the way the server ones do', () => {
+    assert.equal(normFolder(' Songs / ../Chorus '), 'Songs/Chorus');
+    assert.equal(normFolder(null), '');
+    assert.equal(movePath('a/b/c', 'a/b', 'x'), 'x/c');
+    assert.equal(movePath('a/bc', 'a/b', 'x'), 'a/bc');
+    assert.equal(removedPath('a/b/c', 'a/b'), 'a/c');
+    assert.equal(removedPath('a', 'a'), '');
+    assert.deepEqual(withAncestors(['a/b']), ['a', 'a/b']);
 });
