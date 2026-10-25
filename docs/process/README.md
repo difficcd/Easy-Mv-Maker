@@ -43,3 +43,6 @@ which number each change is expected to move - so the next cycle can check.
 - [2026-10-21](2026-10-21.md) — cycle 2, an inspection. Runtime vulnerabilities to zero; a threat
   model that matched neither document; coverage measured honestly (50.7%, not 96.8%) and held by a
   ratchet; the most-fixed logic in App moved out under test.
+- [2026-10-25](2026-10-25.md) — cycle 3. Cycle 2's N1 and N3 closed: the save path held by the ratchet
+  (server/ 70.8%), the fix measure reading waivers; this week's escapes traced to render changes
+  checked on one path, and the practice that answers it.
