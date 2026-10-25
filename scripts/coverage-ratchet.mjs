@@ -1,4 +1,4 @@
-// Runs the unit tests with coverage, and fails if the honest coverage of src/ goes down.
+// Runs the unit tests with coverage, and fails if the honest coverage of src/ or of server/ goes down.
 //
 // "Honest" is the point. Node's coverage report only lists files a test loaded, so a file no test
 // touches is not a 0 in the table - it is not in the table at all. On 2026-10-21 the report said
@@ -94,7 +94,15 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
         // Found the first time it was used, on a module that had not been `git add`ed yet.
         const files = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', 'src'], { encoding: 'utf8' })
             .split('\n').filter(f => /\.(ts|tsx)$/.test(f) && !f.endsWith('.d.ts'));
-        const r = honestCoverage(parseLcov(readFileSync(lcovFile, 'utf8')), files, nodeLines);
+        const lcov = parseLcov(readFileSync(lcovFile, 'utf8'));
+        const r = honestCoverage(lcov, files, nodeLines);
+        // The server as well, held to a baseline of its own (cycle 2, N1). It is the code that
+        // writes a user's work to disk, and counting src/ alone let it grow untested with nothing
+        // failing. Its own figure rather than one blended with src/: four times smaller, its
+        // movements would vanish in the larger number.
+        const serverFiles = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', 'server'], { encoding: 'utf8' })
+            .split('\n').filter(f => /\.js$/.test(f) && !f.startsWith('server/data/'));
+        const rs = honestCoverage(lcov, serverFiles, nodeLines);
 
         const byFolder = {};
         for (const f of r.untested) {
@@ -104,11 +112,18 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
         const gaps = Object.entries(byFolder).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${n}`).join(', ');
 
         if (process.env.UPDATE) {
-            writeFileSync(BASELINE, JSON.stringify({ srcLinePct: r.pct, measured: new Date().toISOString().slice(0, 10) }, null, 2) + '\n');
-            console.log(`Coverage baseline set to ${r.pct}%.`);
+            writeFileSync(BASELINE, JSON.stringify({ srcLinePct: r.pct, serverLinePct: rs.pct, measured: new Date().toISOString().slice(0, 10) }, null, 2) + '\n');
+            console.log(`Coverage baseline set to ${r.pct}% for src/, ${rs.pct}% for server/.`);
             process.exit(0);
         }
-        const base = JSON.parse(readFileSync(BASELINE, 'utf8')).srcLinePct;
+        const stored = JSON.parse(readFileSync(BASELINE, 'utf8'));
+        const base = stored.srcLinePct;
+        if (typeof stored.serverLinePct === 'number' && rs.pct < stored.serverLinePct - TOLERANCE) {
+            console.error(`Coverage of server/ fell to ${rs.pct}% from a baseline of ${stored.serverLinePct}% (${rs.lh} of ${rs.lf} lines).`);
+            console.error(`Files no test loads: ${rs.untested.join(', ') || 'none'}.`);
+            console.error(`\nThe server saves and loads the user's work; a route without a test is the one that loses it.`);
+            process.exit(1);
+        }
         if (r.pct < base - TOLERANCE) {
             console.error(`Coverage of src/ fell to ${r.pct}% from a baseline of ${base}% (${r.lh} of ${r.lf} lines).`);
             console.error(`Untested files: ${r.untested.length}. Lines in them: ${gaps}.`);
@@ -116,6 +131,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
             process.exit(1);
         }
         console.log(`Coverage passed - src/ at ${r.pct}% (${r.lh} of ${r.lf} lines), baseline ${base}%. ${r.untested.length} files no test loads: ${gaps}.`);
+        console.log(`  server/ at ${rs.pct}% (${rs.lh} of ${rs.lf} lines), baseline ${stored.serverLinePct ?? 'not set'}%. Untested: ${rs.untested.join(', ') || 'none'}.`);
         if (r.pct > base + 0.5) console.log(`  That is ${(r.pct - base).toFixed(2)} points above the baseline - keep the ground: UPDATE=1 node ${BASELINE.replace('-baseline.json', '-ratchet.mjs')}`);
     } finally {
         rmSync(dir, { recursive: true, force: true });

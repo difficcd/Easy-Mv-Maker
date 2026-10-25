@@ -11,3 +11,18 @@ export function kindOf(subject) {
     const m = /^(\w+)(\(.+?\))?!?:/.exec(String(subject || '').trim());
     return m ? m[1].toLowerCase() : 'other';
 }
+
+/**
+ * The reason a fix carries no test, when its message gives one: a `No-Test: <reason>` line.
+ *
+ * Shared for the same reason as kindOf. The gate accepts a waived fix; the metrics used to count
+ * the same fix as untested, so the gate working as designed read as the gate failing (cycle 2,
+ * finding N3).
+ *
+ * @param {string} body a commit message body
+ * @returns {string | null}
+ */
+export function waiverOf(body) {
+    const m = /^No-Test:[ \t]*(\S.*)$/mi.exec(String(body || ''));
+    return m ? m[1].trim() : null;
+}
