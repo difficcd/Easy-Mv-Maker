@@ -22,6 +22,7 @@ import { computeTextAnim } from '../core/textAnim.ts';
 import { computeCamera } from '../core/camera.ts';
 import { clipGroups } from '../core/clipping.ts';
 import { visibleCutsAt } from './selectCuts.ts';
+import { clipFrameAt, clipPlacement, combineCutAnim } from '../core/clipInstance.ts';
 import type { Id } from '../core/types.ts';
 import type { CutAnimAt } from '../core/cutAnim.ts';
 import type { LayerAnimAt } from '../core/layerAnim.ts';
@@ -109,12 +110,28 @@ export function evaluateFrame(cuts: Cut[] | null | undefined, t: number, { playi
         // renderer has no other way to know what t was.
         time: t,
         camera,
-        cuts: active.map(cut => ({
-            cut,
-            anim: playing ? computeCutAnim(cut, t, cw, ch) : null,
-            groups: evaluateGroups(cut, t, playing, cw, ch),
-            texts: evaluateTexts(cut, t, playing),
-        })),
+        cuts: active.flatMap(cut => {
+            if (!cut.clip) {
+                return [{
+                    cut,
+                    anim: playing ? computeCutAnim(cut, t, cw, ch) : null,
+                    groups: evaluateGroups(cut, t, playing, cw, ch),
+                    texts: evaluateTexts(cut, t, playing),
+                }];
+            }
+            // A copy of a clip (core/clipInstance) is drawn as the part's own cuts at the matching
+            // moment of the part - their layers, their cache - under the copy's placement and its
+            // animation. The placement holds while paused as well: a copy has nothing to draw on,
+            // so there is no pen to keep under the ink, and copies laid out apart should stay apart.
+            const shown = clipFrameAt(cuts || [], cut, t);
+            const anim = combineCutAnim(clipPlacement(cut.clip), playing ? computeCutAnim(cut, t, cw, ch) : null);
+            return shown.cuts.map(src => ({
+                cut: src,
+                anim,
+                groups: evaluateGroups(src, shown.t, playing, cw, ch),
+                texts: evaluateTexts(src, shown.t, playing),
+            }));
+        }),
     };
 }
 

@@ -17,6 +17,7 @@
 // Today only the selection half of that exists. Animation and compositing follow.
 
 import type { Id } from '../core/types.ts';
+import { clipFrameAt } from '../core/clipInstance.ts';
 
 /**
  * The cuts playing at a moment, bottom track first.
@@ -113,7 +114,13 @@ export function topCutAt(cuts: Cut[] | null | undefined, t: number): Cut | null 
  */
 export function cutsToCache(cuts: Cut[], time: number, currentCut: Cut | null | undefined, onion: { prev?: boolean, next?: boolean }): Set<Id> {
     const visible = new Set<Id>();
-    for (const c of cuts) if (time >= c.startTime && time < c.endTime) visible.add(c.id);
+    for (const c of cuts) {
+        if (!(time >= c.startTime && time < c.endTime)) continue;
+        visible.add(c.id);
+        // A copy of a clip shows the part's cuts, which may be nowhere near the playhead
+        // themselves; those are the layers that need baking.
+        if (c.clip) for (const src of clipFrameAt(cuts, c, time).cuts) visible.add(src.id);
+    }
     if (currentCut) {
         visible.add(currentCut.id);
         if (onion.prev || onion.next) {

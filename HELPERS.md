@@ -155,6 +155,22 @@ The spline behind the curve ruler, and the one that fills in the fast stretches 
 | `centripetalSpan` | One span of a centripetal Catmull-Rom spline, for unevenly spaced points - a hand slowing and speeding up. The uniform form loops where a short span meets a long one (a 4.5px hook past the point of a V); this does not, and on even spacing it is the same curve. Reflects a missing end neighbour instead of dividing by a zero-length knot. Used by the stroke smoothing for every span over 4px. |
 | `catmullThrough` | A Catmull-Rom spline through every anchor, not near it — which is why it is this and not a Bezier, since the user taps where the line should go. Carries pressure through, clamps the end neighbours so the line does not hook at each end, and returns fewer than three points unchanged. |
 
+## `src/core/clipInstance.ts`
+
+Animation clips: a part's frames used again as one object. A copy is a cut with `clip` set and no drawing of its own; it shows the part's own cuts (and their cached layers) under its placement and animation. Resolved by engine/evaluateFrame and engine/selectCuts.
+
+| | |
+|---|---|
+| `isClipCopy` | Whether a cut is a copy of a clip rather than a drawing of its own. |
+| `clipSource` | A clip's frames - its part's own cuts, never other copies - and the span they cover. |
+| `clipFrameAt` | What a copy shows at a moment: the part's cuts at the matching moment of the part, looping or once, and that moment. |
+| `clipPlacement` | A copy's offset and size as a cut transform, at all times; null when it has none. |
+| `combineCutAnim` | Two cut transforms nested as one - the copy's placement, then its animation. |
+| `freeTrack` | The lowest track at or above a given one with nothing on it over a span. |
+| `makeClipCopy` | A new copy of a part: as long as the part, on the first free track above it, nudged off the original. |
+| `duplicateClipCopy` | Another copy beside an existing one - same clip and timing, next free track, nudged again. |
+| `unpackClipCopy` | A copy turned back into ordinary cuts with drawings of their own, repeated while it loops; its placement and motion stay behind. |
+
 ## `src/core/docTabs.ts`
 
 The document tabs' rules that need no React. Each tab keeps a `DocIdentity` - where its document saves to (file, browser record, server project) - so a save in one tab cannot write over another tab's project.
