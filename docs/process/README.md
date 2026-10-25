@@ -31,7 +31,8 @@ which number each change is expected to move - so the next cycle can check.
 | automated test pass ratio | Actions runs of `ci.yml` | cancelled runs are superseded, not verdicts, and are left out |
 | defect escape rate | `fix:` merges ÷ feat + perf + refactor merges | nothing lands without passing CI, so each fix is a defect that passed it |
 | MTTR | bug-labelled issues, open → close | only as good as the labelling |
-| fixes carrying a test | fix commits touching `test/` | the test-after rate, directly |
+| fixes carrying a test | fix commits touching `test/` | the test-after rate, directly; split into *waived* (a `No-Test:` reason the gate accepted) and *untested*, which is the real gap |
+| PR titles without a type | merged PR titles | the convention slipping; such PRs are classified by their commits instead |
 | risk indicators | issues, git history | deferred verification, reverts, fixes of a recent fix, stalls |
 | defect hotspots | files touched by fix commits | where a test-first rule pays most |
 

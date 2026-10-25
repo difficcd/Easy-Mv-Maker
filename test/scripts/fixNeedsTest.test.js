@@ -53,3 +53,15 @@ test('the gate and the metrics agree on what a fix is', () => {
         assert.equal(kindOf(s), k, s);
     }
 });
+
+// The waiver rule is shared with the process metrics (cycle 2, N3): the gate accepted a waived
+// fix and the metrics counted it untested, so the two read the same line the same way now.
+import { waiverOf } from '../../scripts/commitKind.mjs';
+
+test('a waiver is a No-Test line with a reason, read the same by the gate and the metrics', () => {
+    assert.equal(waiverOf('Fixes the script.\n\nNo-Test: a gate script; its own run is the test'), 'a gate script; its own run is the test');
+    assert.equal(waiverOf('no-test:   colour only  '), 'colour only');
+    assert.equal(waiverOf('No-Test:'), null, 'a waiver needs a reason');
+    assert.equal(waiverOf('mentions No-Test: mid-line'), null, 'only at the start of a line');
+    assert.equal(waiverOf(undefined), null);
+});

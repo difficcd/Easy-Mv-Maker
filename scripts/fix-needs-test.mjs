@@ -20,7 +20,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { kindOf } from './commitKind.mjs';
+import { kindOf, waiverOf } from './commitKind.mjs';
 
 /**
  * Whether a branch's fixes carry a test.
@@ -34,8 +34,8 @@ export function verdict(commits, files) {
     if (!fixes.length) return { ok: true, why: 'no fix commits on this branch' };
     if (files.some(f => f.startsWith('test/'))) return { ok: true, why: `${fixes.length} fix commit(s), with a test` };
     for (const c of commits) {
-        const m = /^No-Test:[ \t]*(\S.*)$/mi.exec(c.body || '');
-        if (m) return { ok: true, why: `waived - ${m[1].trim()}` };
+        const w = waiverOf(c.body);
+        if (w) return { ok: true, why: `waived - ${w}` };
     }
     return { ok: false, why: 'fix without a test', fixes: fixes.map(c => c.subject) };
 }

@@ -15,7 +15,7 @@
 // Needs the gh CLI, authenticated against this repository.
 
 import { execFileSync } from 'node:child_process';
-import { kindOf } from './commitKind.mjs';
+import { kindOf, waiverOf } from './commitKind.mjs';
 
 const args = process.argv.slice(2);
 const sinceDays = args.includes('--since') ? Number(args[args.indexOf('--since') + 1]) : null;
@@ -141,6 +141,13 @@ for (const f of fixes) {
 // that lands without touching a test is the clearest case of it, because nothing then stops the
 // same defect coming back.
 const fixesWithTest = fixes.filter(f => f.files.some(x => x.startsWith('test/'))).length;
+// A fix without a test is either waived - a `No-Test:` reason the gate accepted, say a change to a
+// script or to colour - or untested. Only the second is the gap this measure is about; counting
+// them together made the gate working as designed read as the gate failing (cycle 2, N3).
+const fixesWaived = fixes.filter(f => !f.files.some(x => x.startsWith('test/')) && waiverOf(git('log', '-1', '--format=%b', f.hash))).length;
+// PR titles without a conventional prefix. They are classified by their commits instead (kindOfPr),
+// so nothing is lost - but the convention is the process's, and this says when it slipped.
+const proseTitles = prs.filter(p => kindOf(p.title) === 'other').length;
 
 // People: work stalling. The longest gap between two merges, and how long open issues have sat.
 const mergeTimes = prs.map(p => t(p.mergedAt)).sort((a, b) => a - b);
@@ -178,6 +185,9 @@ const result = {
     introducingMerges: introducing,
     mttrDays: { median: days(median(mttr)), bugsClosed: bugs.length },
     fixCommitsWithATest: fixes.length ? Math.round(fixesWithTest / fixes.length * 1000) / 10 : null,
+    fixCommitsWaived: fixesWaived,
+    fixCommitsUntested: fixes.length - fixesWithTest - fixesWaived,
+    prTitlesWithoutType: proseTitles,
     fixCommits: fixes.length,
     risk: {
         untickedChecklistItems: unticked,
@@ -203,7 +213,8 @@ if (asJson) {
     console.log(`  automated test pass ratio ${r.ciPassRatio}% of ${r.ciRunsJudged} CI runs; ${r.mainBranchFailures} failed on main`);
     console.log(`  defect escape rate        ${r.defectEscapeRate}% (${r.fixMerges} fixes / ${r.introducingMerges} feat+perf+refactor)`);
     console.log(`  MTTR (bug issues)         median ${r.mttrDays.median}d over ${r.mttrDays.bugsClosed} bugs`);
-    console.log(`  fixes carrying a test     ${r.fixCommitsWithATest}% of ${r.fixCommits} fix commits`);
+    console.log(`  fixes carrying a test     ${r.fixCommitsWithATest}% of ${r.fixCommits} fix commits (waived ${r.fixCommitsWaived}, untested ${r.fixCommitsUntested})`);
+    console.log(`  PR titles without a type  ${r.prTitlesWithoutType} of ${r.merges}`);
     console.log(`  merges by kind            ${Object.entries(r.mergesByKind).map(([k, v]) => `${k} ${v}`).join(', ')}`);
     console.log('\nRisk indicators');
     console.log(`  estimation   unticked checklist items in open issues: ${r.risk.untickedChecklistItems}; awaiting verification: ${r.risk.issuesAwaitingVerification}`);
