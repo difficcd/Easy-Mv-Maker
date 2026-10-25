@@ -31,7 +31,7 @@ import { tr, loadLang, saveLang, setLangValue } from './i18n.ts';
 import { resolveDrawLayer as resolveDrawLayerPure, commitStroke, insertFill, patchLayer, nextLayerId, appendLayer, appendFolder, removeLayerTree, insertLayerAbove } from './core/layerOps.ts';
 import { planPress } from './core/pressPlan.ts';
 import { lightenStroke } from './core/simplifyStroke.ts';
-import { missingPressure } from './core/pressureInput.ts';
+import { missingPressure, mapPressure } from './core/pressureInput.ts';
 import { mkCut, firstCut } from './core/document.ts';
 import { selectionAfterClick, cutsToCopy } from './core/cutSelection.ts';
 import { closeLassoPath, lassoBounds, cutOutPolygon, cropImageData, selectionStrokes, paintedBounds } from './core/lassoOps.ts';
@@ -331,7 +331,7 @@ export default function App() {
         tool, setTool, etool, rulerMode, setRulerMode, softMode, setSoftMode, handleSetTool,
         color, setColor, applyColor, recentColors, noteColorUsed, pickColor, pickingColor, setPickingColor,
         brushSize, setBrushSize, eraserSize, setEraserSize, toolSize, setToolSize,
-        opacity, setOpacity, pressureOn, setPressureOn, mosaicBlock, setMosaicBlock,
+        opacity, setOpacity, pressureOn, setPressureOn, pressureRange, setPressureRange, mosaicBlock, setMosaicBlock,
     } = useToolSettings({
         // A tool change is refused outright while a selection is floating or a text is being
         // edited: both are modes of their own, and leaving them by picking up another tool
@@ -1176,7 +1176,9 @@ export default function App() {
     const [noPressure, setNoPressure] = useState(false);
     const getPos = (e: React.PointerEvent | PointerEvent) => {
         const c = canvasRef.current!, r = c.getBoundingClientRect();
-        const pressure = pressureOn && e.pressure > 0 ? e.pressure : 0.5;
+        // The artist's range (#394) applies to a pen's reading. A mouse reports a fixed 0.5 when
+        // pressed, which is the neutral value, and has to stay exactly that.
+        const pressure = pressureOn && e.pressure > 0 ? (e.pointerType === 'mouse' ? e.pressure : mapPressure(e.pressure, pressureRange)) : 0.5;
         return { x: (e.clientX - r.left) * (c.width / r.width), y: (e.clientY - r.top) * (c.height / r.height), pressure };
     };
     // Fast strokes get coalesced by the browser into one event; this recovers every
@@ -2090,7 +2092,7 @@ export default function App() {
         <ToolsPanel
                     panel={{ width: toolW, onClose: () => setShowLeft(false), TOOL_TYPES }}
                     tools={{ tool, handleSetTool, isSelectionTool, pickingColor, pickColor, hasLassoClip, pasteLassoSelection }}
-                    brush={{ color, applyColor, opacity, setOpacity, toolSize, setToolSize, pressureOn, setPressureOn, noPressure, softMode, setSoftMode, rulerMode, setRulerMode, mosaicBlock, setMosaicBlock }}
+                    brush={{ color, applyColor, opacity, setOpacity, toolSize, setToolSize, pressureOn, setPressureOn, noPressure, pressureRange, setPressureRange, softMode, setSoftMode, rulerMode, setRulerMode, mosaicBlock, setMosaicBlock }}
                     edit={{ globalUndo, globalRedo, handleClearCut, doTween }}
                     onion={{ onionPrev, setOnionPrev, onionNext, setOnionNext }}
                     />
