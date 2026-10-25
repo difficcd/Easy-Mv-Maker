@@ -2,15 +2,19 @@ import { useState } from 'react';
 import { Folder, FolderPlus, Pencil, Scissors, Trash2, ChevronRight, ClipboardPaste, X, ImageOff } from 'lucide-react';
 import { tr } from '../../i18n.ts';
 import { Modal } from '../Modal.tsx';
-import { childFolders, projectsIn, crumbs, folderName, joinFolder, parentFolder, canMoveFolder } from '../../core/serverFolders.ts';
-import type { ServerProject } from '../../hooks/useServerStorage.ts';
+import { childFolders, projectsIn, crumbs, folderName, joinFolder, parentFolder, canMoveFolder } from '../../core/projectFolders.ts';
 import type { Ask } from '../../hooks/useAsk.ts';
 
 /** Something picked up to be moved: a project or a folder. */
 type Held = { kind: 'project', id: string, name: string, from: string } | { kind: 'folder', path: string };
 
-export interface ServerBrowserProps {
-    projects: ServerProject[];
+/** One project as a browser lists it, wherever it is stored. */
+export interface BrowsedProject { id: string; name: string; savedAt?: string | null; folder: string; thumbUrl?: string | null }
+
+export interface ProjectBrowserProps {
+    /** the dialog's title: which storage this is */
+    title: string;
+    projects: BrowsedProject[];
     folders: string[];
     ask: Ask;
     onOpen: (id: string, name: string) => void;
@@ -25,15 +29,16 @@ export interface ServerBrowserProps {
     onClose: () => void;
 }
 
-const DRAG_TYPE = 'application/x-mv-server-item';
+const DRAG_TYPE = 'application/x-mv-project-item';
 
 /**
- * The projects saved on the server, as folders and preview cards - the way a drawing app's file
- * browser shows them. Folders nest. Moving works two ways: drag a card onto a folder or onto the
+ * Saved projects as folders and preview cards - the way a drawing app's file browser shows them.
+ * Used for the server's projects and for the browser's own storage; which one is the caller's
+ * business, through the callbacks. Folders nest. Moving works two ways: drag a card onto a folder or onto the
  * trail at the top (a mouse), or cut it and paste it in the folder it should go to (a pen or a
  * finger, where dragging scrolls instead).
  */
-export function ServerBrowser({ projects, folders, ask, onOpen, onDelete, onRename, onMove, onCreateFolder, onMoveFolder, onDeleteFolder, onBrowse, onClose }: ServerBrowserProps) {
+export function ProjectBrowser({ title, projects, folders, ask, onOpen, onDelete, onRename, onMove, onCreateFolder, onMoveFolder, onDeleteFolder, onBrowse, onClose }: ProjectBrowserProps) {
     const [current, setCurrent] = useState('');
     const [held, setHeld] = useState<Held | null>(null);
     const [dropOn, setDropOn] = useState<string | null>(null);
@@ -58,7 +63,7 @@ export function ServerBrowser({ projects, folders, ask, onOpen, onDelete, onRena
         const name = (await ask.prompt(tr('폴더 이름 바꾸기:'), { value: folderName(path), okLabel: tr('바꾸기') }))?.replace(/\//g, ' ').trim();
         if (name && name !== folderName(path)) onMoveFolder(path, joinFolder(parentFolder(path), name));
     };
-    const renameProject = async (p: ServerProject) => {
+    const renameProject = async (p: BrowsedProject) => {
         const name = (await ask.prompt(tr('프로젝트 이름 바꾸기:'), { value: p.name, okLabel: tr('바꾸기') }))?.trim();
         if (name && name !== p.name) onRename(p.id, name);
     };
@@ -79,7 +84,7 @@ export function ServerBrowser({ projects, folders, ask, onOpen, onDelete, onRena
     const heldLabel = held ? (held.kind === 'project' ? held.name : folderName(held.path)) : '';
 
     return (
-        <Modal title={tr('서버에서 열기')} onClose={onClose} width={760} maxHeight="82vh" panelStyle={{ padding: 16 }}>
+        <Modal title={title} onClose={onClose} width={760} maxHeight="82vh" panelStyle={{ padding: 16 }}>
             <div className="sb-bar">
                 <div className="sb-trail">
                     {crumbs(here).map((c, i) => (
@@ -107,7 +112,7 @@ export function ServerBrowser({ projects, folders, ask, onOpen, onDelete, onRena
 
             {subFolders.length === 0 && items.length === 0 && (
                 <div className="sb-empty">
-                    {here ? tr('빈 폴더입니다. 여기를 연 채로 새로 저장하면 이 폴더에 들어갑니다.') : tr('저장된 프로젝트가 없습니다. 서버에 저장하면 여기에 미리보기와 함께 나타납니다.')}
+                    {here ? tr('빈 폴더입니다. 여기를 연 채로 새로 저장하면 이 폴더에 들어갑니다.') : tr('저장된 프로젝트가 없습니다. 저장하면 여기에 미리보기와 함께 나타납니다.')}
                 </div>
             )}
 
@@ -130,8 +135,8 @@ export function ServerBrowser({ projects, folders, ask, onOpen, onDelete, onRena
                         draggable onDragStart={dragStart({ kind: 'project', id: p.id, name: p.name, from: here })}
                         onClick={() => onOpen(p.id, p.name)}>
                         <div className="sb-thumb">
-                            {p.thumb
-                                ? <img src={`/api/projects/${p.id}/thumb?v=${encodeURIComponent(p.savedAt || '')}`} alt="" draggable={false} />
+                            {p.thumbUrl
+                                ? <img src={p.thumbUrl} alt="" draggable={false} />
                                 : <ImageOff size={24} className="sb-nothumb" />}
                         </div>
                         <div className="sb-name" title={p.name}>{p.name}</div>

@@ -12,7 +12,7 @@ import { TextEditor } from './ui/TextEditor.tsx';
 import { ToolsPanel } from './ui/ToolsPanel.tsx';
 import { Timeline } from './ui/Timeline.tsx';
 import { ProjectPicker } from './ui/dialogs/ProjectPicker.tsx';
-import { ServerBrowser } from './ui/dialogs/ServerBrowser.tsx';
+import { ProjectBrowser } from './ui/dialogs/ProjectBrowser.tsx';
 import { renderThumbnail } from './canvas/thumbnail.ts';
 import { ProgressOverlay } from './ui/dialogs/ProgressOverlay.tsx';
 import { SettingsModal } from './ui/dialogs/SettingsModal.tsx';
@@ -991,13 +991,15 @@ export default function App() {
     // all three exist.
     const {
         doSave, doOpen, doNew, readAndRestore, doSplitSave,
-        localProjects, setLocalProjects, localIdRef,
+        localProjects, localIdRef, localFolders, closeLocalList,
+        renameLocalProject, moveLocalProject, createLocalFolder, moveLocalFolder, deleteLocalFolder, setLocalBrowseFolder,
         doLocalSave, openLocalList, doLocalOpen, doLocalDelete,
         tabs, activeTabId, switchTab, newTab, closeTab, renameTab, openInTab,
         storageInfo, didRecoverRef,
     } = useLocalDocuments({
         buildData, restore, resetToEmpty,
         setAppError: notices.setError, setToast: notices.setToast, setLoadProgress: notices.setProgress, ask, fileHandleRef, localNameRef, serverIdRef, serverNameRef,
+        makeThumb: () => renderThumbnail(ctx => paintOnto(ctx, currentTimeRef.current, false, FRAME_W, FRAME_H, true), FRAME_W, FRAME_H),
     });
 
     // Debounced autosave to IndexedDB, so a refresh or a crash never costs work. It waits for
@@ -2103,11 +2105,14 @@ export default function App() {
                     bakeInfo={bakeInfo} bakePlaybackSpeed={bakePlaybackSpeed}
                     rebinding={dialogs.rebinding} setRebinding={dialogs.setRebinding} />
             )}
-            {serverProjects !== null && <ServerBrowser projects={serverProjects} folders={serverFolders} ask={ask}
+            {serverProjects !== null && <ProjectBrowser title={tr('서버에서 열기')} projects={serverProjects} folders={serverFolders} ask={ask}
                 onOpen={(id, name) => doServerOpen(id, name, openInTab)} onDelete={doServerDelete} onRename={renameServerProject} onMove={moveServerProject}
                 onCreateFolder={createServerFolder} onMoveFolder={moveServerFolder} onDeleteFolder={deleteServerFolder}
                 onBrowse={setBrowseFolder} onClose={() => setServerProjects(null)} />}
-            {localProjects !== null && <ProjectPicker title={tr('로컬에서 열기')} items={localProjects} onOpen={doLocalOpen} onDelete={doLocalDelete} onClose={() => setLocalProjects(null)} />}
+            {localProjects !== null && <ProjectBrowser title={tr('로컬에서 열기')} projects={localProjects} folders={localFolders} ask={ask}
+                onOpen={doLocalOpen} onDelete={doLocalDelete} onRename={renameLocalProject} onMove={moveLocalProject}
+                onCreateFolder={createLocalFolder} onMoveFolder={moveLocalFolder} onDeleteFolder={deleteLocalFolder}
+                onBrowse={setLocalBrowseFolder} onClose={closeLocalList} />}
             {backupList !== null && (
                 <ProjectPicker
                     title={tr('백업에서 되돌리기 (최근 12개 보관)')}

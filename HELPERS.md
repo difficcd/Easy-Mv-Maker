@@ -174,9 +174,9 @@ Whether a stroke came in with pressure - a tablet the browser sees as a mouse se
 | `strokeHasPressure` | True when any point carries a pressure other than the neutral 0.5. |
 | `missingPressure` | Whether to tell the artist the stroke just drawn had no pressure: pressure on, pointer not a pen, nothing varied. |
 
-## `src/core/serverFolders.ts`
+## `src/core/projectFolders.ts`
 
-What the server project browser shows for a folder. Folder paths as the server stores them ("Songs/Chorus", "" the top); the server's own copies are in `server/folders.js`, which runs without the TypeScript loader and cannot import these.
+Project folders as paths ("Songs/Chorus", "" the top), for both browsers: what a folder shows, and how paths move for the browser's own storage. The server keeps its own copies in `server/folders.js`, which runs without the TypeScript loader and cannot import these.
 
 | | |
 |---|---|
@@ -188,6 +188,10 @@ What the server project browser shows for a folder. Folder paths as the server s
 | `joinFolder` | A folder named so inside a parent. |
 | `inFolder` | Whether a path is a folder or anywhere beneath it. |
 | `canMoveFolder` | Whether a folder may move into a target: not into itself, beneath itself, or where it already is. |
+| `normFolder` | A folder path as stored: trimmed segments, no characters a file manager refuses, no dot or empty parts, at most 16 deep. Mirrors the server's. |
+| `movePath` | The browser storage's copy of the server's: a path with one folder renamed or moved (`db.ts` moveFolder). |
+| `removedPath` | Where a path ends up when a folder is removed - up a level. |
+| `withAncestors` | The browser storage's copy of the server's: the folders given and every folder above them (`db.ts` listFolders). |
 
 ## `src/canvas/docPreview.ts`
 
@@ -1381,7 +1385,7 @@ Folders for saved projects: a path on each project, not a directory on disk, so 
 | | |
 |---|---|
 | `normFolder` | A folder path as stored: segments trimmed, characters a file manager refuses removed, `..` and empty parts dropped, at most 16 deep. Never refuses - "" at worst. |
-| `parentOf` | The folder a folder is in; "" at the top. Mirrors `parentFolder` in `src/core/serverFolders.ts`. |
+| `parentOf` | The folder a folder is in; "" at the top. Mirrors `parentFolder` in `src/core/projectFolders.ts`. |
 | `isInside` | Whether a path is a folder or beneath it. Mirrors `inFolder`. |
 | `movePath` | A path with one folder renamed or moved; other paths unchanged. |
 | `removedPath` | Where a path ends up when a folder is removed: up one level. |

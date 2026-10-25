@@ -1,4 +1,4 @@
-/* The server project browser (ui/dialogs/ServerBrowser): a trail of folders, then folder and
+/* The project browser, server and local (ui/dialogs/ProjectBrowser): a trail of folders, then folder and
    project cards in a grid. Neutral surfaces; the accent marks only where a drop or a paste goes. */
 
 .sb-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }

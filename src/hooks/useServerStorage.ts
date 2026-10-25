@@ -51,7 +51,10 @@ export interface ServerStorageDeps {
 }
 
 /** A project as the server lists it. */
-export interface ServerProject { id: string; name: string; savedAt?: string | null; folder: string; thumb?: boolean }
+export interface ServerProject { id: string; name: string; savedAt?: string | null; folder: string; thumb?: boolean; thumbUrl?: string | null }
+
+/** Where a listed project's preview is, if it has one; the saved time keeps a cached old one from showing. */
+const serverThumbUrl = (p: ServerProject, bust = ''): string | null => (p.thumb ? `/api/projects/${p.id}/thumb?v=${encodeURIComponent((p.savedAt || '') + bust)}` : null);
 
 
 /** How often the automatic backup wakes up. */
@@ -151,7 +154,7 @@ export function useServerStorage({
     const openServerList = async () => {
         try {
             const [projects, folders] = await Promise.all([apiFetch('/api/projects'), apiFetch('/api/folders')]);
-            setServerProjects(projects); setServerFolders(folders);
+            setServerProjects(projects.map((p: ServerProject) => ({ ...p, thumbUrl: serverThumbUrl(p) }))); setServerFolders(folders);
             browserOpenRef.current = true;
             fillMissingPreviews(projects);
         }
@@ -172,7 +175,7 @@ export function useServerStorage({
                     const blob = await renderDocPreview(await apiFetch(`/api/projects/${p.id}`), `/api/projects/${p.id}`, fetchAsset);
                     if (!blob) continue;
                     await apiFetch(`/api/projects/${p.id}/thumb`, { method: 'PUT', headers: { 'Content-Type': blob.type || 'image/webp' }, body: blob });
-                    setServerProjects(list => list && list.map(q => (q.id === p.id ? { ...q, thumb: true } : q)));
+                    setServerProjects(list => list && list.map(q => (q.id === p.id ? { ...q, thumb: true, thumbUrl: serverThumbUrl({ ...q, thumb: true }, String(Date.now())) } : q)));
                 } catch (e) { console.warn('[preview]', p.id, e); }
             }
         } finally { fillingRef.current = false; }

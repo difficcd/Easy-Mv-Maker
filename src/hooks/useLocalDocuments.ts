@@ -18,7 +18,9 @@
 // Nothing here touches a canvas, a stroke, or the timeline.
 
 import { useState, useRef, useEffect } from 'react';
-import { saveProject, loadProject, listProjects, deleteProject, loadAutosave, autosaveKey } from '../db.ts';
+import { saveProject, loadProject, listProjects, deleteProject, loadAutosave, autosaveKey, patchProject, listFolders, addFolder, moveFolder } from '../db.ts';
+import { renderDocPreview } from '../canvas/docPreview.ts';
+import type { BrowsedProject } from '../ui/dialogs/ProjectBrowser.tsx';
 import { downloadBlob } from '../export/download.ts';
 import { ZipWriter } from '../export/zip.ts';
 import { splitProject, pieceFileName, piecesAreSequential } from '../core/splitProject.ts';
@@ -44,6 +46,8 @@ export interface LocalDocumentDeps {
     /** the server project this document saves to - useServerStorage's; kept per tab here */
     serverIdRef: { current: string | null };
     serverNameRef: { current: string };
+    /** the frame open now, small, for the project's preview in the browser */
+    makeThumb?: () => Promise<Blob | null>;
 }
 /** One open document in the tab strip. */
 export interface Tab { id: string; name: string }
@@ -65,8 +69,16 @@ const QUOTA_POLL_MS = 60000;
  * @param {{current: string}} opts.localNameRef owned by App, because the server backup falls back
  *   to it for a name and that hook is created first
  */
-export function useLocalDocuments({ buildData, restore, resetToEmpty, setAppError, setToast, ask, setLoadProgress, fileHandleRef, localNameRef, serverIdRef, serverNameRef }: LocalDocumentDeps) {
-    const [localProjects, setLocalProjects] = useState<any[] | null>(null); // null = picker closed
+export function useLocalDocuments({ buildData, restore, resetToEmpty, setAppError, setToast, ask, setLoadProgress, fileHandleRef, localNameRef, serverIdRef, serverNameRef, makeThumb }: LocalDocumentDeps) {
+    const [localProjects, setLocalProjects] = useState<BrowsedProject[] | null>(null); // null = browser closed
+    const [localFolders, setLocalFolders] = useState<string[]>([]);
+    // The folder open in the browser - where "save under a new name" puts a project - and the
+    // object URLs the cards' previews are shown through, released when the list is replaced.
+    const localBrowseRef = useRef('');
+    const previewUrlsRef = useRef<string[]>([]);
+    const localOpenRef = useRef(false);
+    localOpenRef.current = localProjects !== null;
+    const localFillingRef = useRef(false);
     const localIdRef = useRef<string | null>(null);
     const [storageInfo, setStorageInfo] = useState<{ usage: number, quota: number, pct: number } | null>(null);
 
@@ -209,27 +221,77 @@ export function useLocalDocuments({ buildData, restore, resetToEmpty, setAppErro
     const doLocalSave = async (forceNew = false) => {
         try {
             const data = await buildData(true, null, true); // IndexedDB stores frame Blobs directly
-            if (!forceNew && localIdRef.current) { await saveProject(localIdRef.current, data, localNameRef.current || 'Untitled'); setToast(tr('로컬에 저장했습니다.')); return; }
+            // The preview is a nicety, as on the server: a save without one is still a save.
+            const thumb = await makeThumb?.().catch(() => null) ?? null;
+            if (!forceNew && localIdRef.current) { await saveProject(localIdRef.current, data, localNameRef.current || 'Untitled', { keep: true, ...(thumb ? { thumb } : {}) }); setToast(tr('로컬에 저장했습니다.')); return; }
             const name = await ask.prompt(tr('로컬 저장 이름:'), { value: localNameRef.current || 'MV Project', okLabel: tr('저장') });
             if (!name) return;
             const id = randomId('l_');
-            await saveProject(id, data, name);
+            await saveProject(id, data, name, { folder: localBrowseRef.current, thumb });
             localIdRef.current = id; localNameRef.current = name;
             setToast(tr('로컬에 저장했습니다.'));
         } catch (e: any) { setAppError(tr('로컬 저장 실패: ') + e.message); }
     };
 
+    const releasePreviews = () => { for (const u of previewUrlsRef.current) URL.revokeObjectURL(u); previewUrlsRef.current = []; };
+    const previewUrl = (blob: Blob) => { const u = URL.createObjectURL(blob); previewUrlsRef.current.push(u); return u; };
+
     const openLocalList = async () => {
-        try { setLocalProjects((await listProjects()).filter((p: any) => p.id !== autosaveKey)); }
+        try {
+            const rows = (await listProjects()).filter(p => p.id !== autosaveKey);
+            releasePreviews();
+            setLocalProjects(rows.map(r => ({ id: r.id, name: r.name, savedAt: r.savedAt, folder: r.folder, thumbUrl: r.thumb ? previewUrl(r.thumb) : null })));
+            setLocalFolders(await listFolders());
+            localOpenRef.current = true;
+            fillLocalPreviews(rows.filter(r => !r.thumb).map(r => r.id));
+        }
         catch (e: any) { setAppError(tr('로컬 목록 실패: ') + e.message); }
     };
+    const closeLocalList = () => { setLocalProjects(null); releasePreviews(); };
+
+    // Projects saved before previews existed get one from their first page, once, as on the
+    // server (useServerStorage). Stored on the record, so it is not drawn again.
+    const fillLocalPreviews = async (ids: string[]) => {
+        if (localFillingRef.current) return;
+        localFillingRef.current = true;
+        try {
+            for (const id of ids) {
+                if (!localOpenRef.current) break;
+                try {
+                    const blob = await renderDocPreview(await loadProject(id), '', async () => { throw new Error('no server assets locally'); });
+                    if (!blob) continue;
+                    await patchProject(id, { thumb: blob });
+                    const url = previewUrl(blob);
+                    setLocalProjects(list => list && list.map(q => (q.id === id ? { ...q, thumbUrl: url } : q)));
+                } catch (e) { console.warn('[preview]', id, e); }
+            }
+        } finally { localFillingRef.current = false; }
+    };
+
+    /** One change to the stored projects or folders, then the list as it now is. */
+    const changeLocal = async (run: () => Promise<unknown>) => {
+        try { await run(); await openLocalList(); }
+        catch (e: any) { setAppError(tr('변경 실패: ') + e.message); }
+    };
+    const renameLocalProject = (id: string, name: string) => changeLocal(async () => {
+        await patchProject(id, { name });
+        if (localIdRef.current === id) localNameRef.current = name;
+    });
+    const moveLocalProject = (id: string, folder: string) => changeLocal(() => patchProject(id, { folder }));
+    const createLocalFolder = (path: string) => changeLocal(() => addFolder(path));
+    const moveLocalFolder = (from: string, to: string) => changeLocal(() => moveFolder(from, to));
+    const deleteLocalFolder = async (path: string) => {
+        if (!await ask.confirm(tr('이 폴더를 지울까요? 안에 있던 프로젝트와 폴더는 한 단계 위로 옮겨집니다.'), { okLabel: tr('삭제') })) return;
+        await changeLocal(() => moveFolder(path, null));
+    };
+    const setLocalBrowseFolder = (folder: string) => { localBrowseRef.current = folder; };
 
     const doLocalOpen = async (id: string, name?: string) => {
         try {
             const data = await loadProject(id);
             if (!data) { setAppError(tr('데이터가 없습니다.')); return; }
             // As in doServerOpen: the identity is only ours once the document is actually in.
-            setLocalProjects(null);
+            closeLocalList();
             if (!await openInTab(name, () => restore(data, null, openingLabel(name)))) return;
             localIdRef.current = id; localNameRef.current = name || '';
         }
@@ -394,7 +456,8 @@ export function useLocalDocuments({ buildData, restore, resetToEmpty, setAppErro
 
     return {
         doSave, doOpen, doNew, readAndRestore, doSplitSave,
-        localProjects, setLocalProjects, localIdRef, localNameRef,
+        localProjects, setLocalProjects, localIdRef, localNameRef, localFolders, closeLocalList,
+        renameLocalProject, moveLocalProject, createLocalFolder, moveLocalFolder, deleteLocalFolder, setLocalBrowseFolder,
         doLocalSave, openLocalList, doLocalOpen, doLocalDelete,
         tabs, activeTabId, switchTab, newTab, closeTab, renameTab, openInTab,
         storageInfo, didRecoverRef,
