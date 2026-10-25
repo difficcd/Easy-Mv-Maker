@@ -1,0 +1,80 @@
+{
+  "window": "last 7 days",
+  "measuredAt": "2026-10-25",
+  "merges": 27,
+  "mergesByKind": {
+    "fix": 9,
+    "feat": 6,
+    "chore": 5,
+    "perf": 5,
+    "docs": 1
+  },
+  "deploymentsPerWeek": 27,
+  "prLeadTimeHours": {
+    "median": 0,
+    "p90": 0.1
+  },
+  "issueLeadTimeDays": {
+    "median": 0.4,
+    "p90": 33,
+    "closed": 4
+  },
+  "ciPassRatio": 98.4,
+  "ciRunsJudged": 63,
+  "mainBranchFailures": 0,
+  "defectEscapeRate": 81.8,
+  "fixMerges": 9,
+  "introducingMerges": 11,
+  "mttrDays": {
+    "median": null,
+    "bugsClosed": 0
+  },
+  "fixCommitsWithATest": 88.9,
+  "fixCommitsWaived": 1,
+  "fixCommitsUntested": 0,
+  "prTitlesWithoutType": 2,
+  "fixCommits": 9,
+  "risk": {
+    "untickedChecklistItems": 3,
+    "issuesAwaitingVerification": 2,
+    "reverts": 0,
+    "fixesOfARecentFix": 3,
+    "longestGapBetweenMergesDays": 1,
+    "openIssues": 3,
+    "oldestOpenIssueDays": 73.1
+  },
+  "defectHotspots": [
+    [
+      "src/canvas/strokes",
+      4
+    ],
+    [
+      "src/App",
+      3
+    ],
+    [
+      "src/core/catmullRom",
+      2
+    ],
+    [
+      "src/canvas/docPreview",
+      1
+    ],
+    [
+      "src/hooks/useServerStorage",
+      1
+    ],
+    [
+      "src/core/pressureInput",
+      1
+    ],
+    [
+      "src/ui/ToolsPanel",
+      1
+    ],
+    [
+      "src/canvas/layerBake",
+      1
+    ]
+  ]
+}
