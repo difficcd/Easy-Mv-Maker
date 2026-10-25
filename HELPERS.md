@@ -189,6 +189,8 @@ Whether a stroke came in with pressure - a tablet the browser sees as a mouse se
 |---|---|
 | `strokeHasPressure` | True when any point carries a pressure other than the neutral 0.5. |
 | `missingPressure` | Whether to tell the artist the stroke just drawn had no pressure: pressure on, pointer not a pen, nothing varied. |
+| `mapPressure` | A pen's reading mapped into the artist's range (#394) - light and heavy as % of the size, 0-300%, either order - as the pressure to store. The default 0-200% returns the reading unchanged. |
+| `PRESSURE_RANGE_DEFAULT` | 0% to 200%: what the pen gives untouched. |
 
 ## `src/core/projectFolders.ts`
 

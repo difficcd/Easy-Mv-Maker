@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useStored } from './useStored.ts';
-import { arrayCodec, onOffCodec } from '../core/persist.ts';
+import { arrayCodec, onOffCodec, jsonCodec } from '../core/persist.ts';
+import { PRESSURE_RANGE_DEFAULT, type PressureRange } from '../core/pressureInput.ts';
 import { clampBrush } from '../core/brushSize.ts';
 import { RECENT_SLOTS } from '../ui/ColorPanel.tsx';
 
@@ -69,6 +70,8 @@ export function useToolSettings({ busy, leaveCurve }: { busy: () => boolean, lea
     // Pen pressure. Off means an even line however hard the pen is pressed - wanted for lineart,
     // and for pens that report pressure unevenly.
     const [pressureOn, setPressureOn] = useStored('mv_pressure', true, onOffCodec);
+    // How thin the lightest touch and how thick the hardest press draw (#394), kept between visits.
+    const [pressureRange, setPressureRange] = useStored<PressureRange>('mv_pressure_range', PRESSURE_RANGE_DEFAULT, jsonCodec);
     const [eraserSize, setEraserSize] = useState(20);
     const [opacity, setOpacity] = useState(1.0);
     const [mosaicBlock, setMosaicBlock] = useState(14); // mosaic block size (px)
@@ -86,6 +89,6 @@ export function useToolSettings({ busy, leaveCurve }: { busy: () => boolean, lea
         tool, setTool, etool, rulerMode, setRulerMode, softMode, setSoftMode, handleSetTool,
         color, setColor, applyColor, recentColors, noteColorUsed, pickColor, pickingColor, setPickingColor,
         brushSize, setBrushSize, eraserSize, setEraserSize, toolSize, setToolSize,
-        opacity, setOpacity, pressureOn, setPressureOn, mosaicBlock, setMosaicBlock,
+        opacity, setOpacity, pressureOn, setPressureOn, pressureRange, setPressureRange, mosaicBlock, setMosaicBlock,
     };
 }

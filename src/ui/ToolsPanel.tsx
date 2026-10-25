@@ -1,4 +1,5 @@
 import { Layers, Undo, Redo, Trash, Repeat, ClipboardPaste, Pipette } from 'lucide-react';
+import type { PressureRange } from '../core/pressureInput.ts';
 import { NumField } from './NumField.tsx';
 import { tr } from '../i18n.ts';
 import { BRUSH_MIN, BRUSH_MAX } from '../core/brushSize.ts';
@@ -15,6 +16,8 @@ interface ToolSettingsProps {
     pressureOn?: boolean; setPressureOn: (on: boolean) => void;
     /** the last stroke came in with no pressure though pressure is on (core/pressureInput) */
     noPressure?: boolean;
+    /** how thin the lightest touch and how thick the hardest press draw, % of the size (#394) */
+    pressureRange?: PressureRange; setPressureRange?: (r: PressureRange) => void;
 }
 /** One entry of the tool grid: its id, its label, and the icon that draws it. */
 export interface ToolType { id: string; label: string; Icon: React.ComponentType<{ size?: number }> }
@@ -55,7 +58,7 @@ function ToolSettings({
     rulerMode, setRulerMode,
     mosaicBlock, setMosaicBlock,
     toolSize, setToolSize,
-    pressureOn = true, setPressureOn, noPressure,
+    pressureOn = true, setPressureOn, noPressure, pressureRange, setPressureRange,
 }: ToolSettingsProps) {
     if (tool === 'soft') {
         return (<>
@@ -139,6 +142,15 @@ function ToolSettings({
             title={tr('끄면 세게 눌러도 굵기가 일정합니다. 이미 그린 선은 그대로입니다.')}>
             <input type="checkbox" checked={!!pressureOn} onChange={e => setPressureOn(e.target.checked)} /> {tr('필압')}
         </label>
+        {/* The pressure range (#394): the width of the lightest touch and of the hardest press,
+            as a percentage of the size above. 0-200% is what the pen gives untouched. */}
+        {pressureOn && pressureRange && setPressureRange && (
+            <div className="pr-range" title={tr('가장 약하게 눌렀을 때와 가장 세게 눌렀을 때의 굵기 (브러시 크기 대비 %). 기본 0~200%. 이미 그린 선은 그대로입니다.')}>
+                <label>{tr('약')}<NumField value={pressureRange.light} onChange={v => setPressureRange({ ...pressureRange, light: Math.max(0, Math.min(300, v)) })} min={0} max={300} width={38} /></label>
+                <label>{tr('강')}<NumField value={pressureRange.heavy} onChange={v => setPressureRange({ ...pressureRange, heavy: Math.max(0, Math.min(300, v)) })} min={0} max={300} width={38} /></label>
+                <span className="pr-unit">%</span>
+            </div>
+        )}
         {/* A tablet whose driver has Windows Ink off reaches the browser as a mouse, with no
             pressure; nothing here can recover it, so say so rather than draw flat lines silently. */}
         {pressureOn && noPressure && (
