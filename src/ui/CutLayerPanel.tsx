@@ -6,6 +6,7 @@ import { LayerRows } from './LayerRows.tsx';
 import { tr } from '../i18n.ts';
 import type { LayerRowDeps } from './LayerRows.tsx';
 import { inReadingOrder } from '../core/cutSelection.ts';
+import { ClipCopyPanel, type ClipOps } from './ClipCopyPanel.tsx';
 
 /** The CUT / LAYER panel's props, grouped by what they are about. */
 export interface CutLayerPanelProps {
@@ -25,6 +26,8 @@ export interface CutLayerPanelProps {
     panel: { showRight: boolean; setShowRight: (on: boolean) => void; rightW: number; rightTab: string; setRightTab: (tab: string) => void };
     canvas: { canvasW: number; canvasH: number; frameW: number; frameH: number };
     cutList: { collapsedCutIds: Set<DocId>; expandedCuts: Set<DocId>; renamingCutId: DocId | null; setRenamingCutId: (id: DocId | null) => void; selectedCutIds: Set<DocId>; toggleCutCollapse: (id: DocId) => void; toggleCutSettings: (id: DocId) => void };
+    /** a copy of an animation clip shows these instead of layers */
+    clipOps: ClipOps;
 }
 
 // CUT / LAYER panel: the cut list, each cut's layer tree, cut animation and text list.
@@ -36,7 +39,7 @@ export interface CutLayerPanelProps {
 const LAYER_LABEL_W = 330;
 
 export function CutLayerPanel({
-    doc, cutOps, layerOps, text, camera, panel, canvas, cutList,
+    doc, cutOps, layerOps, text, camera, panel, canvas, cutList, clipOps,
 }: CutLayerPanelProps) {
     const { cuts, currentCutId, copiedCut, videoBatches, layerRows } = doc;
     const { handleAddCut, handleCopyCut, handleCutClick, handleDeleteCut, handleDuplicateCut, handlePasteCut, renameCut, deleteVideoBatch, updCutAnim, updCutTime, updCutCamera } = cutOps;
@@ -137,10 +140,12 @@ export function CutLayerPanel({
                                         canvasW={canvasW} canvasH={canvasH} frameW={frameW} frameH={frameH} />
                                 </div>
                             )}
+                            {cut.clip ? <ClipCopyPanel cut={cut} ops={clipOps} /> : (
                             <div className="layer-list" onDragOver={e => e.preventDefault()} onDrop={e => onListDrop(e, cut.id)}>
                                 <LayerRows cut={cut} rows={layerRows} wide={wideLayer} />
                             </div>
-                            {cut.id === currentCutId && (
+                            )}
+                            {cut.id === currentCutId && !cut.clip && (
                                 <div className="text-panel">
                                     <div className="text-panel-title">
                                         <span>TEXT</span>

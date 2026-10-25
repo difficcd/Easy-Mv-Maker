@@ -87,6 +87,7 @@ import {
 import { cloneCutContents as cloneCutContentsPure, placeCopies } from './core/cutClone.ts';
 import { DEFAULT_KEYS, KEY_LABELS, keyOf, keymapFrom, findConflicts } from './core/shortcuts.ts';
 import { derivePartsFrom, deriveVideoBatches } from './core/partOps.ts';
+import { makeClipCopy, duplicateClipCopy, unpackClipCopy, type ClipRef } from './core/clipInstance.ts';
 import { playRange, exportRange } from './core/playRange.ts';
 import { brushUp, brushDown } from './core/brushSize.ts';
 import {
@@ -1436,6 +1437,13 @@ export default function App() {
     });
 
     const startDraw = (e: React.PointerEvent<HTMLCanvasElement>) => {
+        // A copy of a clip has no drawing of its own to put ink in (core/clipInstance). Without
+        // this, resolveDrawLayer below would give it a layer, and the stroke would land on the
+        // copy instead of the clip - a drawing no other copy shows.
+        if (currentCut?.clip && e.button === 0 && !spaceDownRef.current && !panningRef.current) {
+            notices.setToast(tr('클립 복사본에는 그릴 수 없습니다. 원본 파트의 컷에 그리면 모든 복사본에 반영됩니다. 따로 그리려면 “풀기”를 하세요.'));
+            return;
+        }
         // Even if the active layer is a folder, hidden or invalid, this substitutes a real
         // drawable layer, so the stroke always survives and stays visible.
         const activeLayer = resolveDrawLayer(currentCut);
@@ -1967,10 +1975,47 @@ export default function App() {
         if (!name) return;
         dispatchCuts(renamePartAction(partId, name));
     };
-    // Ungroup a part (cuts stay, just lose their part membership).
-    const ungroupPart = (partId: PartId) => {
+    // Ungroup a part (cuts stay, just lose their part membership). Copies of it as a clip would
+    // be left showing nothing, so that is asked first.
+    const ungroupPart = async (partId: PartId) => {
+        const copies = cuts.filter(c => c.clip?.partId === partId).length;
+        if (copies && !await ask.confirm(tr('이 파트의 클립 복사본 {0}개가 빈 상태가 됩니다. 파트를 해제할까요?', copies), { okLabel: tr('해제') })) return;
         dispatchCuts(ungroupPartAction(partId));
         if (cutList.activePartId === partId) cutList.setActivePartId(null);
+    };
+
+    // --- Animation clips (core/clipInstance) ---------------------------------------------------
+    // A part used as one object: copies of it are cuts that show the part's frames, each with its
+    // own placement and animation. They are added, unpacked and placed here; everything else -
+    // dragging, copy and paste, undo, saving - they get by being cuts.
+    const placeNewCut = (c: Cut, toast: string) => {
+        setNumTracks(n => Math.max(n, c.track + 1));
+        dispatchCuts(addCuts([c]));
+        setCurrentCutId(c.id);
+        notices.setToast(toast);
+    };
+    const addClipCopy = (partId: PartId) => {
+        const p = parts.find(x => x.id === partId);
+        const copy = makeClipCopy(cuts, partId, tr('클립: {0}', p?.name || tr('파트')), nextId());
+        if (!copy) { notices.setToast(tr('이 파트에는 프레임이 없습니다.')); return; }
+        placeNewCut(copy, tr('클립 복사본을 위 트랙에 놓았습니다. 컷 패널에서 위치와 움직임을 정하세요.'));
+    };
+    const addAnotherClipCopy = (cutId: DocId) => {
+        const src = cuts.find(c => c.id === cutId);
+        const copy = src && duplicateClipCopy(cuts, src, nextId());
+        if (copy) placeNewCut(copy, tr('복사본을 하나 더 놓았습니다.'));
+    };
+    const setClipPlacement = (cutId: DocId, patch: Partial<ClipRef>) =>
+        dispatchCuts(patchCut(cutId, c => (c.clip ? { clip: { ...c.clip, ...patch } } : {})));
+    const unpackClip = async (cutId: DocId) => {
+        const copy = cuts.find(c => c.id === cutId);
+        if (!copy?.clip) return;
+        if (!await ask.confirm(tr('이 복사본을 일반 컷으로 풀까요? 원본과 따로 고칠 수 있게 되고, 복사본의 위치·크기·움직임은 빠집니다.'), { okLabel: tr('풀기') })) return;
+        const made = unpackClipCopy(cuts, copy, cloneCutContents, nextId);
+        if (!made.length) { notices.setToast(tr('원본 파트에 프레임이 없어 풀 수 없습니다.')); return; }
+        setNumTracks(n => Math.max(n, ...made.map(c => c.track + 1)));
+        dispatchCuts(patchCuts(cs => [...cs.filter(c => c.id !== cutId), ...made]));
+        setCurrentCutId(made[0].id);
     };
 
     // Local-only: pull a video by URL through the API, then reuse the frame-import dialog.
@@ -2070,6 +2115,7 @@ export default function App() {
     const cutPanelEl = (
                 <CutLayerPanel
                     doc={{ cuts, currentCutId, copiedCut, videoBatches, layerRows }}
+                    clipOps={{ partName: (id: PartId) => parts.find(p => p.id === id)?.name || tr('(없는 파트)'), addAnotherClipCopy, setClipPlacement, unpackClip }}
                     cutOps={{ handleAddCut, handleCopyCut, handleCutClick, handleDeleteCut, handleDuplicateCut, handlePasteCut, renameCut, deleteVideoBatch, updCutAnim, updCutTime, updCutCamera }}
                     layerOps={{ handleAddFolder, handleAddLayer, onListDrop, handleSetTool }}
                     text={{ selectedText, setSelectedText, openEditText, deleteTextObject, toggleTextVisible, textEditorBody, cancelText }}
@@ -2211,7 +2257,7 @@ export default function App() {
                 doc={{ cuts, currentCutId, setCurrentCutId, parts, numTracks, maxTime }}
                 view={{ showBottom, setShowBottom, timelineH, timelineRef, playheadRef, fmt }}
                 tracks={{ hiddenTracks, toggleTrackHidden, handleAddTrack, handleDeleteTrack }}
-                partOps={{ makePartFromSelection, selectPart, renamePart, ungroupPart }}
+                partOps={{ makePartFromSelection, selectPart, renamePart, ungroupPart, addClipCopy }}
                 drag={{ cutDragArmedRef, cutDragMovedRef, cutDragTimerRef, draggingCutData, setDraggingCutData, setResizingData }}
                 media={{ audioData, audioFile, videoOverlay, removeVideoOverlay }}
                 rate={{ loopPlay, setLoopPlay, playbackRate, setPlaybackRate }}

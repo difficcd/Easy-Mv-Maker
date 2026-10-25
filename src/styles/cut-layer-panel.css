@@ -405,3 +405,18 @@ canvas {
     background: hsl(var(--ui-h) var(--ui-s) 18%);
     color: #bbb;
 }
+
+/* The panel a copy of an animation clip shows instead of layers (ui/ClipCopyPanel). */
+.clip-copy { margin: 4px 6px 6px; padding: 8px; border-radius: 8px; border: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent); background: color-mix(in srgb, var(--accent) 6%, transparent); display: flex; flex-direction: column; gap: 7px; }
+.clip-copy-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.clip-copy-badge { font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 999px; background: var(--accent); color: #fff; white-space: nowrap; }
+.clip-copy-src { font-size: 11px; font-weight: 700; color: #ddd; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clip-copy-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+.clip-copy-grid label { display: flex; align-items: center; gap: 4px; font-size: 10px; color: #999; font-weight: 700; }
+.clip-copy-unit { font-size: 10px; color: #888; }
+.clip-copy-loop { display: flex; gap: 4px; }
+.clip-copy-loop button { flex: 1; height: 24px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer; background: hsl(var(--ui-h) var(--ui-s) 18%); border: 1px solid hsl(var(--ui-h) var(--ui-s) 26%); color: #bbb; white-space: nowrap; }
+.clip-copy-loop button.active { background: var(--accent); border-color: var(--accent-hi); color: #fff; }
+.clip-copy-hint { font-size: 10px; color: #888; line-height: 1.45; }
+.clip-copy-actions { display: flex; gap: 4px; flex-wrap: wrap; }
+.clip-copy-actions .small-btn { display: inline-flex; align-items: center; gap: 4px; }

@@ -24,7 +24,7 @@ export interface TimelineProps {
     doc: { cuts: Cut[]; currentCutId: Id | null | undefined; setCurrentCutId: (id: DocId | null) => void; parts: Part[]; numTracks: number; maxTime: number };
     view: { showBottom: boolean; setShowBottom: (f: (v: boolean) => boolean) => void; timelineH: number; timelineRef: React.RefObject<HTMLDivElement | null>; playheadRef: React.RefObject<HTMLDivElement | null>; fmt: (s: number) => string };
     tracks: { hiddenTracks: { audio?: boolean, video?: boolean }; toggleTrackHidden: (which: 'audio' | 'video') => void; handleAddTrack: () => void; handleDeleteTrack: (track: number) => void };
-    partOps: { makePartFromSelection: () => void; selectPart: (id: PartId | null) => void; renamePart: (id: PartId) => void; ungroupPart: (id: PartId) => void };
+    partOps: { makePartFromSelection: () => void; selectPart: (id: PartId | null) => void; renamePart: (id: PartId) => void; ungroupPart: (id: PartId) => void; addClipCopy: (id: PartId) => void };
     drag: { cutDragArmedRef: { current: boolean }; cutDragMovedRef: { current: boolean }; cutDragTimerRef: { current: any }; draggingCutData: CutDragData | null; setDraggingCutData: (d: CutDragData | null) => void; setResizingData: (d: CutResizeData | null) => void };
     media: { audioData: AudioClip | null; audioFile: { name: string } | null; videoOverlay: VideoOverlay | null; removeVideoOverlay: () => void };
     rate: { loopPlay: boolean; setLoopPlay: (f: (v: boolean) => boolean) => void; playbackRate: number; setPlaybackRate: (r: number) => void };
@@ -84,7 +84,7 @@ export function Timeline({
     const { cuts, currentCutId, setCurrentCutId, parts, numTracks, maxTime } = doc;
     const { showBottom, setShowBottom, timelineH, timelineRef, playheadRef, fmt } = view;
     const { hiddenTracks, toggleTrackHidden, handleAddTrack, handleDeleteTrack } = tracks;
-    const { makePartFromSelection, selectPart, renamePart, ungroupPart } = partOps;
+    const { makePartFromSelection, selectPart, renamePart, ungroupPart, addClipCopy } = partOps;
     const { cutDragArmedRef, cutDragMovedRef, cutDragTimerRef, draggingCutData, setDraggingCutData, setResizingData } = drag;
     const { audioData, audioFile, videoOverlay, removeVideoOverlay } = media;
     const { loopPlay, setLoopPlay, playbackRate, setPlaybackRate } = rate;
@@ -182,6 +182,7 @@ export function Timeline({
                         onClick={() => selectPart(p.id)} onDoubleClick={() => renamePart(p.id)}
                         title={tr('{0} · {1}컷 (클릭: 이 파트만 재생 / 더블클릭: 이름변경)', p.name, p.count)}>
                         {p.name.slice(0, 14)} <span style={{ opacity: 0.6 }}>·{p.count}</span>
+                        <span onClick={e => { e.stopPropagation(); addClipCopy(p.id); }} title={tr('클립 복사본 만들기 — 이 파트를 한 덩어리로, 위 트랙에 겹쳐 놓습니다')} className="clip-copy-btn">⧉</span>
                         <span onClick={e => { e.stopPropagation(); ungroupPart(p.id); }} title={tr('파트 해제 (컷은 유지)')} style={{ marginLeft: 4, opacity: 0.5, cursor: 'pointer' }}>✕</span>
                     </button>
                 ))}
@@ -234,7 +235,7 @@ export function Timeline({
                                 </div>
                                 {cuts.filter(c => (c.track || 0) === ti).filter(cut => { const l = xAtTime(cut.startTime, pps), r = l + (cut.endTime - cut.startTime) * pps; return r >= tlWin.left && l <= tlWin.right; }).map(cut => (
                                     <div key={cut.id} data-cutid={cut.id}
-                                        className={`cut-block${currentCutId === cut.id ? ' cut-block-active' : ''}${selectedCutIds.has(cut.id) ? ' cut-block-selected' : ''}`}
+                                        className={`cut-block${cut.clip ? ' cut-block-clip' : ''}${currentCutId === cut.id ? ' cut-block-active' : ''}${selectedCutIds.has(cut.id) ? ' cut-block-selected' : ''}`}
                                         style={{ left: `${xAtTime(cut.startTime, pps)}px`, width: `${(cut.endTime - cut.startTime) * pps}px`, cursor: draggingCutData?.cutId === cut.id ? 'grabbing' : 'grab', touchAction: 'none', opacity: activePartId && cut.partId !== activePartId ? 0.3 : 1 }}
                                         onClick={e => { e.stopPropagation(); if (cutDragMovedRef.current || e.shiftKey || e.ctrlKey || e.metaKey) return; setCurrentCutId(cut.id); setSelectedCutIds(new Set([cut.id])); }}
                                         onPointerDown={e => {

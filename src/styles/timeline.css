@@ -186,3 +186,9 @@
 }
 .vol-pop-presets button.active { background: var(--accent); border-color: var(--accent-hi); color: #fff; }
 .cut-block .vol-btn { margin-left: 6px; color: #ccc; background: rgba(0, 0, 0, .25); }
+
+/* A copy of an animation clip (core/clipInstance): a dashed block, so it reads as the part's
+   frames shown again rather than a drawing of its own. */
+.cut-block.cut-block-clip { border-style: dashed; background: color-mix(in srgb, var(--accent) 22%, hsl(var(--ui-h) var(--ui-s) 16%)); }
+.clip-copy-btn { margin-left: 6px; opacity: 0.75; cursor: pointer; }
+.clip-copy-btn:hover { opacity: 1; color: var(--accent-pale); }

@@ -156,6 +156,8 @@ interface Cut {
     anim?: import('./core/cutAnim.ts').CutAnimSettings | null;
     /** A camera move for this shot; absent on every cut that has never had one. */
     camera?: import('./core/camera.ts').CameraSettings | null;
+    /** Set on a copy of an animation clip: the part it shows and how it is placed (core/clipInstance). Such a cut has no drawing of its own. */
+    clip?: import('./core/clipInstance.ts').ClipRef | null;
 
     // -- cuts made by importing a video, replaced as a batch when that video is imported again
     /** Which video this cut came from: the key a re-import matches on. */
